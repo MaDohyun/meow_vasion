@@ -81,7 +81,7 @@ export function PostFx({ speed, impact }: { speed: number; impact: number }) {
   }, [size.height, size.width, target])
 
   useFrame(() => {
-    post.material.uniforms.speed!.value = Math.min(1, Math.max(0, (speed - 8) / 14))
+    post.material.uniforms.speed!.value = Math.min(1, Math.max(0, (speed - 14) / 28))
     post.material.uniforms.impact!.value = impact
     gl.setRenderTarget(target)
     gl.render(scene, camera)

@@ -45,15 +45,15 @@ export type CollisionResult = {
 }
 
 export const DRONE_DEFAULTS = {
-  maxSpeed: 14,
-  boostSpeed: 22,
-  acceleration: 18,
-  brakeDeceleration: 26,
-  turnRateLow: (160 * Math.PI) / 180,
-  turnRateHigh: (90 * Math.PI) / 180,
-  verticalSpeed: 6,
+  maxSpeed: 24,
+  boostSpeed: 42,
+  acceleration: 32,
+  brakeDeceleration: 42,
+  turnRateLow: (185 * Math.PI) / 180,
+  turnRateHigh: (105 * Math.PI) / 180,
+  verticalSpeed: 9,
   minHeight: 0.4,
-  maxHeight: 18,
+  maxHeight: 90,
   radius: 0.5,
   visualTiltMax: (28 * Math.PI) / 180,
   pitchMax: (55 * Math.PI) / 180,
@@ -131,7 +131,7 @@ export function stepDrone(
   const forwardZ = Math.cos(next.heading) * horizontalForward
   const rightX = Math.cos(next.heading)
   const rightZ = -Math.sin(next.heading)
-  const strafeSpeed = (input.strafe ?? 0) * 8.5
+  const strafeSpeed = (input.strafe ?? 0) * 14.5
   const desiredX = forwardX * next.speed + rightX * strafeSpeed
   const desiredZ = forwardZ * next.speed + rightZ * strafeSpeed
   const lateralRetention = clamp(0.88 + cargoCount * 0.018, 0.88, 0.97)
@@ -194,4 +194,23 @@ export function collideDrone(state: DroneState, colliders: Aabb[]): CollisionRes
   }
 
   return { state: next, impulse: peakImpulse, hit }
+}
+
+export function collideCircularBoundary(state: DroneState, radius: number): CollisionResult {
+  const next: DroneState = structuredClone(state)
+  const distance = Math.hypot(next.position.x, next.position.z)
+  if (distance <= radius) return { state: next, impulse: 0, hit: false }
+
+  const normalX = next.position.x / Math.max(0.001, distance)
+  const normalZ = next.position.z / Math.max(0.001, distance)
+  next.position.x = normalX * radius
+  next.position.z = normalZ * radius
+  const outwardVelocity = next.velocity.x * normalX + next.velocity.z * normalZ
+  const impulse = Math.abs(outwardVelocity)
+  if (outwardVelocity > 0) {
+    next.velocity.x -= normalX * outwardVelocity * 1.65
+    next.velocity.z -= normalZ * outwardVelocity * 1.65
+  }
+  next.speed *= 0.62
+  return { state: next, impulse, hit: true }
 }

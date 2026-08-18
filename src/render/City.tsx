@@ -1,7 +1,11 @@
 import { Edges, Text } from '@react-three/drei'
-import { useMemo } from 'react'
+import { useFrame } from '@react-three/fiber'
+import { memo, useMemo, useRef } from 'react'
 import * as THREE from 'three'
-import { BUILDINGS } from './cityData'
+import { useGame } from '../GameContext'
+import { generateSkylineBlocks, SKYLINE_MAX_BLOCKS, skylineCellKey } from '../core/skyline'
+import { renderOffsetsAround } from '../core/torus'
+import { BUILDINGS, DISTRICT_OFFSETS, MAP_SIZE } from './cityData'
 
 const toonGradient = (() => {
   const data = new Uint8Array([45, 125, 210, 255])
@@ -64,6 +68,65 @@ function makeRoofTexture(base: string, seed: number) {
   })
 }
 
+const facadeTextures = new Map<string, THREE.CanvasTexture>()
+const roofTextures = new Map<string, THREE.CanvasTexture>()
+const SKYLINE_COLORS = ['#426c78', '#4d657d', '#596d78', '#3f6172', '#59657f'] as const
+
+function sharedFacadeTexture(base: string, seed: number) {
+  const key = `${base}:${seed}`
+  const cached = facadeTextures.get(key)
+  if (cached) return cached
+  const texture = makeFacadeTexture(base, seed)
+  facadeTextures.set(key, texture)
+  return texture
+}
+
+function sharedRoofTexture(base: string, seed: number) {
+  const key = `${base}:${seed}`
+  const cached = roofTextures.get(key)
+  if (cached) return cached
+  const texture = makeRoofTexture(base, seed)
+  roofTextures.set(key, texture)
+  return texture
+}
+
+function DistantSkyline() {
+  const { runtime } = useGame()
+  const skyline = useRef<THREE.InstancedMesh>(null)
+  const lastCell = useRef('')
+  const matrix = useMemo(() => new THREE.Matrix4(), [])
+  const position = useMemo(() => new THREE.Vector3(), [])
+  const scale = useMemo(() => new THREE.Vector3(), [])
+  const rotation = useMemo(() => new THREE.Quaternion(), [])
+  const color = useMemo(() => new THREE.Color(), [])
+
+  useFrame(() => {
+    if (!skyline.current) return
+    const drone = runtime.current.drone
+    const cell = skylineCellKey(drone.position.x, drone.position.z, drone.heading)
+    if (cell.key === lastCell.current) return
+    lastCell.current = cell.key
+    const blocks = generateSkylineBlocks(drone.position.x, drone.position.z, drone.heading)
+    blocks.forEach((block, index) => {
+      position.set(block.x, block.height / 2, block.z)
+      scale.set(block.width, block.height, block.depth)
+      matrix.compose(position, rotation, scale)
+      skyline.current!.setMatrixAt(index, matrix)
+      skyline.current!.setColorAt(index, color.set(SKYLINE_COLORS[block.colorIndex] ?? SKYLINE_COLORS[0]))
+    })
+    skyline.current.count = blocks.length
+    skyline.current.instanceMatrix.needsUpdate = true
+    if (skyline.current.instanceColor) skyline.current.instanceColor.needsUpdate = true
+  })
+
+  return (
+    <instancedMesh ref={skyline} args={[undefined, undefined, SKYLINE_MAX_BLOCKS]} frustumCulled={false}>
+      <boxGeometry args={[1, 1, 1]} />
+      <meshToonMaterial color="#ffffff" gradientMap={toonGradient} fog />
+    </instancedMesh>
+  )
+}
+
 function RoadMarkings() {
   const stripes = useMemo(() => {
     const result: Array<[number, number, number, number]> = []
@@ -98,9 +161,9 @@ function RoadMarkings() {
 }
 
 function Building({ building }: { building: (typeof BUILDINGS)[number] }) {
-  const seed = Number(building.id.slice(1))
-  const facadeTexture = useMemo(() => makeFacadeTexture(building.color, seed), [building.color, seed])
-  const roofTexture = useMemo(() => makeRoofTexture(building.roof, seed), [building.roof, seed])
+  const seed = Number(building.id.match(/\d+/)?.[0] ?? 1)
+  const facadeTexture = useMemo(() => sharedFacadeTexture(building.color, seed), [building.color, seed])
+  const roofTexture = useMemo(() => sharedRoofTexture(building.roof, seed), [building.roof, seed])
   const signRotation: [number, number, number] = building.sign?.side === 'x'
     ? [0, -Math.PI / 2, 0]
     : [0, 0, 0]
@@ -161,7 +224,7 @@ function Building({ building }: { building: (typeof BUILDINGS)[number] }) {
             </mesh>
           </group>
         )}
-        {building.id === 'b6' && (
+        {building.id.startsWith('b6-') && (
           <mesh rotation-x={Math.PI / 2} position-y={0.42}>
             <torusGeometry args={[4.2, 0.32, 6, 24]} />
             <meshBasicMaterial color="#ffe36e" />
@@ -189,30 +252,6 @@ function Building({ building }: { building: (typeof BUILDINGS)[number] }) {
   )
 }
 
-function Traffic() {
-  const parked: Array<[number, number, number, boolean]> = [
-    [-12, 0.65, -34, false], [12, 0.65, -57, false], [-12, 0.65, 69, false],
-    [-42, 0.65, -12, true], [31, 0.65, 12, true], [72, 0.65, 12, true],
-  ]
-  return (
-    <group>
-      {parked.map(([x, y, z, horizontal], index) => (
-        <group key={index} position={[x, y, z]}>
-          <mesh castShadow>
-            <boxGeometry args={[horizontal ? 3.8 : 1.95, 1.15, horizontal ? 1.95 : 3.8]} />
-            <meshToonMaterial color={['#ff5d74', '#62d7ff', '#ffd15d', '#9c75ff'][index % 4]} gradientMap={toonGradient} />
-            <Edges color="#382f43" />
-          </mesh>
-          <mesh position={[0, 0.68, 0]}>
-            <boxGeometry args={[horizontal ? 2.1 : 1.65, 0.58, horizontal ? 1.65 : 2.1]} />
-            <meshToonMaterial color="#d5f4ec" gradientMap={toonGradient} />
-          </mesh>
-        </group>
-      ))}
-    </group>
-  )
-}
-
 function StreetLights() {
   const positions = [-78, -43, -5, 33, 76]
   return (
@@ -231,56 +270,42 @@ function StreetLights() {
   )
 }
 
-function DistantSkyline() {
-  const blocks = useMemo(() => Array.from({ length: 28 }, (_, index) => {
-    const side = index % 4
-    const offset = -92 + Math.floor(index / 4) * 28
-    const height = 18 + (index * 17 % 30)
-    const position: [number, number, number] = side === 0 ? [-118, height / 2, offset]
-      : side === 1 ? [118, height / 2, offset]
-      : side === 2 ? [offset, height / 2, -118]
-      : [offset, height / 2, 118]
-    return { position, height, width: 14 + index % 4 * 3 }
-  }), [])
-  return (
-    <group>
-      {blocks.map((block, index) => (
-        <mesh key={index} position={block.position}>
-          <boxGeometry args={[block.width, block.height, block.width]} />
-          <meshToonMaterial color={['#426c78', '#4d657d', '#596d78'][index % 3]} gradientMap={toonGradient} />
-        </mesh>
-      ))}
-    </group>
-  )
-}
+const DISTRICT_BUILDINGS = DISTRICT_OFFSETS.map((_, districtIndex) =>
+  BUILDINGS.filter((building) => building.id.endsWith(`-d${districtIndex}`)),
+)
 
-export function City() {
+function District({
+  offset,
+  districtIndex,
+  register,
+}: {
+  offset: (typeof DISTRICT_OFFSETS)[number]
+  districtIndex: number
+  register: (group: THREE.Group | null) => void
+}) {
+  const buildings = DISTRICT_BUILDINGS[districtIndex] ?? []
   return (
-    <group>
-      <mesh rotation-x={-Math.PI / 2} receiveShadow>
-        <planeGeometry args={[205, 205]} />
-        <meshToonMaterial color="#8a8b75" gradientMap={toonGradient} />
-      </mesh>
-      <mesh rotation-x={-Math.PI / 2} position-y={0.012} receiveShadow>
-        <planeGeometry args={[200, 25]} />
+    <group ref={register} position={[offset.x, 0, offset.z]}>
+      <mesh rotation-x={-Math.PI / 2} position-y={0.024} receiveShadow>
+        <planeGeometry args={[190, 25]} />
         <meshToonMaterial color="#324e63" gradientMap={toonGradient} />
       </mesh>
-      <mesh rotation-x={-Math.PI / 2} position-y={0.014} receiveShadow>
-        <planeGeometry args={[25, 200]} />
+      <mesh rotation-x={-Math.PI / 2} position-y={0.026} receiveShadow>
+        <planeGeometry args={[25, 190]} />
         <meshToonMaterial color="#324e63" gradientMap={toonGradient} />
       </mesh>
       <RoadMarkings />
-      {BUILDINGS.map((building) => (
-        <mesh key={`walk-${building.id}`} position={[building.position.x, 0.14, building.position.z]} receiveShadow>
-          <boxGeometry args={[building.size.x + 4, 0.28, building.size.z + 4]} />
-          <meshToonMaterial color="#c9b889" gradientMap={toonGradient} />
-          <Edges color="#6d6160" />
-        </mesh>
-      ))}
-      {BUILDINGS.map((building) => <Building key={building.id} building={building} />)}
-      <Traffic />
+      <group position={[-offset.x, 0, -offset.z]}>
+        {buildings.map((building) => (
+          <mesh key={`walk-${building.id}`} position={[building.position.x, 0.14, building.position.z]} receiveShadow>
+            <boxGeometry args={[building.size.x + 4, 0.28, building.size.z + 4]} />
+            <meshToonMaterial color="#c9b889" gradientMap={toonGradient} />
+            <Edges color="#6d6160" />
+          </mesh>
+        ))}
+        {buildings.map((building) => <Building key={building.id} building={building} />)}
+      </group>
       <StreetLights />
-      <DistantSkyline />
       <mesh position={[0, 4, 0]}>
         <boxGeometry args={[18, 0.8, 4]} />
         <meshToonMaterial color="#d9c9a6" gradientMap={toonGradient} />
@@ -297,3 +322,82 @@ export function City() {
     </group>
   )
 }
+
+function CityTile({
+  slot,
+  offset,
+  registerTile,
+  registerDistrict,
+}: {
+  slot: number
+  offset: { x: number; z: number }
+  registerTile: (group: THREE.Group | null) => void
+  registerDistrict: (districtIndex: number, group: THREE.Group | null) => void
+}) {
+  return (
+    <group ref={registerTile} position={[offset.x, 0, offset.z]}>
+      <mesh rotation-x={-Math.PI / 2} position-y={0.01} receiveShadow>
+        <planeGeometry args={[MAP_SIZE + 2, MAP_SIZE + 2]} />
+        <meshToonMaterial color="#8a8b75" gradientMap={toonGradient} />
+      </mesh>
+      <mesh rotation-x={-Math.PI / 2} position-y={0.022} receiveShadow>
+        <ringGeometry args={[164, 196, 64]} />
+        <meshToonMaterial color="#324e63" gradientMap={toonGradient} />
+      </mesh>
+      {DISTRICT_OFFSETS.map((districtOffset, districtIndex) => (
+        <District
+          key={districtIndex}
+          offset={districtOffset}
+          districtIndex={districtIndex}
+          register={(group) => registerDistrict(slot * DISTRICT_OFFSETS.length + districtIndex, group)}
+        />
+      ))}
+    </group>
+  )
+}
+
+export const City = memo(function City({ tileX, tileZ }: { tileX: number; tileZ: number }) {
+  const tileGroups = useRef<Array<THREE.Group | null>>([])
+  const districtGroups = useRef<Array<THREE.Group | null>>([])
+  const frustum = useMemo(() => new THREE.Frustum(), [])
+  const projection = useMemo(() => new THREE.Matrix4(), [])
+  const tileBox = useMemo(() => new THREE.Box3(), [])
+  const districtSphere = useMemo(() => new THREE.Sphere(new THREE.Vector3(), 112), [])
+  const cameraPoint = useMemo(() => new THREE.Vector3(), [])
+  const offsets = useMemo(
+    () => renderOffsetsAround({ x: tileX * MAP_SIZE, z: tileZ * MAP_SIZE }, MAP_SIZE),
+    [tileX, tileZ],
+  )
+  useFrame(({ camera }) => {
+    projection.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse)
+    frustum.setFromProjectionMatrix(projection)
+    cameraPoint.copy(camera.position)
+    offsets.forEach((offset, slot) => {
+      const tile = tileGroups.current[slot]
+      tileBox.min.set(offset.x - MAP_SIZE / 2, -1, offset.z - MAP_SIZE / 2)
+      tileBox.max.set(offset.x + MAP_SIZE / 2, 55, offset.z + MAP_SIZE / 2)
+      const tileVisible = tileBox.distanceToPoint(cameraPoint) < 545 && frustum.intersectsBox(tileBox)
+      if (tile) tile.visible = tileVisible
+      for (let districtIndex = 0; districtIndex < DISTRICT_OFFSETS.length; districtIndex += 1) {
+        const district = districtGroups.current[slot * DISTRICT_OFFSETS.length + districtIndex]
+        const local = DISTRICT_OFFSETS[districtIndex]!
+        districtSphere.center.set(offset.x + local.x, 20, offset.z + local.z)
+        if (district) district.visible = tileVisible && cameraPoint.distanceTo(districtSphere.center) < 530 && frustum.intersectsSphere(districtSphere)
+      }
+    })
+  })
+  return (
+    <group>
+      <DistantSkyline />
+      {offsets.map((offset, slot) => (
+        <CityTile
+          key={slot}
+          slot={slot}
+          offset={offset}
+          registerTile={(group) => { tileGroups.current[slot] = group }}
+          registerDistrict={(index, group) => { districtGroups.current[index] = group }}
+        />
+      ))}
+    </group>
+  )
+})

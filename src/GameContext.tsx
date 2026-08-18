@@ -1,5 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { createDroneState, stepDrone, collideDrone, type DroneInput, type DroneState, type Vec3 } from './core/drone'
+import { createDroneState, stepDrone, type DroneInput, type DroneState, type Vec3 } from './core/drone'
+import { stepBeamObjects, type BeamObject } from './core/beam'
+import { collideDroneWrapped } from './core/torus'
 import {
   channelTarget,
   generateMission,
@@ -9,7 +11,7 @@ import {
   type MissionTarget,
   type TargetKind,
 } from './core/missions'
-import { CITY_COLLIDERS } from './render/cityData'
+import { CITY_COLLIDERS, MAP_SIZE, PULLABLE_CARS } from './render/cityData'
 import { tone, unlockAudio } from './audio'
 
 export type GamePhase = 'intro' | 'playing' | 'results'
@@ -59,6 +61,7 @@ export type GameRuntime = {
   fiveStarTimer: number | null
   carried: CarriedTarget[]
   dropped: DroppedCaptive[]
+  beamObjects: BeamObject[]
   phase: GamePhase
   message: string
   messageTime: number
@@ -72,6 +75,7 @@ export type GameSnapshot = {
   phase: GamePhase
   speed: number
   height: number
+  position: Vec3
   mission: Mission
   sessionTime: number
   score: number
@@ -96,6 +100,7 @@ export type GameSnapshot = {
   fiveStarTimer: number | null
   carried: CarriedTarget[]
   dropped: DroppedCaptive[]
+  beamObjectCount: number
   message: string
   impactFlash: number
   resultTitle: string
@@ -131,7 +136,7 @@ function makeRuntime(): GameRuntime {
     drone,
     mission: generateMission(0),
     missionIndex: 0,
-    sessionTime: 180,
+    sessionTime: 0,
     score: 0,
     completedMissions: 0,
     chain: 1,
@@ -159,6 +164,17 @@ function makeRuntime(): GameRuntime {
     fiveStarTimer: null,
     carried: [],
     dropped: [],
+    beamObjects: PULLABLE_CARS.map((car) => ({
+      id: car.id,
+      kind: 'car',
+      color: car.color,
+      position: { ...car.position },
+      velocity: { x: 0, y: 0, z: 0 },
+      rotation: { x: 0, y: car.rotation, z: 0 },
+      angularVelocity: { x: 0, y: 0, z: 0 },
+      inBeam: false,
+      tether: 0,
+    })),
     phase: 'intro',
     message: 'FIRST CONTACT: CATTLE CLASSIFIED',
     messageTime: 4,
@@ -185,6 +201,7 @@ function snapshotOf(game: GameRuntime): GameSnapshot {
     phase: game.phase,
     speed: Math.hypot(game.drone.velocity.x, game.drone.velocity.y, game.drone.velocity.z),
     height: game.drone.position.y,
+    position: { ...game.drone.position },
     mission: copyMission(game.mission),
     sessionTime: game.sessionTime,
     score: game.score,
@@ -200,7 +217,7 @@ function snapshotOf(game: GameRuntime): GameSnapshot {
     aimX: game.aimX,
     aimY: game.aimY,
     beamActive: game.beamActive,
-    beamAvailable: game.drone.boostRemaining <= 0.08,
+    beamAvailable: true,
     beamTargetId: game.beamTargetId,
     laserActive: game.laserActive,
     laserFlash: game.laserFlash,
@@ -209,6 +226,7 @@ function snapshotOf(game: GameRuntime): GameSnapshot {
     fiveStarTimer: game.fiveStarTimer,
     carried: game.carried.map((item) => ({ ...item })),
     dropped: game.dropped.map((item) => ({ ...item, position: { ...item.position }, velocity: { ...item.velocity } })),
+    beamObjectCount: game.beamObjects.filter((object) => object.inBeam).length,
     message: game.messageTime > 0 ? game.message : '',
     impactFlash: game.impactFlash,
     resultTitle: game.resultTitle,
@@ -358,7 +376,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     const keyboard: PlayerInput = {
       throttle: (keys.current.KeyW || keys.current.ArrowUp ? 1 : 0) - (keys.current.KeyS || keys.current.ArrowDown ? 1 : 0),
       steer: mouseSteer,
-      strafe: (keys.current.KeyD || keys.current.ArrowRight ? 1 : 0) - (keys.current.KeyA || keys.current.ArrowLeft ? 1 : 0),
+      strafe: (keys.current.KeyA || keys.current.ArrowLeft ? 1 : 0) - (keys.current.KeyD || keys.current.ArrowRight ? 1 : 0),
       lookPitch: -pointer.current.y,
       vertical: 0,
       special: Boolean(keys.current.Space),
@@ -384,7 +402,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     const input = readInput()
     game.aimX = pointer.current.x
     game.aimY = pointer.current.y
-    game.sessionTime = Math.max(0, game.sessionTime - d)
+    game.sessionTime += d
     game.messageTime = Math.max(0, game.messageTime - d)
     game.impactFlash = Math.max(0, game.impactFlash - d * 5)
     game.collisionCooldown = Math.max(0, game.collisionCooldown - d)
@@ -397,7 +415,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     const turboActive = input.special && game.turbo > 0.02
     if (turboActive) {
       if (game.drone.boostRemaining <= 0) {
-        game.message = 'TURBO ENGAGED — BEAM OFFLINE'
+        game.message = input.beam ? 'TURBO + BEAM AMPLIFIED' : 'TURBO ENGAGED'
         game.messageTime = 1.2
         tone('upgrade')
       }
@@ -409,18 +427,24 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
     const flightInput: DroneInput = { ...input, special: false }
     const stepped = stepDrone(game.drone, flightInput, d, game.carried.length, UFO_UPGRADES)
-    const collision = collideDrone(stepped, CITY_COLLIDERS)
+    const collision = collideDroneWrapped(stepped, CITY_COLLIDERS, MAP_SIZE)
     game.drone = collision.state
     if (collision.hit && collision.impulse > 2.5 && game.collisionCooldown <= 0) {
       game.collisionCooldown = 0.45
       damage(game, 'BUILDING')
     }
 
-    const beamUsable = !input.special && !turboActive && game.drone.boostRemaining <= 0.08
-    game.beamActive = input.beam && beamUsable
+    game.beamActive = input.beam
+    stepBeamObjects(game.beamObjects, {
+      active: game.beamActive,
+      boosting: turboActive,
+      position: game.drone.position,
+      velocity: game.drone.velocity,
+      wrapSize: MAP_SIZE,
+    }, d)
     game.beamTargetId = null
     if (game.beamActive) {
-      const target = nearestBeamTarget(game.mission, game.drone.position)
+      const target = nearestBeamTarget(game.mission, game.drone.position, 8.5, MAP_SIZE)
       if (target) {
         game.beamTargetId = target.id
         const result = channelTarget(game.mission, target.id, d)
@@ -527,8 +551,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
     if (game.fiveStarTimer !== null) {
       game.fiveStarTimer = Math.max(0, game.fiveStarTimer - d)
       if (game.fiveStarTimer <= 0) endRun(game, 'FIVE-STAR GETAWAY', true)
-    } else if (game.sessionTime <= 0) {
-      endRun(game, 'RAID COMPLETE', true)
     }
 
     publishAccumulator.current += d
@@ -540,6 +562,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   const start = useCallback(() => {
     unlockAudio()
+    pointer.current = { x: 0, y: 0 }
     const game = runtime.current
     game.phase = 'playing'
     game.message = 'HOLD E ABOVE A TARGET'
@@ -548,6 +571,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   }, [publish])
 
   const restart = useCallback(() => {
+    pointer.current = { x: 0, y: 0 }
     runtime.current = makeRuntime()
     runtime.current.phase = 'playing'
     runtime.current.message = 'NEW RAID — FIND THE GREEN TARGETS'

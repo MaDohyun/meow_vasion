@@ -1,4 +1,5 @@
 import type { Vec3 } from './drone'
+import { wrappedHorizontalDistance } from './torus'
 
 export type MissionKind = 'abduct' | 'scan' | 'smash'
 export type TargetKind = 'cow' | 'tourist' | 'billboard' | 'patrol'
@@ -33,6 +34,18 @@ const target = (
   z: number,
   color: string,
 ): TargetSeed => ({ label, kind, position: { x, y, z }, color })
+
+const MISSION_DISTRICTS = [
+  { x: 0, z: 0 },
+  { x: 185, z: 0 },
+  { x: 131, z: 131 },
+  { x: 0, z: 185 },
+  { x: -131, z: 131 },
+  { x: -185, z: 0 },
+  { x: -131, z: -131 },
+  { x: 0, z: -185 },
+  { x: 131, z: -131 },
+] as const
 
 const MISSION_SEEDS: MissionSeed[] = [
   {
@@ -104,6 +117,7 @@ export const TARGET_CHANNEL_TIME: Record<TargetKind, number> = {
 
 export function generateMission(index: number): Mission {
   const seed = MISSION_SEEDS[((index % MISSION_SEEDS.length) + MISSION_SEEDS.length) % MISSION_SEEDS.length]!
+  const district = MISSION_DISTRICTS[((index % MISSION_DISTRICTS.length) + MISSION_DISTRICTS.length) % MISSION_DISTRICTS.length]!
   return {
     id: index,
     kind: seed.kind,
@@ -113,21 +127,27 @@ export function generateMission(index: number): Mission {
     targets: seed.targets.map((item, targetIndex) => ({
       ...item,
       id: `mission-${index}-target-${targetIndex}`,
-      position: { ...item.position },
+      position: {
+        x: item.position.x + district.x,
+        y: item.position.y,
+        z: item.position.z + district.z,
+      },
       progress: 0,
       active: true,
     })),
   }
 }
 
-export function nearestBeamTarget(mission: Mission, position: Vec3, maxHorizontalDistance = 8.5) {
+export function nearestBeamTarget(mission: Mission, position: Vec3, maxHorizontalDistance = 8.5, wrapSize?: number) {
   let nearest: MissionTarget | null = null
   let nearestDistance = maxHorizontalDistance
   for (const candidate of mission.targets) {
     if (!candidate.active) continue
     const verticalGap = position.y - candidate.position.y
     if (verticalGap < -0.5 || verticalGap > 10) continue
-    const distance = Math.hypot(position.x - candidate.position.x, position.z - candidate.position.z)
+    const distance = wrapSize
+      ? wrappedHorizontalDistance(position, candidate.position, wrapSize)
+      : Math.hypot(position.x - candidate.position.x, position.z - candidate.position.z)
     if (distance <= nearestDistance) {
       nearest = candidate
       nearestDistance = distance

@@ -9,7 +9,31 @@ export type BuildingModule = {
   sign?: { text: string; color: string; side: 'x' | 'z' }
 }
 
-export const BUILDINGS: BuildingModule[] = [
+export type DistrictOffset = { x: number; z: number }
+
+export type PullableCarSeed = {
+  id: string
+  position: Vec3
+  rotation: number
+  color: string
+}
+
+export const MAP_RADIUS = 300
+export const MAP_HALF_EXTENT = MAP_RADIUS
+export const MAP_SIZE = MAP_HALF_EXTENT * 2
+export const DISTRICT_OFFSETS: DistrictOffset[] = [
+  { x: 0, z: 0 },
+  { x: 185, z: 0 },
+  { x: 131, z: 131 },
+  { x: 0, z: 185 },
+  { x: -131, z: 131 },
+  { x: -185, z: 0 },
+  { x: -131, z: -131 },
+  { x: 0, z: -185 },
+  { x: 131, z: -131 },
+]
+
+const BASE_BUILDINGS: BuildingModule[] = [
   { id: 'b1', position: { x: -68, y: 10, z: -58 }, size: { x: 34, y: 20, z: 38 }, color: '#ef6b68', roof: '#c84864', sign: { text: 'RAMEN', color: '#ffe66b', side: 'z' } },
   { id: 'b2', position: { x: -25, y: 16, z: -60 }, size: { x: 28, y: 32, z: 34 }, color: '#42a6c8', roof: '#267899', sign: { text: 'HOTEL', color: '#ff7bbf', side: 'x' } },
   { id: 'b3', position: { x: 22, y: 8, z: -62 }, size: { x: 30, y: 16, z: 34 }, color: '#f4b34f', roof: '#ce773f', sign: { text: 'ARCADE', color: '#78ffcf', side: 'z' } },
@@ -22,6 +46,44 @@ export const BUILDINGS: BuildingModule[] = [
   { id: 'b10', position: { x: 70, y: 10, z: 3 }, size: { x: 30, y: 20, z: 25 }, color: '#6bb8d8', roof: '#3d7d9e', sign: { text: 'DEPOT', color: '#ffcf62', side: 'x' } },
 ]
 
+export const BUILDINGS: BuildingModule[] = DISTRICT_OFFSETS.flatMap((offset, districtIndex) =>
+  BASE_BUILDINGS.map((building) => ({
+    ...building,
+    id: `${building.id}-d${districtIndex}`,
+    position: {
+      x: building.position.x + offset.x,
+      y: building.position.y,
+      z: building.position.z + offset.z,
+    },
+  })),
+)
+
+const BASE_PARKED_CARS = [
+  { x: -12, z: -34, horizontal: false },
+  { x: 12, z: -57, horizontal: false },
+  { x: -12, z: 69, horizontal: false },
+  { x: -42, z: -12, horizontal: true },
+  { x: 31, z: 12, horizontal: true },
+  { x: 72, z: 12, horizontal: true },
+] as const
+
+const CAR_COLORS = ['#ff5d74', '#62d7ff', '#ffd15d', '#9c75ff'] as const
+
+export const PULLABLE_CARS: PullableCarSeed[] = DISTRICT_OFFSETS.flatMap((offset, districtIndex) =>
+  BASE_PARKED_CARS.map((car, carIndex) => ({
+    id: `traffic-d${districtIndex}-c${carIndex}`,
+    position: { x: car.x + offset.x, y: 0.65, z: car.z + offset.z },
+    rotation: car.horizontal ? Math.PI / 2 : 0,
+    color: CAR_COLORS[carIndex % CAR_COLORS.length],
+  })),
+)
+
+const bridgeColliders = DISTRICT_OFFSETS.flatMap((offset): Aabb[] => [
+  { minX: offset.x - 9, maxX: offset.x + 9, minY: 3.6, maxY: 4.4, minZ: offset.z - 2, maxZ: offset.z + 2 },
+  { minX: offset.x - 9.4, maxX: offset.x - 8.6, minY: 0, maxY: 4, minZ: offset.z - 2, maxZ: offset.z + 2 },
+  { minX: offset.x + 8.6, maxX: offset.x + 9.4, minY: 0, maxY: 4, minZ: offset.z - 2, maxZ: offset.z + 2 },
+])
+
 export const CITY_COLLIDERS: Aabb[] = [
   ...BUILDINGS.map((building) => ({
     minX: building.position.x - building.size.x / 2,
@@ -31,11 +93,5 @@ export const CITY_COLLIDERS: Aabb[] = [
     minZ: building.position.z - building.size.z / 2,
     maxZ: building.position.z + building.size.z / 2,
   })),
-  { minX: -101, maxX: -99, minY: 0, maxY: 20, minZ: -100, maxZ: 100 },
-  { minX: 99, maxX: 101, minY: 0, maxY: 20, minZ: -100, maxZ: 100 },
-  { minX: -100, maxX: 100, minY: 0, maxY: 20, minZ: -101, maxZ: -99 },
-  { minX: -100, maxX: 100, minY: 0, maxY: 20, minZ: 99, maxZ: 101 },
-  { minX: -9, maxX: 9, minY: 3.6, maxY: 4.4, minZ: -2, maxZ: 2 },
-  { minX: -9.4, maxX: -8.6, minY: 0, maxY: 4, minZ: -2, maxZ: 2 },
-  { minX: 8.6, maxX: 9.4, minY: 0, maxY: 4, minZ: -2, maxZ: 2 },
+  ...bridgeColliders,
 ]

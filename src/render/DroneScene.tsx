@@ -3,8 +3,11 @@ import { useFrame, useThree } from '@react-three/fiber'
 import { useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { useGame, type CarriedTarget } from '../GameContext'
+import { beamProfile } from '../core/beam'
 import type { MissionTarget, TargetKind } from '../core/missions'
+import { renderOffsetsAround } from '../core/torus'
 import { City } from './City'
+import { MAP_SIZE } from './cityData'
 import { PostFx } from './PostFx'
 
 function Cow({ color = '#f4eee0' }: { color?: string }) {
@@ -58,6 +61,101 @@ function PatrolCar({ color = '#f1f1da', police = false }: { color?: string; poli
   )
 }
 
+function PullableCars() {
+  const { runtime } = useGame()
+  const body = useRef<THREE.InstancedMesh>(null)
+  const cabin = useRef<THREE.InstancedMesh>(null)
+  const chassis = useRef<THREE.InstancedMesh>(null)
+  const lightbar = useRef<THREE.InstancedMesh>(null)
+  const glow = useRef<THREE.InstancedMesh>(null)
+  const base = useMemo(() => new THREE.Matrix4(), [])
+  const local = useMemo(() => new THREE.Matrix4(), [])
+  const composed = useMemo(() => new THREE.Matrix4(), [])
+  const projection = useMemo(() => new THREE.Matrix4(), [])
+  const frustum = useMemo(() => new THREE.Frustum(), [])
+  const sphere = useMemo(() => new THREE.Sphere(new THREE.Vector3(), 2.2), [])
+  const position = useMemo(() => new THREE.Vector3(), [])
+  const scale = useMemo(() => new THREE.Vector3(0.8, 0.8, 0.8), [])
+  const glowScale = useMemo(() => new THREE.Vector3(), [])
+  const quaternion = useMemo(() => new THREE.Quaternion(), [])
+  const euler = useMemo(() => new THREE.Euler(), [])
+  const color = useMemo(() => new THREE.Color(), [])
+  const maxInstances = runtime.current.beamObjects.length * 9
+
+  useFrame(({ camera }) => {
+    if (!body.current || !cabin.current || !chassis.current || !lightbar.current || !glow.current) return
+    projection.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse)
+    frustum.setFromProjectionMatrix(projection)
+    const offsets = renderOffsetsAround(runtime.current.drone.position, MAP_SIZE)
+    let visibleCount = 0
+    let glowCount = 0
+    for (const offset of offsets) {
+      for (const object of runtime.current.beamObjects) {
+        position.set(object.position.x + offset.x, object.position.y, object.position.z + offset.z)
+        if (camera.position.distanceToSquared(position) > 430 * 430) continue
+        sphere.center.copy(position)
+        if (!frustum.intersectsSphere(sphere)) continue
+
+        euler.set(object.rotation.x, object.rotation.y, object.rotation.z)
+        quaternion.setFromEuler(euler)
+        base.compose(position, quaternion, scale)
+        body.current.setMatrixAt(visibleCount, base)
+        body.current.setColorAt(visibleCount, color.set(object.color))
+
+        local.makeTranslation(0, 0.53, -0.15)
+        cabin.current.setMatrixAt(visibleCount, composed.copy(base).multiply(local))
+        local.makeTranslation(0, -0.3, 0)
+        chassis.current.setMatrixAt(visibleCount, composed.copy(base).multiply(local))
+        local.makeTranslation(0, 0.9, -0.15)
+        lightbar.current.setMatrixAt(visibleCount, composed.copy(base).multiply(local))
+
+        if (object.tether > 0.02) {
+          glowScale.setScalar(0.8 + object.tether * 0.35)
+          local.makeRotationX(-Math.PI / 2)
+          local.setPosition(0, -0.31, 0)
+          composed.copy(base).multiply(local).scale(glowScale)
+          glow.current.setMatrixAt(glowCount, composed)
+          glowCount += 1
+        }
+        visibleCount += 1
+      }
+    }
+
+    for (const mesh of [body.current, cabin.current, chassis.current, lightbar.current]) {
+      mesh.count = visibleCount
+      mesh.instanceMatrix.needsUpdate = true
+    }
+    if (body.current.instanceColor) body.current.instanceColor.needsUpdate = true
+    glow.current.count = glowCount
+    glow.current.instanceMatrix.needsUpdate = true
+  })
+
+  return (
+    <group>
+      <instancedMesh ref={chassis} args={[undefined, undefined, maxInstances]} frustumCulled={false} castShadow>
+        <boxGeometry args={[1.92, 0.3, 2.9]} />
+        <meshToonMaterial color="#272538" />
+      </instancedMesh>
+      <instancedMesh ref={body} args={[undefined, undefined, maxInstances]} frustumCulled={false} castShadow>
+        <boxGeometry args={[1.8, 0.62, 3.1]} />
+        <meshToonMaterial />
+      </instancedMesh>
+      <instancedMesh ref={cabin} args={[undefined, undefined, maxInstances]} frustumCulled={false} castShadow>
+        <boxGeometry args={[1.55, 0.62, 1.55]} />
+        <meshToonMaterial color="#9ee4e5" />
+      </instancedMesh>
+      <instancedMesh ref={lightbar} args={[undefined, undefined, maxInstances]} frustumCulled={false}>
+        <boxGeometry args={[0.95, 0.16, 0.28]} />
+        <meshBasicMaterial color="#ffce55" />
+      </instancedMesh>
+      <instancedMesh ref={glow} args={[undefined, undefined, maxInstances]} frustumCulled={false} renderOrder={3}>
+        <ringGeometry args={[1.25, 1.55, 18]} />
+        <meshBasicMaterial color="#a7fff0" transparent opacity={0.9} depthWrite={false} blending={THREE.AdditiveBlending} />
+      </instancedMesh>
+    </group>
+  )
+}
+
 function ScanNode({ color }: { color: string }) {
   return (
     <group>
@@ -96,9 +194,13 @@ function TargetActor({ target, selected }: { target: MissionTarget; selected: bo
         : target.kind === 'patrol'
           ? <PatrolCar color="#f6ead7" />
           : <ScanNode color={target.color} />}
-      <mesh position-y={3.8}>
-        <octahedronGeometry args={[0.43]} />
+      <mesh position-y={16}>
+        <octahedronGeometry args={[1.15]} />
         <meshBasicMaterial color={target.color} />
+      </mesh>
+      <mesh position-y={8}>
+        <cylinderGeometry args={[0.07, 0.18, 14, 6]} />
+        <meshBasicMaterial color={target.color} transparent opacity={0.46} depthWrite={false} blending={THREE.AdditiveBlending} />
       </mesh>
       <pointLight position-y={2.1} color={target.color} intensity={selected ? 13 : 5} distance={9} />
     </group>
@@ -107,11 +209,14 @@ function TargetActor({ target, selected }: { target: MissionTarget; selected: bo
 
 function MissionTargets() {
   const { snapshot } = useGame()
+  const offsets = renderOffsetsAround(snapshot.position, MAP_SIZE)
   return (
     <group>
-      {snapshot.mission.targets.map((target) => (
-        <TargetActor key={target.id} target={target} selected={snapshot.beamTargetId === target.id} />
-      ))}
+      {offsets.flatMap((offset, slot) => snapshot.mission.targets.map((target) => (
+        <group key={`${slot}:${target.id}`} position={[offset.x, 0, offset.z]}>
+          <TargetActor target={target} selected={snapshot.beamTargetId === target.id} />
+        </group>
+      )))}
     </group>
   )
 }
@@ -139,7 +244,9 @@ function TractorBeam() {
   const { runtime, snapshot } = useGame()
   const root = useRef<THREE.Group>(null)
   const target = snapshot.mission.targets.find((item) => item.id === snapshot.beamTargetId)
-  const length = Math.max(1.2, runtime.current.drone.position.y - (target?.position.y ?? 0.15) - 0.35)
+  const profile = beamProfile(snapshot.boostActive)
+  const length = Math.max(1.2, Math.min(profile.maxDrop, runtime.current.drone.position.y - (target?.position.y ?? 0.15) - 0.35))
+  const radius = profile.baseRadius + length * profile.coneSpread
   useFrame(() => {
     if (!root.current) return
     const position = runtime.current.drone.position
@@ -151,12 +258,12 @@ function TractorBeam() {
     <group ref={root} position={[runtime.current.drone.position.x, runtime.current.drone.position.y, runtime.current.drone.position.z]}>
       <group position-y={-0.42}>
       <mesh position-y={-length / 2} renderOrder={2}>
-        <coneGeometry args={[3.5 + length * 0.09, length, 24, 1, true]} />
-        <meshBasicMaterial color={color} transparent opacity={target ? 0.34 : 0.24} side={THREE.DoubleSide} depthWrite={false} blending={THREE.AdditiveBlending} />
+        <coneGeometry args={[radius, length, 24, 1, true]} />
+        <meshBasicMaterial color={snapshot.boostActive ? '#69f7ff' : color} transparent opacity={snapshot.boostActive ? 0.38 : target ? 0.34 : 0.24} side={THREE.DoubleSide} depthWrite={false} blending={THREE.AdditiveBlending} />
       </mesh>
       {[0.28, 0.56, 0.84].map((ratio) => (
         <mesh key={ratio} position-y={-length * ratio} rotation-x={-Math.PI / 2}>
-          <ringGeometry args={[1.2 + ratio * 1.25, 1.28 + ratio * 1.3, 22]} />
+          <ringGeometry args={[radius * ratio * 0.78, radius * ratio * 0.78 + 0.16, 22]} />
           <meshBasicMaterial color="#efffff" transparent opacity={0.48} depthWrite={false} />
         </mesh>
       ))}
@@ -312,7 +419,7 @@ function Fighters() {
       const radius = 12 + index * 3.5
       fighter.position.set(
         player.x + Math.sin(angle) * radius,
-        Math.min(17, player.y + 4.5 + index * 1.1 + Math.sin(angle * 1.7)),
+        Math.min(88, player.y + 4.5 + index * 1.1 + Math.sin(angle * 1.7)),
         player.z + Math.cos(angle) * radius,
       )
       fighter.rotation.y = Math.atan2(player.x - fighter.position.x, player.z - fighter.position.z)
@@ -332,14 +439,15 @@ function GroundPolice() {
     [-5, 0.68, 13, 0], [5, 0.68, -22, Math.PI], [-31, 0.68, 5, Math.PI / 2], [43, 0.68, -5, -Math.PI / 2],
   ]
   const count = snapshot.wanted >= 2 ? Math.min(4, snapshot.wanted - 1) : 0
+  const offsets = renderOffsetsAround(snapshot.position, MAP_SIZE)
   return (
     <group>
-      {positions.slice(0, count).map(([x, y, z, rotation], index) => (
-        <group key={index} position={[x, y, z]} rotation-y={rotation}>
+      {offsets.flatMap((offset, slot) => positions.slice(0, count).map(([x, y, z, rotation], index) => (
+        <group key={`${slot}:${index}`} position={[x + offset.x, y, z + offset.z]} rotation-y={rotation}>
           <PatrolCar police color="#e7ecdc" />
           <pointLight position={[0, 2, 0]} color={index % 2 ? '#ff4568' : '#5beaff'} intensity={8} distance={8} />
         </group>
-      ))}
+      )))}
     </group>
   )
 }
@@ -347,23 +455,29 @@ function GroundPolice() {
 function LaserRay() {
   const { runtime, snapshot } = useGame()
   const ref = useRef<THREE.Mesh>(null)
+  const { camera } = useThree()
+  const raycaster = useMemo(() => new THREE.Raycaster(), [])
+  const pointer = useMemo(() => new THREE.Vector2(), [])
+  const start = useMemo(() => new THREE.Vector3(), [])
+  const aimPoint = useMemo(() => new THREE.Vector3(), [])
+  const end = useMemo(() => new THREE.Vector3(), [])
   const direction = useMemo(() => new THREE.Vector3(), [])
   const midpoint = useMemo(() => new THREE.Vector3(), [])
+  const up = useMemo(() => new THREE.Vector3(0, 1, 0), [])
   useFrame(() => {
     if (!ref.current) return
     const drone = runtime.current.drone
-    const start = new THREE.Vector3(drone.position.x, drone.position.y, drone.position.z)
-    const horizontalForward = Math.cos(drone.pitch)
-    const end = new THREE.Vector3(
-      start.x + Math.sin(drone.heading) * horizontalForward * 17,
-      Math.max(0.5, Math.min(18, start.y + Math.sin(drone.pitch) * 17)),
-      start.z + Math.cos(drone.heading) * horizontalForward * 17,
-    )
+    start.set(drone.position.x, drone.position.y, drone.position.z)
+    pointer.set(runtime.current.aimX, -runtime.current.aimY)
+    raycaster.setFromCamera(pointer, camera)
+    aimPoint.copy(raycaster.ray.origin).addScaledVector(raycaster.ray.direction, 60)
+    direction.subVectors(aimPoint, start).normalize()
+    end.copy(start).addScaledVector(direction, 38)
     direction.subVectors(end, start)
     midpoint.addVectors(start, end).multiplyScalar(0.5)
     ref.current.position.copy(midpoint)
     ref.current.scale.y = direction.length()
-    ref.current.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.normalize())
+    ref.current.quaternion.setFromUnitVectors(up, direction.normalize())
   })
   if (!snapshot.laserActive) return null
   return (
@@ -381,25 +495,27 @@ function WorldTick() {
 }
 
 function Sky() {
+  const skyRoot = useRef<THREE.Group>(null)
+  const sunLight = useRef<THREE.DirectionalLight>(null)
+  const lightTarget = useMemo(() => new THREE.Object3D(), [])
   const clouds = useMemo(() => [
     [-62, 38, -90, 1.4], [45, 50, -115, 1.8], [82, 33, -65, 1.1],
     [-95, 48, 15, 1.5], [18, 55, 88, 1.3], [-40, 31, 105, 1.1],
   ] as [number, number, number, number][], [])
+  useFrame(({ camera }) => {
+    if (skyRoot.current) skyRoot.current.position.set(camera.position.x, 0, camera.position.z)
+    lightTarget.position.set(camera.position.x, 0, camera.position.z)
+    lightTarget.updateMatrixWorld()
+    if (sunLight.current) sunLight.current.position.set(camera.position.x - 45, 70, camera.position.z + 35)
+  })
   return (
     <>
       <color attach="background" args={['#68cbd0']} />
-      <fog attach="fog" args={['#66aaa8', 88, 225]} />
-      <mesh scale={230} renderOrder={-10}>
-        <sphereGeometry args={[1, 32, 18]} />
-        <shaderMaterial
-          side={THREE.BackSide}
-          depthWrite={false}
-          vertexShader={`varying vec3 vPosition; void main(){ vPosition=position; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`}
-          fragmentShader={`varying vec3 vPosition; void main(){ float h=normalize(vPosition).y; vec3 horizon=vec3(1.0,.48,.46); vec3 middle=vec3(.30,.72,.76); vec3 top=vec3(.16,.35,.58); vec3 c=mix(horizon,middle,smoothstep(-.18,.20,h)); c=mix(c,top,smoothstep(.20,.82,h)); gl_FragColor=vec4(c,1.0); }`}
-        />
-      </mesh>
+      <fog attach="fog" args={['#66aaa8', 190, 540]} />
       <hemisphereLight args={['#c4fbff', '#c35d69', 1.75]} />
       <directionalLight
+        ref={sunLight}
+        target={lightTarget}
         position={[-45, 70, 35]}
         color="#fff0c4"
         intensity={3.15}
@@ -411,31 +527,46 @@ function Sky() {
         shadow-camera-top={42}
         shadow-camera-bottom={-42}
       />
-      <group position={[18, 47, -150]}>
-        <mesh><circleGeometry args={[28, 40]} /><meshBasicMaterial color="#ffe36f" fog={false} /></mesh>
-        <mesh position-z={-0.2}><ringGeometry args={[31, 39, 40]} /><meshBasicMaterial color="#ff8e68" transparent opacity={0.25} fog={false} /></mesh>
-      </group>
-      {clouds.map(([x, y, z, scale], index) => (
-        <group key={index} position={[x, y, z]} scale={scale}>
-          {([[-5, 0, 0, 5], [0, 1.4, 0, 7], [6, 0, 0, 4.5], [1, -1.2, 0, 6]] as [number, number, number, number][]).map((part, partIndex) => (
-            <mesh key={partIndex} position={[part[0], part[1], part[2]]} scale={[part[3], part[3] * 0.42, 1]}>
-              <sphereGeometry args={[1, 10, 6]} />
-              <meshBasicMaterial color="#fff1da" transparent opacity={0.72} fog />
-            </mesh>
-          ))}
+      <primitive object={lightTarget} />
+      <group ref={skyRoot}>
+        <mesh scale={760} renderOrder={-10}>
+          <sphereGeometry args={[1, 32, 18]} />
+          <shaderMaterial
+            side={THREE.BackSide}
+            depthWrite={false}
+            vertexShader={`varying vec3 vPosition; void main(){ vPosition=position; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`}
+            fragmentShader={`varying vec3 vPosition; void main(){ float h=normalize(vPosition).y; vec3 horizon=vec3(1.0,.48,.46); vec3 middle=vec3(.30,.72,.76); vec3 top=vec3(.16,.35,.58); vec3 c=mix(horizon,middle,smoothstep(-.18,.20,h)); c=mix(c,top,smoothstep(.20,.82,h)); gl_FragColor=vec4(c,1.0); }`}
+          />
+        </mesh>
+        <group position={[80, 150, -700]}>
+          <mesh><circleGeometry args={[82, 48]} /><meshBasicMaterial color="#ffe36f" fog={false} /></mesh>
+          <mesh position-z={-0.2}><ringGeometry args={[90, 112, 48]} /><meshBasicMaterial color="#ff8e68" transparent opacity={0.25} fog={false} /></mesh>
         </group>
-      ))}
+        {clouds.map(([x, y, z, scale], index) => (
+          <group key={index} position={[x, y, z]} scale={scale}>
+            {([[-5, 0, 0, 5], [0, 1.4, 0, 7], [6, 0, 0, 4.5], [1, -1.2, 0, 6]] as [number, number, number, number][]).map((part, partIndex) => (
+              <mesh key={partIndex} position={[part[0], part[1], part[2]]} scale={[part[3], part[3] * 0.42, 1]}>
+                <sphereGeometry args={[1, 10, 6]} />
+                <meshBasicMaterial color="#fff1da" transparent opacity={0.72} fog />
+              </mesh>
+            ))}
+          </group>
+        ))}
+      </group>
     </>
   )
 }
 
 export function DroneScene() {
   const { snapshot } = useGame()
+  const tileX = Math.floor((snapshot.position.x + MAP_SIZE / 2) / MAP_SIZE)
+  const tileZ = Math.floor((snapshot.position.z + MAP_SIZE / 2) / MAP_SIZE)
   return (
     <>
       <Sky />
       <WorldTick />
-      <City />
+      <City tileX={tileX} tileZ={tileZ} />
+      <PullableCars />
       <MissionTargets />
       <DroppedCaptives />
       <GroundPolice />

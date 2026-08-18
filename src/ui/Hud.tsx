@@ -1,5 +1,7 @@
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { useGame } from '../GameContext'
+import { wrapCentered } from '../core/torus'
+import { DISTRICT_OFFSETS, MAP_RADIUS, MAP_SIZE } from '../render/cityData'
 
 const formatTime = (seconds: number) => {
   const safe = Math.max(0, Math.ceil(seconds))
@@ -121,11 +123,11 @@ function Intro() {
       <button className="primary-button" onClick={start}>START RAID</button>
       <div className="controls-card">
         <span><b>W/S</b> FLY WHERE YOU LOOK</span>
-        <span><b>A/D</b> STRAFE</span>
+        <span><b>A/D</b> RIGHT / LEFT</span>
         <span><b>MOUSE</b> 3D STEER / AIM</span>
-        <span><b>E</b> HOLD BEAM</span>
+        <span><b>E</b> HOLD TRACTOR BEAM</span>
         <span><b>Q</b> LASER</span>
-        <span><b>SPACE</b> TURBO</span>
+        <span><b>SPACE + E</b> AMPLIFIED BEAM</span>
       </div>
     </div>
   )
@@ -163,6 +165,26 @@ function CaptiveRack() {
   )
 }
 
+function PlanetRadar() {
+  const { snapshot } = useGame()
+  const target = snapshot.mission.targets.find((item) => item.active)
+  const place = (x: number, z: number) => ({
+    left: `${50 + wrapCentered(x, MAP_SIZE) / MAP_RADIUS * 46}%`,
+    top: `${50 + wrapCentered(z, MAP_SIZE) / MAP_RADIUS * 46}%`,
+  })
+  return (
+    <div className="planet-radar" aria-label="wrapped city radar">
+      <span className="radar-label">TORUS LOOP 600</span>
+      <i className="radar-orbit" />
+      {DISTRICT_OFFSETS.map((district, index) => (
+        <i key={index} className="district-dot" style={place(district.x, district.z)} />
+      ))}
+      {target && <i className="target-dot" style={place(target.position.x, target.position.z)} />}
+      <i className="player-dot" style={place(snapshot.position.x, snapshot.position.z)} />
+    </div>
+  )
+}
+
 export function Hud() {
   const { snapshot } = useGame()
   if (snapshot.phase === 'intro') return <Intro />
@@ -170,8 +192,12 @@ export function Hud() {
   const missionTotal = snapshot.mission.targets.length
   const missionProgress = ((snapshot.mission.completed + (activeTarget?.progress ?? 0)) / missionTotal) * 100
   const beamStatus = snapshot.beamActive
-    ? activeTarget ? `LOCKED · ${Math.round(activeTarget.progress * 100)}%` : 'SEARCHING'
-    : snapshot.beamAvailable ? 'READY' : 'OUT OF RANGE'
+    ? [
+        activeTarget ? `LOCK ${Math.round(activeTarget.progress * 100)}%` : null,
+        snapshot.beamObjectCount > 0 ? `PULLING ${snapshot.beamObjectCount}` : null,
+        snapshot.boostActive ? 'AMPLIFIED' : null,
+      ].filter(Boolean).join(' · ') || 'SEARCHING'
+    : 'READY'
   return (
     <>
       <div className="hud">
@@ -217,6 +243,7 @@ export function Hud() {
           <div><span className="eyebrow">FIGHTERS</span><strong>{snapshot.activeFighters}</strong><small>/3</small></div>
         </section>
         <CaptiveRack />
+        <PlanetRadar />
         <div
           className="reticle"
           style={{ left: `${50 + snapshot.aimX * 38}%`, top: `${50 + snapshot.aimY * 34}%` }}

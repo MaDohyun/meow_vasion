@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createDroneState, stepDrone } from '../src/core/drone'
 import { rewardForDelivery } from '../src/core/economy'
+import { collideDroneWrapped } from '../src/core/torus'
 
 const upgrades = { speed: 0, stability: 0, rack: 0, special: 'none' as const }
 
@@ -39,5 +40,23 @@ describe('balance', () => {
     }
     expect(state.pitch).toBeGreaterThan(0.7)
     expect(state.position.y).toBeGreaterThan(startY + 2)
+  })
+
+  it('collides with the wrapped copy of base-map geometry', () => {
+    const state = createDroneState()
+    state.position = { x: 600, y: 1, z: 0 }
+    state.velocity = { x: 10, y: 0, z: 0 }
+    state.speed = 10
+    const result = collideDroneWrapped(state, [{ minX: -2, maxX: 2, minY: 0, maxY: 3, minZ: -2, maxZ: 2 }], 600)
+    expect(result.hit).toBe(true)
+    expect(result.state.position.x).toBeGreaterThan(590)
+  })
+
+  it('reaches the faster city-flight cruising speed', () => {
+    let state = createDroneState()
+    for (let i = 0; i < 120; i += 1) {
+      state = stepDrone(state, { throttle: 1, steer: 0, vertical: 0, special: false }, 1 / 60, 0, upgrades)
+    }
+    expect(state.speed).toBeGreaterThan(22)
   })
 })

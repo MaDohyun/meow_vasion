@@ -26,5 +26,6 @@ describe('ufo mission loop', () => {
     expect(generateMission(1).kind).toBe('scan')
     expect(generateMission(3).kind).toBe('smash')
     expect(generateMission(6).title).toBe(generateMission(0).title)
+    expect(generateMission(1).targets[0]!.position.x).toBeGreaterThan(150)
   })
 })
