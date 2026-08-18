@@ -8,6 +8,8 @@ import {
   updateActiveWorld,
   WORLD_MAX_BUILDINGS,
   WORLD_MAX_CARS,
+  WORLD_CELL_SIZE,
+  WORLD_GROUND_RADIUS_CELLS,
   WORLD_REMOVE_RADIUS,
   WORLD_SPAWN_RADIUS,
 } from '../src/core/world'
@@ -39,6 +41,28 @@ describe('deterministic infinite city', () => {
     for (const object of [...world.buildings, ...world.cars]) {
       expect(Math.hypot(object.position.x, object.position.z)).toBeLessThanOrEqual(WORLD_SPAWN_RADIUS)
     }
+  })
+
+  it('keeps the initial flight lane clear of building geometry', () => {
+    const start = { x: 0, y: 2.8, z: 54.5 }
+    const colliders = activeWorldColliders(createActiveWorld(start))
+    expect(colliders.some((box) =>
+      start.x + 0.5 >= box.minX && start.x - 0.5 <= box.maxX &&
+      start.y + 0.5 >= box.minY && start.y - 0.5 <= box.maxY &&
+      start.z + 0.5 >= box.minZ && start.z - 0.5 <= box.maxZ,
+    )).toBe(false)
+  })
+
+  it('keeps a dense city within one block even thousands of units away', () => {
+    for (const position of [{ x: 0, z: 0 }, { x: 2400, z: -3100 }, { x: -7800, z: 5200 }]) {
+      const world = createActiveWorld(position)
+      expect(world.buildings.length).toBeGreaterThanOrEqual(80)
+      const nearest = Math.min(...world.buildings.map((building) =>
+        Math.hypot(building.position.x - position.x, building.position.z - position.z),
+      ))
+      expect(nearest).toBeLessThanOrEqual(WORLD_CELL_SIZE * 1.15)
+    }
+    expect(WORLD_GROUND_RADIUS_CELLS * WORLD_CELL_SIZE).toBeGreaterThanOrEqual(WORLD_REMOVE_RADIUS)
   })
 
   it('retains spawned slots through the wider removal radius', () => {

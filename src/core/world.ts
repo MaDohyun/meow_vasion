@@ -1,13 +1,13 @@
 import type { Aabb, Vec3 } from './drone'
 
 export const WORLD_SEED = 1
-export const WORLD_CELL_SIZE = 40
-export const WORLD_SPAWN_RADIUS = 90
-export const WORLD_REMOVE_RADIUS = 130
+export const WORLD_CELL_SIZE = 34
+export const WORLD_SPAWN_RADIUS = 250
+export const WORLD_REMOVE_RADIUS = 300
 export const WORLD_REFRESH_DISTANCE = 10
-export const WORLD_MAX_BUILDINGS = 24
-export const WORLD_MAX_CARS = 12
-export const WORLD_GROUND_RADIUS_CELLS = 4
+export const WORLD_MAX_BUILDINGS = 96
+export const WORLD_MAX_CARS = 48
+export const WORLD_GROUND_RADIUS_CELLS = 9
 
 export const BUILDING_STYLES = [
   { color: '#ef6b68', roof: '#c84864' },
@@ -99,11 +99,12 @@ export function worldCellCenter(cell: number) {
 export function getProceduralCell(cellX: number, cellZ: number, worldSeed = WORLD_SEED): ProceduralCell {
   const seed = seedForWorldCell(cellX, cellZ, worldSeed)
   const roll = seed % 100
-  const kind: WorldCellKind = roll < 62
+  const guaranteedBuilding = ((cellX + cellZ) & 1) === 0
+  const kind: WorldCellKind = guaranteedBuilding || roll < 25
     ? 'building'
-    : roll < 79
+    : roll < 59
       ? 'parked-car'
-      : roll < 90
+      : roll < 80
         ? 'intersection'
         : 'empty'
   const id = `${cellX}:${cellZ}`
@@ -113,17 +114,17 @@ export function getProceduralCell(cellX: number, cellZ: number, worldSeed = WORL
   if (kind === 'building') {
     const styleIndex = (seed >>> 8) % BUILDING_STYLES.length
     const style = BUILDING_STYLES[styleIndex]!
-    const sizeX = 20 + unit(seed, 0) * 8
-    const sizeZ = 20 + unit(seed, 8) * 8
+    const sizeX = 28 + unit(seed, 0) * 7
+    const sizeZ = 28 + unit(seed, 8) * 7
     const sizeY = 14 + unit(seed, 16) * 26
     const building: ProceduralBuilding = {
       id: `building:${id}`,
       cellX,
       cellZ,
       position: {
-        x: centerX + (unit(seed, 3) - 0.5) * 5,
+        x: centerX + (unit(seed, 3) - 0.5) * 2,
         y: sizeY / 2,
-        z: centerZ + (unit(seed, 11) - 0.5) * 5,
+        z: centerZ + (unit(seed, 11) - 0.5) * 2,
       },
       size: { x: sizeX, y: sizeY, z: sizeZ },
       color: style.color,
@@ -222,8 +223,8 @@ export function updateActiveWorld(
     })
 
   for (const cell of spawnCells) {
-    if (cell.building && buildingPool.size < WORLD_MAX_BUILDINGS) buildingPool.set(cell.building.id, cell.building)
-    if (cell.car && carPool.size < WORLD_MAX_CARS) carPool.set(cell.car.id, cell.car)
+    if (cell.building) buildingPool.set(cell.building.id, cell.building)
+    if (cell.car) carPool.set(cell.car.id, cell.car)
   }
 
   const buildings = nearestLimited(buildingPool.values(), position, WORLD_MAX_BUILDINGS)

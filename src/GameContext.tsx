@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { collideDrone, createDroneState, stepDrone, type DroneInput, type DroneState, type Vec3 } from './core/drone'
+import { collideDrone, createDroneState, stepDrone, type Aabb, type DroneInput, type DroneState, type Vec3 } from './core/drone'
 import { stepBeamObjects, type BeamObject } from './core/beam'
 import {
   channelTarget,
@@ -39,6 +39,7 @@ export type DroppedCaptive = CarriedTarget & {
 export type GameRuntime = {
   drone: DroneState
   world: ActiveWorld
+  worldColliders: Aabb[]
   mission: Mission
   missionIndex: number
   sessionTime: number
@@ -141,6 +142,7 @@ function makeRuntime(): GameRuntime {
   return {
     drone,
     world,
+    worldColliders: activeWorldColliders(world),
     mission: generateMission(0, drone.position),
     missionIndex: 0,
     sessionTime: 0,
@@ -447,9 +449,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
     const nextWorld = updateActiveWorld(game.world, stepped.position)
     if (nextWorld !== game.world) {
       game.world = nextWorld
+      game.worldColliders = activeWorldColliders(nextWorld)
       syncBeamObjects(game)
     }
-    const collision = collideDrone(stepped, activeWorldColliders(game.world))
+    const collision = collideDrone(stepped, game.worldColliders)
     game.drone = collision.state
     if (collision.hit && collision.impulse > 2.5 && game.collisionCooldown <= 0) {
       game.collisionCooldown = 0.45

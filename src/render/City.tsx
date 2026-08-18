@@ -63,6 +63,41 @@ const roofTexture = pixelTexture((context) => {
   }
 })
 
+const lotTexture = pixelTexture((context) => {
+  context.fillStyle = '#ded9bd'
+  context.fillRect(0, 0, 64, 64)
+  context.strokeStyle = 'rgba(63,52,69,.24)'
+  context.lineWidth = 1
+  for (let value = 0; value <= 64; value += 8) {
+    context.beginPath(); context.moveTo(value, 0); context.lineTo(value, 64); context.stroke()
+    context.beginPath(); context.moveTo(0, value); context.lineTo(64, value); context.stroke()
+  }
+  for (let index = 0; index < 96; index += 1) {
+    const x = index * 29 % 64
+    const y = index * 47 % 64
+    context.fillStyle = index % 3 === 0 ? 'rgba(255,255,230,.3)' : 'rgba(51,46,63,.12)'
+    context.fillRect(x, y, 1, 1)
+  }
+})
+
+const roadTexture = pixelTexture((context) => {
+  context.fillStyle = '#334e61'
+  context.fillRect(0, 0, 128, 32)
+  for (let index = 0; index < 180; index += 1) {
+    const x = index * 37 % 128
+    const y = index * 19 % 32
+    context.fillStyle = index % 4 === 0 ? 'rgba(151,190,190,.24)' : 'rgba(15,30,44,.22)'
+    context.fillRect(x, y, index % 5 === 0 ? 2 : 1, 1)
+  }
+  context.fillStyle = '#ffe7a3'
+  for (let x = 18; x < 112; x += 22) context.fillRect(x, 15, 12, 2)
+  context.fillStyle = 'rgba(255,244,206,.84)'
+  for (let y = 3; y < 30; y += 5) {
+    context.fillRect(2, y, 12, 2)
+    context.fillRect(114, y, 12, 2)
+  }
+}, 128, 32)
+
 const SIGN_COLUMNS = 4
 const SIGN_ROWS = Math.ceil(BUILDING_SIGN_LABELS.length / SIGN_COLUMNS)
 const signAtlas = pixelTexture((context) => {
@@ -99,10 +134,10 @@ function DistantSkyline() {
   useFrame(() => {
     if (!skyline.current) return
     const drone = runtime.current.drone
-    const cell = skylineCellKey(drone.position.x, drone.position.z, drone.heading)
+    const cell = skylineCellKey(drone.position.x, drone.position.z)
     if (cell.key === lastCell.current) return
     lastCell.current = cell.key
-    const blocks = generateSkylineBlocks(drone.position.x, drone.position.z, drone.heading)
+    const blocks = generateSkylineBlocks(drone.position.x, drone.position.z)
     blocks.forEach((block, index) => {
       position.set(block.x, block.height / 2, block.z)
       scale.set(block.width, block.height, block.depth)
@@ -118,7 +153,7 @@ function DistantSkyline() {
   return (
     <instancedMesh ref={skyline} args={[undefined, undefined, SKYLINE_MAX_BLOCKS]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }}>
       <boxGeometry args={[1, 1, 1]} />
-      <meshToonMaterial color="#ffffff" gradientMap={toonGradient} fog />
+      <meshToonMaterial color="#ffffff" gradientMap={toonGradient} fog={false} />
     </instancedMesh>
   )
 }
@@ -134,6 +169,7 @@ function GroundPool() {
   const position = useMemo(() => new THREE.Vector3(), [])
   const scale = useMemo(() => new THREE.Vector3(), [])
   const planeRotation = useMemo(() => new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0)), [])
+  const verticalRoadRotation = useMemo(() => new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, Math.PI / 2)), [])
   const color = useMemo(() => new THREE.Color(), [])
 
   useFrame(() => {
@@ -161,8 +197,8 @@ function GroundPool() {
       roads.current!.setMatrixAt(roadSlot, matrix)
       roadSlot += 1
       position.set(cell.cellX * WORLD_CELL_SIZE, 0.02, centerZ)
-      scale.set(7.5, WORLD_CELL_SIZE + 0.2, 1)
-      matrix.compose(position, planeRotation, scale)
+      scale.set(WORLD_CELL_SIZE + 0.2, 7.5, 1)
+      matrix.compose(position, verticalRoadRotation, scale)
       roads.current!.setMatrixAt(roadSlot, matrix)
       roadSlot += 1
     })
@@ -177,11 +213,11 @@ function GroundPool() {
     <group>
       <instancedMesh ref={lots} args={[undefined, undefined, GROUND_CELL_COUNT]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }}>
         <planeGeometry args={[1, 1]} />
-        <meshToonMaterial gradientMap={toonGradient} />
+        <meshToonMaterial map={lotTexture} gradientMap={toonGradient} />
       </instancedMesh>
       <instancedMesh ref={roads} args={[undefined, undefined, GROUND_CELL_COUNT * 2]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }}>
         <planeGeometry args={[1, 1]} />
-        <meshBasicMaterial color="#334e61" />
+        <meshBasicMaterial color="#ffffff" map={roadTexture} />
       </instancedMesh>
     </group>
   )
@@ -271,19 +307,19 @@ function BuildingPool() {
 
   return (
     <group>
-      <instancedMesh ref={shadows} args={[undefined, undefined, WORLD_MAX_BUILDINGS]} frustumCulled onUpdate={(mesh) => { mesh.count = 0 }}>
+      <instancedMesh ref={shadows} args={[undefined, undefined, WORLD_MAX_BUILDINGS]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }}>
         <planeGeometry args={[1, 1]} />
         <meshBasicMaterial color="#28313d" transparent opacity={0.28} depthWrite={false} />
       </instancedMesh>
-      <instancedMesh ref={bodies} args={[undefined, undefined, WORLD_MAX_BUILDINGS]} frustumCulled onUpdate={(mesh) => { mesh.count = 0 }}>
+      <instancedMesh ref={bodies} args={[undefined, undefined, WORLD_MAX_BUILDINGS]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }}>
         <boxGeometry args={[1, 1, 1]} />
         <meshToonMaterial color="#ffffff" map={facadeTexture} gradientMap={toonGradient} />
       </instancedMesh>
-      <instancedMesh ref={roofs} args={[undefined, undefined, WORLD_MAX_BUILDINGS]} frustumCulled onUpdate={(mesh) => { mesh.count = 0 }}>
+      <instancedMesh ref={roofs} args={[undefined, undefined, WORLD_MAX_BUILDINGS]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }}>
         <boxGeometry args={[1, 1, 1]} />
         <meshToonMaterial color="#ffffff" map={roofTexture} gradientMap={toonGradient} />
       </instancedMesh>
-      <instancedMesh ref={signs} args={[signGeometry, signMaterial, WORLD_MAX_BUILDINGS]} frustumCulled onUpdate={(mesh) => { mesh.count = 0 }} />
+      <instancedMesh ref={signs} args={[signGeometry, signMaterial, WORLD_MAX_BUILDINGS]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }} />
     </group>
   )
 }

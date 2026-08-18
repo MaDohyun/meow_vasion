@@ -1,6 +1,6 @@
 export const SKYLINE_CELL_SIZE = 26
-export const SKYLINE_MAX_BLOCKS = 40
-export const SKYLINE_HEADING_STEP = Math.PI / 12
+export const SKYLINE_RADIUS = 300
+export const SKYLINE_MAX_BLOCKS = 72
 
 export type SkylineBlock = {
   id: string
@@ -21,56 +21,41 @@ export function seedForSkylineCell(cellX: number, cellZ: number) {
   return seed >>> 0
 }
 
-const wrapAngle = (angle: number) => Math.atan2(Math.sin(angle), Math.cos(angle))
-
-export function skylineCellKey(x: number, z: number, heading: number) {
+export function skylineCellKey(x: number, z: number) {
   const cellX = Math.floor(x / SKYLINE_CELL_SIZE)
   const cellZ = Math.floor(z / SKYLINE_CELL_SIZE)
-  const headingSector = Math.round(heading / SKYLINE_HEADING_STEP)
-  return { cellX, cellZ, headingSector, key: `${cellX}:${cellZ}:${headingSector}` }
+  return { cellX, cellZ, key: `${cellX}:${cellZ}` }
 }
 
 export function generateSkylineBlocks(
   playerX: number,
   playerZ: number,
-  heading: number,
   limit = SKYLINE_MAX_BLOCKS,
 ): SkylineBlock[] {
   const centerX = Math.floor(playerX / SKYLINE_CELL_SIZE)
   const centerZ = Math.floor(playerZ / SKYLINE_CELL_SIZE)
-  const quantizedHeading = Math.round(heading / SKYLINE_HEADING_STEP) * SKYLINE_HEADING_STEP
-  const candidates: Array<SkylineBlock & { score: number }> = []
+  const centerWorldX = (centerX + 0.5) * SKYLINE_CELL_SIZE
+  const centerWorldZ = (centerZ + 0.5) * SKYLINE_CELL_SIZE
+  const count = Math.max(0, Math.min(SKYLINE_MAX_BLOCKS, limit))
 
-  for (let dz = -13; dz <= 13; dz += 1) {
-    for (let dx = -13; dx <= 13; dx += 1) {
-      const radius = Math.hypot(dx, dz)
-      if (radius < 9 || radius > 13) continue
-      const angle = Math.atan2(dx, dz)
-      const angularDistance = Math.abs(wrapAngle(angle - quantizedHeading))
-      if (angularDistance > Math.PI * 0.58) continue
-      const cellX = centerX + dx
-      const cellZ = centerZ + dz
-      const seed = seedForSkylineCell(cellX, cellZ)
-      const width = 14 + (seed & 7) * 1.35
-      const depth = 13 + ((seed >>> 3) & 7) * 1.2
-      const height = 22 + ((seed >>> 7) % 49)
-      candidates.push({
-        id: `${cellX}:${cellZ}`,
-        cellX,
-        cellZ,
-        x: cellX * SKYLINE_CELL_SIZE,
-        z: cellZ * SKYLINE_CELL_SIZE,
-        width,
-        depth,
-        height,
-        colorIndex: (seed >>> 15) % 5,
-        score: angularDistance * 4 + Math.abs(radius - 11) * 0.08 + (seed % 997) / 99700,
-      })
+  return Array.from({ length: count }, (_, slot) => {
+    const seed = seedForSkylineCell(centerX * 97 + slot, centerZ * 89 - slot)
+    const baseAngle = slot / Math.max(1, count) * Math.PI * 2
+    const angularJitter = (((seed >>> 4) & 0xff) / 255 - 0.5) * Math.PI / Math.max(12, count)
+    const angle = baseAngle + angularJitter
+    const radius = SKYLINE_RADIUS + ((seed >>> 12) % 17) - 8
+    const x = centerWorldX + Math.sin(angle) * radius
+    const z = centerWorldZ + Math.cos(angle) * radius
+    return {
+      id: `${centerX}:${centerZ}:${slot}`,
+      cellX: Math.floor(x / SKYLINE_CELL_SIZE),
+      cellZ: Math.floor(z / SKYLINE_CELL_SIZE),
+      x,
+      z,
+      width: 14 + (seed & 7) * 1.35,
+      depth: 13 + ((seed >>> 3) & 7) * 1.2,
+      height: 22 + ((seed >>> 7) % 49),
+      colorIndex: (seed >>> 15) % 5,
     }
-  }
-
-  return candidates
-    .sort((left, right) => left.score - right.score || left.id.localeCompare(right.id))
-    .slice(0, Math.max(0, Math.min(SKYLINE_MAX_BLOCKS, limit)))
-    .map(({ score: _score, ...block }) => block)
+  })
 }

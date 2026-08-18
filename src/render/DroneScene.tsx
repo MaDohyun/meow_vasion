@@ -172,7 +172,6 @@ function ScanNode({ color }: { color: string }) {
       <mesh position-y={1.2}><boxGeometry args={[2.2, 2.1, 0.3]} /><meshToonMaterial color="#332d4d" /><Edges color={color} /></mesh>
       <mesh position={[0, 1.2, 0.18]}><planeGeometry args={[1.72, 1.4]} /><meshBasicMaterial color={color} /></mesh>
       <mesh position-y={0.15}><cylinderGeometry args={[0.18, 0.26, 1.6, 6]} /><meshToonMaterial color="#61536d" /></mesh>
-      <pointLight position={[0, 1.2, 0.5]} color={color} intensity={4} distance={5} />
     </group>
   )
 }
@@ -212,7 +211,6 @@ function TargetActor({ target, selected }: { target: MissionTarget; selected: bo
         <cylinderGeometry args={[0.07, 0.18, 14, 6]} />
         <meshBasicMaterial color={target.color} transparent opacity={0.46} depthWrite={false} blending={THREE.AdditiveBlending} />
       </mesh>
-      <pointLight position-y={2.1} color={target.color} intensity={selected ? 13 : 5} distance={9} />
     </group>
   )
 }
@@ -274,7 +272,6 @@ function TractorBeam() {
           <meshBasicMaterial color="#efffff" transparent opacity={0.48} depthWrite={false} />
         </mesh>
       ))}
-      <pointLight position-y={-Math.min(3, length / 2)} color={color} intensity={10} distance={10} />
       </group>
     </group>
   )
@@ -377,10 +374,8 @@ function Ufo() {
                 </mesh>
               </group>
             ))}
-            <pointLight color="#64efff" intensity={10} distance={7} />
           </group>
         )}
-        <pointLight position={[0, -0.25, 0]} color="#a8ffdf" intensity={6} distance={6} />
         {snapshot.carried.map((captive, index) => <TetheredCaptive key={captive.id} captive={captive} index={index} />)}
       </group>
     </group>
@@ -451,7 +446,6 @@ function GroundPolice() {
       {positions.slice(0, count).map(([x, y, z, rotation], index) => (
         <group key={index} position={[x, y, z]} rotation-y={rotation}>
           <PatrolCar police color="#e7ecdc" />
-          <pointLight position={[0, 2, 0]} color={index % 2 ? '#ff4568' : '#5beaff'} intensity={8} distance={8} />
         </group>
       ))}
     </group>
@@ -500,6 +494,43 @@ function WorldTick() {
   return null
 }
 
+function FixedEffectLights() {
+  const { runtime, snapshot } = useGame()
+  const ufoLight = useRef<THREE.PointLight>(null)
+  const boostLight = useRef<THREE.PointLight>(null)
+  const targetLight = useRef<THREE.PointLight>(null)
+  useFrame(() => {
+    const drone = runtime.current.drone
+    if (ufoLight.current) {
+      ufoLight.current.position.set(drone.position.x, drone.position.y - 1.1, drone.position.z)
+      ufoLight.current.intensity = snapshot.beamActive ? 8 : 1.6
+      ufoLight.current.color.set(snapshot.boostActive ? '#69f7ff' : '#a8ffdf')
+    }
+    if (boostLight.current) {
+      boostLight.current.position.set(
+        drone.position.x - Math.sin(drone.heading) * 2.4,
+        drone.position.y,
+        drone.position.z - Math.cos(drone.heading) * 2.4,
+      )
+      boostLight.current.intensity = snapshot.boostActive ? 9 : 0
+    }
+    const target = snapshot.mission.targets.find((item) => item.id === snapshot.beamTargetId)
+      ?? snapshot.mission.targets.find((item) => item.active)
+    if (targetLight.current) {
+      targetLight.current.position.set(target?.position.x ?? drone.position.x, (target?.position.y ?? 0) + 2.1, target?.position.z ?? drone.position.z)
+      targetLight.current.intensity = target ? (snapshot.beamTargetId === target.id ? 8 : 2.5) : 0
+      targetLight.current.color.set(target?.color ?? '#fff5bd')
+    }
+  })
+  return (
+    <group>
+      <pointLight ref={ufoLight} color="#a8ffdf" intensity={1.6} distance={10} />
+      <pointLight ref={boostLight} color="#64efff" intensity={0} distance={8} />
+      <pointLight ref={targetLight} color="#c9ff67" intensity={2.5} distance={10} />
+    </group>
+  )
+}
+
 function PerformanceProbe() {
   const { runtime } = useGame()
   const elapsed = useRef(0)
@@ -539,7 +570,7 @@ function Sky() {
   return (
     <>
       <color attach="background" args={['#68cbd0']} />
-      <fog attach="fog" args={['#66aaa8', 190, 540]} />
+      <fog attach="fog" args={['#66aaa8', 110, 260]} />
       <ambientLight color="#d8fbf2" intensity={1.15} />
       <hemisphereLight args={['#c4fbff', '#c35d69', 1.75]} />
       <directionalLight
@@ -551,7 +582,7 @@ function Sky() {
       />
       <primitive object={lightTarget} />
       <group ref={skyRoot}>
-        <mesh scale={760} renderOrder={-10}>
+        <mesh scale={390} renderOrder={-10}>
           <sphereGeometry args={[1, 32, 18]} />
           <shaderMaterial
             side={THREE.BackSide}
@@ -560,9 +591,9 @@ function Sky() {
             fragmentShader={`varying vec3 vPosition; void main(){ float h=normalize(vPosition).y; vec3 horizon=vec3(1.0,.48,.46); vec3 middle=vec3(.30,.72,.76); vec3 top=vec3(.16,.35,.58); vec3 c=mix(horizon,middle,smoothstep(-.18,.20,h)); c=mix(c,top,smoothstep(.20,.82,h)); gl_FragColor=vec4(c,1.0); }`}
           />
         </mesh>
-        <group position={[80, 150, -700]}>
-          <mesh><circleGeometry args={[82, 48]} /><meshBasicMaterial color="#ffe36f" fog={false} /></mesh>
-          <mesh position-z={-0.2}><ringGeometry args={[90, 112, 48]} /><meshBasicMaterial color="#ff8e68" transparent opacity={0.25} fog={false} /></mesh>
+        <group position={[70, 125, -320]}>
+          <mesh><circleGeometry args={[58, 48]} /><meshBasicMaterial color="#ffe36f" fog={false} /></mesh>
+          <mesh position-z={-0.2}><ringGeometry args={[64, 76, 48]} /><meshBasicMaterial color="#ff8e68" transparent opacity={0.25} fog={false} /></mesh>
         </group>
         {clouds.map(([x, y, z, scale], index) => (
           <group key={index} position={[x, y, z]} scale={scale}>
@@ -585,6 +616,7 @@ export function DroneScene() {
     <>
       <Sky />
       <WorldTick />
+      <FixedEffectLights />
       <PerformanceProbe />
       <City />
       <PullableCars />
