@@ -5,18 +5,27 @@ import * as THREE from 'three'
 import { useGame, type CarriedTarget } from '../GameContext'
 import { beamProfile } from '../core/beam'
 import type { MissionTarget, TargetKind } from '../core/missions'
-import { renderOffsetsAround } from '../core/torus'
+import { WORLD_MAX_CARS } from '../core/world'
 import { City } from './City'
-import { MAP_SIZE } from './cityData'
 import { PostFx } from './PostFx'
+
+declare global {
+  interface Window {
+    __BEAM_BANDIT_METRICS__?: {
+      activeBuildings: number
+      activeCars: number
+      visibleMeshPools: number
+    }
+  }
+}
 
 function Cow({ color = '#f4eee0' }: { color?: string }) {
   return (
     <group scale={0.72}>
-      <mesh castShadow><boxGeometry args={[1.35, 0.72, 0.7]} /><meshToonMaterial color={color} /><Edges color="#342d45" /></mesh>
+      <mesh><boxGeometry args={[1.35, 0.72, 0.7]} /><meshToonMaterial color={color} /><Edges color="#342d45" /></mesh>
       <mesh position={[0, 0.43, 0]}><boxGeometry args={[0.65, 0.13, 0.72]} /><meshToonMaterial color="#3b3348" /></mesh>
       <group position={[0, 0.02, 0.62]}>
-        <mesh castShadow><boxGeometry args={[0.72, 0.62, 0.58]} /><meshToonMaterial color="#fff7df" /><Edges color="#342d45" /></mesh>
+        <mesh><boxGeometry args={[0.72, 0.62, 0.58]} /><meshToonMaterial color="#fff7df" /><Edges color="#342d45" /></mesh>
         <mesh position={[-0.4, 0.31, 0]} rotation-z={0.5}><coneGeometry args={[0.13, 0.35, 5]} /><meshToonMaterial color="#ffcf68" /></mesh>
         <mesh position={[0.4, 0.31, 0]} rotation-z={-0.5}><coneGeometry args={[0.13, 0.35, 5]} /><meshToonMaterial color="#ffcf68" /></mesh>
         <mesh position={[-0.19, 0.1, 0.3]}><sphereGeometry args={[0.06, 6, 4]} /><meshBasicMaterial color="#191526" /></mesh>
@@ -32,8 +41,8 @@ function Cow({ color = '#f4eee0' }: { color?: string }) {
 function Tourist({ color = '#ff79b8' }: { color?: string }) {
   return (
     <group scale={0.72}>
-      <mesh position-y={0.54} castShadow><sphereGeometry args={[0.34, 9, 6]} /><meshToonMaterial color="#f4b98d" /><Edges color="#3b2f42" /></mesh>
-      <mesh castShadow><capsuleGeometry args={[0.34, 0.7, 4, 8]} /><meshToonMaterial color={color} /><Edges color="#3b2f42" /></mesh>
+      <mesh position-y={0.54}><sphereGeometry args={[0.34, 9, 6]} /><meshToonMaterial color="#f4b98d" /><Edges color="#3b2f42" /></mesh>
+      <mesh><capsuleGeometry args={[0.34, 0.7, 4, 8]} /><meshToonMaterial color={color} /><Edges color="#3b2f42" /></mesh>
       <mesh position={[-0.22, -0.74, 0]}><boxGeometry args={[0.18, 0.65, 0.2]} /><meshToonMaterial color="#374c78" /></mesh>
       <mesh position={[0.22, -0.74, 0]}><boxGeometry args={[0.18, 0.65, 0.2]} /><meshToonMaterial color="#374c78" /></mesh>
       <mesh position={[0.43, 0.03, 0]} rotation-z={-0.35}><boxGeometry args={[0.14, 0.78, 0.14]} /><meshToonMaterial color="#f4b98d" /></mesh>
@@ -49,8 +58,8 @@ function PersonOrCow({ kind, color }: { kind: TargetKind; color?: string }) {
 function PatrolCar({ color = '#f1f1da', police = false }: { color?: string; police?: boolean }) {
   return (
     <group scale={0.8}>
-      <mesh castShadow><boxGeometry args={[1.8, 0.62, 3.1]} /><meshToonMaterial color={color} /><Edges color="#342d45" /></mesh>
-      <mesh position={[0, 0.53, -0.15]} castShadow><boxGeometry args={[1.55, 0.62, 1.55]} /><meshToonMaterial color="#9ee4e5" /><Edges color="#342d45" /></mesh>
+      <mesh><boxGeometry args={[1.8, 0.62, 3.1]} /><meshToonMaterial color={color} /><Edges color="#342d45" /></mesh>
+      <mesh position={[0, 0.53, -0.15]}><boxGeometry args={[1.55, 0.62, 1.55]} /><meshToonMaterial color="#9ee4e5" /><Edges color="#342d45" /></mesh>
       <mesh position={[0, 0.9, -0.15]}><boxGeometry args={[0.95, 0.16, 0.28]} /><meshBasicMaterial color={police ? '#ff4f73' : '#ffce55'} /></mesh>
       <mesh position={[-0.29, 0.91, -0.15]}><boxGeometry args={[0.28, 0.19, 0.32]} /><meshBasicMaterial color="#61dcff" /></mesh>
       <mesh position={[0.29, 0.91, -0.15]}><boxGeometry args={[0.28, 0.19, 0.32]} /><meshBasicMaterial color="#ff536d" /></mesh>
@@ -65,9 +74,9 @@ function PullableCars() {
   const { runtime } = useGame()
   const body = useRef<THREE.InstancedMesh>(null)
   const cabin = useRef<THREE.InstancedMesh>(null)
-  const chassis = useRef<THREE.InstancedMesh>(null)
   const lightbar = useRef<THREE.InstancedMesh>(null)
   const glow = useRef<THREE.InstancedMesh>(null)
+  const shadow = useRef<THREE.InstancedMesh>(null)
   const base = useMemo(() => new THREE.Matrix4(), [])
   const local = useMemo(() => new THREE.Matrix4(), [])
   const composed = useMemo(() => new THREE.Matrix4(), [])
@@ -77,51 +86,52 @@ function PullableCars() {
   const position = useMemo(() => new THREE.Vector3(), [])
   const scale = useMemo(() => new THREE.Vector3(0.8, 0.8, 0.8), [])
   const glowScale = useMemo(() => new THREE.Vector3(), [])
+  const shadowScale = useMemo(() => new THREE.Vector3(), [])
   const quaternion = useMemo(() => new THREE.Quaternion(), [])
+  const planeQuaternion = useMemo(() => new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0)), [])
   const euler = useMemo(() => new THREE.Euler(), [])
   const color = useMemo(() => new THREE.Color(), [])
-  const maxInstances = runtime.current.beamObjects.length * 9
 
   useFrame(({ camera }) => {
-    if (!body.current || !cabin.current || !chassis.current || !lightbar.current || !glow.current) return
+    if (!body.current || !cabin.current || !lightbar.current || !glow.current || !shadow.current) return
     projection.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse)
     frustum.setFromProjectionMatrix(projection)
-    const offsets = renderOffsetsAround(runtime.current.drone.position, MAP_SIZE)
     let visibleCount = 0
     let glowCount = 0
-    for (const offset of offsets) {
-      for (const object of runtime.current.beamObjects) {
-        position.set(object.position.x + offset.x, object.position.y, object.position.z + offset.z)
-        if (camera.position.distanceToSquared(position) > 430 * 430) continue
-        sphere.center.copy(position)
-        if (!frustum.intersectsSphere(sphere)) continue
+    for (const object of runtime.current.beamObjects) {
+      position.set(object.position.x, object.position.y, object.position.z)
+      if (camera.position.distanceToSquared(position) > 180 * 180) continue
+      sphere.center.copy(position)
+      if (!frustum.intersectsSphere(sphere)) continue
 
-        euler.set(object.rotation.x, object.rotation.y, object.rotation.z)
-        quaternion.setFromEuler(euler)
-        base.compose(position, quaternion, scale)
-        body.current.setMatrixAt(visibleCount, base)
-        body.current.setColorAt(visibleCount, color.set(object.color))
+      euler.set(object.rotation.x, object.rotation.y, object.rotation.z)
+      quaternion.setFromEuler(euler)
+      base.compose(position, quaternion, scale)
+      body.current.setMatrixAt(visibleCount, base)
+      body.current.setColorAt(visibleCount, color.set(object.color))
 
-        local.makeTranslation(0, 0.53, -0.15)
-        cabin.current.setMatrixAt(visibleCount, composed.copy(base).multiply(local))
-        local.makeTranslation(0, -0.3, 0)
-        chassis.current.setMatrixAt(visibleCount, composed.copy(base).multiply(local))
-        local.makeTranslation(0, 0.9, -0.15)
-        lightbar.current.setMatrixAt(visibleCount, composed.copy(base).multiply(local))
+      local.makeTranslation(0, 0.53, -0.15)
+      cabin.current.setMatrixAt(visibleCount, composed.copy(base).multiply(local))
+      local.makeTranslation(0, 0.9, -0.15)
+      lightbar.current.setMatrixAt(visibleCount, composed.copy(base).multiply(local))
 
-        if (object.tether > 0.02) {
-          glowScale.setScalar(0.8 + object.tether * 0.35)
-          local.makeRotationX(-Math.PI / 2)
-          local.setPosition(0, -0.31, 0)
-          composed.copy(base).multiply(local).scale(glowScale)
-          glow.current.setMatrixAt(glowCount, composed)
-          glowCount += 1
-        }
-        visibleCount += 1
+      position.set(object.position.x + 0.25, 0.035, object.position.z + 0.28)
+      shadowScale.set(2.25, 3.25, 1)
+      composed.compose(position, planeQuaternion, shadowScale)
+      shadow.current.setMatrixAt(visibleCount, composed)
+
+      if (object.tether > 0.02) {
+        glowScale.setScalar(0.8 + object.tether * 0.35)
+        local.makeRotationX(-Math.PI / 2)
+        local.setPosition(0, -0.31, 0)
+        composed.copy(base).multiply(local).scale(glowScale)
+        glow.current.setMatrixAt(glowCount, composed)
+        glowCount += 1
       }
+      visibleCount += 1
     }
 
-    for (const mesh of [body.current, cabin.current, chassis.current, lightbar.current]) {
+    for (const mesh of [body.current, cabin.current, lightbar.current, shadow.current]) {
       mesh.count = visibleCount
       mesh.instanceMatrix.needsUpdate = true
     }
@@ -132,23 +142,23 @@ function PullableCars() {
 
   return (
     <group>
-      <instancedMesh ref={chassis} args={[undefined, undefined, maxInstances]} frustumCulled={false} castShadow>
-        <boxGeometry args={[1.92, 0.3, 2.9]} />
-        <meshToonMaterial color="#272538" />
+      <instancedMesh ref={shadow} args={[undefined, undefined, WORLD_MAX_CARS]} frustumCulled={false}>
+        <planeGeometry args={[1, 1]} />
+        <meshBasicMaterial color="#28313d" transparent opacity={0.32} depthWrite={false} />
       </instancedMesh>
-      <instancedMesh ref={body} args={[undefined, undefined, maxInstances]} frustumCulled={false} castShadow>
+      <instancedMesh ref={body} args={[undefined, undefined, WORLD_MAX_CARS]} frustumCulled={false}>
         <boxGeometry args={[1.8, 0.62, 3.1]} />
         <meshToonMaterial />
       </instancedMesh>
-      <instancedMesh ref={cabin} args={[undefined, undefined, maxInstances]} frustumCulled={false} castShadow>
+      <instancedMesh ref={cabin} args={[undefined, undefined, WORLD_MAX_CARS]} frustumCulled={false}>
         <boxGeometry args={[1.55, 0.62, 1.55]} />
         <meshToonMaterial color="#9ee4e5" />
       </instancedMesh>
-      <instancedMesh ref={lightbar} args={[undefined, undefined, maxInstances]} frustumCulled={false}>
+      <instancedMesh ref={lightbar} args={[undefined, undefined, WORLD_MAX_CARS]} frustumCulled={false}>
         <boxGeometry args={[0.95, 0.16, 0.28]} />
         <meshBasicMaterial color="#ffce55" />
       </instancedMesh>
-      <instancedMesh ref={glow} args={[undefined, undefined, maxInstances]} frustumCulled={false} renderOrder={3}>
+      <instancedMesh ref={glow} args={[undefined, undefined, WORLD_MAX_CARS]} frustumCulled={false} renderOrder={3}>
         <ringGeometry args={[1.25, 1.55, 18]} />
         <meshBasicMaterial color="#a7fff0" transparent opacity={0.9} depthWrite={false} blending={THREE.AdditiveBlending} />
       </instancedMesh>
@@ -159,7 +169,7 @@ function PullableCars() {
 function ScanNode({ color }: { color: string }) {
   return (
     <group>
-      <mesh position-y={1.2} castShadow><boxGeometry args={[2.2, 2.1, 0.3]} /><meshToonMaterial color="#332d4d" /><Edges color={color} /></mesh>
+      <mesh position-y={1.2}><boxGeometry args={[2.2, 2.1, 0.3]} /><meshToonMaterial color="#332d4d" /><Edges color={color} /></mesh>
       <mesh position={[0, 1.2, 0.18]}><planeGeometry args={[1.72, 1.4]} /><meshBasicMaterial color={color} /></mesh>
       <mesh position-y={0.15}><cylinderGeometry args={[0.18, 0.26, 1.6, 6]} /><meshToonMaterial color="#61536d" /></mesh>
       <pointLight position={[0, 1.2, 0.5]} color={color} intensity={4} distance={5} />
@@ -209,14 +219,11 @@ function TargetActor({ target, selected }: { target: MissionTarget; selected: bo
 
 function MissionTargets() {
   const { snapshot } = useGame()
-  const offsets = renderOffsetsAround(snapshot.position, MAP_SIZE)
   return (
     <group>
-      {offsets.flatMap((offset, slot) => snapshot.mission.targets.map((target) => (
-        <group key={`${slot}:${target.id}`} position={[offset.x, 0, offset.z]}>
-          <TargetActor target={target} selected={snapshot.beamTargetId === target.id} />
-        </group>
-      )))}
+      {snapshot.mission.targets.map((target) => (
+        <TargetActor key={target.id} target={target} selected={snapshot.beamTargetId === target.id} />
+      ))}
     </group>
   )
 }
@@ -322,7 +329,7 @@ function Ufo() {
   return (
     <group ref={root}>
       <group scale={1.08}>
-        <mesh castShadow scale={[1, 0.32, 1]}>
+        <mesh scale={[1, 0.32, 1]}>
           <sphereGeometry args={[1.72, 20, 10]} />
           <meshToonMaterial color="#d8c9b5" />
           <Edges threshold={15} color="#322b48" />
@@ -400,8 +407,8 @@ function DroppedCaptives() {
 function FighterJet() {
   return (
     <group scale={0.9}>
-      <mesh castShadow rotation-x={Math.PI / 2}><coneGeometry args={[0.42, 3.1, 7]} /><meshToonMaterial color="#e7edf0" /><Edges color="#332b43" /></mesh>
-      <mesh position={[0, 0, -0.35]} castShadow><boxGeometry args={[3.1, 0.13, 1.1]} /><meshToonMaterial color="#ff5b77" /><Edges color="#332b43" /></mesh>
+      <mesh rotation-x={Math.PI / 2}><coneGeometry args={[0.42, 3.1, 7]} /><meshToonMaterial color="#e7edf0" /><Edges color="#332b43" /></mesh>
+      <mesh position={[0, 0, -0.35]}><boxGeometry args={[3.1, 0.13, 1.1]} /><meshToonMaterial color="#ff5b77" /><Edges color="#332b43" /></mesh>
       <mesh position={[0, 0.4, -1]}><boxGeometry args={[0.14, 0.85, 0.8]} /><meshToonMaterial color="#665084" /></mesh>
       <mesh position={[0, 0, -1.7]}><circleGeometry args={[0.25, 8]} /><meshBasicMaterial color="#64eaff" /></mesh>
     </group>
@@ -439,15 +446,14 @@ function GroundPolice() {
     [-5, 0.68, 13, 0], [5, 0.68, -22, Math.PI], [-31, 0.68, 5, Math.PI / 2], [43, 0.68, -5, -Math.PI / 2],
   ]
   const count = snapshot.wanted >= 2 ? Math.min(4, snapshot.wanted - 1) : 0
-  const offsets = renderOffsetsAround(snapshot.position, MAP_SIZE)
   return (
-    <group>
-      {offsets.flatMap((offset, slot) => positions.slice(0, count).map(([x, y, z, rotation], index) => (
-        <group key={`${slot}:${index}`} position={[x + offset.x, y, z + offset.z]} rotation-y={rotation}>
+    <group position={[snapshot.position.x, 0, snapshot.position.z]}>
+      {positions.slice(0, count).map(([x, y, z, rotation], index) => (
+        <group key={index} position={[x, y, z]} rotation-y={rotation}>
           <PatrolCar police color="#e7ecdc" />
           <pointLight position={[0, 2, 0]} color={index % 2 ? '#ff4568' : '#5beaff'} intensity={8} distance={8} />
         </group>
-      )))}
+      ))}
     </group>
   )
 }
@@ -494,6 +500,28 @@ function WorldTick() {
   return null
 }
 
+function PerformanceProbe() {
+  const { runtime } = useGame()
+  const elapsed = useRef(0)
+  useFrame(({ gl, scene }, dt) => {
+    if (!import.meta.env.DEV) return
+    elapsed.current += dt
+    if (elapsed.current < 0.5) return
+    elapsed.current = 0
+    let visibleMeshPools = 0
+    scene.traverse((object) => {
+      if ((object as THREE.Mesh).isMesh && object.visible) visibleMeshPools += 1
+    })
+    window.__BEAM_BANDIT_METRICS__ = {
+      activeBuildings: runtime.current.world.buildings.length,
+      activeCars: runtime.current.beamObjects.length,
+      visibleMeshPools,
+    }
+    gl.domElement.dataset.renderMetrics = JSON.stringify(window.__BEAM_BANDIT_METRICS__)
+  })
+  return null
+}
+
 function Sky() {
   const skyRoot = useRef<THREE.Group>(null)
   const sunLight = useRef<THREE.DirectionalLight>(null)
@@ -512,6 +540,7 @@ function Sky() {
     <>
       <color attach="background" args={['#68cbd0']} />
       <fog attach="fog" args={['#66aaa8', 190, 540]} />
+      <ambientLight color="#d8fbf2" intensity={1.15} />
       <hemisphereLight args={['#c4fbff', '#c35d69', 1.75]} />
       <directionalLight
         ref={sunLight}
@@ -519,13 +548,6 @@ function Sky() {
         position={[-45, 70, 35]}
         color="#fff0c4"
         intensity={3.15}
-        castShadow
-        shadow-mapSize-width={1024}
-        shadow-mapSize-height={1024}
-        shadow-camera-left={-42}
-        shadow-camera-right={42}
-        shadow-camera-top={42}
-        shadow-camera-bottom={-42}
       />
       <primitive object={lightTarget} />
       <group ref={skyRoot}>
@@ -559,13 +581,12 @@ function Sky() {
 
 export function DroneScene() {
   const { snapshot } = useGame()
-  const tileX = Math.floor((snapshot.position.x + MAP_SIZE / 2) / MAP_SIZE)
-  const tileZ = Math.floor((snapshot.position.z + MAP_SIZE / 2) / MAP_SIZE)
   return (
     <>
       <Sky />
       <WorldTick />
-      <City tileX={tileX} tileZ={tileZ} />
+      <PerformanceProbe />
+      <City />
       <PullableCars />
       <MissionTargets />
       <DroppedCaptives />

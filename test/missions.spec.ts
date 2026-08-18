@@ -26,6 +26,16 @@ describe('ufo mission loop', () => {
     expect(generateMission(1).kind).toBe('scan')
     expect(generateMission(3).kind).toBe('smash')
     expect(generateMission(6).title).toBe(generateMission(0).title)
-    expect(generateMission(1).targets[0]!.position.x).toBeGreaterThan(150)
+    expect(generateMission(1, { x: 5000, z: -3000 }).targets[0]!.position.x).toBeGreaterThan(4800)
+  })
+
+  it('spawns deterministically near the current player location', () => {
+    const origin = { x: 3120, z: -2840 }
+    const first = generateMission(4, origin)
+    const again = generateMission(4, origin)
+    expect(first).toEqual(again)
+    for (const target of first.targets) {
+      expect(Math.hypot(target.position.x - origin.x, target.position.z - origin.z)).toBeLessThan(220)
+    }
   })
 })

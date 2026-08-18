@@ -1,5 +1,5 @@
 import type { Vec3 } from './drone'
-import { wrappedHorizontalDistance } from './torus'
+import { missionBuildingAnchors } from './world'
 
 export type MissionKind = 'abduct' | 'scan' | 'smash'
 export type TargetKind = 'cow' | 'tourist' | 'billboard' | 'patrol'
@@ -23,48 +23,26 @@ export type Mission = {
   targets: MissionTarget[]
 }
 
-type TargetSeed = Omit<MissionTarget, 'id' | 'progress' | 'active'>
+type TargetSeed = Pick<MissionTarget, 'label' | 'kind' | 'color'>
 type MissionSeed = Omit<Mission, 'id' | 'completed' | 'targets'> & { targets: TargetSeed[] }
 
-const target = (
-  label: string,
-  kind: TargetKind,
-  x: number,
-  y: number,
-  z: number,
-  color: string,
-): TargetSeed => ({ label, kind, position: { x, y, z }, color })
-
-const MISSION_DISTRICTS = [
-  { x: 0, z: 0 },
-  { x: 185, z: 0 },
-  { x: 131, z: 131 },
-  { x: 0, z: 185 },
-  { x: -131, z: 131 },
-  { x: -185, z: 0 },
-  { x: -131, z: -131 },
-  { x: 0, z: -185 },
-  { x: 131, z: -131 },
-] as const
+const target = (label: string, kind: TargetKind, color: string): TargetSeed => ({ label, kind, color })
 
 const MISSION_SEEDS: MissionSeed[] = [
   {
     kind: 'abduct',
     title: 'CATTLE CLASSIFIED',
     briefing: 'BEAM UP 2 CITY COWS',
-    targets: [
-      target('MOO-01', 'cow', -4.5, 0.75, 48, '#c9ff67'),
-      target('MOO-02', 'cow', 4.5, 0.75, 31, '#c9ff67'),
-    ],
+    targets: [target('MOO-01', 'cow', '#c9ff67'), target('MOO-02', 'cow', '#c9ff67')],
   },
   {
     kind: 'scan',
     title: 'SIGN LANGUAGE',
     briefing: 'SCAN 3 SUSPICIOUS SIGNS',
     targets: [
-      target('ARCADE SIGN', 'billboard', 4, 3.2, -43, '#65e9ff'),
-      target('DEPOT SIGN', 'billboard', 51.5, 3.2, 1, '#65e9ff'),
-      target('CLINIC SIGN', 'billboard', -51.5, 3.2, 2, '#65e9ff'),
+      target('ARCADE SIGN', 'billboard', '#65e9ff'),
+      target('DEPOT SIGN', 'billboard', '#65e9ff'),
+      target('CLINIC SIGN', 'billboard', '#65e9ff'),
     ],
   },
   {
@@ -72,28 +50,25 @@ const MISSION_SEEDS: MissionSeed[] = [
     title: 'TOUR GROUP',
     briefing: 'COLLECT 3 VERY CALM TOURISTS',
     targets: [
-      target('TOURIST A', 'tourist', -37, 0.9, -4.8, '#ff79b8'),
-      target('TOURIST B', 'tourist', -24, 0.9, 4.8, '#ff79b8'),
-      target('TOURIST C', 'tourist', 30, 0.9, -4.8, '#ff79b8'),
+      target('TOURIST A', 'tourist', '#ff79b8'),
+      target('TOURIST B', 'tourist', '#ff79b8'),
+      target('TOURIST C', 'tourist', '#ff79b8'),
     ],
   },
   {
     kind: 'smash',
     title: 'TOW-AWAY ZONE',
     briefing: 'OVERCHARGE 2 PATROL CARS',
-    targets: [
-      target('PATROL 12', 'patrol', 4.5, 0.7, -33, '#ffcf55'),
-      target('PATROL 07', 'patrol', -4.5, 0.7, -67, '#ffcf55'),
-    ],
+    targets: [target('PATROL 12', 'patrol', '#ffcf55'), target('PATROL 07', 'patrol', '#ffcf55')],
   },
   {
     kind: 'scan',
     title: 'FREE WIFI',
     briefing: 'SCAN THE CITY NETWORK',
     targets: [
-      target('HOTEL NODE', 'billboard', -5, 3.2, -45, '#8c82ff'),
-      target('VIDEO NODE', 'billboard', 5, 3.2, 41, '#8c82ff'),
-      target('MARKET NODE', 'billboard', -48, 3.2, 40, '#8c82ff'),
+      target('HOTEL NODE', 'billboard', '#8c82ff'),
+      target('VIDEO NODE', 'billboard', '#8c82ff'),
+      target('MARKET NODE', 'billboard', '#8c82ff'),
     ],
   },
   {
@@ -101,9 +76,9 @@ const MISSION_SEEDS: MissionSeed[] = [
     title: 'METER EXPIRED',
     briefing: 'FRY 3 ENFORCEMENT CARS',
     targets: [
-      target('METER COP', 'patrol', 39, 0.7, 4.5, '#ff6e78'),
-      target('BOOT VAN', 'patrol', 65, 0.7, -13.5, '#ff6e78'),
-      target('TICKET 99', 'patrol', -64, 0.7, -15.5, '#ff6e78'),
+      target('METER COP', 'patrol', '#ff6e78'),
+      target('BOOT VAN', 'patrol', '#ff6e78'),
+      target('TICKET 99', 'patrol', '#ff6e78'),
     ],
   },
 ]
@@ -115,39 +90,43 @@ export const TARGET_CHANNEL_TIME: Record<TargetKind, number> = {
   patrol: 1.6,
 }
 
-export function generateMission(index: number): Mission {
+const DEFAULT_MISSION_ORIGIN = { x: 0, y: 0, z: 54.5 }
+
+export function generateMission(index: number, origin: Pick<Vec3, 'x' | 'z'> = DEFAULT_MISSION_ORIGIN): Mission {
   const seed = MISSION_SEEDS[((index % MISSION_SEEDS.length) + MISSION_SEEDS.length) % MISSION_SEEDS.length]!
-  const district = MISSION_DISTRICTS[((index % MISSION_DISTRICTS.length) + MISSION_DISTRICTS.length) % MISSION_DISTRICTS.length]!
+  const anchors = missionBuildingAnchors(origin, index, seed.targets.length)
   return {
     id: index,
     kind: seed.kind,
     title: seed.title,
     briefing: seed.briefing,
     completed: 0,
-    targets: seed.targets.map((item, targetIndex) => ({
-      ...item,
-      id: `mission-${index}-target-${targetIndex}`,
-      position: {
-        x: item.position.x + district.x,
-        y: item.position.y,
-        z: item.position.z + district.z,
-      },
-      progress: 0,
-      active: true,
-    })),
+    targets: seed.targets.map((item, targetIndex) => {
+      const anchor = anchors[targetIndex] ?? {
+        position: { x: origin.x + (targetIndex - 1) * 8, y: 0.75, z: origin.z + 24 },
+      }
+      return {
+        ...item,
+        id: `mission-${index}-target-${targetIndex}`,
+        position: {
+          ...anchor.position,
+          y: item.kind === 'billboard' ? 3.2 : item.kind === 'tourist' ? 0.9 : item.kind === 'patrol' ? 0.7 : 0.75,
+        },
+        progress: 0,
+        active: true,
+      }
+    }),
   }
 }
 
-export function nearestBeamTarget(mission: Mission, position: Vec3, maxHorizontalDistance = 8.5, wrapSize?: number) {
+export function nearestBeamTarget(mission: Mission, position: Vec3, maxHorizontalDistance = 8.5) {
   let nearest: MissionTarget | null = null
   let nearestDistance = maxHorizontalDistance
   for (const candidate of mission.targets) {
     if (!candidate.active) continue
     const verticalGap = position.y - candidate.position.y
     if (verticalGap < -0.5 || verticalGap > 10) continue
-    const distance = wrapSize
-      ? wrappedHorizontalDistance(position, candidate.position, wrapSize)
-      : Math.hypot(position.x - candidate.position.x, position.z - candidate.position.z)
+    const distance = Math.hypot(position.x - candidate.position.x, position.z - candidate.position.z)
     if (distance <= nearestDistance) {
       nearest = candidate
       nearestDistance = distance

@@ -85,6 +85,12 @@ export function PostFx({ speed, impact }: { speed: number; impact: number }) {
     post.material.uniforms.impact!.value = impact
     gl.setRenderTarget(target)
     gl.render(scene, camera)
+    if (import.meta.env.DEV) {
+      gl.domElement.dataset.worldRenderMetrics = JSON.stringify({
+        drawCalls: gl.info.render.calls,
+        triangles: gl.info.render.triangles,
+      })
+    }
     gl.setRenderTarget(null)
     gl.setViewport(0, 0, size.width, size.height)
     gl.render(post.postScene, post.postCamera)

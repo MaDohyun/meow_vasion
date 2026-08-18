@@ -1,7 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { createDroneState, stepDrone, type DroneInput, type DroneState, type Vec3 } from './core/drone'
+import { collideDrone, createDroneState, stepDrone, type DroneInput, type DroneState, type Vec3 } from './core/drone'
 import { stepBeamObjects, type BeamObject } from './core/beam'
-import { collideDroneWrapped } from './core/torus'
 import {
   channelTarget,
   generateMission,
@@ -11,7 +10,15 @@ import {
   type MissionTarget,
   type TargetKind,
 } from './core/missions'
-import { CITY_COLLIDERS, MAP_SIZE, PULLABLE_CARS } from './render/cityData'
+import {
+  activeWorldColliders,
+  createActiveWorld,
+  updateActiveWorld,
+  WORLD_MAX_CARS,
+  WORLD_REMOVE_RADIUS,
+  type ActiveWorld,
+  type ProceduralCar,
+} from './core/world'
 import { tone, unlockAudio } from './audio'
 
 export type GamePhase = 'intro' | 'playing' | 'results'
@@ -31,6 +38,7 @@ export type DroppedCaptive = CarriedTarget & {
 
 export type GameRuntime = {
   drone: DroneState
+  world: ActiveWorld
   mission: Mission
   missionIndex: number
   sessionTime: number
@@ -42,8 +50,6 @@ export type GameRuntime = {
   maxWanted: number
   heat: number
   calmTime: number
-  health: number
-  sinceHit: number
   damageCooldown: number
   turbo: number
   aimX: number
@@ -85,7 +91,6 @@ export type GameSnapshot = {
   wanted: number
   maxWanted: number
   heat: number
-  health: number
   turbo: number
   boostActive: boolean
   aimX: number
@@ -132,9 +137,11 @@ function makeRuntime(): GameRuntime {
   const drone = createDroneState()
   drone.position = { x: 0, y: 2.8, z: 54.5 }
   drone.heading = Math.PI
+  const world = createActiveWorld(drone.position)
   return {
     drone,
-    mission: generateMission(0),
+    world,
+    mission: generateMission(0, drone.position),
     missionIndex: 0,
     sessionTime: 0,
     score: 0,
@@ -145,8 +152,6 @@ function makeRuntime(): GameRuntime {
     maxWanted: 0,
     heat: 0,
     calmTime: 0,
-    health: 3,
-    sinceHit: 99,
     damageCooldown: 0,
     turbo: 1,
     aimX: 0,
@@ -164,17 +169,7 @@ function makeRuntime(): GameRuntime {
     fiveStarTimer: null,
     carried: [],
     dropped: [],
-    beamObjects: PULLABLE_CARS.map((car) => ({
-      id: car.id,
-      kind: 'car',
-      color: car.color,
-      position: { ...car.position },
-      velocity: { x: 0, y: 0, z: 0 },
-      rotation: { x: 0, y: car.rotation, z: 0 },
-      angularVelocity: { x: 0, y: 0, z: 0 },
-      inBeam: false,
-      tether: 0,
-    })),
+    beamObjects: world.cars.map(makeBeamObject),
     phase: 'intro',
     message: 'FIRST CONTACT: CATTLE CLASSIFIED',
     messageTime: 4,
@@ -183,6 +178,33 @@ function makeRuntime(): GameRuntime {
     resultTitle: '',
     victory: false,
   }
+}
+
+function makeBeamObject(car: ProceduralCar): BeamObject {
+  return {
+    id: car.id,
+    kind: 'car',
+    color: car.color,
+    position: { ...car.position },
+    velocity: { x: 0, y: 0, z: 0 },
+    rotation: { x: 0, y: car.rotation, z: 0 },
+    angularVelocity: { x: 0, y: 0, z: 0 },
+    inBeam: false,
+    tether: 0,
+  }
+}
+
+function syncBeamObjects(game: GameRuntime) {
+  const existing = new Map(game.beamObjects.map((object) => [object.id, object]))
+  const retained = game.beamObjects.filter((object) =>
+    (object.inBeam || object.tether > 0.02) &&
+    Math.hypot(object.position.x - game.drone.position.x, object.position.z - game.drone.position.z) <= WORLD_REMOVE_RADIUS,
+  )
+  const retainedIds = new Set(retained.map((object) => object.id))
+  const nearby = game.world.cars
+    .filter((car) => !retainedIds.has(car.id))
+    .map((car) => existing.get(car.id) ?? makeBeamObject(car))
+  game.beamObjects = [...retained, ...nearby].slice(0, WORLD_MAX_CARS)
 }
 
 function copyMission(mission: Mission): Mission {
@@ -211,7 +233,6 @@ function snapshotOf(game: GameRuntime): GameSnapshot {
     wanted: game.wanted,
     maxWanted: game.maxWanted,
     heat: game.heat,
-    health: game.health,
     turbo: game.turbo,
     boostActive: game.drone.boostRemaining > 0,
     aimX: game.aimX,
@@ -272,18 +293,15 @@ function dropCaptive(game: GameRuntime) {
   })
 }
 
-function damage(game: GameRuntime, source: 'POLICE' | 'FIGHTER' | 'BUILDING') {
+function registerImpact(game: GameRuntime, source: 'POLICE' | 'FIGHTER' | 'BUILDING') {
   if (game.damageCooldown > 0 || game.phase !== 'playing') return
-  game.health = Math.max(0, game.health - 1)
-  game.sinceHit = 0
   game.damageCooldown = 1.05
   game.impactFlash = 1
   dropCaptive(game)
-  game.message = `${source} HIT — SHIELD ${game.health}/3`
+  game.message = `${source} IMPACT — NO DAMAGE`
   game.messageTime = 1.8
   tone(source === 'BUILDING' ? 'impact' : 'warning')
   if ('vibrate' in navigator) navigator.vibrate?.([35, 20, 35])
-  if (game.health <= 0) endRun(game, 'UFO IMPOUNDED', false)
 }
 
 function secureTarget(game: GameRuntime, target: MissionTarget) {
@@ -313,7 +331,7 @@ function finishMission(game: GameRuntime) {
   raiseWanted(game)
   game.heat = Math.max(game.heat, 0.18)
   game.missionIndex += 1
-  game.mission = generateMission(game.missionIndex)
+  game.mission = generateMission(game.missionIndex, game.drone.position)
   if (game.wanted < 5) {
     game.message = `MISSION COMPLETE · STAR ${game.wanted} · CHAIN x${game.chain}`
     game.messageTime = 2.8
@@ -410,7 +428,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
     game.laserCooldown = Math.max(0, game.laserCooldown - d)
     game.laserFlash = Math.max(0, game.laserFlash - d)
     game.chainWindow = Math.max(0, game.chainWindow - d)
-    game.sinceHit += d
 
     const turboActive = input.special && game.turbo > 0.02
     if (turboActive) {
@@ -427,11 +444,16 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
     const flightInput: DroneInput = { ...input, special: false }
     const stepped = stepDrone(game.drone, flightInput, d, game.carried.length, UFO_UPGRADES)
-    const collision = collideDroneWrapped(stepped, CITY_COLLIDERS, MAP_SIZE)
+    const nextWorld = updateActiveWorld(game.world, stepped.position)
+    if (nextWorld !== game.world) {
+      game.world = nextWorld
+      syncBeamObjects(game)
+    }
+    const collision = collideDrone(stepped, activeWorldColliders(game.world))
     game.drone = collision.state
     if (collision.hit && collision.impulse > 2.5 && game.collisionCooldown <= 0) {
       game.collisionCooldown = 0.45
-      damage(game, 'BUILDING')
+      registerImpact(game, 'BUILDING')
     }
 
     game.beamActive = input.beam
@@ -440,11 +462,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
       boosting: turboActive,
       position: game.drone.position,
       velocity: game.drone.velocity,
-      wrapSize: MAP_SIZE,
     }, d)
     game.beamTargetId = null
     if (game.beamActive) {
-      const target = nearestBeamTarget(game.mission, game.drone.position, 8.5, MAP_SIZE)
+      const target = nearestBeamTarget(game.mission, game.drone.position, 8.5)
       if (target) {
         game.beamTargetId = target.id
         const result = channelTarget(game.mission, target.id, d)
@@ -508,7 +529,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     if (fighters > 0) {
       game.fighterAttackTimer -= d * (game.drone.position.y >= 6 ? 1.25 : 0.42)
       if (game.fighterAttackTimer <= 0) {
-        damage(game, 'FIGHTER')
+        registerImpact(game, 'FIGHTER')
         game.fighterAttackTimer = Math.max(2.7, 5.2 - game.wanted * 0.38)
       }
     } else {
@@ -518,19 +539,11 @@ export function GameProvider({ children }: { children: ReactNode }) {
     if (game.wanted >= 2 && game.drone.position.y < 3.2) {
       game.policeAttackTimer -= d
       if (game.policeAttackTimer <= 0) {
-        damage(game, 'POLICE')
+        registerImpact(game, 'POLICE')
         game.policeAttackTimer = Math.max(3.3, 6.2 - game.wanted * 0.42)
       }
     } else {
       game.policeAttackTimer = Math.max(game.policeAttackTimer, 2)
-    }
-
-    if (game.health < 3 && game.sinceHit >= 8) {
-      game.health = 3
-      game.sinceHit = 0
-      game.message = 'SHIELD RESTORED'
-      game.messageTime = 1.8
-      tone('upgrade')
     }
 
     game.dropped = game.dropped.filter((item) => {

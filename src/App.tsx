@@ -20,7 +20,7 @@ function ScenePreloader({
     let cancelled = false
     const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
     const prepare = async () => {
-      onStage({ label: 'ASSEMBLING TORUS CITY', progress: 32 })
+      onStage({ label: 'ASSEMBLING CELL POOLS', progress: 32 })
       await nextFrame()
       await nextFrame()
       if (cancelled) return
@@ -50,13 +50,13 @@ function LoadingScreen({ stage }: { stage: LoadingStage }) {
       <div className="loading-grid" />
       <div className="loading-ufo" aria-hidden="true"><i /><i /><i /></div>
       <span className="loading-kicker">BEAM BANDIT · PRE-FLIGHT CHECK</span>
-      <h1>LOADING<br /><b>THE LOOP</b></h1>
+      <h1>LOADING<br /><b>THE GRID</b></h1>
       <div className="loading-progress" aria-label={`${Math.round(progress)} percent loaded`}>
         <i style={{ width: `${progress}%` }} />
       </div>
       <div className="loading-status"><span>{stage.label}</span><b>{Math.round(progress)}%</b></div>
       <div className="loading-checks">
-        <span data-ready={progress >= 32}>TORUS MAP</span>
+        <span data-ready={progress >= 32}>WORLD CELLS</span>
         <span data-ready={progress >= 58}>CITY SHADERS</span>
         <span data-ready={progress >= 82}>TRACTOR ARRAY</span>
         <span data-ready={progress >= 96}>FLIGHT CAMERA</span>
@@ -76,13 +76,11 @@ export default function App() {
         <Canvas
           tabIndex={0}
           aria-label="BEAM BANDIT game view"
-          shadows
           dpr={1}
           camera={{ fov: 65, near: 0.1, far: 760, position: [0, 6.5, 62] }}
           gl={{ antialias: false, powerPreference: 'high-performance', alpha: false }}
           onCreated={({ gl }) => {
             gl.outputColorSpace = 'srgb'
-            gl.shadowMap.type = 1
           }}
         >
           <Suspense fallback={null}>

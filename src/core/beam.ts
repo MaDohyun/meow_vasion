@@ -1,5 +1,4 @@
 import type { Vec3 } from './drone'
-import { nearestWrappedValue, wrapCentered } from './torus'
 
 export type BeamObjectKind = 'car'
 
@@ -20,7 +19,6 @@ export type BeamField = {
   boosting: boolean
   position: Vec3
   velocity: Vec3
-  wrapSize?: number
 }
 
 export type BeamProfile = {
@@ -54,9 +52,7 @@ export function isInsideBeam(object: BeamObject, field: BeamField) {
   const drop = field.position.y - object.position.y
   if (drop < -0.5 || drop > profile.maxDrop) return false
   const radius = profile.baseRadius + Math.max(0, drop) * profile.coneSpread
-  const objectX = field.wrapSize ? nearestWrappedValue(object.position.x, field.position.x, field.wrapSize) : object.position.x
-  const objectZ = field.wrapSize ? nearestWrappedValue(object.position.z, field.position.z, field.wrapSize) : object.position.z
-  return Math.hypot(objectX - field.position.x, objectZ - field.position.z) <= radius
+  return Math.hypot(object.position.x - field.position.x, object.position.z - field.position.z) <= radius
 }
 
 export function stepBeamObjects(objects: BeamObject[], field: BeamField, dt: number) {
@@ -64,8 +60,6 @@ export function stepBeamObjects(objects: BeamObject[], field: BeamField, dt: num
   const profile = beamProfile(field.boosting)
 
   for (const object of objects) {
-    const objectX = field.wrapSize ? nearestWrappedValue(object.position.x, field.position.x, field.wrapSize) : object.position.x
-    const objectZ = field.wrapSize ? nearestWrappedValue(object.position.z, field.position.z, field.wrapSize) : object.position.z
     const captured = isInsideBeam(object, field)
     object.inBeam = captured
 
@@ -81,9 +75,9 @@ export function stepBeamObjects(objects: BeamObject[], field: BeamField, dt: num
         z: field.position.z + Math.sin(angle) * orbit,
       }
       const desired = {
-        x: field.velocity.x + (anchor.x - objectX) * profile.spring,
+        x: field.velocity.x + (anchor.x - object.position.x) * profile.spring,
         y: field.velocity.y + (anchor.y - object.position.y) * profile.spring,
-        z: field.velocity.z + (anchor.z - objectZ) * profile.spring,
+        z: field.velocity.z + (anchor.z - object.position.z) * profile.spring,
       }
       const blend = 1 - Math.exp(-profile.response * d)
       object.velocity.x += (desired.x - object.velocity.x) * blend
@@ -99,11 +93,9 @@ export function stepBeamObjects(objects: BeamObject[], field: BeamField, dt: num
       object.velocity.y -= 9.8 * d
     }
 
-    const nextX = objectX + object.velocity.x * d
+    object.position.x += object.velocity.x * d
     object.position.y += object.velocity.y * d
-    const nextZ = objectZ + object.velocity.z * d
-    object.position.x = field.wrapSize ? wrapCentered(nextX, field.wrapSize) : nextX
-    object.position.z = field.wrapSize ? wrapCentered(nextZ, field.wrapSize) : nextZ
+    object.position.z += object.velocity.z * d
     object.rotation.x += object.angularVelocity.x * d
     object.rotation.y += object.angularVelocity.y * d
     object.rotation.z += object.angularVelocity.z * d

@@ -1,7 +1,6 @@
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { useGame } from '../GameContext'
-import { wrapCentered } from '../core/torus'
-import { DISTRICT_OFFSETS, MAP_RADIUS, MAP_SIZE } from '../render/cityData'
+import { WORLD_REMOVE_RADIUS } from '../core/world'
 
 const formatTime = (seconds: number) => {
   const safe = Math.max(0, Math.ceil(seconds))
@@ -166,21 +165,21 @@ function CaptiveRack() {
 }
 
 function PlanetRadar() {
-  const { snapshot } = useGame()
+  const { runtime, snapshot } = useGame()
   const target = snapshot.mission.targets.find((item) => item.active)
   const place = (x: number, z: number) => ({
-    left: `${50 + wrapCentered(x, MAP_SIZE) / MAP_RADIUS * 46}%`,
-    top: `${50 + wrapCentered(z, MAP_SIZE) / MAP_RADIUS * 46}%`,
+    left: `${50 + Math.max(-1, Math.min(1, (x - snapshot.position.x) / WORLD_REMOVE_RADIUS)) * 46}%`,
+    top: `${50 + Math.max(-1, Math.min(1, (z - snapshot.position.z) / WORLD_REMOVE_RADIUS)) * 46}%`,
   })
   return (
-    <div className="planet-radar" aria-label="wrapped city radar">
-      <span className="radar-label">TORUS LOOP 600</span>
+    <div className="planet-radar" aria-label="local procedural city radar">
+      <span className="radar-label">LOCAL GRID · LIVE</span>
       <i className="radar-orbit" />
-      {DISTRICT_OFFSETS.map((district, index) => (
-        <i key={index} className="district-dot" style={place(district.x, district.z)} />
+      {runtime.current.world.buildings.map((building) => (
+        <i key={building.id} className="district-dot" style={place(building.position.x, building.position.z)} />
       ))}
       {target && <i className="target-dot" style={place(target.position.x, target.position.z)} />}
-      <i className="player-dot" style={place(snapshot.position.x, snapshot.position.z)} />
+      <i className="player-dot" style={{ left: '50%', top: '50%' }} />
     </div>
   )
 }
@@ -224,10 +223,6 @@ export function Hud() {
         </div>
 
         <section className="systems-panel panel">
-          <div className="shield-row">
-            <span className="eyebrow">SHIELD</span>
-            {Array.from({ length: 3 }, (_, index) => <i key={index} data-active={index < snapshot.health}>◆</i>)}
-          </div>
           <div className="system-meter" data-active={snapshot.boostActive}>
             <span>SPACE · TURBO <b>{snapshot.boostActive ? 'ACTIVE' : `${Math.round(snapshot.turbo * 100)}%`}</b></span>
             <div><i style={{ width: `${snapshot.turbo * 100}%` }} /></div>
