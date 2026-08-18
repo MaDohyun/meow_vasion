@@ -1,0 +1,554 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>Scramble Courier — Shibuya Block</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  html, body { margin:0; padding:0; overflow:hidden; background:#000; height:100%; }
+  canvas { display:block; }
+  #hud {
+    position:fixed; top:0; left:0; right:0; padding:14px 18px;
+    font-family: 'Courier New', monospace; color:#fff;
+    display:flex; justify-content:space-between; pointer-events:none;
+    text-shadow: 0 0 6px rgba(0,0,0,.8);
+    z-index: 10;
+  }
+  #hud .stat { font-size: 20px; letter-spacing: 1px; }
+  #hud .label { font-size: 11px; opacity:.6; display:block; }
+  #msg {
+    position:fixed; left:50%; top:38%; transform:translate(-50%,-50%);
+    font-family: 'Courier New', monospace; color:#fff; text-align:center;
+    text-shadow: 0 0 10px #000; pointer-events:none; z-index: 10;
+  }
+  #msg h1 { font-size: 28px; letter-spacing: 3px; margin: 0 0 8px; }
+  #msg p { font-size: 13px; opacity: .75; margin: 4px 0; }
+  #overlay-end {
+    position:fixed; inset:0; background:rgba(0,0,0,.75); color:#fff;
+    display:none; align-items:center; justify-content:center; flex-direction:column;
+    font-family:'Courier New', monospace; z-index: 20;
+  }
+  #overlay-end.show { display:flex; }
+  #overlay-end button {
+    margin-top:16px; padding:10px 22px; background:#fff; border:none;
+    font-family:inherit; font-size:14px; letter-spacing:1px; cursor:pointer;
+  }
+</style>
+</head>
+<body>
+
+<div id="hud">
+  <div class="stat"><span class="label">SCORE</span><span id="score">0</span></div>
+  <div class="stat" style="text-align:center"><span class="label">SIGNAL</span><span id="signal">WALK</span></div>
+  <div class="stat" style="text-align:right"><span class="label">TIME</span><span id="time">120</span></div>
+</div>
+<div id="msg"><h1>SCRAMBLE COURIER</h1><p>WASD / 방향키로 이동 · 빛나는 마커까지 배달하세요</p><p>적신호에 도로 위에 있으면 감점 · 인파에 부딪히면 느려집니다</p></div>
+<div id="overlay-end">
+  <div style="font-size:22px; letter-spacing:2px;">TIME UP</div>
+  <div id="final-score" style="font-size:40px; margin-top:10px;">0 deliveries</div>
+  <button id="retry">RETRY</button>
+</div>
+
+<script type="importmap">
+{ "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+/* ============================================================
+   PHOTOS — 촬영한 시부야 사진으로 교체할 자리.
+   경로를 넣으면 자동으로 다운샘플링되어 파사드/비전에 적용됩니다.
+   비워두면(null) 절차적 텍스처로 대체됩니다.
+============================================================ */
+const PHOTOS = {
+  facade_NE: null,
+  facade_NW: null,
+  facade_SE: null,
+  facade_SW: null,
+  bigVision: null,
+};
+
+const CFG = {
+  pixelWidth: 400,        // 낮출수록 도트가 거칠어짐 (예: 240)
+  colorLevels: 6,         // 채널당 색상 단계 수
+  gameTime: 120,          // 총 게임 시간(초)
+  walkGreen: 8,
+  walkBlink: 3,
+  walkRed: 9,
+  penalty: 3,             // 적신호에 도로 위 → 초당 이 배수로 시간 차감
+  pedCount: 130,
+  playerSpeed: 9,
+};
+
+/* ---------- 기본 설정 ---------- */
+const canvas = document.createElement('canvas');
+document.body.appendChild(canvas);
+const renderer = new THREE.WebGLRenderer({ canvas, antialias:false });
+renderer.setPixelRatio(1);
+renderer.setSize(window.innerWidth, window.innerHeight);
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x05040a, 0.028);
+scene.background = new THREE.Color(0x05040a);
+
+const camera = new THREE.PerspectiveCamera(50, window.innerWidth/window.innerHeight, 0.1, 300);
+
+/* ---------- 저해상도 렌더 타겟 + 도트/디더 후처리 ---------- */
+let rt = makeRenderTarget();
+function makeRenderTarget() {
+  const h = Math.round(CFG.pixelWidth * (window.innerHeight/window.innerWidth));
+  return new THREE.WebGLRenderTarget(CFG.pixelWidth, h, {
+    minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter,
+  });
+}
+
+const postScene = new THREE.Scene();
+const postCam = new THREE.OrthographicCamera(-1,1,1,-1,0,1);
+const postMat = new THREE.ShaderMaterial({
+  uniforms: { tDiffuse: { value: rt.texture }, levels: { value: CFG.colorLevels } },
+  vertexShader: `
+    varying vec2 vUv;
+    void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }
+  `,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform float levels;
+    varying vec2 vUv;
+    float bayer4x4(vec2 fc){
+      int x = int(mod(fc.x, 4.0));
+      int y = int(mod(fc.y, 4.0));
+      int idx = y*4 + x;
+      if (idx==0) return 0.0/16.0; if (idx==1) return 8.0/16.0;
+      if (idx==2) return 2.0/16.0; if (idx==3) return 10.0/16.0;
+      if (idx==4) return 12.0/16.0; if (idx==5) return 4.0/16.0;
+      if (idx==6) return 14.0/16.0; if (idx==7) return 6.0/16.0;
+      if (idx==8) return 3.0/16.0; if (idx==9) return 11.0/16.0;
+      if (idx==10) return 1.0/16.0; if (idx==11) return 9.0/16.0;
+      if (idx==12) return 15.0/16.0; if (idx==13) return 7.0/16.0;
+      if (idx==14) return 13.0/16.0; return 5.0/16.0;
+    }
+    void main(){
+      vec3 c = texture2D(tDiffuse, vUv).rgb;
+      float d = bayer4x4(gl_FragCoord.xy) - 0.5;
+      vec3 q = c * (levels - 1.0) + d;
+      q = floor(q + 0.5) / (levels - 1.0);
+      gl_FragColor = vec4(clamp(q,0.0,1.0), 1.0);
+    }
+  `,
+});
+postScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2,2), postMat));
+
+/* ---------- 조명 ---------- */
+scene.add(new THREE.AmbientLight(0x2a2440, 0.9));
+const moon = new THREE.DirectionalLight(0x8fa8ff, 0.5);
+moon.position.set(-20, 40, -10);
+scene.add(moon);
+
+/* ---------- 절차적 텍스처 유틸 ---------- */
+function canvasTexture(draw, w=256, h=256){
+  const c = document.createElement('canvas'); c.width=w; c.height=h;
+  draw(c.getContext('2d'), w, h);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+function pick(rnd, arr){ return arr[Math.floor(rnd()*arr.length)]; }
+function mulberry32(a){
+  return function(){
+    a|=0; a=a+0x6D2B79F5|0;
+    let t=Math.imul(a^a>>>15,1|a);
+    t=t+Math.imul(t^t>>>7,61|t)^t;
+    return ((t^t>>>14)>>>0)/4294967296;
+  };
+}
+
+function applyProceduralFacade(ctx, seed){
+  const w=128,h=128;
+  ctx.fillStyle = '#0c0c14'; ctx.fillRect(0,0,w,h);
+  const rnd = mulberry32(seed);
+  const cols = 6, rows = 9;
+  for (let y=0;y<rows;y++){
+    for (let x=0;x<cols;x++){
+      const lit = rnd() > 0.45;
+      ctx.fillStyle = lit ? pick(rnd, ['#ffe9a8','#ffd1e6','#a8e4ff','#c9ffb0']) : '#141420';
+      const px = x*(w/cols)+2, py = y*(h/rows)+2;
+      ctx.fillRect(px, py, w/cols-4, h/rows-4);
+    }
+  }
+  if (rnd() > 0.5){
+    ctx.fillStyle = pick(rnd, ['#ff3d6e','#3dfff1','#ffcf3d']);
+    ctx.fillRect(4, h*0.15, w-8, 10);
+  }
+}
+
+function loadFacadeTexture(photoPath, fallbackSeed){
+  const c = document.createElement('canvas'); c.width=128; c.height=128;
+  const ctx = c.getContext('2d');
+  applyProceduralFacade(ctx, fallbackSeed);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  if (photoPath){
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => { ctx.clearRect(0,0,128,128); ctx.drawImage(img,0,0,128,128); tex.needsUpdate = true; };
+    img.onerror = () => { applyProceduralFacade(ctx, fallbackSeed); tex.needsUpdate = true; };
+    img.src = photoPath;
+  }
+  return tex;
+}
+
+/* ---------- 바닥: 스크램블 교차로 ---------- */
+const GROUND_SIZE = 90;
+function drawStripeSet(ctx, cx, cy, half, w){
+  const n=6, sw=w*0.02, gap=w*0.014, len=half*0.9;
+  for (let i=0;i<n;i++){
+    const off = -((n-1)*(sw+gap))/2 + i*(sw+gap);
+    ctx.fillStyle = 'rgba(230,230,230,0.85)';
+    ctx.fillRect(cx+off-sw/2, cy-len, sw, len*2);
+    ctx.fillRect(cx-len, cy+off-sw/2, len*2, sw);
+  }
+}
+function drawDiagStripes(ctx, len, w){
+  const n=5, sw=w*0.016, gap=w*0.012;
+  for (let i=0;i<n;i++){
+    const off = -((n-1)*(sw+gap))/2 + i*(sw+gap);
+    ctx.fillStyle = 'rgba(230,230,230,0.7)';
+    ctx.fillRect(off-sw/2, -len, sw, len*2);
+  }
+}
+const crossTex = canvasTexture((ctx,w,h)=>{
+  ctx.fillStyle = '#161616'; ctx.fillRect(0,0,w,h);
+  for (let i=0;i<4000;i++){
+    ctx.fillStyle = `rgba(255,255,255,${Math.random()*0.03})`;
+    ctx.fillRect(Math.random()*w, Math.random()*h, 1, 1);
+  }
+  const cx=w/2, cy=h/2, half=w*0.24;
+  drawStripeSet(ctx, cx, cy, half, w);
+  ctx.save(); ctx.translate(cx,cy); ctx.rotate(Math.PI/4); drawDiagStripes(ctx, half*1.5, w); ctx.restore();
+  ctx.save(); ctx.translate(cx,cy); ctx.rotate(-Math.PI/4); drawDiagStripes(ctx, half*1.5, w); ctx.restore();
+}, 1024, 1024);
+
+const ground = new THREE.Mesh(
+  new THREE.PlaneGeometry(GROUND_SIZE, GROUND_SIZE),
+  new THREE.MeshStandardMaterial({ map: crossTex, roughness:0.35, metalness:0.1 })
+);
+ground.rotation.x = -Math.PI/2;
+scene.add(ground);
+
+/* 젖은 노면 느낌: 은은한 반투명 네온 반사 평면 */
+const wet = new THREE.Mesh(
+  new THREE.PlaneGeometry(GROUND_SIZE, GROUND_SIZE),
+  new THREE.MeshBasicMaterial({ color:0x442266, transparent:true, opacity:0.08, blending:THREE.AdditiveBlending })
+);
+wet.rotation.x = -Math.PI/2; wet.position.y = 0.02;
+scene.add(wet);
+
+/* ---------- 코너 건물 + 파사드 ---------- */
+const CORNER = 20;
+const corners = {
+  NE: new THREE.Vector3(CORNER, 0, -CORNER),
+  NW: new THREE.Vector3(-CORNER, 0, -CORNER),
+  SE: new THREE.Vector3(CORNER, 0, CORNER),
+  SW: new THREE.Vector3(-CORNER, 0, CORNER),
+};
+let facadeSeed = 1;
+for (const key of Object.keys(corners)){
+  const pos = corners[key];
+  const h = 22 + Math.random()*14;
+  const tex = loadFacadeTexture(PHOTOS['facade_'+key], facadeSeed++);
+  const mesh = new THREE.Mesh(
+    new THREE.BoxGeometry(14, h, 14),
+    new THREE.MeshStandardMaterial({ map: tex, roughness:0.8 })
+  );
+  mesh.position.set(pos.x + Math.sign(pos.x)*9, h/2, pos.z + Math.sign(pos.z)*9);
+  scene.add(mesh);
+}
+
+/* ---------- 대형 비전(빌보드 스크린) ---------- */
+const visionCanvas = document.createElement('canvas');
+visionCanvas.width = 128; visionCanvas.height = 72;
+const visionCtx = visionCanvas.getContext('2d');
+const visionTex = new THREE.CanvasTexture(visionCanvas);
+const visionImg = new Image();
+let visionPhotoLoaded = false;
+if (PHOTOS.bigVision){
+  visionImg.onload = () => visionPhotoLoaded = true;
+  visionImg.src = PHOTOS.bigVision;
+}
+const vision = new THREE.Mesh(
+  new THREE.PlaneGeometry(10, 5.6),
+  new THREE.MeshBasicMaterial({ map: visionTex })
+);
+vision.position.set(CORNER+8.9, 16, -CORNER+2.1);
+vision.rotation.y = Math.PI/2;
+scene.add(vision);
+
+let visionHue = 0;
+function updateVision(dt){
+  if (visionPhotoLoaded){
+    visionCtx.drawImage(visionImg, 0, 0, 128, 72);
+  } else {
+    visionHue = (visionHue + dt*40) % 360;
+    visionCtx.fillStyle = `hsl(${visionHue},80%,55%)`;
+    visionCtx.fillRect(0,0,128,72);
+    visionCtx.fillStyle = 'rgba(0,0,0,0.6)';
+    visionCtx.fillRect(0,50,128,22);
+    visionCtx.fillStyle = '#fff';
+    visionCtx.font = 'bold 14px monospace';
+    visionCtx.fillText('SCRAMBLE', 10, 66);
+  }
+  visionTex.needsUpdate = true;
+}
+
+/* ---------- 신호등 상태 머신 ---------- */
+const SIGNAL = { WALK:'WALK', BLINK:'BLINK', DONT_WALK:'DONT_WALK' };
+let signalState = SIGNAL.WALK;
+let signalTimer = CFG.walkGreen;
+function updateSignal(dt){
+  signalTimer -= dt;
+  if (signalTimer <= 0){
+    if (signalState === SIGNAL.WALK){ signalState = SIGNAL.BLINK; signalTimer = CFG.walkBlink; }
+    else if (signalState === SIGNAL.BLINK){ signalState = SIGNAL.DONT_WALK; signalTimer = CFG.walkRed; }
+    else { signalState = SIGNAL.WALK; signalTimer = CFG.walkGreen; }
+  }
+  document.getElementById('signal').textContent =
+    signalState === SIGNAL.WALK ? 'WALK' : signalState === SIGNAL.BLINK ? 'BLINK' : 'DONT WALK';
+}
+function isSafeToWalk(){ return signalState !== SIGNAL.DONT_WALK; }
+
+function makeSignalPole(pos){
+  const g = new THREE.Group();
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.15,0.15,4), new THREE.MeshStandardMaterial({color:0x111111}));
+  pole.position.y = 2; g.add(pole);
+  const box = new THREE.Mesh(new THREE.BoxGeometry(0.6,1.2,0.4), new THREE.MeshStandardMaterial({color:0x0a0a0a}));
+  box.position.y = 4.2; g.add(box);
+  const light = new THREE.Mesh(new THREE.SphereGeometry(0.22,8,8), new THREE.MeshBasicMaterial({color:0xffffff}));
+  light.position.set(0,4.2,0.25); g.add(light);
+  g.position.copy(pos);
+  scene.add(g);
+  return light;
+}
+const signalLights = Object.values(corners).map(c => makeSignalPole(c.clone().multiplyScalar(0.75)));
+function updateSignalLights(dt, t){
+  const walk = signalState === SIGNAL.WALK;
+  const blink = signalState === SIGNAL.BLINK && Math.floor(t*3)%2===0;
+  const color = (walk || blink) ? 0x4dff88 : 0xff4d4d;
+  signalLights.forEach(l => l.material.color.setHex(color));
+}
+
+/* ---------- 보행자 ---------- */
+const pedColors = ['#e05','#0af','#fd3','#5c5','#eee','#a5f'];
+const pedTextures = pedColors.map(color => canvasTexture((ctx,w,h)=>{
+  ctx.clearRect(0,0,w,h);
+  ctx.fillStyle = '#111';
+  ctx.beginPath(); ctx.ellipse(w/2,h*0.28,w*0.16,h*0.16,0,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle = color;
+  ctx.fillRect(w*0.32, h*0.42, w*0.36, h*0.42);
+}, 32,32));
+
+const PATHS = [
+  [corners.NW, corners.NE], [corners.NE, corners.NW],
+  [corners.SW, corners.SE], [corners.SE, corners.SW],
+  [corners.NW, corners.SW], [corners.SW, corners.NW],
+  [corners.NE, corners.SE], [corners.SE, corners.NE],
+  [corners.NW, corners.SE], [corners.SE, corners.NW],
+  [corners.NE, corners.SW], [corners.SW, corners.NE],
+];
+const pedestrians = [];
+for (let i=0;i<CFG.pedCount;i++){
+  const tex = pedTextures[Math.floor(Math.random()*pedTextures.length)];
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent:true }));
+  sprite.scale.set(1.1,2.0,1);
+  const path = PATHS[Math.floor(Math.random()*PATHS.length)];
+  const p = {
+    sprite, path,
+    t: Math.random(),
+    speed: 0.25 + Math.random()*0.2,
+    waiting: Math.random() > 0.4,
+    corner: path[0].clone().add(new THREE.Vector3((Math.random()-0.5)*6,0,(Math.random()-0.5)*6)),
+  };
+  sprite.position.copy(p.corner); sprite.position.y = 1;
+  scene.add(sprite);
+  pedestrians.push(p);
+}
+function updatePedestrians(dt){
+  const walk = isSafeToWalk();
+  for (const p of pedestrians){
+    if (walk){
+      p.waiting = false;
+      p.t += dt * p.speed * 0.3;
+      if (p.t >= 1){ p.t = 0; p.path = [p.path[1], p.path[0]]; p.waiting = Math.random() > 0.7; }
+      if (!p.waiting){
+        const pos = p.path[0].clone().lerp(p.path[1], p.t);
+        pos.x += Math.sin(p.t*30 + p.speed*50) * 0.15;
+        p.sprite.position.set(pos.x, 1, pos.z);
+      }
+    } else {
+      if (p.t > 0.05 && p.t < 0.95) continue;
+      const corner = p.t < 0.5 ? p.path[0] : p.path[1];
+      p.sprite.position.lerp(new THREE.Vector3(corner.x,1,corner.z), dt*2);
+    }
+  }
+}
+
+/* ---------- 비 ---------- */
+const rainCount = 900;
+const rainGeo = new THREE.BufferGeometry();
+const rainPos = new Float32Array(rainCount*3);
+for (let i=0;i<rainCount;i++){
+  rainPos[i*3] = (Math.random()-0.5)*90;
+  rainPos[i*3+1] = Math.random()*40;
+  rainPos[i*3+2] = (Math.random()-0.5)*90;
+}
+rainGeo.setAttribute('position', new THREE.BufferAttribute(rainPos,3));
+const rain = new THREE.Points(rainGeo, new THREE.PointsMaterial({ color:0x8fa8ff, size:0.12, transparent:true, opacity:0.5 }));
+scene.add(rain);
+function updateRain(dt){
+  const pos = rainGeo.attributes.position.array;
+  for (let i=0;i<rainCount;i++){
+    pos[i*3+1] -= dt*22;
+    if (pos[i*3+1] < 0){ pos[i*3+1] = 40; }
+  }
+  rainGeo.attributes.position.needsUpdate = true;
+}
+
+/* ---------- 플레이어(배달원) ---------- */
+const playerTex = canvasTexture((ctx,w,h)=>{
+  ctx.clearRect(0,0,w,h);
+  ctx.fillStyle = '#ffcf3d';
+  ctx.fillRect(w*0.28,h*0.35,w*0.44,h*0.5);
+  ctx.fillStyle = '#111';
+  ctx.beginPath(); ctx.ellipse(w/2,h*0.22,w*0.18,h*0.18,0,0,Math.PI*2); ctx.fill();
+}, 32,32);
+const player = new THREE.Sprite(new THREE.SpriteMaterial({ map: playerTex }));
+player.scale.set(1.4, 2.4, 1);
+player.position.set(0, 1.2, 0);
+scene.add(player);
+
+const inputKeys = {};
+window.addEventListener('keydown', e => inputKeys[e.key.toLowerCase()] = true);
+window.addEventListener('keyup', e => inputKeys[e.key.toLowerCase()] = false);
+
+const BOUND = GROUND_SIZE/2 - 2;
+function isOnSidewalk(x,z){
+  return Object.values(corners).some(c => c.distanceTo(new THREE.Vector3(x,0,z)) < 9);
+}
+let dangerFlashT = 0;
+function flashDanger(){ dangerFlashT = 0.15; }
+function updatePlayer(dt){
+  let dx=0, dz=0;
+  if (inputKeys['w']||inputKeys['arrowup']) dz -= 1;
+  if (inputKeys['s']||inputKeys['arrowdown']) dz += 1;
+  if (inputKeys['a']||inputKeys['arrowleft']) dx -= 1;
+  if (inputKeys['d']||inputKeys['arrowright']) dx += 1;
+  const len = Math.hypot(dx,dz) || 1;
+
+  let nearby = 0;
+  for (const p of pedestrians){
+    if (p.sprite.position.distanceTo(player.position) < 1.4) nearby++;
+  }
+  const crowdSlow = Math.max(0.35, 1 - nearby*0.12);
+
+  player.position.x += (dx/len) * CFG.playerSpeed * crowdSlow * dt;
+  player.position.z += (dz/len) * CFG.playerSpeed * crowdSlow * dt;
+  player.position.x = THREE.MathUtils.clamp(player.position.x, -BOUND, BOUND);
+  player.position.z = THREE.MathUtils.clamp(player.position.z, -BOUND, BOUND);
+
+  if (!isOnSidewalk(player.position.x, player.position.z) && !isSafeToWalk()){
+    timeLeft = Math.max(0, timeLeft - CFG.penalty*dt*0.6);
+    flashDanger();
+  }
+}
+
+/* ---------- 배달 목표 ---------- */
+let target = null;
+let score = 0;
+function spawnTarget(){
+  const keys2 = Object.keys(corners);
+  const key = keys2[Math.floor(Math.random()*keys2.length)];
+  const pos = corners[key];
+  if (target){ scene.remove(target.mesh); target.mesh.geometry.dispose(); target.mesh.material.dispose(); }
+  const mesh = new THREE.Mesh(
+    new THREE.ConeGeometry(0.8, 2, 6),
+    new THREE.MeshBasicMaterial({ color: 0x3dfff1 })
+  );
+  mesh.position.set(pos.x, 2, pos.z);
+  scene.add(mesh);
+  target = { mesh, pos: new THREE.Vector3(pos.x,1,pos.z) };
+}
+spawnTarget();
+function updateTarget(dt, t){
+  target.mesh.rotation.y += dt*2;
+  target.mesh.position.y = 2 + Math.sin(t*3)*0.3;
+  if (player.position.distanceTo(target.pos) < 2.2){
+    score++;
+    document.getElementById('score').textContent = score;
+    timeLeft = Math.min(CFG.gameTime, timeLeft + 4);
+    spawnTarget();
+  }
+}
+
+/* ---------- 카메라 ---------- */
+function updateCamera(dt){
+  const desired = new THREE.Vector3(player.position.x, 24, player.position.z + 20);
+  camera.position.lerp(desired, 1 - Math.pow(0.001, dt));
+  camera.lookAt(player.position.x, 0, player.position.z);
+}
+
+/* ---------- 게임 루프 ---------- */
+let timeLeft = CFG.gameTime;
+document.getElementById('time').textContent = Math.ceil(timeLeft);
+let gameOver = false;
+document.getElementById('retry').addEventListener('click', () => location.reload());
+
+const clock = new THREE.Clock();
+let elapsed = 0;
+function animate(){
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  elapsed += dt;
+
+  if (!gameOver){
+    updateSignal(dt);
+    updateSignalLights(dt, elapsed);
+    updatePedestrians(dt);
+    updateRain(dt);
+    updatePlayer(dt);
+    updateTarget(dt, elapsed);
+    updateVision(dt);
+    updateCamera(dt);
+
+    timeLeft -= dt;
+    document.getElementById('time').textContent = Math.max(0, Math.ceil(timeLeft));
+    if (timeLeft <= 0){
+      gameOver = true;
+      document.getElementById('final-score').textContent = score + ' deliveries';
+      document.getElementById('overlay-end').classList.add('show');
+    }
+  }
+
+  if (dangerFlashT > 0){
+    dangerFlashT -= dt;
+    scene.background.setHex(dangerFlashT > 0 ? 0x330000 : 0x05040a);
+  }
+
+  renderer.setRenderTarget(rt);
+  renderer.render(scene, camera);
+  renderer.setRenderTarget(null);
+  renderer.render(postScene, postCam);
+}
+animate();
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  rt.dispose();
+  rt = makeRenderTarget();
+  postMat.uniforms.tDiffuse.value = rt.texture;
+});
+
+setTimeout(() => { document.getElementById('msg').style.display='none'; }, 4500);
+</script>
+</body>
+</html>

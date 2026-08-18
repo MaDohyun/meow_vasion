@@ -1,0 +1,9 @@
+node_modules/
+.pnpm-store/
+dist/
+playwright-report/
+test-results/
+.DS_Store
+*.log
+*.tsbuildinfo
+.wrangler/
