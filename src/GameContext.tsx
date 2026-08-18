@@ -1,7 +1,23 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { collideDrone, createDroneState, stepDrone, type Aabb, type DroneInput, type DroneState, type Vec3 } from './core/drone'
 import { beamProfile, isInsideBeam, stepBeamObjects, type BeamField, type BeamObject } from './core/beam'
-import { createLaserPool, fireLaserProjectile, laserDirection, laserRisingEdge, stepLaserProjectiles, type LaserProjectile } from './core/laser'
+import { fighterOrbitPosition } from './core/combat'
+import {
+  createLaserPool,
+  createLaserBurstPool,
+  directionToLaserAim,
+  fireLaserProjectile,
+  laserDirection,
+  laserRisingEdge,
+  resolveLaserAim,
+  stepLaserProjectiles,
+  stepLaserBursts,
+  triggerLaserBurst,
+  type LaserBurst,
+  type LaserProjectile,
+  type LaserSphereTarget,
+} from './core/laser'
+import { requestedPilotExpression, updatePilotExpression, type PilotExpression } from './core/pilot'
 import {
   channelTarget,
   generateMission,
@@ -57,6 +73,8 @@ export type GameRuntime = {
   turbo: number
   aimX: number
   aimY: number
+  laserAimOrigin: Vec3
+  laserAimDirection: Vec3
   beamActive: boolean
   beamTargetId: string | null
   laserActive: boolean
@@ -65,6 +83,7 @@ export type GameRuntime = {
   laserCooldown: number
   laserShotsFired: number
   laserProjectiles: LaserProjectile[]
+  laserBursts: LaserBurst[]
   fighterDamage: number
   fighterRespawns: number[]
   fightersDown: number
@@ -79,9 +98,15 @@ export type GameRuntime = {
   message: string
   messageTime: number
   impactFlash: number
+  pickupPulse: number
+  wantedPulse: number
   collisionCooldown: number
   resultTitle: string
   victory: boolean
+  pilotExpression: PilotExpression
+  pilotHoldUntil: number
+  pilotPreviousCarried: number
+  pilotPreviousWanted: number
 }
 
 export type GameSnapshot = {
@@ -115,8 +140,11 @@ export type GameSnapshot = {
   beamObjectCount: number
   message: string
   impactFlash: number
+  pickupPulse: number
+  wantedPulse: number
   resultTitle: string
   victory: boolean
+  pilotExpression: PilotExpression
 }
 
 export type PlayerInput = DroneInput & {
@@ -164,6 +192,8 @@ function makeRuntime(): GameRuntime {
     turbo: 1,
     aimX: 0,
     aimY: 0,
+    laserAimOrigin: { ...drone.position },
+    laserAimDirection: laserDirection(drone.heading, drone.pitch),
     beamActive: false,
     beamTargetId: null,
     laserActive: false,
@@ -172,6 +202,7 @@ function makeRuntime(): GameRuntime {
     laserCooldown: 0,
     laserShotsFired: 0,
     laserProjectiles: createLaserPool(),
+    laserBursts: createLaserBurstPool(),
     fighterDamage: 0,
     fighterRespawns: [],
     fightersDown: 0,
@@ -186,9 +217,15 @@ function makeRuntime(): GameRuntime {
     message: 'FIRST CONTACT: CATTLE CLASSIFIED',
     messageTime: 4,
     impactFlash: 0,
+    pickupPulse: 0,
+    wantedPulse: 0,
     collisionCooldown: 0,
     resultTitle: '',
     victory: false,
+    pilotExpression: 'normal',
+    pilotHoldUntil: 0,
+    pilotPreviousCarried: 0,
+    pilotPreviousWanted: 0,
   }
 }
 
@@ -257,6 +294,38 @@ function activeFighterCount(game: GameRuntime) {
   return Math.max(0, Math.min(3, game.wanted) - game.fighterRespawns.length)
 }
 
+function laserSphereTargets(game: GameRuntime): LaserSphereTarget[] {
+  const targets: LaserSphereTarget[] = []
+  for (let index = 0; index < activeFighterCount(game); index += 1) {
+    targets.push({
+      id: `fighter:${index}`,
+      kind: 'fighter',
+      center: fighterOrbitPosition(game.drone.position, game.sessionTime, index),
+      radius: 2.1,
+    })
+  }
+  for (const object of game.beamObjects) {
+    targets.push({ id: object.id, kind: 'car', center: object.position, radius: 1.7 })
+  }
+  for (const car of game.traffic.cars) {
+    if (car.active) targets.push({ id: car.id, kind: 'car', center: car.position, radius: 1.7 })
+  }
+  return targets
+}
+
+function registerFighterLaserHit(game: GameRuntime) {
+  game.fighterDamage += 1
+  if (game.fighterDamage < 4) return
+  game.fighterDamage = 0
+  game.fighterRespawns.push(4.8)
+  game.fightersDown += 1
+  game.fighterAttackTimer = Math.max(game.fighterAttackTimer, 3.2)
+  game.score += 180 * game.chain
+  game.message = 'FIGHTER POPPED · +180'
+  game.messageTime = 1.4
+  tone('upgrade')
+}
+
 function snapshotOf(game: GameRuntime): GameSnapshot {
   return {
     phase: game.phase,
@@ -289,9 +358,37 @@ function snapshotOf(game: GameRuntime): GameSnapshot {
     beamObjectCount: game.beamObjects.filter((object) => object.inBeam).length,
     message: game.messageTime > 0 ? game.message : '',
     impactFlash: game.impactFlash,
+    pickupPulse: game.pickupPulse,
+    wantedPulse: game.wantedPulse,
     resultTitle: game.resultTitle,
     victory: game.victory,
+    pilotExpression: game.pilotExpression,
   }
+}
+
+function updatePilotStatus(game: GameRuntime) {
+  const carriedIncreased = game.carried.length > game.pilotPreviousCarried
+  const wantedIncreased = game.wanted > game.pilotPreviousWanted
+  const next = requestedPilotExpression({
+    elapsed: game.sessionTime,
+    impact: game.impactFlash > 0,
+    wanted: game.wanted,
+    wantedIncreased,
+    carriedIncreased,
+    phase: game.phase,
+    victory: game.victory,
+    boost: game.drone.boostRemaining > 0,
+    beam: game.beamActive,
+    laser: game.laserActive,
+  })
+  const state = updatePilotExpression({
+    expression: game.pilotExpression,
+    holdUntil: game.pilotHoldUntil,
+  }, next, game.sessionTime)
+  game.pilotExpression = state.expression
+  game.pilotHoldUntil = state.holdUntil
+  game.pilotPreviousCarried = game.carried.length
+  game.pilotPreviousWanted = game.wanted
 }
 
 function endRun(game: GameRuntime, title: string, victory: boolean) {
@@ -307,6 +404,7 @@ function endRun(game: GameRuntime, title: string, victory: boolean) {
 function raiseWanted(game: GameRuntime) {
   if (game.wanted >= 5) return
   game.wanted += 1
+  game.wantedPulse = 1
   game.maxWanted = Math.max(game.maxWanted, game.wanted)
   game.fighterAttackTimer = Math.max(game.fighterAttackTimer, 2.2)
   if (game.wanted === 5 && game.fiveStarTimer === null) {
@@ -346,6 +444,7 @@ function registerImpact(game: GameRuntime, source: 'POLICE' | 'FIGHTER' | 'BUILD
 function secureTarget(game: GameRuntime, target: MissionTarget) {
   if (target.kind === 'cow' || target.kind === 'tourist') {
     game.carried.push({ id: target.id, label: target.label, kind: target.kind, color: target.color })
+    game.pickupPulse = 1
     if (game.carried.length > 4) game.carried.shift()
     game.message = `${target.label} ACQUIRED`
     tone('pickup')
@@ -407,8 +506,11 @@ export function GameProvider({ children }: { children: ReactNode }) {
       if (event.key.length === 1) keys.current[`Key${event.key.toUpperCase()}`] = false
     }
     const move = (event: PointerEvent) => {
-      pointer.current.x = Math.max(-1, Math.min(1, event.clientX / Math.max(1, window.innerWidth) * 2 - 1))
-      pointer.current.y = Math.max(-1, Math.min(1, event.clientY / Math.max(1, window.innerHeight) * 2 - 1))
+      const canvas = document.querySelector<HTMLCanvasElement>('.game-shell canvas')
+      const bounds = canvas?.getBoundingClientRect()
+      if (!bounds) return
+      pointer.current.x = Math.max(-1, Math.min(1, (event.clientX - bounds.left) / Math.max(1, bounds.width) * 2 - 1))
+      pointer.current.y = Math.max(-1, Math.min(1, (event.clientY - bounds.top) / Math.max(1, bounds.height) * 2 - 1))
     }
     const leave = () => { pointer.current.x = 0; pointer.current.y = 0 }
     window.addEventListener('keydown', down, { passive: false })
@@ -462,12 +564,23 @@ export function GameProvider({ children }: { children: ReactNode }) {
     game.sessionTime += d
     game.messageTime = Math.max(0, game.messageTime - d)
     game.impactFlash = Math.max(0, game.impactFlash - d * 5)
+    game.pickupPulse = Math.max(0, game.pickupPulse - d * 3.2)
+    game.wantedPulse = Math.max(0, game.wantedPulse - d * 2.2)
     game.collisionCooldown = Math.max(0, game.collisionCooldown - d)
     game.damageCooldown = Math.max(0, game.damageCooldown - d)
     game.laserCooldown = Math.max(0, game.laserCooldown - d)
     game.laserFlash = Math.max(0, game.laserFlash - d)
+    stepLaserBursts(game.laserBursts, d)
     game.chainWindow = Math.max(0, game.chainWindow - d)
-    stepLaserProjectiles(game.laserProjectiles, game.worldColliders, d)
+    const laserTargets = laserSphereTargets(game)
+    const laserImpacts = stepLaserProjectiles(game.laserProjectiles, {
+      colliders: game.worldColliders,
+      spheres: laserTargets,
+    }, d)
+    for (const impact of laserImpacts) {
+      triggerLaserBurst(game.laserBursts, 'impact', impact.position)
+      if (impact.targetKind === 'fighter') registerFighterLaserHit(game)
+    }
 
     const turboActive = input.special && game.turbo > 0.02
     if (turboActive) {
@@ -549,24 +662,16 @@ export function GameProvider({ children }: { children: ReactNode }) {
     if (laserPressed && game.laserCooldown <= 0) {
       game.laserCooldown = 0.27
       game.laserFlash = 0.12
-      const direction = laserDirection(game.drone.heading, game.drone.pitch)
-      fireLaserProjectile(game.laserProjectiles, game.drone.position, direction, game.drone.velocity)
+      const aim = resolveLaserAim({
+        origin: game.laserAimOrigin,
+        direction: game.laserAimDirection,
+      }, game.worldColliders, laserSphereTargets(game))
+      const direction = directionToLaserAim(game.drone.position, aim)
+      const projectile = fireLaserProjectile(game.laserProjectiles, game.drone.position, direction, game.drone.velocity)
+      triggerLaserBurst(game.laserBursts, 'muzzle', projectile.position)
       game.laserShotsFired += 1
       game.heat += 0.035
       tone('pickup')
-      if (fighters > 0) {
-        game.fighterDamage += 1
-        if (game.fighterDamage >= 4) {
-          game.fighterDamage = 0
-          game.fighterRespawns.push(4.8)
-          game.fightersDown += 1
-          game.fighterAttackTimer = Math.max(game.fighterAttackTimer, 3.2)
-          game.score += 180 * game.chain
-          game.message = 'FIGHTER POPPED · +180'
-          game.messageTime = 1.4
-          tone('upgrade')
-        }
-      }
     }
     game.laserActive = game.laserFlash > 0
 
@@ -631,6 +736,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
       game.fiveStarTimer = Math.max(0, game.fiveStarTimer - d)
       if (game.fiveStarTimer <= 0) endRun(game, 'FIVE-STAR GETAWAY', true)
     }
+
+    updatePilotStatus(game)
 
     publishAccumulator.current += d
     if (publishAccumulator.current >= 0.06 || (game.phase as GamePhase) === 'results') {

@@ -32,6 +32,8 @@ export type BeamProfile = {
 }
 
 const GROUND_HEIGHT = 0.65
+export const BEAM_MIN_GRIP = 0.075
+export const BEAM_GRIP_EXPONENT = 2.4
 
 export function beamProfile(boosting: boolean, radiusScale = 1): BeamProfile {
   const scale = Math.max(0.1, radiusScale)
@@ -63,6 +65,11 @@ export function isInsideBeam(object: Pick<BeamObject, 'position'>, field: BeamFi
   return Math.hypot(object.position.x - field.position.x, object.position.z - field.position.z) <= radius
 }
 
+export function beamGrip(drop: number, maxDrop: number, minGrip = BEAM_MIN_GRIP, exponent = BEAM_GRIP_EXPONENT) {
+  const dropRatio = Math.max(0, Math.min(1, drop / Math.max(0.001, maxDrop)))
+  return minGrip + (1 - minGrip) * Math.pow(1 - dropRatio, Math.max(2, exponent))
+}
+
 export function stepBeamObjects(objects: BeamObject[], field: BeamField, dt: number) {
   const d = Math.min(Math.max(0, dt), 0.05)
   const profile = beamProfile(field.boosting, field.radiusScale)
@@ -73,7 +80,9 @@ export function stepBeamObjects(objects: BeamObject[], field: BeamField, dt: num
 
     if (captured) {
       const mass = Math.max(0.45, object.mass)
-      const spring = profile.spring / mass
+      const drop = Math.max(0, field.position.y - object.position.y)
+      const grip = beamGrip(drop, profile.maxDrop)
+      const spring = profile.spring * grip / mass
       const hash = hashId(object.id)
       const slot = hash % 11
       const angle = (hash % 360) * Math.PI / 180
@@ -84,21 +93,24 @@ export function stepBeamObjects(objects: BeamObject[], field: BeamField, dt: num
         y: Math.max(GROUND_HEIGHT + 0.8, field.position.y - 1.8 - layer * 0.48),
         z: field.position.z + Math.sin(angle) * orbit,
       }
+      const verticalOffset = Math.max(-4, Math.min(4, anchor.y - object.position.y))
       const desired = {
         x: field.velocity.x + (anchor.x - object.position.x) * spring,
-        y: field.velocity.y + (anchor.y - object.position.y) * spring,
+        y: field.velocity.y + verticalOffset * spring,
         z: field.velocity.z + (anchor.z - object.position.z) * spring,
       }
       if (anchor.y > object.position.y) desired.y = Math.max(desired.y, 0.9)
-      const blend = 1 - Math.exp(-(profile.response / mass) * d)
+      const responseGrip = 0.28 + Math.sqrt(grip) * 0.72
+      const blend = 1 - Math.exp(-(profile.response * responseGrip / mass) * d)
       object.velocity.x += (desired.x - object.velocity.x) * blend
       object.velocity.y += (desired.y - object.velocity.y) * blend
       object.velocity.z += (desired.z - object.velocity.z) * blend
-      object.tether = Math.min(1, object.tether + d * (field.boosting ? 7 : 4))
+      object.tether = Math.min(1, object.tether + d * (field.boosting ? 7 : 4) * (0.15 + grip * 0.85))
       const direction = hash % 2 === 0 ? 1 : -1
-      object.angularVelocity.x += (direction * 1.4 - object.angularVelocity.x) * blend
-      object.angularVelocity.y += (direction * (field.boosting ? 2.8 : 1.7) - object.angularVelocity.y) * blend
-      object.angularVelocity.z += (Math.sin(angle) * 1.6 - object.angularVelocity.z) * blend
+      const wriggle = 1.15 + Math.sqrt(mass) * 0.48
+      object.angularVelocity.x += (direction * 1.4 * wriggle - object.angularVelocity.x) * blend
+      object.angularVelocity.y += (direction * (field.boosting ? 2.8 : 1.7) * wriggle - object.angularVelocity.y) * blend
+      object.angularVelocity.z += (Math.sin(angle) * 1.6 * wriggle - object.angularVelocity.z) * blend
     } else {
       object.tether = Math.max(0, object.tether - d * 3.5)
       object.velocity.y -= 9.8 * d

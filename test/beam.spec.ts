@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { beamProfile, isInsideBeam, stepBeamObjects, type BeamField, type BeamObject } from '../src/core/beam'
+import { BEAM_MIN_GRIP, beamGrip, beamProfile, isInsideBeam, stepBeamObjects, type BeamField, type BeamObject } from '../src/core/beam'
 
 const makeCar = (id = 'car-1', x = 0, y = 0.65, z = 0): BeamObject => ({
   id,
@@ -24,7 +24,7 @@ const field = (boosting = false): BeamField => ({
 describe('tractor beam physics', () => {
   it('lifts every car inside the beam cone', () => {
     const cars = [makeCar('one', -2), makeCar('two', 0), makeCar('three', 2)]
-    for (let frame = 0; frame < 12; frame += 1) stepBeamObjects(cars, field(), 1 / 60)
+    for (let frame = 0; frame < 30; frame += 1) stepBeamObjects(cars, field(), 1 / 60)
     expect(cars.every((car) => car.inBeam)).toBe(true)
     expect(cars.every((car) => car.position.y > 1)).toBe(true)
   })
@@ -79,5 +79,29 @@ describe('tractor beam physics', () => {
     expect(isInsideBeam(car, inactive)).toBe(false)
     expect(car.position.y).toBeLessThan(5)
     expect(car.velocity.y).toBeLessThan(0)
+  })
+
+  it('has a non-zero steep grip gradient from the cone floor to the UFO', () => {
+    const profile = beamProfile(false)
+    expect(beamGrip(0, profile.maxDrop)).toBe(1)
+    expect(beamGrip(profile.maxDrop, profile.maxDrop)).toBe(BEAM_MIN_GRIP)
+    expect(beamGrip(profile.maxDrop * 0.85, profile.maxDrop)).toBeLessThan(0.1)
+    expect(beamGrip(profile.maxDrop * 0.25, profile.maxDrop)).toBeGreaterThan(0.5)
+  })
+
+  it('makes a high heavy car resist while the same car grips strongly on a low approach', () => {
+    const far = makeCar('same-heavy')
+    const near = makeCar('same-heavy')
+    far.mass = near.mass = 2.4
+    const highField = field(false)
+    highField.position.y = beamProfile(false).maxDrop + 0.65
+    const lowField = field(false)
+    lowField.position.y = 4
+    for (let frame = 0; frame < 30; frame += 1) {
+      stepBeamObjects([far], highField, 1 / 60)
+      stepBeamObjects([near], lowField, 1 / 60)
+    }
+    expect(far.position.y).toBeGreaterThan(0.65)
+    expect(near.position.y - 0.65).toBeGreaterThan((far.position.y - 0.65) * 2)
   })
 })

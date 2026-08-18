@@ -4,22 +4,24 @@ export const WORLD_SEED = 1
 export const WORLD_CELL_SIZE = 34
 export const WORLD_SPAWN_RADIUS = 250
 export const WORLD_REMOVE_RADIUS = 300
+export const WORLD_LOD_RADIUS = 600
 export const WORLD_REFRESH_DISTANCE = 10
 export const WORLD_MAX_BUILDINGS = 96
+export const WORLD_MAX_DISTANT_BUILDINGS = 420
 export const WORLD_MAX_CARS = 48
 export const WORLD_GROUND_RADIUS_CELLS = 9
 
 export const BUILDING_STYLES = [
-  { color: '#ef6b68', roof: '#c84864' },
-  { color: '#42a6c8', roof: '#267899' },
-  { color: '#f4b34f', roof: '#ce773f' },
-  { color: '#9b70cf', roof: '#694aa6' },
-  { color: '#69bd77', roof: '#44885c' },
-  { color: '#ef8264', roof: '#c84f4b' },
-  { color: '#4faabd', roof: '#33738e' },
-  { color: '#e6b24d', roof: '#bb733e' },
-  { color: '#d66e94', roof: '#954d83' },
-  { color: '#6bb8d8', roof: '#3d7d9e' },
+  { color: '#f29b9a', roof: '#d7798e' },
+  { color: '#8ec9d8', roof: '#6faabc' },
+  { color: '#f3c887', roof: '#dda278' },
+  { color: '#b9a0dc', roof: '#927cc2' },
+  { color: '#9bcda2', roof: '#76ad87' },
+  { color: '#efad98', roof: '#d5837d' },
+  { color: '#91c8cf', roof: '#6ba5b1' },
+  { color: '#efd29b', roof: '#d9a879' },
+  { color: '#e4a5bc', roof: '#be829f' },
+  { color: '#a4d1e2', roof: '#7daabd' },
 ] as const
 
 export const BUILDING_SIGN_LABELS = [
@@ -28,9 +30,10 @@ export const BUILDING_SIGN_LABELS = [
 ] as const
 
 export const BUILDING_SIGN_COLORS = ['#ffe66b', '#ff7bbf', '#78ffcf', '#ffdb5d', '#81ffd1'] as const
-export const PARKED_CAR_COLORS = ['#ff5d74', '#62d7ff', '#ffd15d', '#9c75ff'] as const
+export const PARKED_CAR_COLORS = ['#f38ca0', '#83cde3', '#f2cf7d', '#b6a0e1'] as const
 
 export type WorldCellKind = 'building' | 'parked-car' | 'empty' | 'intersection'
+export type GroundVariant = 'grass' | 'parking' | 'sand' | 'plaza' | 'pond' | 'vacant'
 
 export type ProceduralBuilding = {
   id: string
@@ -62,6 +65,7 @@ export type ProceduralCell = {
   cellZ: number
   seed: number
   kind: WorldCellKind
+  ground: GroundVariant
   building?: ProceduralBuilding
   car?: ProceduralCar
 }
@@ -71,6 +75,7 @@ export type ActiveWorld = {
   cellX: number
   cellZ: number
   buildings: ProceduralBuilding[]
+  distantBuildings: ProceduralBuilding[]
   cars: ProceduralCar[]
   key: string
 }
@@ -117,16 +122,23 @@ export function getProceduralCell(cellX: number, cellZ: number, worldSeed = WORL
   const id = `${cellX}:${cellZ}`
   const centerX = worldCellCenter(cellX)
   const centerZ = worldCellCenter(cellZ)
+  const groundVariants: GroundVariant[] = ['grass', 'parking', 'sand', 'plaza', 'pond', 'vacant']
+  const ground = groundVariants[Math.floor(saltedUnit(seed, 19) * groundVariants.length)] ?? 'vacant'
 
   if (kind === 'building') {
     const styleIndex = (seed >>> 8) % BUILDING_STYLES.length
     const style = BUILDING_STYLES[styleIndex]!
     const sizeX = 16 + saltedUnit(seed, 1) * 6
     const sizeZ = 16 + saltedUnit(seed, 2) * 6
-    const highRise = saltedUnit(seed, 3) >= 0.7
-    const sizeY = highRise
-      ? 25 + saltedUnit(seed, 4) * 35
-      : 7 + saltedUnit(seed, 4) * 15
+    const heightBand = saltedUnit(seed, 3)
+    const heightVariation = saltedUnit(seed, 4)
+    const sizeY = heightBand < 0.6
+      ? 7 + heightVariation * 13
+      : heightBand < 0.9
+        ? 20 + heightVariation * 20
+        : heightBand < 0.98
+          ? 40 + heightVariation * 25
+          : 65 + heightVariation * 25
     const roadInset = 4.5
     const minX = cellX * WORLD_CELL_SIZE + roadInset + sizeX / 2
     const maxX = (cellX + 1) * WORLD_CELL_SIZE - roadInset - sizeX / 2
@@ -152,7 +164,7 @@ export function getProceduralCell(cellX: number, cellZ: number, worldSeed = WORL
         side: (seed & 0x40000000) === 0 ? 'z' : 'x',
       },
     }
-    return { id, cellX, cellZ, seed, kind, building }
+    return { id, cellX, cellZ, seed, kind, ground, building }
   }
 
   if (kind === 'parked-car') {
@@ -169,10 +181,10 @@ export function getProceduralCell(cellX: number, cellZ: number, worldSeed = WORL
       rotation: horizontal ? Math.PI / 2 : 0,
       color: PARKED_CAR_COLORS[(seed >>> 17) % PARKED_CAR_COLORS.length]!,
     }
-    return { id, cellX, cellZ, seed, kind, car }
+    return { id, cellX, cellZ, seed, kind, ground, car }
   }
 
-  return { id, cellX, cellZ, seed, kind }
+  return { id, cellX, cellZ, seed, kind, ground }
 }
 
 function horizontalDistance(position: Pick<Vec3, 'x' | 'z'>, target: Pick<Vec3, 'x' | 'z'>) {
@@ -200,8 +212,8 @@ function nearestLimited<T extends { id: string; position: Vec3 }>(
     .slice(0, limit)
 }
 
-function activationKey(buildings: ProceduralBuilding[], cars: ProceduralCar[], cellX: number, cellZ: number) {
-  return `${cellX}:${cellZ}|${buildings.map((item) => item.id).join(',')}|${cars.map((item) => item.id).join(',')}`
+function activationKey(buildings: ProceduralBuilding[], distantBuildings: ProceduralBuilding[], cars: ProceduralCar[], cellX: number, cellZ: number) {
+  return `${cellX}:${cellZ}|${buildings.map((item) => item.id).join(',')}|${distantBuildings.map((item) => item.id).join(',')}|${cars.map((item) => item.id).join(',')}`
 }
 
 export function createActiveWorld(position: Pick<Vec3, 'x' | 'z'>): ActiveWorld {
@@ -215,7 +227,7 @@ export function updateActiveWorld(
 ): ActiveWorld {
   if (previous && !force && horizontalDistance(previous.center, position) < WORLD_REFRESH_DISTANCE) return previous
 
-  const candidates = cellsAround(position, WORLD_REMOVE_RADIUS)
+  const candidates = cellsAround(position, WORLD_LOD_RADIUS)
   const buildingPool = new Map<string, ProceduralBuilding>()
   const carPool = new Map<string, ProceduralCar>()
 
@@ -246,6 +258,17 @@ export function updateActiveWorld(
 
   const buildings = nearestLimited(buildingPool.values(), position, WORLD_MAX_BUILDINGS)
   const cars = nearestLimited(carPool.values(), position, WORLD_MAX_CARS)
+  const nearBuildingIds = new Set(buildings.map((building) => building.id))
+  const distantBuildings = nearestLimited(
+    candidates
+      .flatMap((cell) => cell.building ? [cell.building] : [])
+      .filter((building) => {
+        const distance = horizontalDistance(position, building.position)
+        return distance > WORLD_SPAWN_RADIUS && distance <= WORLD_LOD_RADIUS && !nearBuildingIds.has(building.id)
+      }),
+    position,
+    WORLD_MAX_DISTANT_BUILDINGS,
+  )
   const cellX = worldCellCoord(position.x)
   const cellZ = worldCellCoord(position.z)
   return {
@@ -253,8 +276,9 @@ export function updateActiveWorld(
     cellX,
     cellZ,
     buildings,
+    distantBuildings,
     cars,
-    key: activationKey(buildings, cars, cellX, cellZ),
+    key: activationKey(buildings, distantBuildings, cars, cellX, cellZ),
   }
 }
 

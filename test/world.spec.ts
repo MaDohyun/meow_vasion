@@ -8,8 +8,10 @@ import {
   updateActiveWorld,
   WORLD_MAX_BUILDINGS,
   WORLD_MAX_CARS,
+  WORLD_MAX_DISTANT_BUILDINGS,
   WORLD_CELL_SIZE,
   WORLD_GROUND_RADIUS_CELLS,
+  WORLD_LOD_RADIUS,
   WORLD_REMOVE_RADIUS,
   WORLD_SPAWN_RADIUS,
 } from '../src/core/world'
@@ -30,16 +32,23 @@ describe('deterministic infinite city', () => {
     const farAway = updateActiveWorld(initial, { x: 9000, z: 9000 }, true)
     const returned = updateActiveWorld(farAway, origin, true)
     expect(returned.buildings).toEqual(initial.buildings)
+    expect(returned.distantBuildings).toEqual(initial.distantBuildings)
     expect(returned.cars).toEqual(initial.cars)
   })
 
   it('keeps active object pools bounded and creates only local colliders', () => {
     const world = createActiveWorld({ x: 0, z: 0 })
     expect(world.buildings.length).toBeLessThanOrEqual(WORLD_MAX_BUILDINGS)
+    expect(world.distantBuildings.length).toBeLessThanOrEqual(WORLD_MAX_DISTANT_BUILDINGS)
     expect(world.cars.length).toBeLessThanOrEqual(WORLD_MAX_CARS)
     expect(activeWorldColliders(world)).toHaveLength(world.buildings.length)
     for (const object of [...world.buildings, ...world.cars]) {
       expect(Math.hypot(object.position.x, object.position.z)).toBeLessThanOrEqual(WORLD_SPAWN_RADIUS)
+    }
+    for (const building of world.distantBuildings) {
+      const distance = Math.hypot(building.position.x, building.position.z)
+      expect(distance).toBeGreaterThan(WORLD_SPAWN_RADIUS)
+      expect(distance).toBeLessThanOrEqual(WORLD_LOD_RADIUS)
     }
   })
 
@@ -96,6 +105,28 @@ describe('deterministic infinite city', () => {
     const highRiseRatio = heights.filter((height) => height >= 25).length / heights.length
     expect(highRiseRatio).toBeGreaterThan(0.25)
     expect(highRiseRatio).toBeLessThan(0.35)
+  })
+
+  it('uses the requested deterministic four-band height distribution', () => {
+    const heights: number[] = []
+    const grounds = new Set<string>()
+    for (let z = -90; z <= 90; z += 1) {
+      for (let x = -90; x <= 90; x += 1) {
+        const cell = getProceduralCell(x, z)
+        grounds.add(cell.ground)
+        if (cell.building) heights.push(cell.building.size.y)
+      }
+    }
+    const ratio = (minimum: number, maximum: number) => heights.filter((height) => height >= minimum && height < maximum).length / heights.length
+    expect(ratio(7, 20)).toBeGreaterThan(0.56)
+    expect(ratio(7, 20)).toBeLessThan(0.64)
+    expect(ratio(20, 40)).toBeGreaterThan(0.27)
+    expect(ratio(20, 40)).toBeLessThan(0.33)
+    expect(ratio(40, 65)).toBeGreaterThan(0.06)
+    expect(ratio(40, 65)).toBeLessThan(0.1)
+    expect(ratio(65, 91)).toBeGreaterThan(0.01)
+    expect(ratio(65, 91)).toBeLessThan(0.03)
+    expect(grounds).toEqual(new Set(['grass', 'parking', 'sand', 'plaza', 'pond', 'vacant']))
   })
 
   it('retains spawned slots through the wider removal radius', () => {

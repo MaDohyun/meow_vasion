@@ -1,8 +1,8 @@
 import { useFrame } from '@react-three/fiber'
 import { memo, useMemo, useRef } from 'react'
 import * as THREE from 'three'
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
 import { useGame } from '../GameContext'
-import { generateSkylineBlocks, SKYLINE_MAX_BLOCKS, skylineSelectionKey } from '../core/skyline'
 import {
   BUILDING_SIGN_LABELS,
   BUILDING_SIGN_COLORS,
@@ -10,16 +10,23 @@ import {
   WORLD_CELL_SIZE,
   WORLD_GROUND_RADIUS_CELLS,
   WORLD_MAX_BUILDINGS,
+  WORLD_MAX_DISTANT_BUILDINGS,
+  WORLD_SPAWN_RADIUS,
+  WORLD_LOD_RADIUS,
+  type GroundVariant,
 } from '../core/world'
 
 const toonGradient = (() => {
-  const data = new Uint8Array([45, 125, 210, 255])
+  const data = new Uint8Array([96, 158, 218, 255])
   const texture = new THREE.DataTexture(data, 4, 1, THREE.RedFormat)
   texture.needsUpdate = true
   texture.magFilter = THREE.NearestFilter
   texture.minFilter = THREE.NearestFilter
   return texture
 })()
+
+const roundedBuildingGeometry = new RoundedBoxGeometry(1, 1, 1, 2, 0.055)
+const roundedRoofGeometry = new RoundedBoxGeometry(1, 1, 1, 2, 0.11)
 
 function pixelTexture(draw: (context: CanvasRenderingContext2D) => void, width = 64, height = 64) {
   const canvas = document.createElement('canvas')
@@ -43,13 +50,13 @@ const facadeTexture = pixelTexture((context) => {
   for (let row = 0; row < 6; row += 1) {
     for (let column = 0; column < 5; column += 1) {
       const lit = (row * 7 + column * 5) % 6 === 0
-      context.fillStyle = lit ? '#fff0a2' : (row + column) % 3 === 0 ? '#33576a' : '#19394c'
+      context.fillStyle = lit ? '#fff1b8' : (row + column) % 3 === 0 ? '#708a91' : '#536d79'
       context.fillRect(5 + column * 12, 6 + row * 9, 7, 5)
-      context.fillStyle = lit ? '#fffbd1' : '#52798a'
+      context.fillStyle = lit ? '#fffbe1' : '#91a8ab'
       context.fillRect(6 + column * 12, 6 + row * 9, 2, 1)
     }
   }
-  context.fillStyle = '#332b45'
+  context.fillStyle = '#675d70'
   context.fillRect(0, 59, 64, 5)
 })
 
@@ -81,12 +88,12 @@ const lotTexture = pixelTexture((context) => {
 })
 
 const roadTexture = pixelTexture((context) => {
-  context.fillStyle = '#334e61'
+  context.fillStyle = '#6f7e87'
   context.fillRect(0, 0, 128, 32)
   for (let index = 0; index < 180; index += 1) {
     const x = index * 37 % 128
     const y = index * 19 % 32
-    context.fillStyle = index % 4 === 0 ? 'rgba(151,190,190,.24)' : 'rgba(15,30,44,.22)'
+    context.fillStyle = index % 4 === 0 ? 'rgba(218,235,226,.28)' : 'rgba(69,76,91,.2)'
     context.fillRect(x, y, index % 5 === 0 ? 2 : 1, 1)
   }
   context.fillStyle = '#ffe7a3'
@@ -119,49 +126,56 @@ const signAtlas = pixelTexture((context) => {
   })
 }, 512, 384)
 
-const SKYLINE_COLORS = ['#426c78', '#4d657d', '#596d78', '#3f6172', '#59657f'] as const
-
-function DistantSkyline() {
+function DistantBuildingPool() {
   const { runtime } = useGame()
-  const skyline = useRef<THREE.InstancedMesh>(null)
-  const lastSelection = useRef('')
-  const lastPosition = useRef({ x: Number.POSITIVE_INFINITY, z: Number.POSITIVE_INFINITY })
+  const silhouettes = useRef<THREE.InstancedMesh>(null)
+  const lastKey = useRef('')
   const matrix = useMemo(() => new THREE.Matrix4(), [])
   const position = useMemo(() => new THREE.Vector3(), [])
   const scale = useMemo(() => new THREE.Vector3(), [])
   const rotation = useMemo(() => new THREE.Quaternion(), [])
   const color = useMemo(() => new THREE.Color(), [])
+  const nearColor = useMemo(() => new THREE.Color('#a3b5bd'), [])
+  const farColor = useMemo(() => new THREE.Color('#8fa0ac'), [])
 
   useFrame(() => {
-    if (!skyline.current) return
-    const drone = runtime.current.drone
-    if (Math.hypot(drone.position.x - lastPosition.current.x, drone.position.z - lastPosition.current.z) < 3) return
-    lastPosition.current = { x: drone.position.x, z: drone.position.z }
-    const blocks = generateSkylineBlocks(drone.position.x, drone.position.z)
-    const selection = skylineSelectionKey(blocks)
-    if (selection === lastSelection.current) return
-    lastSelection.current = selection
-    blocks.forEach((block, index) => {
-      position.set(block.x, block.height / 2, block.z)
-      scale.set(block.width, block.height, block.depth)
+    if (!silhouettes.current) return
+    const world = runtime.current.world
+    if (world.key === lastKey.current) return
+    lastKey.current = world.key
+    world.distantBuildings.forEach((building, index) => {
+      position.set(building.position.x, building.position.y, building.position.z)
+      scale.set(building.size.x, building.size.y, building.size.z)
       matrix.compose(position, rotation, scale)
-      skyline.current!.setMatrixAt(index, matrix)
-      skyline.current!.setColorAt(index, color.set(SKYLINE_COLORS[block.colorIndex] ?? SKYLINE_COLORS[0]))
+      silhouettes.current!.setMatrixAt(index, matrix)
+      const distance = Math.hypot(
+        building.position.x - runtime.current.drone.position.x,
+        building.position.z - runtime.current.drone.position.z,
+      )
+      const fade = THREE.MathUtils.clamp((distance - WORLD_SPAWN_RADIUS) / (WORLD_LOD_RADIUS - WORLD_SPAWN_RADIUS), 0, 1)
+      silhouettes.current!.setColorAt(index, color.lerpColors(nearColor, farColor, fade))
     })
-    skyline.current.count = blocks.length
-    skyline.current.instanceMatrix.needsUpdate = true
-    if (skyline.current.instanceColor) skyline.current.instanceColor.needsUpdate = true
+    silhouettes.current.count = world.distantBuildings.length
+    silhouettes.current.instanceMatrix.needsUpdate = true
+    if (silhouettes.current.instanceColor) silhouettes.current.instanceColor.needsUpdate = true
   })
 
   return (
-    <instancedMesh ref={skyline} args={[undefined, undefined, SKYLINE_MAX_BLOCKS]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }}>
-      <boxGeometry args={[1, 1, 1]} />
-      <meshToonMaterial color="#ffffff" gradientMap={toonGradient} fog={false} />
+    <instancedMesh ref={silhouettes} args={[roundedBuildingGeometry, undefined, WORLD_MAX_DISTANT_BUILDINGS]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }}>
+      <meshToonMaterial color="#ffffff" gradientMap={toonGradient} />
     </instancedMesh>
   )
 }
 
 const GROUND_CELL_COUNT = (WORLD_GROUND_RADIUS_CELLS * 2 + 1) ** 2
+const GROUND_COLORS: Record<GroundVariant, string> = {
+  grass: '#a9c99d',
+  parking: '#b8b4ad',
+  sand: '#e5d2a6',
+  plaza: '#d6c5b6',
+  pond: '#9fc8cb',
+  vacant: '#c7c39f',
+}
 
 function GroundPool() {
   const { runtime } = useGame()
@@ -191,7 +205,7 @@ function GroundPool() {
       scale.set(WORLD_CELL_SIZE + 0.08, WORLD_CELL_SIZE + 0.08, 1)
       matrix.compose(position, planeRotation, scale)
       lots.current!.setMatrixAt(index, matrix)
-      const lotColor = cell.kind === 'intersection' ? '#7c806f' : cell.kind === 'empty' ? '#96936f' : '#aaa077'
+      const lotColor = cell.kind === 'intersection' ? '#aeb8ad' : GROUND_COLORS[cell.ground]
       lots.current!.setColorAt(index, color.set(lotColor))
 
       position.set(centerX, 0.018, cell.cellZ * WORLD_CELL_SIZE)
@@ -314,12 +328,10 @@ function BuildingPool() {
         <planeGeometry args={[1, 1]} />
         <meshBasicMaterial color="#28313d" transparent opacity={0.28} depthWrite={false} />
       </instancedMesh>
-      <instancedMesh ref={bodies} args={[undefined, undefined, WORLD_MAX_BUILDINGS]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }}>
-        <boxGeometry args={[1, 1, 1]} />
+      <instancedMesh ref={bodies} args={[roundedBuildingGeometry, undefined, WORLD_MAX_BUILDINGS]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }}>
         <meshToonMaterial color="#ffffff" map={facadeTexture} gradientMap={toonGradient} />
       </instancedMesh>
-      <instancedMesh ref={roofs} args={[undefined, undefined, WORLD_MAX_BUILDINGS]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }}>
-        <boxGeometry args={[1, 1, 1]} />
+      <instancedMesh ref={roofs} args={[roundedRoofGeometry, undefined, WORLD_MAX_BUILDINGS]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }}>
         <meshToonMaterial color="#ffffff" map={roofTexture} gradientMap={toonGradient} />
       </instancedMesh>
       <instancedMesh ref={signs} args={[signGeometry, signMaterial, WORLD_MAX_BUILDINGS]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }} />
@@ -332,7 +344,7 @@ export const City = memo(function City() {
     <group>
       <GroundPool />
       <BuildingPool />
-      <DistantSkyline />
+      <DistantBuildingPool />
     </group>
   )
 })

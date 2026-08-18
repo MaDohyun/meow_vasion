@@ -77,7 +77,7 @@ export default function App() {
           tabIndex={0}
           aria-label="BEAM BANDIT game view"
           dpr={1}
-          camera={{ fov: 65, near: 0.1, far: 400, position: [0, 6.5, 62] }}
+          camera={{ fov: 65, near: 0.1, far: 700, position: [0, 6.5, 62] }}
           gl={{ antialias: false, powerPreference: 'high-performance', alpha: false }}
           onCreated={({ gl }) => {
             gl.outputColorSpace = 'srgb'

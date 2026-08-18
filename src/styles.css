@@ -98,6 +98,11 @@ button { font: inherit; }
 .flight-card > div { min-width: 53px; }
 .flight-card strong { color: var(--yellow); font-size: 21px; }
 .flight-card small { margin-left: 3px; color: var(--cream); font-size: 7px; }
+.pilot-card { position:absolute; left:18px; bottom:112px; display:flex; align-items:center; gap:8px; width:146px; padding:6px; border-color:#ef8d96; background:rgba(58,50,76,.92); transform:rotate(-1deg); }
+.pilot-portrait { flex:0 0 76px; width:76px; height:57px; border:2px solid var(--cream); background-repeat:no-repeat; image-rendering:pixelated; }
+.pilot-card > div:last-child { min-width:0; }
+.pilot-card b { display:block; margin-top:4px; overflow:hidden; color:#b9df78; font-size:8px; letter-spacing:.4px; text-overflow:ellipsis; }
+.pilot-card[data-expression="surprise"], .pilot-card[data-expression="scream"] { animation:warning-pulse .3s steps(2) infinite; }
 .captive-rack { position: absolute; right: 18px; bottom: 89px; min-width: 126px; padding: 7px 10px; background: rgba(33,27,53,.85); border-bottom: 4px solid var(--green); text-align: right; }
 .captive-rack .eyebrow { text-align: left; }
 .captive-rack i { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; margin-left: 3px; color: var(--pink); background: var(--cream); border: 2px solid var(--ink); border-radius: 50%; font-size: 13px; font-style: normal; }

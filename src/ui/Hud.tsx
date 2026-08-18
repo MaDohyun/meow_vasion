@@ -1,6 +1,7 @@
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { useGame } from '../GameContext'
 import { WORLD_REMOVE_RADIUS } from '../core/world'
+import { pilotFrameStyle } from '../render/pilotArt'
 
 const formatTime = (seconds: number) => {
   const safe = Math.max(0, Math.ceil(seconds))
@@ -237,11 +238,15 @@ export function Hud() {
           <div><span className="eyebrow">ALT</span><strong>{snapshot.height.toFixed(1)}</strong><small>M</small></div>
           <div><span className="eyebrow">FIGHTERS</span><strong>{snapshot.activeFighters}</strong><small>/3</small></div>
         </section>
+        <section className="pilot-card panel" data-expression={snapshot.pilotExpression} aria-label={`pilot expression ${snapshot.pilotExpression}`}>
+          <div className="pilot-portrait" style={pilotFrameStyle(snapshot.pilotExpression)} />
+          <div><span className="eyebrow">PILOT CAM</span><b>{snapshot.pilotExpression.toUpperCase()}</b></div>
+        </section>
         <CaptiveRack />
         <PlanetRadar />
         <div
           className="reticle"
-          style={{ left: `${50 + snapshot.aimX * 38}%`, top: `${50 + snapshot.aimY * 34}%` }}
+          style={{ left: `${50 + snapshot.aimX * 50}%`, top: `${50 + snapshot.aimY * 50}%` }}
         ><i /><i /></div>
       </div>
       <MobileControls />
