@@ -53,16 +53,49 @@ describe('deterministic infinite city', () => {
     )).toBe(false)
   })
 
-  it('keeps a dense city within one block even thousands of units away', () => {
+  it('keeps a sparser city active even thousands of units away', () => {
     for (const position of [{ x: 0, z: 0 }, { x: 2400, z: -3100 }, { x: -7800, z: 5200 }]) {
       const world = createActiveWorld(position)
-      expect(world.buildings.length).toBeGreaterThanOrEqual(80)
-      const nearest = Math.min(...world.buildings.map((building) =>
-        Math.hypot(building.position.x - position.x, building.position.z - position.z),
-      ))
-      expect(nearest).toBeLessThanOrEqual(WORLD_CELL_SIZE * 1.15)
+      expect(world.buildings.length).toBeGreaterThanOrEqual(35)
+      expect(world.buildings.length).toBeLessThanOrEqual(70)
     }
     expect(WORLD_GROUND_RADIUS_CELLS * WORLD_CELL_SIZE).toBeGreaterThanOrEqual(WORLD_REMOVE_RADIUS)
+  })
+
+  it('keeps building footprints inside the road-free cell interior', () => {
+    let buildings = 0
+    for (let cellZ = -30; cellZ <= 30; cellZ += 1) {
+      for (let cellX = -30; cellX <= 30; cellX += 1) {
+        const building = getProceduralCell(cellX, cellZ).building
+        if (!building) continue
+        buildings += 1
+        expect(building.size.x).toBeGreaterThanOrEqual(16)
+        expect(building.size.x).toBeLessThanOrEqual(22)
+        expect(building.size.z).toBeGreaterThanOrEqual(16)
+        expect(building.size.z).toBeLessThanOrEqual(22)
+        expect(building.position.x - building.size.x / 2 - cellX * WORLD_CELL_SIZE).toBeGreaterThanOrEqual(4.5 - 1e-8)
+        expect((cellX + 1) * WORLD_CELL_SIZE - building.position.x - building.size.x / 2).toBeGreaterThanOrEqual(4.5 - 1e-8)
+        expect(building.position.z - building.size.z / 2 - cellZ * WORLD_CELL_SIZE).toBeGreaterThanOrEqual(4.5 - 1e-8)
+        expect((cellZ + 1) * WORLD_CELL_SIZE - building.position.z - building.size.z / 2).toBeGreaterThanOrEqual(4.5 - 1e-8)
+      }
+    }
+    expect(buildings / (61 * 61)).toBeGreaterThan(0.3)
+    expect(buildings / (61 * 61)).toBeLessThan(0.36)
+  })
+
+  it('mixes mostly low-rise buildings with a meaningful high-rise tier', () => {
+    const heights = [] as number[]
+    for (let z = -35; z <= 35; z += 1) {
+      for (let x = -35; x <= 35; x += 1) {
+        const building = getProceduralCell(x, z).building
+        if (building) heights.push(building.size.y)
+      }
+    }
+    expect(Math.min(...heights)).toBeGreaterThanOrEqual(7)
+    expect(Math.max(...heights)).toBeGreaterThan(55)
+    const highRiseRatio = heights.filter((height) => height >= 25).length / heights.length
+    expect(highRiseRatio).toBeGreaterThan(0.25)
+    expect(highRiseRatio).toBeLessThan(0.35)
   })
 
   it('retains spawned slots through the wider removal radius', () => {

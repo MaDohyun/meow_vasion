@@ -125,7 +125,7 @@ function Intro() {
         <span><b>A/D</b> RIGHT / LEFT</span>
         <span><b>MOUSE</b> 3D STEER / AIM</span>
         <span><b>E</b> HOLD TRACTOR BEAM</span>
-        <span><b>Q</b> LASER</span>
+        <span><b>Q</b> TAP LASER</span>
         <span><b>SPACE + E</b> AMPLIFIED BEAM</span>
       </div>
     </div>

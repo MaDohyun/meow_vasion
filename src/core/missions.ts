@@ -119,13 +119,13 @@ export function generateMission(index: number, origin: Pick<Vec3, 'x' | 'z'> = D
   }
 }
 
-export function nearestBeamTarget(mission: Mission, position: Vec3, maxHorizontalDistance = 8.5) {
+export function nearestBeamTarget(mission: Mission, position: Vec3, maxHorizontalDistance = 8.5, maxVerticalDrop = 10) {
   let nearest: MissionTarget | null = null
   let nearestDistance = maxHorizontalDistance
   for (const candidate of mission.targets) {
     if (!candidate.active) continue
     const verticalGap = position.y - candidate.position.y
-    if (verticalGap < -0.5 || verticalGap > 10) continue
+    if (verticalGap < -0.5 || verticalGap > maxVerticalDrop) continue
     const distance = Math.hypot(position.x - candidate.position.x, position.z - candidate.position.z)
     if (distance <= nearestDistance) {
       nearest = candidate

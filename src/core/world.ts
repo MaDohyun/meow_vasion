@@ -78,6 +78,14 @@ export type ActiveWorld = {
 const unsigned = (value: number) => value >>> 0
 const unit = (seed: number, shift: number) => ((seed >>> shift) & 0xff) / 255
 
+function saltedUnit(seed: number, salt: number) {
+  let value = seed ^ Math.imul(salt, 0x9e3779b1)
+  value ^= value >>> 16
+  value = Math.imul(value, 0x7feb352d)
+  value ^= value >>> 15
+  return (value >>> 0) / 0xffffffff
+}
+
 export function seedForWorldCell(cellX: number, cellZ: number, worldSeed = WORLD_SEED) {
   let seed = Math.imul(cellX, 73856093) ^ Math.imul(cellZ, 19349663) ^ worldSeed
   seed ^= seed >>> 16
@@ -99,12 +107,11 @@ export function worldCellCenter(cell: number) {
 export function getProceduralCell(cellX: number, cellZ: number, worldSeed = WORLD_SEED): ProceduralCell {
   const seed = seedForWorldCell(cellX, cellZ, worldSeed)
   const roll = seed % 100
-  const guaranteedBuilding = ((cellX + cellZ) & 1) === 0
-  const kind: WorldCellKind = guaranteedBuilding || roll < 25
+  const kind: WorldCellKind = roll < 33
     ? 'building'
-    : roll < 59
+    : roll < 45
       ? 'parked-car'
-      : roll < 80
+      : roll < 60
         ? 'intersection'
         : 'empty'
   const id = `${cellX}:${cellZ}`
@@ -114,17 +121,27 @@ export function getProceduralCell(cellX: number, cellZ: number, worldSeed = WORL
   if (kind === 'building') {
     const styleIndex = (seed >>> 8) % BUILDING_STYLES.length
     const style = BUILDING_STYLES[styleIndex]!
-    const sizeX = 28 + unit(seed, 0) * 7
-    const sizeZ = 28 + unit(seed, 8) * 7
-    const sizeY = 14 + unit(seed, 16) * 26
+    const sizeX = 16 + saltedUnit(seed, 1) * 6
+    const sizeZ = 16 + saltedUnit(seed, 2) * 6
+    const highRise = saltedUnit(seed, 3) >= 0.7
+    const sizeY = highRise
+      ? 25 + saltedUnit(seed, 4) * 35
+      : 7 + saltedUnit(seed, 4) * 15
+    const roadInset = 4.5
+    const minX = cellX * WORLD_CELL_SIZE + roadInset + sizeX / 2
+    const maxX = (cellX + 1) * WORLD_CELL_SIZE - roadInset - sizeX / 2
+    const minZ = cellZ * WORLD_CELL_SIZE + roadInset + sizeZ / 2
+    const maxZ = (cellZ + 1) * WORLD_CELL_SIZE - roadInset - sizeZ / 2
+    const desiredX = centerX + (saltedUnit(seed, 5) - 0.5) * 9
+    const desiredZ = centerZ + (saltedUnit(seed, 6) - 0.5) * 9
     const building: ProceduralBuilding = {
       id: `building:${id}`,
       cellX,
       cellZ,
       position: {
-        x: centerX + (unit(seed, 3) - 0.5) * 2,
+        x: Math.max(minX, Math.min(maxX, desiredX)),
         y: sizeY / 2,
-        z: centerZ + (unit(seed, 11) - 0.5) * 2,
+        z: Math.max(minZ, Math.min(maxZ, desiredZ)),
       },
       size: { x: sizeX, y: sizeY, z: sizeZ },
       color: style.color,

@@ -5,6 +5,7 @@ export type BeamObjectKind = 'car'
 export type BeamObject = {
   id: string
   kind: BeamObjectKind
+  mass: number
   color: string
   position: Vec3
   velocity: Vec3
@@ -19,6 +20,7 @@ export type BeamField = {
   boosting: boolean
   position: Vec3
   velocity: Vec3
+  radiusScale?: number
 }
 
 export type BeamProfile = {
@@ -31,10 +33,16 @@ export type BeamProfile = {
 
 const GROUND_HEIGHT = 0.65
 
-export function beamProfile(boosting: boolean): BeamProfile {
-  return boosting
-    ? { maxDrop: 30, baseRadius: 7.2, coneSpread: 0.36, spring: 8.5, response: 22 }
-    : { maxDrop: 18, baseRadius: 4.2, coneSpread: 0.25, spring: 5.2, response: 10 }
+export function beamProfile(boosting: boolean, radiusScale = 1): BeamProfile {
+  const scale = Math.max(0.1, radiusScale)
+  const profile = boosting
+    ? { maxDrop: 24, baseRadius: 3.8, coneSpread: 0.22, spring: 8.5, response: 22 }
+    : { maxDrop: 15, baseRadius: 2.4, coneSpread: 0.16, spring: 5.2, response: 10 }
+  return {
+    ...profile,
+    baseRadius: profile.baseRadius * scale,
+    coneSpread: profile.coneSpread * scale,
+  }
 }
 
 function hashId(id: string) {
@@ -46,9 +54,9 @@ function hashId(id: string) {
   return hash >>> 0
 }
 
-export function isInsideBeam(object: BeamObject, field: BeamField) {
+export function isInsideBeam(object: Pick<BeamObject, 'position'>, field: BeamField) {
   if (!field.active) return false
-  const profile = beamProfile(field.boosting)
+  const profile = beamProfile(field.boosting, field.radiusScale)
   const drop = field.position.y - object.position.y
   if (drop < -0.5 || drop > profile.maxDrop) return false
   const radius = profile.baseRadius + Math.max(0, drop) * profile.coneSpread
@@ -57,13 +65,15 @@ export function isInsideBeam(object: BeamObject, field: BeamField) {
 
 export function stepBeamObjects(objects: BeamObject[], field: BeamField, dt: number) {
   const d = Math.min(Math.max(0, dt), 0.05)
-  const profile = beamProfile(field.boosting)
+  const profile = beamProfile(field.boosting, field.radiusScale)
 
   for (const object of objects) {
     const captured = isInsideBeam(object, field)
     object.inBeam = captured
 
     if (captured) {
+      const mass = Math.max(0.45, object.mass)
+      const spring = profile.spring / mass
       const hash = hashId(object.id)
       const slot = hash % 11
       const angle = (hash % 360) * Math.PI / 180
@@ -75,11 +85,12 @@ export function stepBeamObjects(objects: BeamObject[], field: BeamField, dt: num
         z: field.position.z + Math.sin(angle) * orbit,
       }
       const desired = {
-        x: field.velocity.x + (anchor.x - object.position.x) * profile.spring,
-        y: field.velocity.y + (anchor.y - object.position.y) * profile.spring,
-        z: field.velocity.z + (anchor.z - object.position.z) * profile.spring,
+        x: field.velocity.x + (anchor.x - object.position.x) * spring,
+        y: field.velocity.y + (anchor.y - object.position.y) * spring,
+        z: field.velocity.z + (anchor.z - object.position.z) * spring,
       }
-      const blend = 1 - Math.exp(-profile.response * d)
+      if (anchor.y > object.position.y) desired.y = Math.max(desired.y, 0.9)
+      const blend = 1 - Math.exp(-(profile.response / mass) * d)
       object.velocity.x += (desired.x - object.velocity.x) * blend
       object.velocity.y += (desired.y - object.velocity.y) * blend
       object.velocity.z += (desired.z - object.velocity.z) * blend

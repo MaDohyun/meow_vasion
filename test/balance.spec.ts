@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { collideDrone, createDroneState, stepDrone } from '../src/core/drone'
+import { collideDrone, createDroneState, DRONE_DEFAULTS, stepDrone } from '../src/core/drone'
 import { rewardForDelivery } from '../src/core/economy'
 
 const upgrades = { speed: 0, stability: 0, rack: 0, special: 'none' as const }
@@ -56,6 +56,10 @@ describe('balance', () => {
     for (let i = 0; i < 120; i += 1) {
       state = stepDrone(state, { throttle: 1, steer: 0, vertical: 0, special: false }, 1 / 60, 0, upgrades)
     }
-    expect(state.speed).toBeGreaterThan(22)
+    expect(state.speed).toBeGreaterThan(29)
+    expect(DRONE_DEFAULTS.maxSpeed).toBe(30)
+    expect(DRONE_DEFAULTS.boostSpeed).toBe(54)
+    expect(DRONE_DEFAULTS.acceleration).toBe(38)
+    expect(DRONE_DEFAULTS.maxHeight).toBe(130)
   })
 })

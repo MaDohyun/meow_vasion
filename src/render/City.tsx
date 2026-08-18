@@ -2,7 +2,7 @@ import { useFrame } from '@react-three/fiber'
 import { memo, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { useGame } from '../GameContext'
-import { generateSkylineBlocks, SKYLINE_MAX_BLOCKS, skylineCellKey } from '../core/skyline'
+import { generateSkylineBlocks, SKYLINE_MAX_BLOCKS, skylineSelectionKey } from '../core/skyline'
 import {
   BUILDING_SIGN_LABELS,
   BUILDING_SIGN_COLORS,
@@ -124,7 +124,8 @@ const SKYLINE_COLORS = ['#426c78', '#4d657d', '#596d78', '#3f6172', '#59657f'] a
 function DistantSkyline() {
   const { runtime } = useGame()
   const skyline = useRef<THREE.InstancedMesh>(null)
-  const lastCell = useRef('')
+  const lastSelection = useRef('')
+  const lastPosition = useRef({ x: Number.POSITIVE_INFINITY, z: Number.POSITIVE_INFINITY })
   const matrix = useMemo(() => new THREE.Matrix4(), [])
   const position = useMemo(() => new THREE.Vector3(), [])
   const scale = useMemo(() => new THREE.Vector3(), [])
@@ -134,10 +135,12 @@ function DistantSkyline() {
   useFrame(() => {
     if (!skyline.current) return
     const drone = runtime.current.drone
-    const cell = skylineCellKey(drone.position.x, drone.position.z)
-    if (cell.key === lastCell.current) return
-    lastCell.current = cell.key
+    if (Math.hypot(drone.position.x - lastPosition.current.x, drone.position.z - lastPosition.current.z) < 3) return
+    lastPosition.current = { x: drone.position.x, z: drone.position.z }
     const blocks = generateSkylineBlocks(drone.position.x, drone.position.z)
+    const selection = skylineSelectionKey(blocks)
+    if (selection === lastSelection.current) return
+    lastSelection.current = selection
     blocks.forEach((block, index) => {
       position.set(block.x, block.height / 2, block.z)
       scale.set(block.width, block.height, block.depth)

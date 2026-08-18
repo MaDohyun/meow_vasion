@@ -45,15 +45,15 @@ export type CollisionResult = {
 }
 
 export const DRONE_DEFAULTS = {
-  maxSpeed: 24,
-  boostSpeed: 42,
-  acceleration: 32,
+  maxSpeed: 30,
+  boostSpeed: 54,
+  acceleration: 38,
   brakeDeceleration: 42,
   turnRateLow: (185 * Math.PI) / 180,
   turnRateHigh: (105 * Math.PI) / 180,
   verticalSpeed: 9,
   minHeight: 0.4,
-  maxHeight: 90,
+  maxHeight: 130,
   radius: 0.5,
   visualTiltMax: (28 * Math.PI) / 180,
   pitchMax: (55 * Math.PI) / 180,

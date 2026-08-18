@@ -4,7 +4,9 @@ import { useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { useGame, type CarriedTarget } from '../GameContext'
 import { beamProfile } from '../core/beam'
+import { LASER_MAX_PROJECTILES } from '../core/laser'
 import type { MissionTarget, TargetKind } from '../core/missions'
+import { TRAFFIC_MAX_CARS } from '../core/traffic'
 import { WORLD_MAX_CARS } from '../core/world'
 import { City } from './City'
 import { PostFx } from './PostFx'
@@ -14,6 +16,10 @@ declare global {
     __BEAM_BANDIT_METRICS__?: {
       activeBuildings: number
       activeCars: number
+      activeTraffic: number
+      activeLaserProjectiles: number
+      laserShotsFired: number
+      height: number
       visibleMeshPools: number
     }
   }
@@ -142,25 +148,89 @@ function PullableCars() {
 
   return (
     <group>
-      <instancedMesh ref={shadow} args={[undefined, undefined, WORLD_MAX_CARS]} frustumCulled={false}>
+      <instancedMesh ref={shadow} args={[undefined, undefined, WORLD_MAX_CARS + TRAFFIC_MAX_CARS]} frustumCulled={false}>
         <planeGeometry args={[1, 1]} />
         <meshBasicMaterial color="#28313d" transparent opacity={0.32} depthWrite={false} />
       </instancedMesh>
-      <instancedMesh ref={body} args={[undefined, undefined, WORLD_MAX_CARS]} frustumCulled={false}>
+      <instancedMesh ref={body} args={[undefined, undefined, WORLD_MAX_CARS + TRAFFIC_MAX_CARS]} frustumCulled={false}>
         <boxGeometry args={[1.8, 0.62, 3.1]} />
         <meshToonMaterial />
       </instancedMesh>
-      <instancedMesh ref={cabin} args={[undefined, undefined, WORLD_MAX_CARS]} frustumCulled={false}>
+      <instancedMesh ref={cabin} args={[undefined, undefined, WORLD_MAX_CARS + TRAFFIC_MAX_CARS]} frustumCulled={false}>
         <boxGeometry args={[1.55, 0.62, 1.55]} />
         <meshToonMaterial color="#9ee4e5" />
       </instancedMesh>
-      <instancedMesh ref={lightbar} args={[undefined, undefined, WORLD_MAX_CARS]} frustumCulled={false}>
+      <instancedMesh ref={lightbar} args={[undefined, undefined, WORLD_MAX_CARS + TRAFFIC_MAX_CARS]} frustumCulled={false}>
         <boxGeometry args={[0.95, 0.16, 0.28]} />
         <meshBasicMaterial color="#ffce55" />
       </instancedMesh>
-      <instancedMesh ref={glow} args={[undefined, undefined, WORLD_MAX_CARS]} frustumCulled={false} renderOrder={3}>
+      <instancedMesh ref={glow} args={[undefined, undefined, WORLD_MAX_CARS + TRAFFIC_MAX_CARS]} frustumCulled={false} renderOrder={3}>
         <ringGeometry args={[1.25, 1.55, 18]} />
         <meshBasicMaterial color="#a7fff0" transparent opacity={0.9} depthWrite={false} blending={THREE.AdditiveBlending} />
+      </instancedMesh>
+    </group>
+  )
+}
+
+function DrivingTraffic() {
+  const { runtime } = useGame()
+  const body = useRef<THREE.InstancedMesh>(null)
+  const cabin = useRef<THREE.InstancedMesh>(null)
+  const lamps = useRef<THREE.InstancedMesh>(null)
+  const shadows = useRef<THREE.InstancedMesh>(null)
+  const base = useMemo(() => new THREE.Matrix4(), [])
+  const local = useMemo(() => new THREE.Matrix4(), [])
+  const composed = useMemo(() => new THREE.Matrix4(), [])
+  const position = useMemo(() => new THREE.Vector3(), [])
+  const quaternion = useMemo(() => new THREE.Quaternion(), [])
+  const scale = useMemo(() => new THREE.Vector3(0.8, 0.8, 0.8), [])
+  const shadowScale = useMemo(() => new THREE.Vector3(2.25, 3.25, 1), [])
+  const planeQuaternion = useMemo(() => new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0)), [])
+  const color = useMemo(() => new THREE.Color(), [])
+
+  useFrame(() => {
+    if (!body.current || !cabin.current || !lamps.current || !shadows.current) return
+    let count = 0
+    for (const car of runtime.current.traffic.cars) {
+      if (!car.active) continue
+      position.set(car.position.x, car.position.y, car.position.z)
+      quaternion.setFromAxisAngle(THREE.Object3D.DEFAULT_UP, car.rotation)
+      base.compose(position, quaternion, scale)
+      body.current.setMatrixAt(count, base)
+      body.current.setColorAt(count, color.set(car.color))
+      local.makeTranslation(0, 0.53, -0.15)
+      cabin.current.setMatrixAt(count, composed.copy(base).multiply(local))
+      local.makeTranslation(0, 0.9, -0.15)
+      lamps.current.setMatrixAt(count, composed.copy(base).multiply(local))
+      position.set(car.position.x + 0.2, 0.035, car.position.z + 0.25)
+      composed.compose(position, planeQuaternion, shadowScale)
+      shadows.current.setMatrixAt(count, composed)
+      count += 1
+    }
+    for (const mesh of [body.current, cabin.current, lamps.current, shadows.current]) {
+      mesh.count = count
+      mesh.instanceMatrix.needsUpdate = true
+    }
+    if (body.current.instanceColor) body.current.instanceColor.needsUpdate = true
+  })
+
+  return (
+    <group>
+      <instancedMesh ref={shadows} args={[undefined, undefined, TRAFFIC_MAX_CARS]} frustumCulled={false}>
+        <planeGeometry args={[1, 1]} />
+        <meshBasicMaterial color="#28313d" transparent opacity={0.3} depthWrite={false} />
+      </instancedMesh>
+      <instancedMesh ref={body} args={[undefined, undefined, TRAFFIC_MAX_CARS]} frustumCulled={false}>
+        <boxGeometry args={[1.8, 0.62, 3.1]} />
+        <meshToonMaterial />
+      </instancedMesh>
+      <instancedMesh ref={cabin} args={[undefined, undefined, TRAFFIC_MAX_CARS]} frustumCulled={false}>
+        <boxGeometry args={[1.55, 0.62, 1.55]} />
+        <meshToonMaterial color="#9ee4e5" />
+      </instancedMesh>
+      <instancedMesh ref={lamps} args={[undefined, undefined, TRAFFIC_MAX_CARS]} frustumCulled={false}>
+        <boxGeometry args={[0.95, 0.16, 0.28]} />
+        <meshBasicMaterial color="#ffce55" />
       </instancedMesh>
     </group>
   )
@@ -301,7 +371,7 @@ function Ufo() {
     const forwardX = Math.sin(heading) * horizontalForward
     const forwardY = Math.sin(pitch)
     const forwardZ = Math.cos(heading) * horizontalForward
-    const speedRatio = Math.min(1, snapshot.speed / 22)
+    const speedRatio = Math.min(1, snapshot.speed / 30)
     const altitudeView = Math.max(0, game.drone.position.y - 6) * 0.12
     const distance = 7.8 + speedRatio * 3.3 + altitudeView
     cameraPosition.set(
@@ -421,7 +491,7 @@ function Fighters() {
       const radius = 12 + index * 3.5
       fighter.position.set(
         player.x + Math.sin(angle) * radius,
-        Math.min(88, player.y + 4.5 + index * 1.1 + Math.sin(angle * 1.7)),
+        Math.min(128, player.y + 4.5 + index * 1.1 + Math.sin(angle * 1.7)),
         player.z + Math.cos(angle) * radius,
       )
       fighter.rotation.y = Math.atan2(player.x - fighter.position.x, player.z - fighter.position.z)
@@ -452,39 +522,35 @@ function GroundPolice() {
   )
 }
 
-function LaserRay() {
-  const { runtime, snapshot } = useGame()
-  const ref = useRef<THREE.Mesh>(null)
-  const { camera } = useThree()
-  const raycaster = useMemo(() => new THREE.Raycaster(), [])
-  const pointer = useMemo(() => new THREE.Vector2(), [])
-  const start = useMemo(() => new THREE.Vector3(), [])
-  const aimPoint = useMemo(() => new THREE.Vector3(), [])
-  const end = useMemo(() => new THREE.Vector3(), [])
+function LaserProjectiles() {
+  const { runtime } = useGame()
+  const ref = useRef<THREE.InstancedMesh>(null)
+  const matrix = useMemo(() => new THREE.Matrix4(), [])
+  const position = useMemo(() => new THREE.Vector3(), [])
   const direction = useMemo(() => new THREE.Vector3(), [])
-  const midpoint = useMemo(() => new THREE.Vector3(), [])
+  const scale = useMemo(() => new THREE.Vector3(1, 1.4, 1), [])
+  const quaternion = useMemo(() => new THREE.Quaternion(), [])
   const up = useMemo(() => new THREE.Vector3(0, 1, 0), [])
   useFrame(() => {
     if (!ref.current) return
-    const drone = runtime.current.drone
-    start.set(drone.position.x, drone.position.y, drone.position.z)
-    pointer.set(runtime.current.aimX, -runtime.current.aimY)
-    raycaster.setFromCamera(pointer, camera)
-    aimPoint.copy(raycaster.ray.origin).addScaledVector(raycaster.ray.direction, 60)
-    direction.subVectors(aimPoint, start).normalize()
-    end.copy(start).addScaledVector(direction, 38)
-    direction.subVectors(end, start)
-    midpoint.addVectors(start, end).multiplyScalar(0.5)
-    ref.current.position.copy(midpoint)
-    ref.current.scale.y = direction.length()
-    ref.current.quaternion.setFromUnitVectors(up, direction.normalize())
+    let count = 0
+    for (const projectile of runtime.current.laserProjectiles) {
+      if (!projectile.active) continue
+      position.set(projectile.position.x, projectile.position.y, projectile.position.z)
+      direction.set(projectile.velocity.x, projectile.velocity.y, projectile.velocity.z).normalize()
+      quaternion.setFromUnitVectors(up, direction)
+      matrix.compose(position, quaternion, scale)
+      ref.current.setMatrixAt(count, matrix)
+      count += 1
+    }
+    ref.current.count = count
+    ref.current.instanceMatrix.needsUpdate = true
   })
-  if (!snapshot.laserActive) return null
   return (
-    <mesh ref={ref}>
-      <cylinderGeometry args={[0.07, 0.16, 1, 6]} />
+    <instancedMesh ref={ref} args={[undefined, undefined, LASER_MAX_PROJECTILES]} frustumCulled={false}>
+      <cylinderGeometry args={[0.08, 0.2, 1.6, 6]} />
       <meshBasicMaterial color="#ffef6a" />
-    </mesh>
+    </instancedMesh>
   )
 }
 
@@ -543,9 +609,14 @@ function PerformanceProbe() {
     scene.traverse((object) => {
       if ((object as THREE.Mesh).isMesh && object.visible) visibleMeshPools += 1
     })
+    const activeTraffic = runtime.current.traffic.cars.filter((car) => car.active).length
     window.__BEAM_BANDIT_METRICS__ = {
       activeBuildings: runtime.current.world.buildings.length,
-      activeCars: runtime.current.beamObjects.length,
+      activeCars: runtime.current.beamObjects.length + activeTraffic,
+      activeTraffic,
+      activeLaserProjectiles: runtime.current.laserProjectiles.filter((projectile) => projectile.active).length,
+      laserShotsFired: runtime.current.laserShotsFired,
+      height: runtime.current.drone.position.y,
       visibleMeshPools,
     }
     gl.domElement.dataset.renderMetrics = JSON.stringify(window.__BEAM_BANDIT_METRICS__)
@@ -620,11 +691,12 @@ export function DroneScene() {
       <PerformanceProbe />
       <City />
       <PullableCars />
+      <DrivingTraffic />
       <MissionTargets />
       <DroppedCaptives />
       <GroundPolice />
       <Fighters />
-      <LaserRay />
+      <LaserProjectiles />
       <TractorBeam />
       <Ufo />
       <PostFx speed={snapshot.speed} impact={snapshot.impactFlash} />
