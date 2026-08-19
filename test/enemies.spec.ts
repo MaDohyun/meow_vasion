@@ -8,6 +8,8 @@ import {
   isAntiAirBuilding,
   syncAntiAirEnemies,
   syncEnemyTiers,
+  stepEnemies,
+  waveStageForTime,
 } from '../src/core/enemies'
 import { getProceduralCell, type ProceduralBuilding } from '../src/core/world'
 
@@ -22,68 +24,61 @@ function antiAirBuildings(count: number) {
   return result
 }
 
-describe('fixed cumulative enemy tiers', () => {
-  it('activates each fixed pool cumulatively without growing allocations', () => {
+function fillWave(time: number) {
+  const state = createEnemyState()
+  const player = { x: 10, y: 14, z: 20 }
+  for (let tick = 0; tick < 720; tick += 1) syncEnemyTiers(state, time, player, 0, 0.05)
+  return { state, player }
+}
+
+describe('time-based enemy waves', () => {
+  it('starts with only a couple of recon drones', () => {
     const state = createEnemyState()
-    const slotCount = state.slots.length
-    const player = { x: 10, y: 4, z: 20 }
-
-    syncEnemyTiers(state, 1, player, 0, 1 / 60)
-    expect(activeEnemyCount(state, 'soldier')).toBe(ENEMY_CAPS.soldier)
-    expect(activeEnemyCount(state, 'helicopter')).toBe(0)
-
-    syncEnemyTiers(state, 5, player, 0, 1 / 60)
-    expect(activeEnemyCount(state, 'soldier')).toBe(8)
-    expect(activeEnemyCount(state, 'helicopter')).toBe(3)
-    expect(activeEnemyCount(state, 'fighter')).toBe(3)
-    expect(activeEnemyCount(state, 'balloon')).toBe(1)
-    expect(state.slots).toHaveLength(slotCount)
+    syncEnemyTiers(state, 0, { x: 0, y: 4, z: 0 }, 0, 1 / 60)
+    expect(activeEnemyCount(state, 'drone')).toBe(2)
+    expect(activeEnemyCount(state, 'police')).toBe(0)
+    expect(waveStageForTime(20)).toBe(1)
   })
 
-  it('tracks HP per target instead of sharing damage across a tier', () => {
-    const state = createEnemyState()
-    syncEnemyTiers(state, 4, { x: 0, y: 5, z: 0 }, 0, 1 / 60)
-    const fighters = state.slots.filter((enemy) => enemy.kind === 'fighter' && enemy.active)
-    expect(fighters[0]?.hp).toBe(ENEMY_MAX_HP.fighter)
-    for (let hit = 0; hit < 3; hit += 1) expect(hitEnemy(state, fighters[0]!.id).destroyed).toBe(false)
-    expect(fighters[0]?.hp).toBe(1)
-    expect(fighters[1]?.hp).toBe(ENEMY_MAX_HP.fighter)
-    expect(hitEnemy(state, fighters[0]!.id).destroyed).toBe(true)
-    expect(activeEnemyCount(state, 'fighter')).toBe(2)
+  it('escalates to a bounded mixed army and a single boss', () => {
+    const { state } = fillWave(150)
+    expect(activeEnemyCount(state, 'drone')).toBe(ENEMY_CAPS.drone)
+    expect(activeEnemyCount(state, 'helicopter')).toBe(ENEMY_CAPS.helicopter)
+    expect(activeEnemyCount(state, 'tank')).toBe(ENEMY_CAPS.tank)
+    expect(activeEnemyCount(state, 'boss')).toBe(1)
+    expect(state.slots.length).toBeLessThan(160)
   })
 
-  it('places deterministic anti-air units on eligible buildings at tier three', () => {
-    const buildings = antiAirBuildings(ENEMY_CAPS['anti-air'] + 3)
-    expect(buildings.length).toBeGreaterThanOrEqual(ENEMY_CAPS['anti-air'])
+  it('keeps individual HP for large units', () => {
+    const { state } = fillWave(150)
+    const boss = state.slots.find((enemy) => enemy.kind === 'boss' && enemy.active)!
+    expect(boss.hp).toBe(ENEMY_MAX_HP.boss)
+    for (let hit = 0; hit < 24; hit += 1) expect(hitEnemy(state, boss.id).destroyed).toBe(false)
+    expect(boss.hp).toBe(1)
+    expect(hitEnemy(state, boss.id).destroyed).toBe(true)
+  })
+
+  it('enables deterministic anti-air sites only at the late high-altitude wave', () => {
+    const buildings = antiAirBuildings(ENEMY_CAPS['anti-air'] + 2)
     const first = createEnemyState()
     const second = createEnemyState()
-    syncAntiAirEnemies(first, 2, buildings)
+    syncAntiAirEnemies(first, 90, buildings)
     expect(activeEnemyCount(first, 'anti-air')).toBe(0)
-    syncAntiAirEnemies(first, 3, buildings)
-    syncAntiAirEnemies(second, 3, buildings)
+    syncAntiAirEnemies(first, 110, buildings)
+    syncAntiAirEnemies(second, 110, buildings)
     const sources = first.slots.filter((enemy) => enemy.active && enemy.kind === 'anti-air').map((enemy) => enemy.sourceId)
     expect(sources).toEqual(second.slots.filter((enemy) => enemy.active && enemy.kind === 'anti-air').map((enemy) => enemy.sourceId))
-    expect(sources).toHaveLength(ENEMY_CAPS['anti-air'])
+    expect(sources).toHaveLength(Math.min(5, buildings.length))
   })
 
-  it('does not respawn a destroyed anti-air unit during the session', () => {
-    const buildings = antiAirBuildings(2)
-    const state = createEnemyState()
-    syncAntiAirEnemies(state, 3, buildings)
-    const target = state.slots.find((enemy) => enemy.kind === 'anti-air' && enemy.active)!
-    for (let hit = 0; hit < ENEMY_MAX_HP['anti-air']; hit += 1) hitEnemy(state, target.id)
-    expect(state.destroyedAntiAir.has(target.sourceId!)).toBe(true)
-    syncAntiAirEnemies(state, 3, buildings)
-    expect(state.slots.some((enemy) => enemy.active && enemy.sourceId === target.sourceId)).toBe(false)
-  })
-
-  it('spawns mobile pools behind the current view direction', () => {
-    const state = createEnemyState()
-    const player = { x: 5, y: 3, z: -7 }
-    syncEnemyTiers(state, 5, player, 0, 1 / 60)
-    for (const enemy of state.slots.filter((slot) => slot.active)) {
-      const forwardDot = enemy.position.z - player.z
-      expect(forwardDot).toBeLessThan(0)
+  it('uses the fighter pool for repeated strafing runs instead of balloon pursuers', () => {
+    const { state, player } = fillWave(95)
+    const fighter = state.slots.find((enemy) => enemy.kind === 'fighter' && enemy.active)!
+    const startX = fighter.position.x
+    for (let tick = 0; tick < 20; tick += 1) {
+      stepEnemies(state, player, 0.05)
     }
+    expect(fighter.position.x).not.toBe(startX)
+    expect(state.slots.some((enemy) => enemy.kind === ('balloon' as never))).toBe(false)
   })
 })

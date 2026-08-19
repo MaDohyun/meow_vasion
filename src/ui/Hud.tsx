@@ -127,7 +127,7 @@ function Results() {
       <p>FINAL INFAMY SCORE</p>
       <div className="result-stats">
         <span><b>{formatTime(snapshot.survivalTime)}</b> SURVIVED</span>
-        <span><b>{snapshot.threatLevel}</b> THREAT</span>
+        <span><b>{snapshot.waveStage}</b> WAVE</span>
         <span><b>{snapshot.enemiesDown}</b> ENEMIES</span>
         <span><b>{snapshot.loadedCars}</b> CARS</span>
       </div>
@@ -160,7 +160,7 @@ export function Hud() {
         <section className="score-card panel">
           <span className="eyebrow">DESTRUCTION SCORE</span>
           <strong>{Math.floor(snapshot.score).toLocaleString()}</strong>
-          <div><b>THREAT {snapshot.threatLevel}</b> · EVENTS ONLY</div>
+          <div><b>WAVE {snapshot.waveStage}</b> · EVENTS ONLY</div>
           <time>RUN {formatTime(snapshot.survivalTime)}</time>
         </section>
 
@@ -177,6 +177,7 @@ export function Hud() {
             <span>E · BEAM</span><b>{beamStatus}</b>
           </div>
           <div className="cargo-readout"><span>CARGO · {snapshot.loadedCars}/{snapshot.maxLoadedCars}</span><b>{Math.round(snapshot.cargoSlowdown * 100)}% SLOWDOWN</b></div>
+          <div className="altitude-alert" data-active={snapshot.height >= 28}><span>{snapshot.height >= 28 ? 'AA BAND' : snapshot.height > 5.5 ? 'ARMOR BAND' : 'GROUND BAND'}</span><b>{snapshot.height >= 28 ? 'MISSILES LIVE' : snapshot.height > 5.5 ? 'TANKS LIVE' : 'GROUND UNITS LIVE'}</b></div>
         </section>
 
         <section className="flight-card panel">

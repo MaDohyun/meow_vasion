@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { collideDrone, createDroneState, stepDrone, type Aabb, type DroneInput, type DroneState, type Vec3 } from './core/drone'
 import { beamProfile, beginCarDestruction, isInsideBeam, stepBeamObjects, type BeamField, type BeamObject } from './core/beam'
 import { beginNearbyCrowdAbsorption, createCrowdState, stepCrowds, type CrowdState } from './core/crowds'
-import { activeEnemyCount, createEnemyState, hitEnemy, nearbyEnemyThreats, stepEnemies, syncAntiAirEnemies, syncEnemyTiers, type EnemyState } from './core/enemies'
+import { activeEnemyCount, createEnemyState, hitEnemy, nearbyEnemyContacts, stepEnemies, stepEnemyProjectiles, syncAntiAirEnemies, syncEnemyTiers, waveLabelForTime, waveStageForTime, type EnemyState } from './core/enemies'
 import {
   createLaserPool,
   createLaserBurstPool,
@@ -21,7 +21,7 @@ import {
 import { requestedPilotExpression, updatePilotExpression, type PilotExpression } from './core/pilot'
 import { activeWorldColliders, createActiveWorld, updateActiveWorld, WORLD_MAX_CARS, WORLD_REMOVE_RADIUS, type ActiveWorld, type ProceduralCar } from './core/world'
 import { captureTrafficCar, createTrafficState, releaseTrafficSlot, stepTraffic, TRAFFIC_MAX_CARS, type TrafficCar, type TrafficState } from './core/traffic'
-import { setBgmThreat, startBgm, stopBgm, tone } from './audio'
+import { setBgmWave, startBgm, stopBgm, tone } from './audio'
 
 export type GamePhase = 'intro' | 'playing' | 'results'
 
@@ -36,7 +36,7 @@ export type GameRuntime = {
   sessionTime: number
   remainingTime: number
   score: number
-  threatLevel: number
+  waveStage: number
   loadedCars: number
   damageCooldown: number
   collisionCooldown: number
@@ -58,7 +58,6 @@ export type GameRuntime = {
   laserTargets: LaserSphereTarget[]
   enemies: EnemyState
   enemiesDown: number
-  enemyAttackTimer: number
   beamObjects: BeamObject[]
   crowds: CrowdState
   traffic: TrafficState
@@ -88,7 +87,7 @@ export type GameSnapshot = {
   remainingTime: number
   survivalTarget: number
   score: number
-  threatLevel: number
+  waveStage: number
   loadedCars: number
   maxLoadedCars: number
   cargoSlowdown: number
@@ -177,7 +176,7 @@ function makeRuntime(): GameRuntime {
     sessionTime: 0,
     remainingTime: SURVIVAL_START_TIME,
     score: 0,
-    threatLevel: 0,
+    waveStage: 0,
     loadedCars: 0,
     damageCooldown: 0,
     collisionCooldown: 0,
@@ -199,7 +198,6 @@ function makeRuntime(): GameRuntime {
     laserTargets: [],
     enemies,
     enemiesDown: 0,
-    enemyAttackTimer: 6,
     beamObjects: world.cars.map(makeBeamObject),
     crowds,
     traffic,
@@ -247,7 +245,7 @@ function writeLaserSphereTarget(targets: LaserSphereTarget[], slot: number, id: 
 
 function laserSphereTargets(game: GameRuntime) {
   let slot = 0
-  for (const enemy of game.enemies.slots) if (enemy.active) slot = writeLaserSphereTarget(game.laserTargets, slot, enemy.id, enemy.position, enemy.kind === 'balloon' ? 5.5 : 2.1)
+  for (const enemy of game.enemies.slots) if (enemy.active) slot = writeLaserSphereTarget(game.laserTargets, slot, enemy.id, enemy.position, enemy.kind === 'boss' ? 7 : enemy.hitRadius)
   for (const object of game.beamObjects) if (object.active && !object.destroying) slot = writeLaserSphereTarget(game.laserTargets, slot, object.id, object.position, 1.7)
   for (const car of game.traffic.cars) if (car.active) slot = writeLaserSphereTarget(game.laserTargets, slot, car.id, car.position, 1.7)
   game.laserTargets.length = slot
@@ -294,7 +292,7 @@ function dropCars(game: GameRuntime) {
 function registerEnemyLaserHit(game: GameRuntime, id: string) {
   const result = hitEnemy(game.enemies, id)
   if (!result.destroyed || !result.kind) return
-  const reward = result.kind === 'balloon' ? 300 : result.kind === 'fighter' ? 140 : result.kind === 'anti-air' ? 110 : result.kind === 'helicopter' ? 80 : 35
+  const reward = result.kind === 'boss' ? 1200 : result.kind === 'tank' ? 260 : result.kind === 'anti-air' ? 180 : result.kind === 'fighter' ? 140 : result.kind === 'helicopter' ? 80 : result.kind === 'police-car' ? 55 : 35
   game.enemiesDown += 1
   game.score += reward
   game.message = `${result.kind.toUpperCase()} POPPED · +${reward}`
@@ -355,12 +353,13 @@ function syncCrowdThreats(game: GameRuntime) {
   }
 }
 
-function registerImpact(game: GameRuntime, source: 'ENEMY' | 'BUILDING') {
+function registerImpact(game: GameRuntime, source: 'ENEMY' | 'BUILDING', customDamage?: number) {
   if (game.damageCooldown > 0 || game.phase !== 'playing') return
   game.damageCooldown = 1.05
   game.impactFlash = 1
-  game.remainingTime = Math.max(0, game.remainingTime - (source === 'BUILDING' ? 4 : 8))
-  game.message = `${source} IMPACT · TIME -${source === 'BUILDING' ? 4 : 8}s`
+  const damage = customDamage ?? (source === 'BUILDING' ? 4 : 8)
+  game.remainingTime = Math.max(0, game.remainingTime - damage)
+  game.message = `${source} IMPACT · TIME -${damage}s`
   game.messageTime = 1.8
   tone(source === 'BUILDING' ? 'impact' : 'warning')
   if ('vibrate' in navigator) navigator.vibrate?.([35, 20, 35])
@@ -377,7 +376,7 @@ function snapshotOf(game: GameRuntime): GameSnapshot {
     remainingTime: game.remainingTime,
     survivalTarget: SURVIVAL_TARGET_TIME,
     score: game.score,
-    threatLevel: game.threatLevel,
+    waveStage: game.waveStage,
     loadedCars: game.loadedCars,
     maxLoadedCars: MAX_CARRIED_CARS,
     cargoSlowdown: slowdown,
@@ -408,8 +407,8 @@ function updatePilotStatus(game: GameRuntime) {
   const next = requestedPilotExpression({
     elapsed: game.sessionTime,
     impact: game.impactFlash > 0,
-    threatLevel: game.threatLevel,
-    threatIncreased: game.threatLevel > game.pilotPreviousThreat,
+    threatLevel: game.waveStage,
+    threatIncreased: game.waveStage > game.pilotPreviousThreat,
     cargoIncreased: game.loadedCars > game.pilotPreviousCars,
     phase: game.phase,
     victory: game.victory,
@@ -421,7 +420,7 @@ function updatePilotStatus(game: GameRuntime) {
   game.pilotExpression = state.expression
   game.pilotHoldUntil = state.holdUntil
   game.pilotPreviousCars = game.loadedCars
-  game.pilotPreviousThreat = game.threatLevel
+  game.pilotPreviousThreat = game.waveStage
 }
 
 function endRun(game: GameRuntime, title: string, victory: boolean) {
@@ -549,10 +548,15 @@ export function GameProvider({ children }: { children: ReactNode }) {
     }
     const collision = collideDrone(stepped, game.worldColliders)
     game.drone = collision.state
-    game.threatLevel = Math.min(5, Math.floor(game.sessionTime / 36))
-    if (game.threatLevel !== game.pilotPreviousThreat) setBgmThreat(game.threatLevel)
-    syncEnemyTiers(game.enemies, game.threatLevel, game.drone.position, game.drone.heading, d)
-    syncAntiAirEnemies(game.enemies, game.threatLevel, game.world.buildings)
+    game.waveStage = waveStageForTime(game.sessionTime)
+    if (game.waveStage !== game.pilotPreviousThreat) {
+      setBgmWave(game.waveStage)
+      game.message = waveLabelForTime(game.sessionTime)
+      game.messageTime = 2.2
+      tone('upgrade')
+    }
+    syncEnemyTiers(game.enemies, game.sessionTime, game.drone.position, game.drone.heading, d)
+    syncAntiAirEnemies(game.enemies, game.sessionTime, game.world.buildings)
     stepEnemies(game.enemies, game.drone.position, d)
     if (collision.hit && collision.impulse > 2.5 && game.collisionCooldown <= 0) { game.collisionCooldown = 0.45; registerImpact(game, 'BUILDING') }
 
@@ -619,11 +623,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
     }
     game.laserActive = game.laserFlash > 0
 
-    const enemyThreats = nearbyEnemyThreats(game.enemies, game.drone.position)
-    if (enemyThreats > 0) {
-      game.enemyAttackTimer -= d * (1 + game.threatLevel * 0.08)
-      if (game.enemyAttackTimer <= 0) { registerImpact(game, 'ENEMY'); game.enemyAttackTimer = Math.max(2.8, 6.2 - game.threatLevel * 0.35) }
-    } else game.enemyAttackTimer = Math.max(game.enemyAttackTimer, 1.8)
+    const projectileDamage = stepEnemyProjectiles(game.enemies, game.drone.position, d)
+    if (projectileDamage > 0) registerImpact(game, 'ENEMY', Math.min(12, projectileDamage))
+    const enemyContacts = nearbyEnemyContacts(game.enemies, game.drone.position)
+    if (enemyContacts > 0) registerImpact(game, 'ENEMY', 3)
     updatePilotStatus(game)
     publishAccumulator.current += d
     if (publishAccumulator.current >= 0.06) { publishAccumulator.current = 0; publish() }

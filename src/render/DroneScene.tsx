@@ -111,13 +111,45 @@ function fighterGeometry() {
   ])
 }
 
-function balloonGeometry() {
+function droneGeometry() {
   return mergeModel([
-    coloredPart(new THREE.SphereGeometry(3.9, 14, 9).scale(1.08, 1.28, 1.08).translate(0, 1.2, 0), '#ef78a7'),
-    coloredPart(new THREE.BoxGeometry(2.2, 1.05, 1.65).translate(0, -3.55, 0), '#7b5966'),
-    coloredPart(new THREE.CylinderGeometry(0.06, 0.06, 3.3, 5).rotateZ(-0.25).translate(-0.72, -1.8, 0), '#f5d7af'),
-    coloredPart(new THREE.CylinderGeometry(0.06, 0.06, 3.3, 5).rotateZ(0.25).translate(0.72, -1.8, 0), '#f5d7af'),
-    coloredPart(new THREE.BoxGeometry(1.2, 0.16, 0.35).translate(0, -3.05, 0.82), '#ffd46d'),
+    coloredPart(new THREE.SphereGeometry(0.58, 8, 6).scale(1.2, 0.62, 1.2), '#5b83a6'),
+    coloredPart(new THREE.ConeGeometry(0.3, 0.68, 6).translate(0, 0.42, 0), '#8ee8e8'),
+    coloredPart(new THREE.BoxGeometry(1.65, 0.08, 0.16), '#ffcf68'),
+  ])
+}
+
+function policeGeometry() {
+  return mergeModel([
+    coloredPart(new THREE.CapsuleGeometry(0.28, 0.62, 4, 7), '#4670a0'),
+    coloredPart(new THREE.SphereGeometry(0.25, 7, 5).translate(0, 0.78, 0), '#d9a06f'),
+    coloredPart(new THREE.BoxGeometry(0.15, 0.56, 0.17).translate(-0.17, -0.55, 0), '#253958'),
+    coloredPart(new THREE.BoxGeometry(0.15, 0.56, 0.17).translate(0.17, -0.55, 0), '#253958'),
+  ])
+}
+
+function policeCarGeometry() {
+  return mergeModel([
+    coloredPart(new RoundedBoxGeometry(1.8, 0.58, 3.2, 2, 0.15), '#e9e4ce'),
+    coloredPart(new RoundedBoxGeometry(1.42, 0.56, 1.45, 2, 0.16).translate(0, 0.52, -0.12), '#6d91a5'),
+    coloredPart(new THREE.BoxGeometry(0.88, 0.12, 0.24).translate(0, 0.85, -0.12), '#ff5269'),
+  ])
+}
+
+function tankGeometry() {
+  return mergeModel([
+    coloredPart(new RoundedBoxGeometry(3.4, 0.9, 4.6, 2, 0.2), '#596453'),
+    coloredPart(new THREE.CylinderGeometry(1.2, 1.2, 0.82, 10).translate(0, 0.86, 0), '#7d8360'),
+    coloredPart(new THREE.CylinderGeometry(0.16, 0.2, 3.9, 8).rotateX(Math.PI / 2).translate(0, 1.08, 1.55), '#343b35'),
+  ])
+}
+
+function bossGeometry() {
+  return mergeModel([
+    coloredPart(new THREE.SphereGeometry(6.3, 18, 10).scale(1.25, 0.42, 1.25), '#4c5561'),
+    coloredPart(new THREE.SphereGeometry(3.1, 14, 8).scale(1.05, 0.72, 1.05).translate(0, 1.8, 0), '#a65c67'),
+    coloredPart(new THREE.CylinderGeometry(4.4, 3.4, 0.62, 18).translate(0, -0.8, 0), '#252e3a'),
+    coloredPart(new THREE.BoxGeometry(0.22, 0.22, 8).translate(0, -0.48, 0), '#f3b24d'),
   ])
 }
 
@@ -128,6 +160,8 @@ declare global {
       activeCars: number
       activeTraffic: number
       activeLaserProjectiles: number
+      activeEnemies: number
+      activeEnemyProjectiles: number
       laserShotsFired: number
       height: number
       visibleMeshPools: number
@@ -416,7 +450,7 @@ function Ufo() {
       Math.max(1, game.drone.position.y + 3.6 + speedRatio * 1.1 + altitudeView - forwardY * distance * 0.72),
       game.drone.position.z - forwardZ * distance,
     )
-    const threatShake = snapshot.threatLevel * 0.028
+    const threatShake = snapshot.waveStage * 0.028
     cameraPosition.x += Math.sin(game.sessionTime * 71) * threatShake
     cameraPosition.y += Math.cos(game.sessionTime * 59) * threatShake * 0.6
     camera.position.lerp(cameraPosition, 1 - Math.exp(-5.5 * dt))
@@ -542,11 +576,15 @@ function CrowdPools() {
 }
 
 const enemyGeometry: Record<EnemyKind, THREE.BufferGeometry> = {
+  drone: droneGeometry(),
+  police: policeGeometry(),
+  'police-car': policeCarGeometry(),
   soldier: soldierGeometry(),
   helicopter: helicopterGeometry(),
   'anti-air': antiAirGeometry(),
   fighter: fighterGeometry(),
-  balloon: balloonGeometry(),
+  tank: tankGeometry(),
+  boss: bossGeometry(),
 }
 
 function EnemyPool({ kind }: { kind: EnemyKind }) {
@@ -567,13 +605,23 @@ function EnemyPool({ kind }: { kind: EnemyKind }) {
       if (!enemy.active || enemy.kind !== kind) continue
       position.set(enemy.position.x, enemy.position.y, enemy.position.z)
       const yaw = Math.atan2(player.x - enemy.position.x, player.z - enemy.position.z)
-      rotation.set(0, yaw, kind === 'fighter' ? Math.sin(enemy.phase) * 0.22 : 0)
+      const horizontalDistance = Math.hypot(player.x - enemy.position.x, player.z - enemy.position.z)
+      const groundUnit = kind === 'police' || kind === 'police-car' || kind === 'soldier' || kind === 'tank'
+      const lookUp = groundUnit && player.y > 5.5 && horizontalDistance < 60
+      const pitch = lookUp ? -Math.atan2(Math.max(0, player.y - enemy.position.y), Math.max(0.1, horizontalDistance)) : 0
+      rotation.set(pitch, yaw, kind === 'fighter' ? Math.sin(enemy.phase) * 0.22 : 0)
       quaternion.setFromEuler(rotation)
-      scale.setScalar(kind === 'soldier' ? 1.05 : 1)
+      const size = kind === 'drone' ? 0.45 : kind === 'police' ? 0.82 : kind === 'police-car' ? 1.05 : kind === 'soldier' ? 1.08 : kind === 'helicopter' ? 0.82 : kind === 'fighter' ? 1.18 : kind === 'tank' ? 1.45 : kind === 'anti-air' ? 2.35 : 1.8
+      scale.setScalar(size)
       matrix.compose(position, quaternion, scale)
       mesh.setMatrixAt(count, matrix)
-      const brightness = 0.84 + (enemy.slot % 3) * 0.07
-      mesh.setColorAt(count, color.setRGB(brightness, brightness, brightness))
+      if (enemy.aiming) color.set('#ff6573')
+      else if (kind === 'drone') color.set('#68e4ec')
+      else if (kind === 'police' || kind === 'police-car') color.set('#e9edf0')
+      else if (kind === 'tank' || kind === 'anti-air') color.set('#7f8765')
+      else if (kind === 'boss') color.set('#a85d69')
+      else color.setRGB(0.84 + (enemy.slot % 3) * 0.07, 0.84 + (enemy.slot % 3) * 0.07, 0.84 + (enemy.slot % 3) * 0.07)
+      mesh.setColorAt(count, color)
       count += 1
     }
     mesh.count = count
@@ -582,7 +630,7 @@ function EnemyPool({ kind }: { kind: EnemyKind }) {
   })
   return (
     <instancedMesh ref={ref} args={[enemyGeometry[kind], undefined, ENEMY_CAPS[kind]]} frustumCulled={false}>
-      <meshToonMaterial vertexColors emissive={kind === 'balloon' ? '#5a1d38' : '#171525'} emissiveIntensity={0.22} />
+      <meshToonMaterial vertexColors emissive={kind === 'boss' ? '#641d35' : kind === 'drone' ? '#154f66' : '#171525'} emissiveIntensity={kind === 'boss' ? 0.42 : 0.22} />
     </instancedMesh>
   )
 }
@@ -590,12 +638,88 @@ function EnemyPool({ kind }: { kind: EnemyKind }) {
 function EnemyPools() {
   return (
     <group>
+      <EnemyPool kind="drone" />
+      <EnemyPool kind="police" />
+      <EnemyPool kind="police-car" />
       <EnemyPool kind="soldier" />
       <EnemyPool kind="helicopter" />
       <EnemyPool kind="anti-air" />
       <EnemyPool kind="fighter" />
-      <EnemyPool kind="balloon" />
+      <EnemyPool kind="tank" />
+      <EnemyPool kind="boss" />
     </group>
+  )
+}
+
+const ENEMY_WARNING_CAPACITY = Object.values(ENEMY_CAPS).reduce((sum, value) => sum + value, 0)
+
+function EnemyWarnings() {
+  const { runtime } = useGame()
+  const ref = useRef<THREE.InstancedMesh>(null)
+  const matrix = useMemo(() => new THREE.Matrix4(), [])
+  const position = useMemo(() => new THREE.Vector3(), [])
+  const scale = useMemo(() => new THREE.Vector3(), [])
+  const quaternion = useMemo(() => new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0)), [])
+  const color = useMemo(() => new THREE.Color(), [])
+  useFrame(({ clock }) => {
+    const mesh = ref.current
+    if (!mesh) return
+    let count = 0
+    for (const enemy of runtime.current.enemies.slots) {
+      if (!enemy.active || enemy.telegraph <= 0) continue
+      position.set(enemy.position.x, Math.max(0.08, enemy.position.y - 0.6), enemy.position.z)
+      const pulse = 1 + Math.sin(clock.elapsedTime * 18) * 0.12
+      scale.setScalar((enemy.kind === 'boss' ? 4 : enemy.kind === 'anti-air' ? 2.2 : 1.25) * pulse)
+      matrix.compose(position, quaternion, scale)
+      mesh.setMatrixAt(count, matrix)
+      color.set(enemy.kind === 'anti-air' ? '#ffdf5c' : enemy.kind === 'boss' ? '#ff5f7c' : '#fff3a3')
+      mesh.setColorAt(count, color)
+      count += 1
+    }
+    mesh.count = count
+    mesh.instanceMatrix.needsUpdate = true
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
+  })
+  return (
+    <instancedMesh ref={ref} args={[undefined, undefined, ENEMY_WARNING_CAPACITY]} frustumCulled={false} renderOrder={4}>
+      <ringGeometry args={[0.82, 1, 20]} />
+      <meshBasicMaterial vertexColors transparent opacity={0.76} depthWrite={false} side={THREE.DoubleSide} />
+    </instancedMesh>
+  )
+}
+
+function EnemyProjectiles() {
+  const { runtime } = useGame()
+  const ref = useRef<THREE.InstancedMesh>(null)
+  const matrix = useMemo(() => new THREE.Matrix4(), [])
+  const position = useMemo(() => new THREE.Vector3(), [])
+  const scale = useMemo(() => new THREE.Vector3(), [])
+  const quaternion = useMemo(() => new THREE.Quaternion(), [])
+  const color = useMemo(() => new THREE.Color(), [])
+  useFrame(() => {
+    const mesh = ref.current
+    if (!mesh) return
+    let count = 0
+    for (const projectile of runtime.current.enemies.projectiles) {
+      if (!projectile.active) continue
+      position.set(projectile.position.x, projectile.position.y, projectile.position.z)
+      const size = projectile.kind === 'boss-beam' ? 1.35 : projectile.kind === 'missile' ? 0.95 : projectile.kind === 'shell' ? 0.8 : 0.48
+      scale.setScalar(size)
+      matrix.compose(position, quaternion, scale)
+      mesh.setMatrixAt(count, matrix)
+      color.set(projectile.kind === 'boss-beam' ? '#ff5f7c' : projectile.kind === 'missile' ? '#ffe05f' : projectile.kind === 'shell' ? '#ff9c54' : projectile.kind === 'rocket' ? '#ff78bd' : '#fff5c7')
+      mesh.setColorAt(count, color)
+      count += 1
+    }
+    mesh.count = count
+    mesh.instanceMatrix.needsUpdate = true
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
+  })
+  return (
+    <instancedMesh ref={ref} args={[undefined, undefined, 96]} frustumCulled={false} renderOrder={5}>
+      <sphereGeometry args={[1, 6, 4]} />
+      <meshBasicMaterial vertexColors transparent opacity={0.94} depthWrite={false} blending={THREE.AdditiveBlending} />
+    </instancedMesh>
   )
 }
 
@@ -810,6 +934,8 @@ function PerformanceProbe() {
       activeCars: runtime.current.beamObjects.length + activeTraffic,
       activeTraffic,
       activeLaserProjectiles: runtime.current.laserProjectiles.filter((projectile) => projectile.active).length,
+      activeEnemies: runtime.current.enemies.slots.filter((enemy) => enemy.active).length,
+      activeEnemyProjectiles: runtime.current.enemies.projectiles.filter((projectile) => projectile.active).length,
       laserShotsFired: runtime.current.laserShotsFired,
       height: runtime.current.drone.position.y,
       visibleMeshPools,
@@ -890,6 +1016,8 @@ export function DroneScene() {
       <DrivingTraffic />
       <CrowdPools />
       <EnemyPools />
+      <EnemyWarnings />
+      <EnemyProjectiles />
       <LaserProjectiles />
       <LaserBursts />
       <TractorBeam />
