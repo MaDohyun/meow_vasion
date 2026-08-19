@@ -49,7 +49,7 @@ function LoadingScreen({ stage }: { stage: LoadingStage }) {
     <div className="loading-overlay" role="status" aria-live="polite">
       <div className="loading-grid" />
       <div className="loading-ufo" aria-hidden="true"><i /><i /><i /></div>
-      <span className="loading-kicker">BEAM BANDIT · PRE-FLIGHT CHECK</span>
+      <span className="loading-kicker">UFO 어택 서바이벌 · PRE-FLIGHT CHECK</span>
       <h1>LOADING<br /><b>THE GRID</b></h1>
       <div className="loading-progress" aria-label={`${Math.round(progress)} percent loaded`}>
         <i style={{ width: `${progress}%` }} />
@@ -75,7 +75,7 @@ export default function App() {
       <main className="game-shell">
         <Canvas
           tabIndex={0}
-          aria-label="BEAM BANDIT game view"
+          aria-label="UFO 어택 서바이벌 game view"
           dpr={1}
           camera={{ fov: 65, near: 0.1, far: 700, position: [0, 6.5, 62] }}
           gl={{ antialias: false, powerPreference: 'high-performance', alpha: false }}

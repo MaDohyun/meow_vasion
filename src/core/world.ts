@@ -6,7 +6,7 @@ export const WORLD_SPAWN_RADIUS = 250
 export const WORLD_REMOVE_RADIUS = 300
 export const WORLD_LOD_RADIUS = 600
 export const WORLD_REFRESH_DISTANCE = 10
-export const WORLD_MAX_BUILDINGS = 96
+export const WORLD_MAX_BUILDINGS = 128
 export const WORLD_MAX_DISTANT_BUILDINGS = 420
 export const WORLD_MAX_CARS = 48
 export const WORLD_GROUND_RADIUS_CELLS = 9
@@ -112,11 +112,11 @@ export function worldCellCenter(cell: number) {
 export function getProceduralCell(cellX: number, cellZ: number, worldSeed = WORLD_SEED): ProceduralCell {
   const seed = seedForWorldCell(cellX, cellZ, worldSeed)
   const roll = seed % 100
-  const kind: WorldCellKind = roll < 33
+  const kind: WorldCellKind = roll < 48
     ? 'building'
-    : roll < 45
+    : roll < 58
       ? 'parked-car'
-      : roll < 60
+      : roll < 70
         ? 'intersection'
         : 'empty'
   const id = `${cellX}:${cellZ}`
@@ -301,36 +301,4 @@ export function groundCellsAround(position: Pick<Vec3, 'x' | 'z'>, radius = WORL
     for (let x = -radius; x <= radius; x += 1) cells.push(getProceduralCell(centerX + x, centerZ + z))
   }
   return cells
-}
-
-export function missionBuildingAnchors(
-  position: Pick<Vec3, 'x' | 'z'>,
-  missionIndex: number,
-  count: number,
-) {
-  const searchRadius = WORLD_REMOVE_RADIUS + WORLD_CELL_SIZE * 2
-  const candidates = cellsAround(position, searchRadius)
-    .flatMap((cell) => cell.building ? [cell.building] : [])
-    .filter((building) => horizontalDistance(position, building.position) <= searchRadius)
-    .sort((left, right) => {
-      const leftSeed = seedForWorldCell(left.cellX, left.cellZ, missionIndex + 17)
-      const rightSeed = seedForWorldCell(right.cellX, right.cellZ, missionIndex + 17)
-      const leftScore = horizontalDistance(position, left.position) + (leftSeed % 1000) / 250
-      const rightScore = horizontalDistance(position, right.position) + (rightSeed % 1000) / 250
-      return leftScore - rightScore || left.id.localeCompare(right.id)
-    })
-
-  return candidates.slice(0, count).map((building, index) => {
-    const seed = seedForWorldCell(building.cellX, building.cellZ, missionIndex * 31 + index + 1)
-    const useX = (seed & 1) === 0
-    const direction = (seed & 2) === 0 ? 1 : -1
-    return {
-      building,
-      position: {
-        x: building.position.x + (useX ? direction * (building.size.x / 2 + 3.5) : (unit(seed, 6) - 0.5) * building.size.x * 0.5),
-        y: 0.75,
-        z: building.position.z + (!useX ? direction * (building.size.z / 2 + 3.5) : (unit(seed, 14) - 0.5) * building.size.z * 0.5),
-      },
-    }
-  })
 }

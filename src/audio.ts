@@ -5,7 +5,7 @@ let bgmMaster: GainNode | null = null
 let bgmCompressor: DynamicsCompressorNode | null = null
 let nextMusicStepTime = 0
 let musicStep = 0
-let musicWanted = 0
+let musicThreat = 0
 
 export const BGM_BASE_TEMPO = 164
 const MUSIC_LOOKAHEAD = 0.32
@@ -23,8 +23,8 @@ const LEAD_PATTERN = [
   74, 75, null, 70, 68, null, 67, 71,
 ] as const
 
-export function bgmTempoForWanted(wanted: number) {
-  return BGM_BASE_TEMPO + Math.max(0, Math.min(5, Math.round(wanted))) * 5
+export function bgmTempoForThreat(threat: number) {
+  return BGM_BASE_TEMPO + Math.max(0, Math.min(5, Math.round(threat))) * 5
 }
 
 function midiFrequency(note: number) {
@@ -114,11 +114,11 @@ function scheduleMusicStep(step: number, time: number, destination: AudioNode) {
   const bassNote = BASS_PATTERN[localStep]
   const leadNote = LEAD_PATTERN[step % LEAD_PATTERN.length]
 
-  if (localStep === 0 || localStep === 3 || localStep === 8 || localStep === 11 || (musicWanted >= 3 && localStep === 14)) {
+  if (localStep === 0 || localStep === 3 || localStep === 8 || localStep === 11 || (musicThreat >= 3 && localStep === 14)) {
     scheduleKick(time, destination)
   }
   if (localStep === 4 || localStep === 12) scheduleNoise(time, 0.1, 0.18, 950, destination)
-  if (localStep % 2 === 0 || musicWanted >= 4) {
+  if (localStep % 2 === 0 || musicThreat >= 4) {
     scheduleNoise(time, localStep % 4 === 2 ? 0.055 : 0.032, localStep % 4 === 2 ? 0.075 : 0.048, 5400, destination)
   }
   if (bassNote !== null) scheduleSynth(time, bassNote, 0.18, 0.12, 'sawtooth', destination)
@@ -126,7 +126,7 @@ function scheduleMusicStep(step: number, time: number, destination: AudioNode) {
 
   if (localStep === 7) scheduleSynth(time, step % 32 < 16 ? 84 : 87, 0.12, 0.035, 'square', destination, 76)
   if (localStep === 15) scheduleSynth(time, 79, 0.16, 0.042, 'square', destination, step % 32 < 16 ? 67 : 72)
-  if (musicWanted >= 2 && localStep === 10) scheduleSynth(time, 91, 0.07, 0.025, 'triangle', destination)
+  if (musicThreat >= 2 && localStep === 10) scheduleSynth(time, 91, 0.07, 0.025, 'triangle', destination)
 }
 
 function scheduleMusic() {
@@ -135,7 +135,7 @@ function scheduleMusic() {
   while (nextMusicStepTime < context.currentTime + MUSIC_LOOKAHEAD) {
     scheduleMusicStep(musicStep, nextMusicStepTime, bgmMaster)
     musicStep = (musicStep + 1) % LEAD_PATTERN.length
-    nextMusicStepTime += 60 / bgmTempoForWanted(musicWanted) / 4
+    nextMusicStepTime += 60 / bgmTempoForThreat(musicThreat) / 4
   }
 }
 
@@ -149,7 +149,7 @@ export function startBgm() {
     })
     return
   }
-  musicWanted = 0
+  musicThreat = 0
   musicStep = 0
   nextMusicStepTime = context.currentTime + 0.05
 
@@ -170,8 +170,8 @@ export function startBgm() {
   bgmTimer = setInterval(scheduleMusic, MUSIC_INTERVAL_MS)
 }
 
-export function setBgmWanted(wanted: number) {
-  musicWanted = Math.max(0, Math.min(5, Math.round(wanted)))
+export function setBgmThreat(threat: number) {
+  musicThreat = Math.max(0, Math.min(5, Math.round(threat)))
 }
 
 export function stopBgm() {

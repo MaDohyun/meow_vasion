@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
-import { useGame, type CarriedTarget } from '../GameContext'
+import { useGame } from '../GameContext'
 import { beamProfile, beamVisualLength } from '../core/beam'
 import { CAT_MAX, CROWD_ABSORB_TIME, PEDESTRIAN_MAX, type CrowdKind } from '../core/crowds'
 import { ENEMY_CAPS, type EnemyKind } from '../core/enemies'
@@ -12,7 +12,6 @@ import {
   LASER_MAX_PROJECTILES,
   LASER_MAX_BURSTS,
 } from '../core/laser'
-import type { MissionTarget, TargetKind } from '../core/missions'
 import { TRAFFIC_MAX_CARS } from '../core/traffic'
 import { WORLD_MAX_CARS } from '../core/world'
 import { City } from './City'
@@ -134,78 +133,6 @@ declare global {
       visibleMeshPools: number
     }
   }
-}
-
-function Cow({ color = '#f4eee0' }: { color?: string }) {
-  return (
-    <group scale={0.72}>
-      <mesh><boxGeometry args={[1.35, 0.72, 0.7]} /><meshToonMaterial color={color} /></mesh>
-      <mesh position={[0, 0.43, 0]}><boxGeometry args={[0.65, 0.13, 0.72]} /><meshToonMaterial color="#3b3348" /></mesh>
-      <group position={[0, 0.02, 0.62]}>
-        <mesh><boxGeometry args={[0.72, 0.62, 0.58]} /><meshToonMaterial color="#fff7df" /></mesh>
-        <mesh position={[-0.4, 0.31, 0]} rotation-z={0.5}><coneGeometry args={[0.13, 0.35, 5]} /><meshToonMaterial color="#ffcf68" /></mesh>
-        <mesh position={[0.4, 0.31, 0]} rotation-z={-0.5}><coneGeometry args={[0.13, 0.35, 5]} /><meshToonMaterial color="#ffcf68" /></mesh>
-        <mesh position={[-0.19, 0.1, 0.3]}><sphereGeometry args={[0.06, 6, 4]} /><meshBasicMaterial color="#191526" /></mesh>
-        <mesh position={[0.19, 0.1, 0.3]}><sphereGeometry args={[0.06, 6, 4]} /><meshBasicMaterial color="#191526" /></mesh>
-      </group>
-      {[-0.43, 0.43].flatMap((x) => [-0.23, 0.23].map((z) => (
-        <mesh key={`${x}-${z}`} position={[x, -0.57, z]}><boxGeometry args={[0.16, 0.55, 0.16]} /><meshToonMaterial color="#eee0c7" /></mesh>
-      )))}
-    </group>
-  )
-}
-
-function Tourist({ color = '#ff79b8' }: { color?: string }) {
-  return (
-    <group scale={0.72}>
-      <mesh position-y={0.54}><sphereGeometry args={[0.34, 9, 6]} /><meshToonMaterial color="#f4b98d" /></mesh>
-      <mesh><capsuleGeometry args={[0.34, 0.7, 4, 8]} /><meshToonMaterial color={color} /></mesh>
-      <mesh position={[-0.22, -0.74, 0]}><boxGeometry args={[0.18, 0.65, 0.2]} /><meshToonMaterial color="#374c78" /></mesh>
-      <mesh position={[0.22, -0.74, 0]}><boxGeometry args={[0.18, 0.65, 0.2]} /><meshToonMaterial color="#374c78" /></mesh>
-      <mesh position={[0.43, 0.03, 0]} rotation-z={-0.35}><boxGeometry args={[0.14, 0.78, 0.14]} /><meshToonMaterial color="#f4b98d" /></mesh>
-      <mesh position={[-0.43, 0.03, 0]} rotation-z={0.35}><boxGeometry args={[0.14, 0.78, 0.14]} /><meshToonMaterial color="#f4b98d" /></mesh>
-    </group>
-  )
-}
-
-function Cat({ color = '#f3c36d' }: { color?: string }) {
-  return (
-    <group scale={0.68}>
-      <mesh><boxGeometry args={[0.72, 0.5, 1.15]} /><meshToonMaterial color={color} /></mesh>
-      <mesh position={[0, 0.2, 0.65]}><boxGeometry args={[0.62, 0.58, 0.52]} /><meshToonMaterial color={color} /></mesh>
-      <mesh position={[-0.22, 0.58, 0.67]} rotation-z={-0.18}><coneGeometry args={[0.14, 0.38, 4]} /><meshToonMaterial color={color} /></mesh>
-      <mesh position={[0.22, 0.58, 0.67]} rotation-z={0.18}><coneGeometry args={[0.14, 0.38, 4]} /><meshToonMaterial color={color} /></mesh>
-      <mesh position={[0, 0.15, -0.86]} rotation-x={-0.65}><cylinderGeometry args={[0.08, 0.11, 1.05, 6]} /><meshToonMaterial color={color} /></mesh>
-    </group>
-  )
-}
-
-function PersonOrCow({ kind, color }: { kind: TargetKind; color?: string }) {
-  return kind === 'cat' ? <Cat color={color} /> : <Tourist color={color} />
-}
-
-function PatrolCar({ color = '#f1f1da', police = false }: { color?: string; police?: boolean }) {
-  const blueSiren = useRef<THREE.MeshBasicMaterial>(null)
-  const redSiren = useRef<THREE.MeshBasicMaterial>(null)
-  useFrame(({ clock }) => {
-    if (!police || !blueSiren.current || !redSiren.current) return
-    const alternate = Math.sin(clock.elapsedTime * 18) > 0
-    blueSiren.current.opacity = alternate ? 1 : 0.18
-    redSiren.current.opacity = alternate ? 0.18 : 1
-  })
-  return (
-    <group scale={0.8}>
-      <mesh geometry={roundedCarBodyGeometry}><meshToonMaterial color={color} /></mesh>
-      <mesh geometry={roundedCarCabinGeometry} position={[0, 0.53, -0.15]}><meshToonMaterial color="#b7dfe0" /></mesh>
-      <mesh position={[0, 0.9, -0.15]}><boxGeometry args={[0.95, 0.16, 0.28]} /><meshBasicMaterial color={police ? '#ff4f73' : '#ffce55'} /></mesh>
-      <mesh position={[-0.29, 0.91, -0.15]}><boxGeometry args={[0.28, 0.19, 0.32]} /><meshBasicMaterial ref={blueSiren} color="#8edcea" transparent opacity={1} toneMapped={false} /></mesh>
-      <mesh position={[0.29, 0.91, -0.15]}><boxGeometry args={[0.28, 0.19, 0.32]} /><meshBasicMaterial ref={redSiren} color="#ef8d96" transparent opacity={0.18} toneMapped={false} /></mesh>
-      {police && <mesh position={[0, 0.86, -0.15]} rotation-x={Math.PI / 2}><ringGeometry args={[0.52, 0.78, 12]} /><meshBasicMaterial color="#f5c7d0" transparent opacity={0.38} depthWrite={false} blending={THREE.AdditiveBlending} /></mesh>}
-      {[-0.76, 0.76].flatMap((x) => [-0.92, 0.92].map((z) => (
-        <mesh key={`${x}-${z}`} position={[x, -0.26, z]} rotation-z={Math.PI / 2}><cylinderGeometry args={[0.27, 0.27, 0.18, 8]} /><meshToonMaterial color="#252334" /></mesh>
-      )))}
-    </group>
-  )
 }
 
 function PullableCars() {
@@ -375,72 +302,6 @@ function ScanNode({ color }: { color: string }) {
   )
 }
 
-function TargetActor({ target, selected }: { target: MissionTarget; selected: boolean }) {
-  const marker = useRef<THREE.Group>(null)
-  useFrame(({ clock }) => {
-    if (!marker.current) return
-    marker.current.rotation.y = clock.elapsedTime * 0.65
-    const pulse = selected ? 1.12 + Math.sin(clock.elapsedTime * 14) * 0.08 : 1
-    marker.current.scale.setScalar(pulse)
-  })
-  if (!target.active) return null
-  const progress = Math.max(0.03, target.progress)
-  return (
-    <group position={[target.position.x, target.position.y, target.position.z]}>
-      <group ref={marker} position-y={0.05}>
-        <mesh rotation-x={-Math.PI / 2}>
-          <ringGeometry args={[1.75, 2.25, 24, 1, 0, Math.PI * 2 * progress]} />
-          <meshBasicMaterial color={target.color} transparent opacity={0.95} side={THREE.DoubleSide} />
-        </mesh>
-        <mesh rotation-x={-Math.PI / 2}>
-          <ringGeometry args={[2.36, 2.48, 24]} />
-          <meshBasicMaterial color="#fff5bd" transparent opacity={0.7} side={THREE.DoubleSide} />
-        </mesh>
-        <mesh position-y={3.6} rotation-z={Math.PI}>
-          <octahedronGeometry args={[0.72]} />
-          <meshBasicMaterial color={target.color} />
-        </mesh>
-        {[1.45, 2.15, 2.85].map((height, index) => (
-          <mesh key={height} position-y={height} rotation-z={Math.PI} scale={0.72 - index * 0.1}>
-            <coneGeometry args={[0.58, 0.72, 4]} />
-            <meshBasicMaterial color={target.color} transparent opacity={0.9 - index * 0.18} depthWrite={false} blending={THREE.AdditiveBlending} />
-          </mesh>
-        ))}
-      </group>
-    </group>
-  )
-}
-
-function MissionTargets() {
-  const { snapshot } = useGame()
-  return (
-    <group>
-      {snapshot.mission.targets.map((target) => (
-        <TargetActor key={target.id} target={target} selected={snapshot.beamTargetId === target.id} />
-      ))}
-    </group>
-  )
-}
-
-function TetheredCaptive({ captive, index }: { captive: CarriedTarget; index: number }) {
-  const ref = useRef<THREE.Group>(null)
-  useFrame(({ clock }) => {
-    if (!ref.current) return
-    ref.current.rotation.z = Math.sin(clock.elapsedTime * 3.8 + index * 1.7) * 0.16
-    ref.current.rotation.x = Math.cos(clock.elapsedTime * 3.2 + index) * 0.09
-  })
-  const offsetX = (index - 1.5) * 0.46
-  const length = 1.6 + (index % 2) * 0.4
-  return (
-    <group position-x={offsetX}>
-      <mesh position-y={-length / 2 - 0.52}><cylinderGeometry args={[0.018, 0.018, length, 5]} /><meshBasicMaterial color="#b8ffef" transparent opacity={0.72} /></mesh>
-      <group ref={ref} position-y={-length - 0.7} scale={0.54}>
-        <PersonOrCow kind={captive.kind} color={captive.color} />
-      </group>
-    </group>
-  )
-}
-
 function BeamFlowRings({ length, radius, boosting }: { length: number; radius: number; boosting: boolean }) {
   const rings = useRef<Array<THREE.Mesh | null>>([])
   const elapsed = useRef(0)
@@ -479,7 +340,6 @@ function BeamFlowRings({ length, radius, boosting }: { length: number; radius: n
 function TractorBeam() {
   const { runtime, snapshot } = useGame()
   const root = useRef<THREE.Group>(null)
-  const target = snapshot.mission.targets.find((item) => item.id === snapshot.beamTargetId)
   const profile = beamProfile(snapshot.boostActive)
   const length = Math.max(0.8, beamVisualLength(runtime.current.drone.position.y, profile.maxDrop))
   const radius = profile.baseRadius + length * profile.coneSpread
@@ -489,12 +349,12 @@ function TractorBeam() {
     root.current.position.set(position.x, position.y, position.z)
     root.current.visible = snapshot.beamActive
   })
-  const color = target?.color ?? '#8fffe1'
+  const color = snapshot.boostActive ? '#69f7ff' : '#8fffe1'
   return (
     <group ref={root} position={[runtime.current.drone.position.x, runtime.current.drone.position.y, runtime.current.drone.position.z]}>
       <mesh position-y={-length / 2} renderOrder={2}>
         <coneGeometry args={[radius, length, 24, 1, true]} />
-        <meshBasicMaterial color={snapshot.boostActive ? '#69f7ff' : color} transparent opacity={snapshot.boostActive ? 0.38 : target ? 0.34 : 0.24} side={THREE.DoubleSide} depthWrite={false} blending={THREE.AdditiveBlending} />
+        <meshBasicMaterial color={color} transparent opacity={snapshot.boostActive ? 0.38 : 0.28} side={THREE.DoubleSide} depthWrite={false} blending={THREE.AdditiveBlending} />
       </mesh>
       <BeamFlowRings length={length} radius={radius} boosting={snapshot.boostActive} />
     </group>
@@ -556,9 +416,9 @@ function Ufo() {
       Math.max(1, game.drone.position.y + 3.6 + speedRatio * 1.1 + altitudeView - forwardY * distance * 0.72),
       game.drone.position.z - forwardZ * distance,
     )
-    const wantedShake = snapshot.wantedPulse * 0.22
-    cameraPosition.x += Math.sin(game.sessionTime * 71) * wantedShake
-    cameraPosition.y += Math.cos(game.sessionTime * 59) * wantedShake * 0.6
+    const threatShake = snapshot.threatLevel * 0.028
+    cameraPosition.x += Math.sin(game.sessionTime * 71) * threatShake
+    cameraPosition.y += Math.cos(game.sessionTime * 59) * threatShake * 0.6
     camera.position.lerp(cameraPosition, 1 - Math.exp(-5.5 * dt))
     cameraTarget.set(
       game.drone.position.x + forwardX * (5.5 + speedRatio * 3),
@@ -627,25 +487,7 @@ function Ufo() {
             ))}
           </group>
         )}
-        {snapshot.carried.map((captive, index) => <TetheredCaptive key={captive.id} captive={captive} index={index} />)}
       </group>
-    </group>
-  )
-}
-
-function DroppedCaptives() {
-  const { snapshot } = useGame()
-  return (
-    <group>
-      {snapshot.dropped.map((item) => (
-        <group key={item.id} position={[item.position.x, item.position.y, item.position.z]} rotation={[item.age * 1.4, item.age, item.age * 0.7]}>
-          <PersonOrCow kind={item.kind} color={item.color} />
-          <mesh position-y={1.4} rotation-x={-Math.PI / 2}>
-            <ringGeometry args={[0.7, 0.85, 16]} />
-            <meshBasicMaterial color="#ffec6d" transparent opacity={Math.max(0.1, 1 - item.age / 7)} />
-          </mesh>
-        </group>
-      ))}
     </group>
   )
 }
@@ -674,12 +516,12 @@ function CrowdPool({ kind }: { kind: CrowdKind }) {
       rotation.set(object.rotation.x, object.rotation.y, object.rotation.z)
       quaternion.setFromEuler(rotation)
       const bounce = object.inBeam ? 1 : 1 + Math.sin(clock.elapsedTime * 8 + object.slot) * 0.04
-      const targetScale = snapshot.mission.targets[0]?.id === object.id ? 1.38 : 1.16
+      const targetScale = snapshot.beamTargetId === object.id ? 1.38 : 1.16
       const absorbScale = object.absorbing ? Math.max(0.04, object.absorbTimer / CROWD_ABSORB_TIME) : 1
       scale.set(targetScale * absorbScale, targetScale * bounce * absorbScale, targetScale * absorbScale)
       matrix.compose(position, quaternion, scale)
       ref.current.setMatrixAt(count, matrix)
-      if (snapshot.mission.targets[0]?.id === object.id) color.set('#fff36d')
+      if (snapshot.beamTargetId === object.id) color.set('#fff36d')
       else color.set(object.color).lerp(pale, 0.72)
       ref.current.setColorAt(count, color)
       count += 1
@@ -753,23 +595,6 @@ function EnemyPools() {
       <EnemyPool kind="anti-air" />
       <EnemyPool kind="fighter" />
       <EnemyPool kind="balloon" />
-    </group>
-  )
-}
-
-function GroundPolice() {
-  const { snapshot } = useGame()
-  const positions: Array<[number, number, number, number]> = [
-    [-5, 0.68, 13, 0], [5, 0.68, -22, Math.PI], [-31, 0.68, 5, Math.PI / 2], [43, 0.68, -5, -Math.PI / 2],
-  ]
-  const count = snapshot.wanted >= 2 ? Math.min(4, snapshot.wanted - 1) : 0
-  return (
-    <group position={[snapshot.position.x, 0, snapshot.position.z]}>
-      {positions.slice(0, count).map(([x, y, z, rotation], index) => (
-        <group key={index} position={[x, y, z]} rotation-y={rotation}>
-          <PatrolCar police color="#e7ecdc" />
-        </group>
-      ))}
     </group>
   )
 }
@@ -952,12 +777,10 @@ function FixedEffectLights() {
       )
       boostLight.current.intensity = snapshot.boostActive ? 9 : 0
     }
-    const target = snapshot.mission.targets.find((item) => item.id === snapshot.beamTargetId)
-      ?? snapshot.mission.targets.find((item) => item.active)
     if (targetLight.current) {
-      targetLight.current.position.set(target?.position.x ?? drone.position.x, (target?.position.y ?? 0) + 2.1, target?.position.z ?? drone.position.z)
-      targetLight.current.intensity = target ? (snapshot.beamTargetId === target.id ? 8 : 2.5) : 0
-      targetLight.current.color.set(target?.color ?? '#fff5bd')
+      targetLight.current.position.set(drone.position.x, drone.position.y - 2.2, drone.position.z)
+      targetLight.current.intensity = snapshot.beamActive ? 5.5 : 0
+      targetLight.current.color.set(snapshot.boostActive ? '#69f7ff' : '#fff5bd')
     }
   })
   return (
@@ -1065,10 +888,7 @@ export function DroneScene() {
       <City />
       <PullableCars />
       <DrivingTraffic />
-      <MissionTargets />
       <CrowdPools />
-      <DroppedCaptives />
-      <GroundPolice />
       <EnemyPools />
       <LaserProjectiles />
       <LaserBursts />

@@ -3,7 +3,6 @@ import {
   activeWorldColliders,
   createActiveWorld,
   getProceduralCell,
-  missionBuildingAnchors,
   seedForWorldCell,
   updateActiveWorld,
   WORLD_MAX_BUILDINGS,
@@ -65,8 +64,8 @@ describe('deterministic infinite city', () => {
   it('keeps a sparser city active even thousands of units away', () => {
     for (const position of [{ x: 0, z: 0 }, { x: 2400, z: -3100 }, { x: -7800, z: 5200 }]) {
       const world = createActiveWorld(position)
-      expect(world.buildings.length).toBeGreaterThanOrEqual(35)
-      expect(world.buildings.length).toBeLessThanOrEqual(70)
+      expect(world.buildings.length).toBeGreaterThanOrEqual(70)
+      expect(world.buildings.length).toBeLessThanOrEqual(WORLD_MAX_BUILDINGS)
     }
     expect(WORLD_GROUND_RADIUS_CELLS * WORLD_CELL_SIZE).toBeGreaterThanOrEqual(WORLD_REMOVE_RADIUS)
   })
@@ -88,8 +87,8 @@ describe('deterministic infinite city', () => {
         expect((cellZ + 1) * WORLD_CELL_SIZE - building.position.z - building.size.z / 2).toBeGreaterThanOrEqual(4.5 - 1e-8)
       }
     }
-    expect(buildings / (61 * 61)).toBeGreaterThan(0.3)
-    expect(buildings / (61 * 61)).toBeLessThan(0.36)
+    expect(buildings / (61 * 61)).toBeGreaterThan(0.44)
+    expect(buildings / (61 * 61)).toBeLessThan(0.52)
   })
 
   it('mixes mostly low-rise buildings with a meaningful high-rise tier', () => {
@@ -138,14 +137,4 @@ describe('deterministic infinite city', () => {
     expect(shifted.buildings.some((building) => retained.some((item) => item.id === building.id))).toBe(true)
   })
 
-  it('places mission anchors beside deterministic nearby buildings', () => {
-    const first = missionBuildingAnchors({ x: 4000, z: -2600 }, 7, 3)
-    const again = missionBuildingAnchors({ x: 4000, z: -2600 }, 7, 3)
-    expect(first).toEqual(again)
-    expect(first).toHaveLength(3)
-    for (const anchor of first) {
-      const distance = Math.hypot(anchor.position.x - anchor.building.position.x, anchor.position.z - anchor.building.position.z)
-      expect(distance).toBeGreaterThan(Math.min(anchor.building.size.x, anchor.building.size.z) / 2)
-    }
-  })
 })

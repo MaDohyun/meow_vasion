@@ -1,5 +1,5 @@
 import type { BeamObject } from './beam'
-import type { Vec3 } from './drone'
+import type { Aabb, Vec3 } from './drone'
 
 export type CrowdKind = 'pedestrian' | 'cat'
 export const PEDESTRIAN_MAX = 28
@@ -14,6 +14,8 @@ export type CrowdObject = BeamObject & {
   generation: number
   heading: number
   wanderTimer: number
+  pauseTimer: number
+  fleeTimer: number
 }
 
 export type CrowdState = {
@@ -26,6 +28,9 @@ export type CrowdState = {
 export type CrowdView = {
   position: Vec3
   heading: number
+  colliders?: readonly Aabb[]
+  threats?: readonly Vec3[]
+  crowdThreatStart?: number
 }
 
 function makeCrowdObject(kind: CrowdKind, slot: number): CrowdObject {
@@ -51,6 +56,8 @@ function makeCrowdObject(kind: CrowdKind, slot: number): CrowdObject {
     absorbTimer: 0,
     heading: 0,
     wanderTimer: 0,
+    pauseTimer: 0,
+    fleeTimer: 0,
   }
 }
 
@@ -96,6 +103,8 @@ function spawnCrowdObject(state: CrowdState, view: CrowdView, kind: CrowdKind) {
   object.angularVelocity.y = 0
   object.angularVelocity.z = 0
   object.wanderTimer = 1 + random(state) * 3
+  object.pauseTimer = 0
+  object.fleeTimer = 0
   object.active = true
   object.inBeam = false
   object.tether = 0
@@ -132,14 +141,39 @@ export function stepCrowds(state: CrowdState, view: CrowdView, dt: number) {
     const distance = Math.hypot(dx, dz)
     if (object.kind === 'pedestrian' && distance <= 48) nearbyPedestrians += 1
     if (!object.inBeam && object.tether <= 0.02 && object.position.y <= 0.72) {
-      const fleeing = view.position.y < 5.5 && distance < 18
+      let threatDistance = distance
+      let fleeDx = dx
+      let fleeDz = dz
+      if (view.threats) {
+        const selfThreatIndex = (view.crowdThreatStart ?? -1) + (object.kind === 'cat' ? PEDESTRIAN_MAX + object.slot : object.slot)
+        for (let threatIndex = 0; threatIndex < view.threats.length; threatIndex += 1) {
+          if (threatIndex === selfThreatIndex) continue
+          const threat = view.threats[threatIndex]
+          if (!threat) continue
+          const threatDx = object.position.x - threat.x
+          const threatDz = object.position.z - threat.z
+          const candidateDistance = Math.hypot(threatDx, threatDz)
+          if (candidateDistance < threatDistance) {
+            threatDistance = candidateDistance
+            fleeDx = threatDx
+            fleeDz = threatDz
+          }
+        }
+      }
+      const fleeing = threatDistance < (object.kind === 'cat' ? 20 : 14)
+      if (fleeing) object.fleeTimer = 0.9
+      else object.fleeTimer = Math.max(0, object.fleeTimer - d)
+      object.pauseTimer = Math.max(0, object.pauseTimer - d)
       if (fleeing) {
-        const inverse = 1 / Math.max(0.001, distance)
+        const inverse = 1 / Math.max(0.001, threatDistance)
         const speed = object.kind === 'cat' ? 11 : 7.5
-        object.velocity.x = dx * inverse * speed
-        object.velocity.z = dz * inverse * speed
+        object.velocity.x = fleeDx * inverse * speed
+        object.velocity.z = fleeDz * inverse * speed
         object.heading = Math.atan2(object.velocity.x, object.velocity.z)
         object.wanderTimer = 0.8
+      } else if (object.pauseTimer > 0) {
+        object.velocity.x *= Math.exp(-8 * d)
+        object.velocity.z *= Math.exp(-8 * d)
       } else {
         object.wanderTimer -= d
         if (object.wanderTimer <= 0) {
@@ -147,6 +181,7 @@ export function stepCrowds(state: CrowdState, view: CrowdView, dt: number) {
             ? (random(state) - 0.5) * 2.4
             : (random(state) < 0.5 ? -1 : 1) * Math.PI / 2
           object.wanderTimer = 1.2 + random(state) * 3.5
+          if (random(state) < (object.kind === 'cat' ? 0.3 : 0.16)) object.pauseTimer = 0.35 + random(state) * 0.9
         }
         const speed = object.kind === 'cat' ? 2.35 : 1.7
         const blend = 1 - Math.exp(-4 * d)
@@ -154,6 +189,25 @@ export function stepCrowds(state: CrowdState, view: CrowdView, dt: number) {
         object.velocity.z += (Math.cos(object.heading) * speed - object.velocity.z) * blend
       }
       object.rotation.y = object.heading
+      const nextX = object.position.x + object.velocity.x * d
+      const nextZ = object.position.z + object.velocity.z * d
+      let blocked = false
+      if (view.colliders) {
+        for (const collider of view.colliders) {
+          if (nextX > collider.minX - 0.55 && nextX < collider.maxX + 0.55 && nextZ > collider.minZ - 0.55 && nextZ < collider.maxZ + 0.55) {
+            blocked = true
+            break
+          }
+        }
+      }
+      if (blocked) {
+        object.heading += Math.PI * (random(state) < 0.5 ? 0.5 : -0.5)
+        object.velocity.x = 0
+        object.velocity.z = 0
+      } else {
+        object.position.x = nextX
+        object.position.z = nextZ
+      }
     }
     if (!object.inBeam && object.tether <= 0.02 && distance > CROWD_REMOVE_DISTANCE) object.active = false
   }

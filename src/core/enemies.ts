@@ -91,10 +91,10 @@ function spawnPursuer(enemy: EnemySlot, player: Vec3, heading: number) {
     : Math.min(124, player.y + (enemy.kind === 'balloon' ? 13 : enemy.kind === 'fighter' ? 8 : 5))
 }
 
-export function syncEnemyTiers(state: EnemyState, wanted: number, player: Vec3, heading: number, dt: number) {
+export function syncEnemyTiers(state: EnemyState, threatLevel: number, player: Vec3, heading: number, dt: number) {
   for (const enemy of state.slots) {
     if (enemy.kind === 'anti-air') continue
-    if (ENEMY_TIER[enemy.kind] > wanted) {
+    if (ENEMY_TIER[enemy.kind] > threatLevel) {
       enemy.active = false
       continue
     }
@@ -104,16 +104,16 @@ export function syncEnemyTiers(state: EnemyState, wanted: number, player: Vec3, 
   }
 }
 
-export function syncAntiAirEnemies(state: EnemyState, wanted: number, buildings: ProceduralBuilding[]) {
+export function syncAntiAirEnemies(state: EnemyState, threatLevel: number, buildings: ProceduralBuilding[]) {
   for (const enemy of state.slots) {
     if (enemy.kind !== 'anti-air' || !enemy.active || !enemy.sourceId) continue
     let found = false
     for (const building of buildings) {
       if (building.id === enemy.sourceId) { found = true; break }
     }
-    if (!found || wanted < 3) enemy.active = false
+    if (!found || threatLevel < 3) enemy.active = false
   }
-  if (wanted < 3) return
+  if (threatLevel < 3) return
   for (const building of buildings) {
     if (!isAntiAirBuilding(building) || state.destroyedAntiAir.has(building.id)) continue
     let exists = false

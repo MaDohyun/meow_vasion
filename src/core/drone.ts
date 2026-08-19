@@ -104,10 +104,11 @@ export function stepDrone(
   }
 
   const speedUpgrade = 1 + upgrades.speed * 0.12
-  const cargoAcceleration = Math.pow(0.94, cargoCount)
-  const cargoTurn = Math.pow(0.95, cargoCount)
+  const cargoAcceleration = Math.pow(0.9, cargoCount)
+  const cargoTurn = Math.pow(0.93, cargoCount)
   const isBoosting = next.boostRemaining > 0
-  const topSpeed = (isBoosting ? DRONE_DEFAULTS.boostSpeed : DRONE_DEFAULTS.maxSpeed) * speedUpgrade
+  const cargoSpeed = 1 / (1 + Math.max(0, cargoCount) * 0.13)
+  const topSpeed = (isBoosting ? DRONE_DEFAULTS.boostSpeed : DRONE_DEFAULTS.maxSpeed) * speedUpgrade * cargoSpeed
   const lowFlightBonus = next.position.y <= 1.5 ? 1.12 : 1
   const targetSpeed = input.throttle >= 0
     ? input.throttle * topSpeed * lowFlightBonus

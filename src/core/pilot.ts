@@ -14,9 +14,9 @@ export type PilotExpression =
 export type PilotSignals = {
   elapsed: number
   impact: boolean
-  wanted: number
-  wantedIncreased: boolean
-  carriedIncreased: boolean
+  threatLevel: number
+  threatIncreased: boolean
+  cargoIncreased: boolean
   phase: 'intro' | 'playing' | 'results'
   victory: boolean
   boost: boolean
@@ -45,13 +45,13 @@ const PRIORITY: Record<PilotExpression, number> = {
 
 export function requestedPilotExpression(signals: PilotSignals): PilotExpression {
   if (signals.impact) return 'surprise'
-  if (signals.wanted >= 5) return 'scream'
+  if (signals.threatLevel >= 5) return 'scream'
   if (signals.phase === 'results') return signals.victory ? 'victory' : 'defeat'
   if (signals.boost) return 'boost'
   if (signals.laser) return 'glare'
   if (signals.beam) return 'focus'
-  if (signals.wantedIncreased) return 'sweat'
-  if (signals.carriedIncreased) return 'excited'
+  if (signals.threatIncreased) return 'sweat'
+  if (signals.cargoIncreased) return 'excited'
   return signals.elapsed % 4.2 > 4.06 ? 'blink' : 'normal'
 }
 
