@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { BEAM_MIN_GRIP, beamGrip, beamProfile, isInsideBeam, stepBeamObjects, type BeamField, type BeamObject } from '../src/core/beam'
+import { BEAM_MIN_GRIP, beamGrip, beamProfile, beamVisualLength, isInsideBeam, stepBeamObjects, type BeamField, type BeamObject } from '../src/core/beam'
 
 const makeCar = (id = 'car-1', x = 0, y = 0.65, z = 0): BeamObject => ({
   id,
@@ -17,6 +17,8 @@ const makeCar = (id = 'car-1', x = 0, y = 0.65, z = 0): BeamObject => ({
   destroying: false,
   destroyTimer: 0,
   explosionPending: false,
+  absorbing: false,
+  absorbTimer: 0,
 })
 
 const field = (boosting = false): BeamField => ({
@@ -52,6 +54,12 @@ describe('tractor beam physics', () => {
     expect(beamProfile(false, 1.5).coneSpread).toBeCloseTo(beamProfile(false).coneSpread * 1.5)
     expect(beamProfile(false, 1.5).maxDrop).toBe(36)
     expect(beamProfile(true).maxDrop).toBe(56)
+  })
+
+  it('keeps visual length tied to ground and range rather than a lifted target', () => {
+    expect(beamVisualLength(12, beamProfile(false).maxDrop)).toBeCloseTo(11.85)
+    expect(beamVisualLength(80, beamProfile(false).maxDrop)).toBe(beamProfile(false).maxDrop)
+    expect(beamVisualLength(80, beamProfile(true).maxDrop)).toBe(beamProfile(true).maxDrop)
   })
 
   it('lifts a heavy car more slowly than a light object', () => {

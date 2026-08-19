@@ -5,6 +5,8 @@ export type CrowdKind = 'pedestrian' | 'cat'
 export const PEDESTRIAN_MAX = 28
 export const CAT_MAX = 7
 export const CROWD_REMOVE_DISTANCE = 155
+export const CROWD_ABSORB_DISTANCE = 3.35
+export const CROWD_ABSORB_TIME = 0.24
 
 export type CrowdObject = BeamObject & {
   kind: CrowdKind
@@ -45,6 +47,8 @@ function makeCrowdObject(kind: CrowdKind, slot: number): CrowdObject {
     destroying: false,
     destroyTimer: 0,
     explosionPending: false,
+    absorbing: false,
+    absorbTimer: 0,
     heading: 0,
     wanderTimer: 0,
   }
@@ -72,7 +76,7 @@ function spawnCrowdObject(state: CrowdState, view: CrowdView, kind: CrowdKind) {
     if (!candidate.active && candidate.kind === kind) { object = candidate; break }
   }
   if (!object) return false
-  const distance = 55 + random(state) * 45
+  const distance = 34 + random(state) * 42
   const angle = view.heading + Math.PI + (random(state) - 0.5) * 1.65
   object.generation += 1
   object.id = `crowd:${kind}:${object.slot}:${object.generation}`
@@ -99,6 +103,8 @@ function spawnCrowdObject(state: CrowdState, view: CrowdView, kind: CrowdKind) {
   object.destroying = false
   object.destroyTimer = 0
   object.explosionPending = false
+  object.absorbing = false
+  object.absorbTimer = 0
   return true
 }
 
@@ -110,6 +116,15 @@ export function stepCrowds(state: CrowdState, view: CrowdView, dt: number) {
   let nearbyPedestrians = 0
   for (const object of state.objects) {
     if (!object.active) continue
+    if (object.absorbing) {
+      object.absorbTimer = Math.max(0, object.absorbTimer - d)
+      if (object.absorbTimer <= 0) {
+        object.active = false
+        object.absorbing = false
+        state.spawnTimer = Math.max(state.spawnTimer, 0.16)
+      }
+      continue
+    }
     if (object.kind === 'pedestrian') pedestrians += 1
     else cats += 1
     const dx = object.position.x - view.position.x
@@ -150,6 +165,29 @@ export function stepCrowds(state: CrowdState, view: CrowdView, dt: number) {
     state.spawnTimer = spawned ? 0.16 : 0.35
   }
   return state
+}
+
+export function beginNearbyCrowdAbsorption(state: CrowdState, ufoPosition: Vec3) {
+  for (const object of state.objects) {
+    if (!object.active || object.absorbing || !object.inBeam) continue
+    const distance = Math.hypot(
+      object.position.x - ufoPosition.x,
+      object.position.y - ufoPosition.y,
+      object.position.z - ufoPosition.z,
+    )
+    if (distance > CROWD_ABSORB_DISTANCE) continue
+    object.absorbing = true
+    object.absorbTimer = CROWD_ABSORB_TIME
+    object.inBeam = false
+    object.velocity.x = 0
+    object.velocity.y = 0
+    object.velocity.z = 0
+    object.angularVelocity.x = 0
+    object.angularVelocity.y = 0
+    object.angularVelocity.z = 0
+    return object
+  }
+  return null
 }
 
 export function activeCrowdCount(state: CrowdState, kind?: CrowdKind) {

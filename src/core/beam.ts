@@ -18,6 +18,8 @@ export type BeamObject = {
   destroying: boolean
   destroyTimer: number
   explosionPending: boolean
+  absorbing: boolean
+  absorbTimer: number
 }
 
 export type BeamField = {
@@ -50,6 +52,10 @@ export function beamProfile(boosting: boolean, radiusScale = 1): BeamProfile {
     baseRadius: profile.baseRadius * scale,
     coneSpread: profile.coneSpread * scale,
   }
+}
+
+export function beamVisualLength(droneHeight: number, maxDrop: number, groundHeight = 0.15) {
+  return Math.max(0, Math.min(maxDrop, droneHeight - groundHeight))
 }
 
 function hashId(id: string) {
@@ -99,6 +105,7 @@ export function stepBeamObjects(objects: BeamObject[], field: BeamField, dt: num
 
   for (const object of objects) {
     if (!object.active) continue
+    if (object.absorbing) continue
     if (object.destroying) {
       object.destroyTimer = Math.max(0, object.destroyTimer - d)
       object.velocity.y -= 7.5 * d

@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { beginCarDestruction, stepBeamObjects, type BeamObject } from '../src/core/beam'
-import { CAT_MAX, PEDESTRIAN_MAX, activeCrowdCount, createCrowdState, stepCrowds } from '../src/core/crowds'
+import {
+  CAT_MAX,
+  CROWD_ABSORB_TIME,
+  PEDESTRIAN_MAX,
+  activeCrowdCount,
+  beginNearbyCrowdAbsorption,
+  createCrowdState,
+  stepCrowds,
+} from '../src/core/crowds'
 
 const inactiveBeam = {
   active: false,
@@ -16,6 +24,7 @@ function car(): BeamObject {
     rotation: { x: 0, y: 0, z: 0 }, angularVelocity: { x: 0, y: 0, z: 0 },
     active: true, inBeam: false, tether: 0, playerTouched: false,
     destroying: false, destroyTimer: 0, explosionPending: false,
+    absorbing: false, absorbTimer: 0,
   }
 }
 
@@ -51,6 +60,21 @@ describe('pooled city crowds and destructible cars', () => {
     expect(pedestrian.mass).toBeLessThan(0.5)
     expect(cat.mass).toBeLessThan(pedestrian.mass)
     expect(cat.mass).toBeLessThan(car().mass / 10)
+  })
+
+  it('shrinks a beamed crowd member only after reaching the UFO', () => {
+    const state = createCrowdState(9)
+    const pedestrian = state.objects.find((object) => object.kind === 'pedestrian')!
+    pedestrian.active = true
+    pedestrian.inBeam = true
+    pedestrian.position = { x: 0.4, y: 3.2, z: 0.2 }
+    expect(beginNearbyCrowdAbsorption(state, { x: 0, y: 4, z: 0 })?.id).toBe(pedestrian.id)
+    expect(pedestrian.absorbing).toBe(true)
+    stepCrowds(state, { position: { x: 0, y: 4, z: 0 }, heading: 0 }, CROWD_ABSORB_TIME / 2)
+    expect(pedestrian.active).toBe(true)
+    stepCrowds(state, { position: { x: 0, y: 4, z: 0 }, heading: 0 }, CROWD_ABSORB_TIME)
+    for (let frame = 0; frame < 6; frame += 1) stepCrowds(state, { position: { x: 0, y: 4, z: 0 }, heading: 0 }, 0.05)
+    expect(pedestrian.active).toBe(false)
   })
 
   it('launches and spins a one-hit car before pooled removal', () => {

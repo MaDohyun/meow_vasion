@@ -3,16 +3,14 @@ import { useFrame, useThree } from '@react-three/fiber'
 import { useEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { useGame, type CarriedTarget } from '../GameContext'
-import { beamProfile } from '../core/beam'
-import { CAT_MAX, PEDESTRIAN_MAX, type CrowdKind } from '../core/crowds'
+import { beamProfile, beamVisualLength } from '../core/beam'
+import { CAT_MAX, CROWD_ABSORB_TIME, PEDESTRIAN_MAX, type CrowdKind } from '../core/crowds'
 import { ENEMY_CAPS, type EnemyKind } from '../core/enemies'
 import {
   LASER_MAX_PROJECTILES,
   LASER_MAX_BURSTS,
-  LASER_PROJECTILE_LIFETIME,
-  LASER_PROJECTILE_SPEED,
-  LASER_VISUAL_LENGTH,
 } from '../core/laser'
 import type { MissionTarget, TargetKind } from '../core/missions'
 import { TRAFFIC_MAX_CARS } from '../core/traffic'
@@ -24,6 +22,105 @@ const roundedCarBodyGeometry = new RoundedBoxGeometry(1.8, 0.62, 3.1, 2, 0.15)
 const roundedCarCabinGeometry = new RoundedBoxGeometry(1.55, 0.62, 1.55, 2, 0.18)
 const beamRingGeometry = new THREE.RingGeometry(0.9, 1, 28)
 const BEAM_RING_COUNT = 5
+
+function coloredPart(geometry: THREE.BufferGeometry, color: string) {
+  const result = geometry.index ? geometry.toNonIndexed() : geometry
+  if (result !== geometry) geometry.dispose()
+  const tint = new THREE.Color(color)
+  const colors = new Float32Array(result.getAttribute('position').count * 3)
+  for (let index = 0; index < colors.length; index += 3) {
+    colors[index] = tint.r
+    colors[index + 1] = tint.g
+    colors[index + 2] = tint.b
+  }
+  result.setAttribute('color', new THREE.BufferAttribute(colors, 3))
+  return result
+}
+
+function mergeModel(parts: THREE.BufferGeometry[]) {
+  const geometry = mergeGeometries(parts, false)
+  for (const part of parts) part.dispose()
+  if (!geometry) throw new Error('Unable to merge procedural model geometry')
+  geometry.computeBoundingSphere()
+  return geometry
+}
+
+function pedestrianGeometry() {
+  return mergeModel([
+    coloredPart(new THREE.CapsuleGeometry(0.34, 0.72, 4, 8), '#ee6f9f'),
+    coloredPart(new THREE.SphereGeometry(0.34, 8, 6).translate(0, 0.92, 0), '#f4b98d'),
+    coloredPart(new THREE.BoxGeometry(0.2, 0.7, 0.24).translate(-0.2, -0.68, 0), '#38547e'),
+    coloredPart(new THREE.BoxGeometry(0.2, 0.7, 0.24).translate(0.2, -0.68, 0), '#38547e'),
+    coloredPart(new THREE.BoxGeometry(0.15, 0.82, 0.17).rotateZ(0.34).translate(-0.46, 0.02, 0), '#f4b98d'),
+    coloredPart(new THREE.BoxGeometry(0.15, 0.82, 0.17).rotateZ(-0.34).translate(0.46, 0.02, 0), '#f4b98d'),
+  ])
+}
+
+function catGeometry() {
+  return mergeModel([
+    coloredPart(new THREE.BoxGeometry(0.76, 0.5, 1.16), '#d98b45'),
+    coloredPart(new THREE.BoxGeometry(0.64, 0.58, 0.54).translate(0, 0.2, 0.68), '#efb85d'),
+    coloredPart(new THREE.ConeGeometry(0.15, 0.4, 4).rotateZ(-0.18).translate(-0.23, 0.58, 0.7), '#efb85d'),
+    coloredPart(new THREE.ConeGeometry(0.15, 0.4, 4).rotateZ(0.18).translate(0.23, 0.58, 0.7), '#efb85d'),
+    coloredPart(new THREE.CylinderGeometry(0.08, 0.11, 1.08, 6).rotateX(-0.65).translate(0, 0.1, -0.82), '#d98b45'),
+    ...[-0.25, 0.25].flatMap((x) => [-0.32, 0.32].map((z) =>
+      coloredPart(new THREE.BoxGeometry(0.13, 0.42, 0.14).translate(x, -0.4, z), '#d98b45'),
+    )),
+  ])
+}
+
+function soldierGeometry() {
+  return mergeModel([
+    coloredPart(new THREE.CapsuleGeometry(0.4, 0.85, 4, 7), '#ba535e'),
+    coloredPart(new THREE.SphereGeometry(0.34, 8, 6).translate(0, 0.98, 0), '#d9a06f'),
+    coloredPart(new THREE.SphereGeometry(0.37, 8, 4, 0, Math.PI * 2, 0, Math.PI / 2).translate(0, 1.08, 0), '#574d68'),
+    coloredPart(new THREE.BoxGeometry(0.2, 0.75, 0.22).translate(-0.22, -0.72, 0), '#4e4660'),
+    coloredPart(new THREE.BoxGeometry(0.2, 0.75, 0.22).translate(0.22, -0.72, 0), '#4e4660'),
+    coloredPart(new THREE.BoxGeometry(0.16, 0.16, 1.35).rotateX(-0.08).translate(0.46, 0.12, 0.45), '#272b39'),
+    coloredPart(new THREE.BoxGeometry(0.18, 0.42, 0.16).rotateZ(-0.35).translate(0.4, -0.04, 0.04), '#d9a06f'),
+  ])
+}
+
+function helicopterGeometry() {
+  return mergeModel([
+    coloredPart(new THREE.CapsuleGeometry(0.72, 2.1, 5, 9).rotateX(Math.PI / 2), '#6f608b'),
+    coloredPart(new THREE.SphereGeometry(0.76, 10, 7).scale(1, 0.72, 1.08).translate(0, 0.02, 1.25), '#8ed8df'),
+    coloredPart(new THREE.BoxGeometry(0.38, 0.38, 3.2).translate(0, 0.12, -2.35), '#5a526c'),
+    coloredPart(new THREE.BoxGeometry(6.4, 0.12, 0.22).translate(0, 0.92, 0), '#332f45'),
+    coloredPart(new THREE.BoxGeometry(0.22, 0.12, 6.4).translate(0, 0.92, 0), '#332f45'),
+    coloredPart(new THREE.BoxGeometry(0.12, 1.9, 0.18).translate(0.08, 0.32, -4), '#332f45'),
+    coloredPart(new THREE.BoxGeometry(0.12, 0.18, 1.9).translate(0.08, 0.32, -4), '#332f45'),
+  ])
+}
+
+function antiAirGeometry() {
+  return mergeModel([
+    coloredPart(new THREE.CylinderGeometry(1.12, 1.28, 1.2, 8).translate(0, 0.45, 0), '#514d62'),
+    coloredPart(new THREE.SphereGeometry(0.78, 8, 5).scale(1, 0.65, 1).translate(0, 1.22, 0), '#736481'),
+    coloredPart(new THREE.CylinderGeometry(0.13, 0.18, 2.8, 7).rotateX(Math.PI / 2).rotateZ(-0.16).translate(-0.26, 1.62, 1.25), '#282b38'),
+    coloredPart(new THREE.CylinderGeometry(0.13, 0.18, 2.8, 7).rotateX(Math.PI / 2).rotateZ(0.16).translate(0.26, 1.62, 1.25), '#282b38'),
+  ])
+}
+
+function fighterGeometry() {
+  return mergeModel([
+    coloredPart(new THREE.ConeGeometry(0.68, 4.5, 7).rotateX(Math.PI / 2), '#e9e1da'),
+    coloredPart(new THREE.BoxGeometry(4.8, 0.14, 1.45).translate(0, -0.08, -0.28), '#cf7087'),
+    coloredPart(new THREE.BoxGeometry(1.7, 0.12, 1).translate(0, 0.02, -1.72), '#76628f'),
+    coloredPart(new THREE.BoxGeometry(0.16, 1.15, 0.92).translate(0, 0.48, -1.72), '#655678'),
+    coloredPart(new THREE.SphereGeometry(0.34, 8, 5).scale(0.8, 0.55, 1.5).translate(0, 0.42, 0.78), '#77dce8'),
+  ])
+}
+
+function balloonGeometry() {
+  return mergeModel([
+    coloredPart(new THREE.SphereGeometry(3.9, 14, 9).scale(1.08, 1.28, 1.08).translate(0, 1.2, 0), '#ef78a7'),
+    coloredPart(new THREE.BoxGeometry(2.2, 1.05, 1.65).translate(0, -3.55, 0), '#7b5966'),
+    coloredPart(new THREE.CylinderGeometry(0.06, 0.06, 3.3, 5).rotateZ(-0.25).translate(-0.72, -1.8, 0), '#f5d7af'),
+    coloredPart(new THREE.CylinderGeometry(0.06, 0.06, 3.3, 5).rotateZ(0.25).translate(0.72, -1.8, 0), '#f5d7af'),
+    coloredPart(new THREE.BoxGeometry(1.2, 0.16, 0.35).translate(0, -3.05, 0.82), '#ffd46d'),
+  ])
+}
 
 declare global {
   interface Window {
@@ -299,15 +396,17 @@ function TargetActor({ target, selected }: { target: MissionTarget; selected: bo
           <ringGeometry args={[2.36, 2.48, 24]} />
           <meshBasicMaterial color="#fff5bd" transparent opacity={0.7} side={THREE.DoubleSide} />
         </mesh>
+        <mesh position-y={3.6} rotation-z={Math.PI}>
+          <octahedronGeometry args={[0.72]} />
+          <meshBasicMaterial color={target.color} />
+        </mesh>
+        {[1.45, 2.15, 2.85].map((height, index) => (
+          <mesh key={height} position-y={height} rotation-z={Math.PI} scale={0.72 - index * 0.1}>
+            <coneGeometry args={[0.58, 0.72, 4]} />
+            <meshBasicMaterial color={target.color} transparent opacity={0.9 - index * 0.18} depthWrite={false} blending={THREE.AdditiveBlending} />
+          </mesh>
+        ))}
       </group>
-      <mesh position-y={16}>
-        <octahedronGeometry args={[1.15]} />
-        <meshBasicMaterial color={target.color} />
-      </mesh>
-      <mesh position-y={8}>
-        <cylinderGeometry args={[0.07, 0.18, 14, 6]} />
-        <meshBasicMaterial color={target.color} transparent opacity={0.46} depthWrite={false} blending={THREE.AdditiveBlending} />
-      </mesh>
     </group>
   )
 }
@@ -382,7 +481,7 @@ function TractorBeam() {
   const root = useRef<THREE.Group>(null)
   const target = snapshot.mission.targets.find((item) => item.id === snapshot.beamTargetId)
   const profile = beamProfile(snapshot.boostActive)
-  const length = Math.max(1.2, Math.min(profile.maxDrop, runtime.current.drone.position.y - (target?.position.y ?? 0.15) - 0.35))
+  const length = Math.max(0.8, beamVisualLength(runtime.current.drone.position.y, profile.maxDrop))
   const radius = profile.baseRadius + length * profile.coneSpread
   useFrame(() => {
     if (!root.current) return
@@ -393,13 +492,11 @@ function TractorBeam() {
   const color = target?.color ?? '#8fffe1'
   return (
     <group ref={root} position={[runtime.current.drone.position.x, runtime.current.drone.position.y, runtime.current.drone.position.z]}>
-      <group position-y={-0.42}>
       <mesh position-y={-length / 2} renderOrder={2}>
         <coneGeometry args={[radius, length, 24, 1, true]} />
         <meshBasicMaterial color={snapshot.boostActive ? '#69f7ff' : color} transparent opacity={snapshot.boostActive ? 0.38 : target ? 0.34 : 0.24} side={THREE.DoubleSide} depthWrite={false} blending={THREE.AdditiveBlending} />
       </mesh>
       <BeamFlowRings length={length} radius={radius} boosting={snapshot.boostActive} />
-      </group>
     </group>
   )
 }
@@ -554,12 +651,12 @@ function DroppedCaptives() {
 }
 
 const crowdGeometry: Record<CrowdKind, THREE.BufferGeometry> = {
-  pedestrian: new THREE.CapsuleGeometry(0.3, 0.78, 3, 6),
-  cat: new THREE.BoxGeometry(0.48, 0.34, 0.82).translate(0, -0.3, 0),
+  pedestrian: pedestrianGeometry(),
+  cat: catGeometry(),
 }
 
 function CrowdPool({ kind }: { kind: CrowdKind }) {
-  const { runtime } = useGame()
+  const { runtime, snapshot } = useGame()
   const ref = useRef<THREE.InstancedMesh>(null)
   const matrix = useMemo(() => new THREE.Matrix4(), [])
   const position = useMemo(() => new THREE.Vector3(), [])
@@ -567,6 +664,7 @@ function CrowdPool({ kind }: { kind: CrowdKind }) {
   const scale = useMemo(() => new THREE.Vector3(), [])
   const rotation = useMemo(() => new THREE.Euler(), [])
   const color = useMemo(() => new THREE.Color(), [])
+  const pale = useMemo(() => new THREE.Color('#fff8df'), [])
   useFrame(({ clock }) => {
     if (!ref.current) return
     let count = 0
@@ -576,10 +674,14 @@ function CrowdPool({ kind }: { kind: CrowdKind }) {
       rotation.set(object.rotation.x, object.rotation.y, object.rotation.z)
       quaternion.setFromEuler(rotation)
       const bounce = object.inBeam ? 1 : 1 + Math.sin(clock.elapsedTime * 8 + object.slot) * 0.04
-      scale.set(kind === 'cat' ? 1.15 : 1, bounce, kind === 'cat' ? 1.15 : 1)
+      const targetScale = snapshot.mission.targets[0]?.id === object.id ? 1.38 : 1.16
+      const absorbScale = object.absorbing ? Math.max(0.04, object.absorbTimer / CROWD_ABSORB_TIME) : 1
+      scale.set(targetScale * absorbScale, targetScale * bounce * absorbScale, targetScale * absorbScale)
       matrix.compose(position, quaternion, scale)
       ref.current.setMatrixAt(count, matrix)
-      ref.current.setColorAt(count, color.set(object.color))
+      if (snapshot.mission.targets[0]?.id === object.id) color.set('#fff36d')
+      else color.set(object.color).lerp(pale, 0.72)
+      ref.current.setColorAt(count, color)
       count += 1
     }
     ref.current.count = count
@@ -588,7 +690,7 @@ function CrowdPool({ kind }: { kind: CrowdKind }) {
   })
   return (
     <instancedMesh ref={ref} args={[crowdGeometry[kind], undefined, kind === 'cat' ? CAT_MAX : PEDESTRIAN_MAX]} frustumCulled={false}>
-      <meshToonMaterial vertexColors emissive={kind === 'cat' ? '#6b3d20' : '#472035'} emissiveIntensity={0.18} />
+      <meshToonMaterial vertexColors emissive={kind === 'cat' ? '#3d2418' : '#37192d'} emissiveIntensity={0.2} />
     </instancedMesh>
   )
 }
@@ -598,19 +700,11 @@ function CrowdPools() {
 }
 
 const enemyGeometry: Record<EnemyKind, THREE.BufferGeometry> = {
-  soldier: new THREE.CapsuleGeometry(0.38, 0.82, 3, 6),
-  helicopter: new THREE.BoxGeometry(2.8, 0.72, 3.4),
-  'anti-air': new THREE.CylinderGeometry(0.9, 1.15, 1.8, 8),
-  fighter: new THREE.ConeGeometry(0.68, 4.2, 7),
-  balloon: new THREE.SphereGeometry(4.2, 14, 9),
-}
-
-const enemyColor: Record<EnemyKind, string> = {
-  soldier: '#f36f76',
-  helicopter: '#75618f',
-  'anti-air': '#534d67',
-  fighter: '#ece3dd',
-  balloon: '#ff8bb6',
+  soldier: soldierGeometry(),
+  helicopter: helicopterGeometry(),
+  'anti-air': antiAirGeometry(),
+  fighter: fighterGeometry(),
+  balloon: balloonGeometry(),
 }
 
 function EnemyPool({ kind }: { kind: EnemyKind }) {
@@ -621,6 +715,7 @@ function EnemyPool({ kind }: { kind: EnemyKind }) {
   const quaternion = useMemo(() => new THREE.Quaternion(), [])
   const scale = useMemo(() => new THREE.Vector3(1, 1, 1), [])
   const rotation = useMemo(() => new THREE.Euler(), [])
+  const color = useMemo(() => new THREE.Color(), [])
   useFrame(() => {
     const mesh = ref.current
     if (!mesh) return
@@ -630,19 +725,22 @@ function EnemyPool({ kind }: { kind: EnemyKind }) {
       if (!enemy.active || enemy.kind !== kind) continue
       position.set(enemy.position.x, enemy.position.y, enemy.position.z)
       const yaw = Math.atan2(player.x - enemy.position.x, player.z - enemy.position.z)
-      rotation.set(kind === 'fighter' ? Math.PI / 2 : 0, yaw, kind === 'fighter' ? Math.sin(enemy.phase) * 0.22 : 0)
+      rotation.set(0, yaw, kind === 'fighter' ? Math.sin(enemy.phase) * 0.22 : 0)
       quaternion.setFromEuler(rotation)
       scale.setScalar(kind === 'soldier' ? 1.05 : 1)
       matrix.compose(position, quaternion, scale)
       mesh.setMatrixAt(count, matrix)
+      const brightness = 0.84 + (enemy.slot % 3) * 0.07
+      mesh.setColorAt(count, color.setRGB(brightness, brightness, brightness))
       count += 1
     }
     mesh.count = count
     mesh.instanceMatrix.needsUpdate = true
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
   })
   return (
     <instancedMesh ref={ref} args={[enemyGeometry[kind], undefined, ENEMY_CAPS[kind]]} frustumCulled={false}>
-      <meshToonMaterial color={enemyColor[kind]} emissive={kind === 'balloon' ? '#802646' : '#241b35'} emissiveIntensity={0.25} />
+      <meshToonMaterial vertexColors emissive={kind === 'balloon' ? '#5a1d38' : '#171525'} emissiveIntensity={0.22} />
     </instancedMesh>
   )
 }
@@ -689,66 +787,41 @@ function LaserProjectiles() {
   const normal = useMemo(() => new THREE.Vector3(), [])
   const basis = useMemo(() => new THREE.Matrix4(), [])
   const geometry = useMemo(() => {
-    const result = new THREE.PlaneGeometry(1, 1)
-    const phases = new Float32Array(LASER_MAX_PROJECTILES)
-    for (let index = 0; index < phases.length; index += 1) phases[index] = (index * 0.61803398875) % 1
-    result.setAttribute('beamPhase', new THREE.InstancedBufferAttribute(phases, 1))
+    const result = new THREE.BufferGeometry()
+    result.setAttribute('position', new THREE.Float32BufferAttribute([
+      -0.7, -0.5, 0, 0.7, -0.5, 0, 0.12, 0.5, 0, -0.12, 0.5, 0,
+      0, -0.5, -0.7, 0, -0.5, 0.7, 0, 0.5, 0.12, 0, 0.5, -0.12,
+    ], 3))
+    result.setAttribute('uv', new THREE.Float32BufferAttribute([
+      0, 0, 1, 0, 1, 1, 0, 1,
+      0, 0, 1, 0, 1, 1, 0, 1,
+    ], 2))
+    result.setIndex([0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7])
     return result
   }, [])
-  const material = useMemo(() => new THREE.ShaderMaterial({
-    uniforms: { uTime: { value: 0 } },
-    vertexShader: `
-      attribute float beamPhase;
-      varying float vRadial;
-      varying float vLength;
-      varying float vPhase;
-      void main() {
-        vRadial = abs(uv.x - .5) * 2.0;
-        vLength = uv.y;
-        vPhase = beamPhase;
-        gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
-      }
-    `,
-    fragmentShader: `
-      uniform float uTime;
-      varying float vRadial;
-      varying float vLength;
-      varying float vPhase;
-      void main() {
-        float core = 1.0 - smoothstep(.04, .34, vRadial);
-        float glow = 1.0 - smoothstep(.18, 1.0, vRadial);
-        float tail = smoothstep(0.0, .20, vLength);
-        float energy = .78 + .22 * sin(vLength * 23.0 - uTime * 18.0 + vPhase * 6.28318);
-        vec3 outerColor = vec3(.98, .27, .62);
-        vec3 hotColor = vec3(1.0, .99, .78);
-        vec3 color = mix(outerColor, hotColor, core) * (energy + core * .7) * mix(.58, 1.22, vLength);
-        float alpha = glow * tail * (.52 + core * .48);
-        if (alpha < .015) discard;
-        gl_FragColor = vec4(color, alpha);
-      }
-    `,
+  const material = useMemo(() => new THREE.MeshBasicMaterial({
+    color: '#ff4f9d',
     transparent: true,
+    opacity: 0.94,
     depthWrite: false,
     blending: THREE.AdditiveBlending,
     side: THREE.DoubleSide,
+    toneMapped: false,
   }), [])
   useEffect(() => () => {
     geometry.dispose()
     material.dispose()
   }, [geometry, material])
-  useFrame(({ clock, camera }) => {
+  useFrame(({ camera }) => {
     if (!ref.current) return
-    material.uniforms.uTime!.value = clock.elapsedTime
     let count = 0
     for (const projectile of runtime.current.laserProjectiles) {
       if (!projectile.active) continue
       direction.set(projectile.direction.x, projectile.direction.y, projectile.direction.z).normalize()
-      const travelled = (LASER_PROJECTILE_LIFETIME - projectile.life) * LASER_PROJECTILE_SPEED + 2.3
-      const visibleLength = Math.min(LASER_VISUAL_LENGTH, travelled)
       position.set(
-        projectile.position.x - direction.x * visibleLength / 2,
-        projectile.position.y - direction.y * visibleLength / 2,
-        projectile.position.z - direction.z * visibleLength / 2,
+        projectile.position.x + direction.x * projectile.distance / 2,
+        projectile.position.y + direction.y * projectile.distance / 2,
+        projectile.position.z + direction.z * projectile.distance / 2,
       )
       facing.copy(camera.position).sub(position).normalize()
       side.crossVectors(direction, facing)
@@ -757,7 +830,7 @@ function LaserProjectiles() {
       normal.crossVectors(side, direction).normalize()
       basis.makeBasis(side, direction, normal)
       quaternion.setFromRotationMatrix(basis)
-      scale.set(0.72, visibleLength, 1)
+      scale.set(1.35, projectile.distance, 1.35)
       matrix.compose(position, quaternion, scale)
       ref.current.setMatrixAt(count, matrix)
       count += 1

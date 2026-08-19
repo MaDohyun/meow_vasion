@@ -109,10 +109,16 @@ export function channelTarget(mission: Mission, targetId: string, seconds: numbe
     return { target: null, completed: false }
   }
   const channelTime = target.kind === 'cat' ? 1.15 : 0.82
-  target.progress = Math.min(1, target.progress + seconds / channelTime)
-  const completed = target.progress >= 1
-  if (completed) completeTarget(mission, target)
-  return { target, completed }
+  target.progress = Math.min(0.9, target.progress + seconds / channelTime)
+  return { target, completed: false }
+}
+
+export function completeAbductionMission(mission: Mission, targetId: string) {
+  const target = mission.targets[0]
+  const abductMission = mission.kind === 'cat-abduct' || mission.kind === 'human-abduct'
+  if (!target || !target.active || !abductMission || target.id !== targetId) return false
+  completeTarget(mission, target)
+  return true
 }
 
 export function stepAirshowMission(mission: Mission, source: { position: Vec3; inBeam: boolean }, seconds: number) {

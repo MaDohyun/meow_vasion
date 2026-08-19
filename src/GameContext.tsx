@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { collideDrone, createDroneState, stepDrone, type Aabb, type DroneInput, type DroneState, type Vec3 } from './core/drone'
 import { beamProfile, beginCarDestruction, isInsideBeam, stepBeamObjects, type BeamField, type BeamObject } from './core/beam'
-import { createCrowdState, stepCrowds, type CrowdState } from './core/crowds'
+import { beginNearbyCrowdAbsorption, createCrowdState, stepCrowds, type CrowdState } from './core/crowds'
 import {
   activeEnemyCount,
   createEnemyState,
@@ -16,7 +16,7 @@ import {
   createLaserPool,
   createLaserBurstPool,
   directionToLaserAim,
-  fireLaserProjectile,
+  fireLaserBeam,
   laserDirection,
   laserRisingEdge,
   resolveLaserAim,
@@ -42,6 +42,7 @@ import {
 } from './core/risk'
 import {
   channelTarget,
+  completeAbductionMission,
   completeEnemyMission,
   isMissionComplete,
   nearestBeamTarget,
@@ -290,6 +291,8 @@ function makeBeamObject(car: ProceduralCar): BeamObject {
     destroying: false,
     destroyTimer: 0,
     explosionPending: false,
+    absorbing: false,
+    absorbTimer: 0,
   }
 }
 
@@ -314,6 +317,8 @@ function makeTrafficBeamObject(car: TrafficCar): BeamObject {
     destroying: false,
     destroyTimer: 0,
     explosionPending: false,
+    absorbing: false,
+    absorbTimer: 0,
   }
 }
 
@@ -529,15 +534,12 @@ function registerImpact(game: GameRuntime, source: 'POLICE' | 'FIGHTER' | 'BUILD
   if ('vibrate' in navigator) navigator.vibrate?.([35, 20, 35])
 }
 
-function secureTarget(game: GameRuntime, target: MissionTarget) {
+function secureTarget(game: GameRuntime, target: MissionTarget, absorbed = false) {
   if (target.kind === 'cat' || target.kind === 'pedestrian') {
-    for (const object of game.crowds.objects) {
-      if (object.id === target.id) { object.active = false; object.inBeam = false; break }
-    }
-    game.carried.push({ id: target.id, label: target.label, kind: target.kind, color: target.color })
+    if (!absorbed) game.carried.push({ id: target.id, label: target.label, kind: target.kind, color: target.color })
     game.pickupPulse = 1
-    if (game.carried.length > 4) game.carried.shift()
-    game.message = `${target.label} ACQUIRED`
+    if (!absorbed && game.carried.length > 4) game.carried.shift()
+    game.message = absorbed ? `${target.label} ABSORBED` : `${target.label} ACQUIRED`
     tone('pickup')
   }
   game.messageTime = 1.2
@@ -547,7 +549,7 @@ function secureTarget(game: GameRuntime, target: MissionTarget) {
 function missionCandidates(game: GameRuntime) {
   const candidates: MissionCandidate[] = []
   for (const object of game.crowds.objects) {
-    if (object.active && !object.inBeam) candidates.push({ id: object.id, kind: object.kind, position: object.position, color: object.color })
+    if (object.active && !object.inBeam && !object.absorbing) candidates.push({ id: object.id, kind: object.kind, position: object.position, color: object.color })
   }
   for (const object of game.beamObjects) {
     if (object.active && !object.destroying) candidates.push({ id: object.id, kind: 'car', position: object.position, color: object.color })
@@ -719,27 +721,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
     game.laserCooldown = Math.max(0, game.laserCooldown - d)
     game.laserFlash = Math.max(0, game.laserFlash - d)
     stepLaserBursts(game.laserBursts, d)
+    stepLaserProjectiles(game.laserProjectiles, d)
     game.chainWindow = Math.max(0, game.chainWindow - d)
-    const laserTargets = laserSphereTargets(game)
-    const laserImpacts = stepLaserProjectiles(game.laserProjectiles, {
-      colliders: game.worldColliders,
-      spheres: laserTargets,
-    }, d)
-    for (const impact of laserImpacts) {
-      const impactColor = impact.targetKind === 'car'
-        ? '#ffb24d'
-        : impact.targetKind === 'fighter'
-          ? '#ff557f'
-          : impact.targetKind === 'building'
-            ? '#6deeff'
-            : '#fff0a1'
-      triggerLaserBurst(game.laserBursts, 'impact', impact.position, impactColor)
-      if (impact.targetKind === 'fighter' && impact.targetId) registerEnemyLaserHit(game, impact.targetId)
-      if (impact.targetKind === 'car' && impact.targetId && destroyCar(game, impact.targetId, impact.direction)) {
-        game.message = 'CAR LAUNCHED'
-        game.messageTime = 0.9
-      }
-    }
 
     const turboActive = input.special && game.turbo > 0.02
     if (turboActive) {
@@ -810,6 +793,22 @@ export function GameProvider({ children }: { children: ReactNode }) {
     }
     stepBeamObjects(game.beamObjects, beamField, d)
     stepBeamObjects(game.crowds.objects, beamField, d)
+    let absorbedCrowd = beginNearbyCrowdAbsorption(game.crowds, game.drone.position)
+    while (absorbedCrowd) {
+      triggerLaserBurst(game.laserBursts, 'impact', absorbedCrowd.position, '#fff06d')
+      const missionTarget = game.mission.targets[0]
+      if (completeAbductionMission(game.mission, absorbedCrowd.id) && missionTarget) {
+        secureTarget(game, missionTarget, true)
+        finishMission(game)
+      } else {
+        game.score += scoreReward(18, game.wanted, game.chain)
+        game.pickupPulse = 1
+        game.message = `${absorbedCrowd.kind.toUpperCase()} ABSORBED`
+        game.messageTime = 0.8
+        tone('pickup')
+      }
+      absorbedCrowd = beginNearbyCrowdAbsorption(game.crowds, game.drone.position)
+    }
     for (let objectIndex = game.beamObjects.length - 1; objectIndex >= 0; objectIndex -= 1) {
       const object = game.beamObjects[objectIndex]!
       if (!object.active && object.explosionPending) {
@@ -858,8 +857,23 @@ export function GameProvider({ children }: { children: ReactNode }) {
         direction: game.laserAimDirection,
       }, game.worldColliders, laserSphereTargets(game))
       const direction = directionToLaserAim(game.drone.position, aim)
-      const projectile = fireLaserProjectile(game.laserProjectiles, game.drone.position, direction, game.drone.velocity)
+      const projectile = fireLaserBeam(game.laserProjectiles, game.drone.position, aim.point)
       triggerLaserBurst(game.laserBursts, 'muzzle', projectile.position)
+      if (aim.targetKind) {
+        const impactColor = aim.targetKind === 'car'
+          ? '#ffb24d'
+          : aim.targetKind === 'fighter'
+            ? '#ff557f'
+            : aim.targetKind === 'building'
+              ? '#6deeff'
+              : '#fff0a1'
+        triggerLaserBurst(game.laserBursts, 'impact', aim.point, impactColor)
+      }
+      if (aim.targetKind === 'fighter' && aim.targetId) registerEnemyLaserHit(game, aim.targetId)
+      if (aim.targetKind === 'car' && aim.targetId && destroyCar(game, aim.targetId, direction)) {
+        game.message = 'CAR LAUNCHED'
+        game.messageTime = 0.9
+      }
       game.laserShotsFired += 1
       game.heat += 0.035 * game.density.heatMultiplier
       tone('pickup')

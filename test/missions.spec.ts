@@ -3,6 +3,7 @@ import {
   AIRSHOW_ALTITUDE,
   AIRSHOW_HOLD_TIME,
   channelTarget,
+  completeAbductionMission,
   completeEnemyMission,
   isMissionComplete,
   nearestBeamTarget,
@@ -25,7 +26,10 @@ describe('single-target live-world mission loop', () => {
     expect(mission.kind).toBe('cat-abduct')
     expect(mission.targets).toHaveLength(1)
     expect(mission.targets[0]?.id).toBe('cat:1')
-    channelTarget(mission, 'cat:1', 2)
+    const channel = channelTarget(mission, 'cat:1', 2)
+    expect(channel.completed).toBe(false)
+    expect(mission.targets[0]?.progress).toBe(0.9)
+    expect(completeAbductionMission(mission, 'cat:1')).toBe(true)
     expect(isMissionComplete(mission)).toBe(true)
   })
 
