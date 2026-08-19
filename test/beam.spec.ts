@@ -10,8 +10,13 @@ const makeCar = (id = 'car-1', x = 0, y = 0.65, z = 0): BeamObject => ({
   velocity: { x: 0, y: 0, z: 0 },
   rotation: { x: 0, y: 0, z: 0 },
   angularVelocity: { x: 0, y: 0, z: 0 },
+  active: true,
   inBeam: false,
   tether: 0,
+  playerTouched: false,
+  destroying: false,
+  destroyTimer: 0,
+  explosionPending: false,
 })
 
 const field = (boosting = false): BeamField => ({
@@ -45,8 +50,8 @@ describe('tractor beam physics', () => {
   it('supports upgrade radius scaling without extending beam drop', () => {
     expect(beamProfile(false, 1.5).baseRadius).toBeCloseTo(beamProfile(false).baseRadius * 1.5)
     expect(beamProfile(false, 1.5).coneSpread).toBeCloseTo(beamProfile(false).coneSpread * 1.5)
-    expect(beamProfile(false, 1.5).maxDrop).toBe(15)
-    expect(beamProfile(true).maxDrop).toBe(24)
+    expect(beamProfile(false, 1.5).maxDrop).toBe(36)
+    expect(beamProfile(true).maxDrop).toBe(56)
   })
 
   it('lifts a heavy car more slowly than a light object', () => {
@@ -85,7 +90,7 @@ describe('tractor beam physics', () => {
     const profile = beamProfile(false)
     expect(beamGrip(0, profile.maxDrop)).toBe(1)
     expect(beamGrip(profile.maxDrop, profile.maxDrop)).toBe(BEAM_MIN_GRIP)
-    expect(beamGrip(profile.maxDrop * 0.85, profile.maxDrop)).toBeLessThan(0.1)
+    expect(beamGrip(profile.maxDrop * 0.85, profile.maxDrop)).toBeLessThan(0.12)
     expect(beamGrip(profile.maxDrop * 0.25, profile.maxDrop)).toBeGreaterThan(0.5)
   })
 
@@ -103,5 +108,21 @@ describe('tractor beam physics', () => {
     }
     expect(far.position.y).toBeGreaterThan(0.65)
     expect(near.position.y - 0.65).toBeGreaterThan((far.position.y - 0.65) * 2)
+  })
+
+  it('separates only cars that the player has touched', () => {
+    const untouchedLeft = makeCar('untouched-left', 0)
+    const untouchedRight = makeCar('untouched-right', 0.2)
+    const inactive = field()
+    inactive.active = false
+    stepBeamObjects([untouchedLeft, untouchedRight], inactive, 1 / 60)
+    expect(Math.abs(untouchedRight.position.x - untouchedLeft.position.x)).toBeCloseTo(0.2)
+
+    const touchedLeft = makeCar('touched-left', 0)
+    const touchedRight = makeCar('touched-right', 0.2)
+    touchedLeft.playerTouched = true
+    touchedRight.playerTouched = true
+    stepBeamObjects([touchedLeft, touchedRight], inactive, 1 / 60)
+    expect(Math.abs(touchedRight.position.x - touchedLeft.position.x)).toBeGreaterThan(2)
   })
 })

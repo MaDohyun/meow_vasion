@@ -1,8 +1,8 @@
 import type { Aabb, Vec3 } from './drone'
 
 export const LASER_MAX_PROJECTILES = 18
-export const LASER_PROJECTILE_SPEED = 92
-export const LASER_PROJECTILE_LIFETIME = 3.5
+export const LASER_PROJECTILE_SPEED = 260
+export const LASER_PROJECTILE_LIFETIME = 1.25
 export const LASER_VISUAL_LENGTH = 32
 export const LASER_FALLBACK_DISTANCE = 300
 export const LASER_MAX_BURSTS = 12
@@ -40,6 +40,7 @@ export type LaserProjectile = {
 
 export type LaserImpact = {
   position: Vec3
+  direction: Vec3
   targetId: string | null
   targetKind: LaserTargetKind
 }
@@ -51,6 +52,7 @@ export type LaserBurst = {
   position: Vec3
   life: number
   duration: number
+  color: string
 }
 
 export type LaserCollisionWorld = {
@@ -175,10 +177,11 @@ export function createLaserBurstPool(): LaserBurst[] {
     position: { x: 0, y: 0, z: 0 },
     life: 0,
     duration: 0.22,
+    color: '#ff79bd',
   }))
 }
 
-export function triggerLaserBurst(pool: LaserBurst[], kind: LaserBurst['kind'], position: Vec3) {
+export function triggerLaserBurst(pool: LaserBurst[], kind: LaserBurst['kind'], position: Vec3, color = kind === 'muzzle' ? '#fff3a3' : '#ff79bd') {
   const burst = pool.find((item) => !item.active)
     ?? pool.reduce((oldest, item) => item.life < oldest.life ? item : oldest)
   burst.active = true
@@ -186,6 +189,7 @@ export function triggerLaserBurst(pool: LaserBurst[], kind: LaserBurst['kind'], 
   burst.position = { ...position }
   burst.duration = kind === 'muzzle' ? 0.12 : 0.28
   burst.life = burst.duration
+  burst.color = color
   return burst
 }
 
@@ -224,7 +228,7 @@ export function fireLaserProjectile(
   pool: LaserProjectile[],
   origin: Vec3,
   direction: Vec3,
-  inheritedVelocity: Vec3,
+  _inheritedVelocity: Vec3,
 ) {
   const projectile = pool.find((item) => !item.active)
     ?? pool.reduce((oldest, item) => item.life < oldest.life ? item : oldest)
@@ -236,9 +240,9 @@ export function fireLaserProjectile(
   projectile.direction.x = aim.x
   projectile.direction.y = aim.y
   projectile.direction.z = aim.z
-  projectile.velocity.x = aim.x * LASER_PROJECTILE_SPEED + inheritedVelocity.x * 0.18
-  projectile.velocity.y = aim.y * LASER_PROJECTILE_SPEED + inheritedVelocity.y * 0.18
-  projectile.velocity.z = aim.z * LASER_PROJECTILE_SPEED + inheritedVelocity.z * 0.18
+  projectile.velocity.x = aim.x * LASER_PROJECTILE_SPEED
+  projectile.velocity.y = aim.y * LASER_PROJECTILE_SPEED
+  projectile.velocity.z = aim.z * LASER_PROJECTILE_SPEED
   projectile.life = LASER_PROJECTILE_LIFETIME
   return projectile
 }
@@ -253,7 +257,7 @@ function nearestSegmentImpact(
   if (length < 0.000001) return null
   const ray = { origin: start, direction: delta }
   let nearest = length + 0.000001
-  let result: LaserImpact | null = null
+  let result: Omit<LaserImpact, 'direction'> | null = null
   if (end.y <= 0.1 && delta.y < 0) {
     const distance = (0.1 - start.y) / (delta.y / length)
     if (distance >= 0 && distance <= length) {
@@ -275,7 +279,7 @@ function nearestSegmentImpact(
       result = { position: pointAlong(start, normalized(delta), distance), targetId: sphere.id, targetKind: sphere.kind }
     }
   }
-  return result
+  return result ? { ...result, direction: normalized(delta) } : null
 }
 
 export function stepLaserProjectiles(pool: LaserProjectile[], world: LaserCollisionWorld, dt: number) {

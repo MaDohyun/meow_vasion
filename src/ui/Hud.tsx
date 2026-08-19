@@ -104,6 +104,7 @@ function WantedStars() {
           <i key={index} data-active={index < snapshot.wanted}>★</i>
         ))}
       </div>
+      <strong className="risk-multiplier">RISK ×{snapshot.riskMultiplier.toFixed(2)}</strong>
       <div className="heat-track"><i style={{ width: `${snapshot.heat * 100}%` }} /></div>
     </div>
   )
@@ -139,7 +140,7 @@ function Results() {
     <div className={`overlay results-overlay ${snapshot.victory ? 'victory' : 'defeat'}`}>
       <span className="eyebrow">{snapshot.victory ? 'RAID FILED AS A SUCCESS' : 'VEHICLE SEIZED BY CITY'}</span>
       <h2>{snapshot.resultTitle}</h2>
-      <strong className="final-score">{snapshot.score.toLocaleString()}</strong>
+      <strong className="final-score">{Math.floor(snapshot.score).toLocaleString()}</strong>
       <p>FINAL INFAMY SCORE</p>
       <div className="result-stats">
         <span><b>{snapshot.completedMissions}</b> MISSIONS</span>
@@ -159,7 +160,7 @@ function CaptiveRack() {
       <span className="eyebrow">TETHERED</span>
       <div>
         {snapshot.carried.length === 0 && <small>EMPTY</small>}
-        {snapshot.carried.map((item) => <i key={item.id}>{item.kind === 'cow' ? '🐄' : '●'}</i>)}
+        {snapshot.carried.map((item) => <i key={item.id}>{item.kind === 'cat' ? '🐈' : '●'}</i>)}
       </div>
     </div>
   )
@@ -188,12 +189,12 @@ function PlanetRadar() {
 export function Hud() {
   const { snapshot } = useGame()
   if (snapshot.phase === 'intro') return <Intro />
-  const activeTarget = snapshot.mission.targets.find((target) => target.id === snapshot.beamTargetId)
+  const activeTarget = snapshot.mission.targets[0]
   const missionTotal = snapshot.mission.targets.length
   const missionProgress = ((snapshot.mission.completed + (activeTarget?.progress ?? 0)) / missionTotal) * 100
   const beamStatus = snapshot.beamActive
     ? [
-        activeTarget ? `LOCK ${Math.round(activeTarget.progress * 100)}%` : null,
+        snapshot.beamTargetId && activeTarget ? `LOCK ${Math.round(activeTarget.progress * 100)}%` : null,
         snapshot.beamObjectCount > 0 ? `PULLING ${snapshot.beamObjectCount}` : null,
         snapshot.boostActive ? 'AMPLIFIED' : null,
       ].filter(Boolean).join(' · ') || 'SEARCHING'
@@ -206,20 +207,19 @@ export function Hud() {
           <strong>{snapshot.mission.title}</strong>
           <p>{snapshot.mission.briefing}</p>
           <div className="mission-progress"><i style={{ width: `${missionProgress}%` }} /></div>
-          <small>{snapshot.mission.completed}/{missionTotal} TARGETS</small>
+          <small>{snapshot.mission.completed}/{missionTotal} OBJECTIVE</small>
         </section>
 
         <WantedStars />
 
         <section className="score-card panel">
           <span className="eyebrow">INFAMY</span>
-          <strong>{snapshot.score.toLocaleString()}</strong>
-          <div><b>x{snapshot.chain}</b> CHAIN <small>{snapshot.chainWindow > 0 ? `${snapshot.chainWindow.toFixed(1)}s` : 'COLD'}</small></div>
-          <time>{formatTime(snapshot.sessionTime)}</time>
+          <strong>{Math.floor(snapshot.score).toLocaleString()}</strong>
+          <div><b>×{(snapshot.chain * snapshot.riskMultiplier).toFixed(2)}</b> TOTAL <small>CHAIN ×{snapshot.chain}</small></div>
+          <time>RUN {formatTime(snapshot.sessionTime)}</time>
         </section>
 
         <div className="hud-center">
-          {snapshot.fiveStarTimer !== null && <div className="survive-banner">SURVIVE · {snapshot.fiveStarTimer.toFixed(1)}</div>}
           {snapshot.message && <div className="message">{snapshot.message}</div>}
         </div>
 

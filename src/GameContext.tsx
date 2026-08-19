@@ -1,7 +1,17 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { collideDrone, createDroneState, stepDrone, type Aabb, type DroneInput, type DroneState, type Vec3 } from './core/drone'
-import { beamProfile, isInsideBeam, stepBeamObjects, type BeamField, type BeamObject } from './core/beam'
-import { fighterOrbitPosition } from './core/combat'
+import { beamProfile, beginCarDestruction, isInsideBeam, stepBeamObjects, type BeamField, type BeamObject } from './core/beam'
+import { createCrowdState, stepCrowds, type CrowdState } from './core/crowds'
+import {
+  activeEnemyCount,
+  createEnemyState,
+  hitEnemy,
+  nearbyEnemyThreats,
+  stepEnemies,
+  syncAntiAirEnemies,
+  syncEnemyTiers,
+  type EnemyState,
+} from './core/enemies'
 import {
   createLaserPool,
   createLaserBurstPool,
@@ -19,11 +29,26 @@ import {
 } from './core/laser'
 import { requestedPilotExpression, updatePilotExpression, type PilotExpression } from './core/pilot'
 import {
+  ENEMY_BASE_REWARD,
+  MISSION_BASE_REWARD,
+  STARTING_SCORE,
+  TARGET_BASE_REWARD,
+  createDensityCache,
+  drainScore,
+  scoreReward,
+  updateDensityCache,
+  wantedScoreMultiplier,
+  type DensityCache,
+} from './core/risk'
+import {
   channelTarget,
-  generateMission,
+  completeEnemyMission,
   isMissionComplete,
   nearestBeamTarget,
+  selectMission,
+  stepAirshowMission,
   type Mission,
+  type MissionCandidate,
   type MissionTarget,
   type TargetKind,
 } from './core/missions'
@@ -84,16 +109,20 @@ export type GameRuntime = {
   laserShotsFired: number
   laserProjectiles: LaserProjectile[]
   laserBursts: LaserBurst[]
-  fighterDamage: number
-  fighterRespawns: number[]
+  laserTargets: LaserSphereTarget[]
+  enemies: EnemyState
   fightersDown: number
   fighterAttackTimer: number
   policeAttackTimer: number
-  fiveStarTimer: number | null
   carried: CarriedTarget[]
   dropped: DroppedCaptive[]
   beamObjects: BeamObject[]
+  crowds: CrowdState
   traffic: TrafficState
+  destroyedCars: Set<string>
+  carDestructions: number
+  processedCarDestructions: number
+  density: DensityCache
   phase: GamePhase
   message: string
   messageTime: number
@@ -134,7 +163,8 @@ export type GameSnapshot = {
   laserFlash: number
   activeFighters: number
   fightersDown: number
-  fiveStarTimer: number | null
+  riskMultiplier: number
+  densityMultiplier: number
   carried: CarriedTarget[]
   dropped: DroppedCaptive[]
   beamObjectCount: number
@@ -173,14 +203,24 @@ function makeRuntime(): GameRuntime {
   drone.position = { x: 0, y: 2.8, z: 54.5 }
   drone.heading = Math.PI
   const world = createActiveWorld(drone.position)
+  const beamObjects = world.cars.map(makeBeamObject)
+  const crowds = createCrowdState((Math.random() * 0xffffffff) >>> 0)
+  stepCrowds(crowds, { position: drone.position, heading: drone.heading }, 0)
+  const initialCandidates: MissionCandidate[] = []
+  for (const object of crowds.objects) {
+    if (object.active) initialCandidates.push({ id: object.id, kind: object.kind, position: object.position, color: object.color })
+  }
+  for (const object of beamObjects) initialCandidates.push({ id: object.id, kind: 'car', position: object.position, color: object.color })
+  const mission = selectMission(0, drone.position, initialCandidates, 0)
+  if (!mission) throw new Error('The active world must contain at least one mission target')
   return {
     drone,
     world,
     worldColliders: activeWorldColliders(world),
-    mission: generateMission(0, drone.position),
+    mission,
     missionIndex: 0,
     sessionTime: 0,
-    score: 0,
+    score: STARTING_SCORE,
     completedMissions: 0,
     chain: 1,
     chainWindow: 0,
@@ -203,16 +243,20 @@ function makeRuntime(): GameRuntime {
     laserShotsFired: 0,
     laserProjectiles: createLaserPool(),
     laserBursts: createLaserBurstPool(),
-    fighterDamage: 0,
-    fighterRespawns: [],
+    laserTargets: [],
+    enemies: createEnemyState(),
     fightersDown: 0,
     fighterAttackTimer: 5.5,
     policeAttackTimer: 6.5,
-    fiveStarTimer: null,
     carried: [],
     dropped: [],
-    beamObjects: world.cars.map(makeBeamObject),
+    beamObjects,
+    crowds,
     traffic: createTrafficState((Math.random() * 0xffffffff) >>> 0),
+    destroyedCars: new Set<string>(),
+    carDestructions: 0,
+    processedCarDestructions: 0,
+    density: createDensityCache(),
     phase: 'intro',
     message: 'FIRST CONTACT: CATTLE CLASSIFIED',
     messageTime: 4,
@@ -239,8 +283,13 @@ function makeBeamObject(car: ProceduralCar): BeamObject {
     velocity: { x: 0, y: 0, z: 0 },
     rotation: { x: 0, y: car.rotation, z: 0 },
     angularVelocity: { x: 0, y: 0, z: 0 },
+    active: true,
     inBeam: false,
     tether: 0,
+    playerTouched: false,
+    destroying: false,
+    destroyTimer: 0,
+    explosionPending: false,
   }
 }
 
@@ -258,20 +307,25 @@ function makeTrafficBeamObject(car: TrafficCar): BeamObject {
     },
     rotation: { x: 0, y: car.rotation, z: 0 },
     angularVelocity: { x: 0, y: 0, z: 0 },
+    active: true,
     inBeam: true,
     tether: 0,
+    playerTouched: true,
+    destroying: false,
+    destroyTimer: 0,
+    explosionPending: false,
   }
 }
 
 function syncBeamObjects(game: GameRuntime) {
   const existing = new Map(game.beamObjects.map((object) => [object.id, object]))
   const retained = game.beamObjects.filter((object) =>
-    (object.inBeam || object.tether > 0.02) &&
+    object.active && (object.inBeam || object.tether > 0.02 || object.playerTouched) &&
     Math.hypot(object.position.x - game.drone.position.x, object.position.z - game.drone.position.z) <= WORLD_REMOVE_RADIUS,
   )
   const retainedIds = new Set(retained.map((object) => object.id))
   const nearby = game.world.cars
-    .filter((car) => !retainedIds.has(car.id))
+    .filter((car) => !retainedIds.has(car.id) && !game.destroyedCars.has(car.id))
     .map((car) => existing.get(car.id) ?? makeBeamObject(car))
   const capturedTraffic = retained.filter((object) => object.id.startsWith('traffic:'))
   const parked = [...retained.filter((object) => !object.id.startsWith('traffic:')), ...nearby]
@@ -290,40 +344,73 @@ function copyMission(mission: Mission): Mission {
   }
 }
 
-function activeFighterCount(game: GameRuntime) {
-  return Math.max(0, Math.min(3, game.wanted) - game.fighterRespawns.length)
+function writeLaserSphereTarget(
+  targets: LaserSphereTarget[],
+  slot: number,
+  id: string,
+  kind: LaserSphereTarget['kind'],
+  center: Vec3,
+  radius: number,
+) {
+  const target = targets[slot] ?? { id, kind, center: { x: 0, y: 0, z: 0 }, radius }
+  target.id = id
+  target.kind = kind
+  target.center.x = center.x
+  target.center.y = center.y
+  target.center.z = center.z
+  target.radius = radius
+  targets[slot] = target
+  return slot + 1
 }
 
 function laserSphereTargets(game: GameRuntime): LaserSphereTarget[] {
-  const targets: LaserSphereTarget[] = []
-  for (let index = 0; index < activeFighterCount(game); index += 1) {
-    targets.push({
-      id: `fighter:${index}`,
-      kind: 'fighter',
-      center: fighterOrbitPosition(game.drone.position, game.sessionTime, index),
-      radius: 2.1,
-    })
+  const targets = game.laserTargets
+  let slot = 0
+  for (const enemy of game.enemies.slots) {
+    if (!enemy.active) continue
+    const radius = enemy.kind === 'balloon' ? 5.5 : enemy.kind === 'soldier' ? 1.1 : enemy.kind === 'anti-air' ? 1.8 : 2.1
+    slot = writeLaserSphereTarget(targets, slot, enemy.id, 'fighter', enemy.position, radius)
   }
   for (const object of game.beamObjects) {
-    targets.push({ id: object.id, kind: 'car', center: object.position, radius: 1.7 })
+    if (!object.active || object.destroying) continue
+    slot = writeLaserSphereTarget(targets, slot, object.id, 'car', object.position, 1.7)
   }
   for (const car of game.traffic.cars) {
-    if (car.active) targets.push({ id: car.id, kind: 'car', center: car.position, radius: 1.7 })
+    if (car.active) slot = writeLaserSphereTarget(targets, slot, car.id, 'car', car.position, 1.7)
   }
+  targets.length = slot
   return targets
 }
 
-function registerFighterLaserHit(game: GameRuntime) {
-  game.fighterDamage += 1
-  if (game.fighterDamage < 4) return
-  game.fighterDamage = 0
-  game.fighterRespawns.push(4.8)
+function registerEnemyLaserHit(game: GameRuntime, id: string) {
+  const result = hitEnemy(game.enemies, id)
+  if (!result.destroyed || !result.kind) return
   game.fightersDown += 1
   game.fighterAttackTimer = Math.max(game.fighterAttackTimer, 3.2)
-  game.score += 180 * game.chain
-  game.message = 'FIGHTER POPPED · +180'
+  const reward = scoreReward(ENEMY_BASE_REWARD, game.wanted, game.chain)
+  game.score += reward
+  game.message = `${result.kind.toUpperCase()} POPPED · +${reward}`
   game.messageTime = 1.4
+  if (completeEnemyMission(game.mission, id)) finishMission(game)
   tone('upgrade')
+}
+
+function destroyCar(game: GameRuntime, id: string, direction: Vec3) {
+  let target: BeamObject | null = null
+  for (const object of game.beamObjects) {
+    if (object.id === id && object.active) { target = object; break }
+  }
+  if (!target) {
+    const captured = captureTrafficCar(game.traffic, id)
+    if (captured) {
+      target = makeTrafficBeamObject(captured)
+      game.beamObjects.unshift(target)
+    }
+  }
+  if (!target || !beginCarDestruction(target, direction, game.drone.velocity)) return false
+  game.destroyedCars.add(id)
+  game.carDestructions += 1
+  return true
 }
 
 function snapshotOf(game: GameRuntime): GameSnapshot {
@@ -350,12 +437,14 @@ function snapshotOf(game: GameRuntime): GameSnapshot {
     beamTargetId: game.beamTargetId,
     laserActive: game.laserActive,
     laserFlash: game.laserFlash,
-    activeFighters: activeFighterCount(game),
+    activeFighters: activeEnemyCount(game.enemies, 'fighter'),
     fightersDown: game.fightersDown,
-    fiveStarTimer: game.fiveStarTimer,
+    riskMultiplier: wantedScoreMultiplier(game.wanted),
+    densityMultiplier: game.density.heatMultiplier,
     carried: game.carried.map((item) => ({ ...item })),
     dropped: game.dropped.map((item) => ({ ...item, position: { ...item.position }, velocity: { ...item.velocity } })),
-    beamObjectCount: game.beamObjects.filter((object) => object.inBeam).length,
+    beamObjectCount: game.beamObjects.filter((object) => object.active && object.inBeam).length
+      + game.crowds.objects.filter((object) => object.active && object.inBeam).length,
     message: game.messageTime > 0 ? game.message : '',
     impactFlash: game.impactFlash,
     pickupPulse: game.pickupPulse,
@@ -407,9 +496,8 @@ function raiseWanted(game: GameRuntime) {
   game.wantedPulse = 1
   game.maxWanted = Math.max(game.maxWanted, game.wanted)
   game.fighterAttackTimer = Math.max(game.fighterAttackTimer, 2.2)
-  if (game.wanted === 5 && game.fiveStarTimer === null) {
-    game.fiveStarTimer = 18
-    game.message = 'FIVE STARS — SURVIVE 18 SECONDS!'
+  if (game.wanted === 5) {
+    game.message = `FIVE STARS · RISK x${wantedScoreMultiplier(game.wanted).toFixed(1)}`
     game.messageTime = 3
   }
 }
@@ -442,21 +530,74 @@ function registerImpact(game: GameRuntime, source: 'POLICE' | 'FIGHTER' | 'BUILD
 }
 
 function secureTarget(game: GameRuntime, target: MissionTarget) {
-  if (target.kind === 'cow' || target.kind === 'tourist') {
+  if (target.kind === 'cat' || target.kind === 'pedestrian') {
+    for (const object of game.crowds.objects) {
+      if (object.id === target.id) { object.active = false; object.inBeam = false; break }
+    }
     game.carried.push({ id: target.id, label: target.label, kind: target.kind, color: target.color })
     game.pickupPulse = 1
     if (game.carried.length > 4) game.carried.shift()
     game.message = `${target.label} ACQUIRED`
     tone('pickup')
-  } else if (target.kind === 'billboard') {
-    game.message = `${target.label} DOWNLOADED`
-    tone('upgrade')
-  } else {
-    game.message = `${target.label} OVERCOOKED`
-    tone('impact')
   }
   game.messageTime = 1.2
-  game.score += 55 * game.chain
+  game.score += scoreReward(TARGET_BASE_REWARD, game.wanted, game.chain)
+}
+
+function missionCandidates(game: GameRuntime) {
+  const candidates: MissionCandidate[] = []
+  for (const object of game.crowds.objects) {
+    if (object.active && !object.inBeam) candidates.push({ id: object.id, kind: object.kind, position: object.position, color: object.color })
+  }
+  for (const object of game.beamObjects) {
+    if (object.active && !object.destroying) candidates.push({ id: object.id, kind: 'car', position: object.position, color: object.color })
+  }
+  for (const car of game.traffic.cars) {
+    if (car.active) candidates.push({ id: car.id, kind: 'car', position: car.position, color: car.color })
+  }
+  for (const enemy of game.enemies.slots) {
+    if (enemy.active) candidates.push({ id: enemy.id, kind: 'enemy', position: enemy.position, label: enemy.kind.toUpperCase(), color: '#ff5d7f' })
+  }
+  return candidates
+}
+
+function selectNextMission(game: GameRuntime) {
+  const next = selectMission(game.missionIndex, game.drone.position, missionCandidates(game), game.wanted)
+  if (!next) return false
+  game.mission = next
+  return true
+}
+
+function missionSource(game: GameRuntime, target: MissionTarget) {
+  if (target.kind === 'cat' || target.kind === 'pedestrian') {
+    for (const object of game.crowds.objects) if (object.active && object.id === target.id) return object
+    return null
+  }
+  if (target.kind === 'car') {
+    for (const object of game.beamObjects) if (object.active && object.id === target.id) return object
+    for (const car of game.traffic.cars) if (car.active && car.id === target.id) return car
+    return null
+  }
+  for (const enemy of game.enemies.slots) if (enemy.active && enemy.id === target.id) return enemy
+  return null
+}
+
+function syncMissionObjective(game: GameRuntime, dt: number) {
+  const target = game.mission.targets[0]
+  if (!target?.active) return
+  const source = missionSource(game, target)
+  if (!source) {
+    game.missionIndex += 1
+    selectNextMission(game)
+    return
+  }
+  target.position.x = source.position.x
+  target.position.y = source.position.y
+  target.position.z = source.position.z
+  if (target.kind === 'car' && stepAirshowMission(game.mission, {
+    position: source.position,
+    inBeam: 'inBeam' in source && source.inBeam,
+  }, dt)) finishMission(game)
 }
 
 function finishMission(game: GameRuntime) {
@@ -464,14 +605,14 @@ function finishMission(game: GameRuntime) {
   game.chain = chained ? Math.min(5, game.chain + 1) : 1
   game.chainWindow = 32
   game.completedMissions += 1
-  const reward = (450 + game.mission.targets.length * 75) * game.chain
+  const reward = scoreReward(MISSION_BASE_REWARD, game.wanted, game.chain)
   game.score += reward
   raiseWanted(game)
   game.heat = Math.max(game.heat, 0.18)
   game.missionIndex += 1
-  game.mission = generateMission(game.missionIndex, game.drone.position)
+  selectNextMission(game)
   if (game.wanted < 5) {
-    game.message = `MISSION COMPLETE · STAR ${game.wanted} · CHAIN x${game.chain}`
+    game.message = `MISSION +${reward} · RISK x${wantedScoreMultiplier(game.wanted).toFixed(2)} · CHAIN x${game.chain}`
     game.messageTime = 2.8
   }
   tone('delivery')
@@ -562,6 +703,13 @@ export function GameProvider({ children }: { children: ReactNode }) {
     game.aimX = pointer.current.x
     game.aimY = pointer.current.y
     game.sessionTime += d
+    game.score = drainScore(game.score, d)
+    if (game.score <= 0) {
+      endRun(game, 'INFAMY DEPLETED', false)
+      updatePilotStatus(game)
+      publish()
+      return
+    }
     game.messageTime = Math.max(0, game.messageTime - d)
     game.impactFlash = Math.max(0, game.impactFlash - d * 5)
     game.pickupPulse = Math.max(0, game.pickupPulse - d * 3.2)
@@ -578,8 +726,19 @@ export function GameProvider({ children }: { children: ReactNode }) {
       spheres: laserTargets,
     }, d)
     for (const impact of laserImpacts) {
-      triggerLaserBurst(game.laserBursts, 'impact', impact.position)
-      if (impact.targetKind === 'fighter') registerFighterLaserHit(game)
+      const impactColor = impact.targetKind === 'car'
+        ? '#ffb24d'
+        : impact.targetKind === 'fighter'
+          ? '#ff557f'
+          : impact.targetKind === 'building'
+            ? '#6deeff'
+            : '#fff0a1'
+      triggerLaserBurst(game.laserBursts, 'impact', impact.position, impactColor)
+      if (impact.targetKind === 'fighter' && impact.targetId) registerEnemyLaserHit(game, impact.targetId)
+      if (impact.targetKind === 'car' && impact.targetId && destroyCar(game, impact.targetId, impact.direction)) {
+        game.message = 'CAR LAUNCHED'
+        game.messageTime = 0.9
+      }
     }
 
     const turboActive = input.special && game.turbo > 0.02
@@ -605,6 +764,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
     }
     const collision = collideDrone(stepped, game.worldColliders)
     game.drone = collision.state
+    syncEnemyTiers(game.enemies, game.wanted, game.drone.position, game.drone.heading, d)
+    syncAntiAirEnemies(game.enemies, game.wanted, game.world.buildings)
+    stepEnemies(game.enemies, game.drone.position, d)
     if (collision.hit && collision.impulse > 2.5 && game.collisionCooldown <= 0) {
       game.collisionCooldown = 0.45
       registerImpact(game, 'BUILDING')
@@ -615,6 +777,23 @@ export function GameProvider({ children }: { children: ReactNode }) {
       position: game.drone.position,
       heading: game.drone.heading,
     }, d)
+    stepCrowds(game.crowds, {
+      position: game.drone.position,
+      heading: game.drone.heading,
+    }, d)
+    updateDensityCache(
+      game.density,
+      game.drone.position,
+      game.world.buildings,
+      game.crowds.nearbyPedestrians,
+      game.beamObjects,
+      game.traffic.cars,
+    )
+    const destructionDelta = game.carDestructions - game.processedCarDestructions
+    if (destructionDelta > 0) {
+      game.heat += destructionDelta * 0.16 * game.density.heatMultiplier
+      game.processedCarDestructions = game.carDestructions
+    }
     const beamField: BeamField = {
       active: game.beamActive,
       boosting: turboActive,
@@ -630,6 +809,19 @@ export function GameProvider({ children }: { children: ReactNode }) {
       }
     }
     stepBeamObjects(game.beamObjects, beamField, d)
+    stepBeamObjects(game.crowds.objects, beamField, d)
+    for (let objectIndex = game.beamObjects.length - 1; objectIndex >= 0; objectIndex -= 1) {
+      const object = game.beamObjects[objectIndex]!
+      if (!object.active && object.explosionPending) {
+        object.explosionPending = false
+        triggerLaserBurst(game.laserBursts, 'impact', object.position, '#ff8a45')
+        if (object.id.startsWith('traffic:')) {
+          releaseTrafficSlot(game.traffic, object.id)
+          game.beamObjects.splice(objectIndex, 1)
+        }
+      }
+    }
+    syncMissionObjective(game, d)
     game.beamTargetId = null
     if (game.beamActive) {
       const profile = beamProfile(turboActive)
@@ -645,7 +837,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         const result = channelTarget(game.mission, target.id, d)
         if (game.completedMissions > 0) {
           const altitudeFactor = game.drone.position.y < 4 ? 0.56 : 1
-          game.heat += d * (target.kind === 'patrol' ? 0.17 : 0.08) * altitudeFactor
+          game.heat += d * (target.kind === 'car' ? 0.17 : 0.08) * altitudeFactor * game.density.heatMultiplier
         }
         if (result.completed && result.target) {
           secureTarget(game, result.target)
@@ -655,8 +847,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    game.fighterRespawns = game.fighterRespawns.map((time) => time - d).filter((time) => time > 0)
-    const fighters = activeFighterCount(game)
+    const enemyThreats = nearbyEnemyThreats(game.enemies, game.drone.position)
     const laserPressed = laserRisingEdge(input.laser, game.laserInputHeld)
     game.laserInputHeld = input.laser
     if (laserPressed && game.laserCooldown <= 0) {
@@ -670,7 +861,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       const projectile = fireLaserProjectile(game.laserProjectiles, game.drone.position, direction, game.drone.velocity)
       triggerLaserBurst(game.laserBursts, 'muzzle', projectile.position)
       game.laserShotsFired += 1
-      game.heat += 0.035
+      game.heat += 0.035 * game.density.heatMultiplier
       tone('pickup')
     }
     game.laserActive = game.laserFlash > 0
@@ -684,7 +875,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     }
 
     const horizontalSpeed = Math.hypot(game.drone.velocity.x, game.drone.velocity.z)
-    if (game.fiveStarTimer === null && game.wanted > 0 && game.drone.position.y < 3.4 && horizontalSpeed < 4 && !game.beamActive && !game.laserActive && !turboActive) {
+    if (game.wanted > 0 && game.drone.position.y < 3.4 && horizontalSpeed < 4 && !game.beamActive && !game.laserActive && !turboActive) {
       game.calmTime += d
       game.heat = Math.max(0, game.heat - d * 0.09)
       if (game.calmTime >= 7) {
@@ -697,7 +888,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       game.calmTime = Math.max(0, game.calmTime - d * 2)
     }
 
-    if (fighters > 0) {
+    if (enemyThreats > 0) {
       game.fighterAttackTimer -= d * (game.drone.position.y >= 6 ? 1.25 : 0.42)
       if (game.fighterAttackTimer <= 0) {
         registerImpact(game, 'FIGHTER')
@@ -731,11 +922,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
       }
       return item.age < 7
     })
-
-    if (game.fiveStarTimer !== null) {
-      game.fiveStarTimer = Math.max(0, game.fiveStarTimer - d)
-      if (game.fiveStarTimer <= 0) endRun(game, 'FIVE-STAR GETAWAY', true)
-    }
 
     updatePilotStatus(game)
 

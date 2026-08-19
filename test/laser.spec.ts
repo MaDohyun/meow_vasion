@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   LASER_MAX_PROJECTILES,
   LASER_MAX_BURSTS,
+  LASER_PROJECTILE_SPEED,
   createLaserBurstPool,
   createLaserPool,
   fireLaserProjectile,
@@ -29,6 +30,13 @@ describe('single-shot pooled laser projectiles', () => {
     }
     expect(pool).toHaveLength(LASER_MAX_PROJECTILES)
     expect(pool.filter((projectile) => projectile.active)).toHaveLength(LASER_MAX_PROJECTILES)
+  })
+
+  it('travels like light without inheriting UFO momentum', () => {
+    const pool = createLaserPool()
+    const projectile = fireLaserProjectile(pool, { x: 0, y: 2, z: 0 }, { x: 0, y: 0, z: 1 }, { x: 150, y: 80, z: -70 })
+    expect(LASER_PROJECTILE_SPEED).toBeGreaterThanOrEqual(240)
+    expect(projectile.velocity).toEqual({ x: 0, y: 0, z: LASER_PROJECTILE_SPEED })
   })
 
   it('advances and removes projectiles on impact or lifetime expiry', () => {

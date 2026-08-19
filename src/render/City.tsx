@@ -197,16 +197,30 @@ function GroundPool() {
     if (key === lastKey.current) return
     lastKey.current = key
     const cells = groundCellsAround(drone)
+    let lotSlot = 0
     let roadSlot = 0
-    cells.forEach((cell, index) => {
+    const groundSpan = WORLD_CELL_SIZE * (WORLD_GROUND_RADIUS_CELLS * 2 + 1)
+    position.set((world.cellX + 0.5) * WORLD_CELL_SIZE, -0.012, (world.cellZ + 0.5) * WORLD_CELL_SIZE)
+    scale.set(groundSpan, groundSpan, 1)
+    matrix.compose(position, planeRotation, scale)
+    lots.current.setMatrixAt(lotSlot, matrix)
+    lots.current.setColorAt(lotSlot, color.set('#b9bf9e'))
+    lotSlot += 1
+    cells.forEach((cell) => {
       const centerX = (cell.cellX + 0.5) * WORLD_CELL_SIZE
       const centerZ = (cell.cellZ + 0.5) * WORLD_CELL_SIZE
-      position.set(centerX, 0, centerZ)
-      scale.set(WORLD_CELL_SIZE + 0.08, WORLD_CELL_SIZE + 0.08, 1)
-      matrix.compose(position, planeRotation, scale)
-      lots.current!.setMatrixAt(index, matrix)
-      const lotColor = cell.kind === 'intersection' ? '#aeb8ad' : GROUND_COLORS[cell.ground]
-      lots.current!.setColorAt(index, color.set(lotColor))
+      const definedLot = cell.ground === 'parking' || cell.ground === 'plaza' || cell.ground === 'pond'
+      if (definedLot && cell.seed % 100 < 68 && lotSlot < GROUND_CELL_COUNT) {
+        const lotSize = WORLD_CELL_SIZE - 5 - (cell.seed >>> 9) % 5
+        const jitterX = ((cell.seed >>> 17) % 5) - 2
+        const jitterZ = ((cell.seed >>> 22) % 5) - 2
+        position.set(centerX + jitterX, 0, centerZ + jitterZ)
+        scale.set(lotSize, lotSize, 1)
+        matrix.compose(position, planeRotation, scale)
+        lots.current!.setMatrixAt(lotSlot, matrix)
+        lots.current!.setColorAt(lotSlot, color.set(GROUND_COLORS[cell.ground]))
+        lotSlot += 1
+      }
 
       position.set(centerX, 0.018, cell.cellZ * WORLD_CELL_SIZE)
       scale.set(WORLD_CELL_SIZE + 0.2, 7.5, 1)
@@ -219,7 +233,7 @@ function GroundPool() {
       roads.current!.setMatrixAt(roadSlot, matrix)
       roadSlot += 1
     })
-    lots.current.count = cells.length
+    lots.current.count = lotSlot
     roads.current.count = roadSlot
     lots.current.instanceMatrix.needsUpdate = true
     roads.current.instanceMatrix.needsUpdate = true

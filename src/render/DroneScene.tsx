@@ -5,7 +5,8 @@ import * as THREE from 'three'
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
 import { useGame, type CarriedTarget } from '../GameContext'
 import { beamProfile } from '../core/beam'
-import { fighterOrbitPosition } from '../core/combat'
+import { CAT_MAX, PEDESTRIAN_MAX, type CrowdKind } from '../core/crowds'
+import { ENEMY_CAPS, type EnemyKind } from '../core/enemies'
 import {
   LASER_MAX_PROJECTILES,
   LASER_MAX_BURSTS,
@@ -17,12 +18,6 @@ import type { MissionTarget, TargetKind } from '../core/missions'
 import { TRAFFIC_MAX_CARS } from '../core/traffic'
 import { WORLD_MAX_CARS } from '../core/world'
 import { City } from './City'
-import {
-  PILOT_ATLAS_COLUMNS,
-  PILOT_ATLAS_ROWS,
-  pilotAtlasCanvas,
-  pilotFrameIndex,
-} from './pilotArt'
 import { PostFx } from './PostFx'
 
 const roundedCarBodyGeometry = new RoundedBoxGeometry(1.8, 0.62, 3.1, 2, 0.15)
@@ -76,8 +71,20 @@ function Tourist({ color = '#ff79b8' }: { color?: string }) {
   )
 }
 
+function Cat({ color = '#f3c36d' }: { color?: string }) {
+  return (
+    <group scale={0.68}>
+      <mesh><boxGeometry args={[0.72, 0.5, 1.15]} /><meshToonMaterial color={color} /></mesh>
+      <mesh position={[0, 0.2, 0.65]}><boxGeometry args={[0.62, 0.58, 0.52]} /><meshToonMaterial color={color} /></mesh>
+      <mesh position={[-0.22, 0.58, 0.67]} rotation-z={-0.18}><coneGeometry args={[0.14, 0.38, 4]} /><meshToonMaterial color={color} /></mesh>
+      <mesh position={[0.22, 0.58, 0.67]} rotation-z={0.18}><coneGeometry args={[0.14, 0.38, 4]} /><meshToonMaterial color={color} /></mesh>
+      <mesh position={[0, 0.15, -0.86]} rotation-x={-0.65}><cylinderGeometry args={[0.08, 0.11, 1.05, 6]} /><meshToonMaterial color={color} /></mesh>
+    </group>
+  )
+}
+
 function PersonOrCow({ kind, color }: { kind: TargetKind; color?: string }) {
-  return kind === 'cow' ? <Cow color={color} /> : <Tourist color={color} />
+  return kind === 'cat' ? <Cat color={color} /> : <Tourist color={color} />
 }
 
 function PatrolCar({ color = '#f1f1da', police = false }: { color?: string; police?: boolean }) {
@@ -133,6 +140,7 @@ function PullableCars() {
     let visibleCount = 0
     let glowCount = 0
     for (const object of runtime.current.beamObjects) {
+      if (!object.active) continue
       position.set(object.position.x, object.position.y, object.position.z)
       if (camera.position.distanceToSquared(position) > 180 * 180) continue
       sphere.center.copy(position)
@@ -292,11 +300,6 @@ function TargetActor({ target, selected }: { target: MissionTarget; selected: bo
           <meshBasicMaterial color="#fff5bd" transparent opacity={0.7} side={THREE.DoubleSide} />
         </mesh>
       </group>
-      {target.kind === 'cow' || target.kind === 'tourist'
-        ? <PersonOrCow kind={target.kind} />
-        : target.kind === 'patrol'
-          ? <PatrolCar color="#f6ead7" />
-          : <ScanNode color={target.color} />}
       <mesh position-y={16}>
         <octahedronGeometry args={[1.15]} />
         <meshBasicMaterial color={target.color} />
@@ -422,40 +425,6 @@ function PilotModel() {
   )
 }
 
-function PilotScreen() {
-  const { snapshot } = useGame()
-  const texture = useMemo(() => {
-    const result = new THREE.CanvasTexture(pilotAtlasCanvas)
-    result.colorSpace = THREE.SRGBColorSpace
-    result.magFilter = THREE.NearestFilter
-    result.minFilter = THREE.NearestFilter
-    result.generateMipmaps = false
-    result.repeat.set(1 / PILOT_ATLAS_COLUMNS, 1 / PILOT_ATLAS_ROWS)
-    return result
-  }, [])
-  useEffect(() => () => texture.dispose(), [texture])
-  useEffect(() => {
-    const index = pilotFrameIndex(snapshot.pilotExpression)
-    const column = index % PILOT_ATLAS_COLUMNS
-    const row = Math.floor(index / PILOT_ATLAS_COLUMNS)
-    texture.offset.set(column / PILOT_ATLAS_COLUMNS, (PILOT_ATLAS_ROWS - row - 1) / PILOT_ATLAS_ROWS)
-    texture.needsUpdate = true
-  }, [snapshot.pilotExpression, texture])
-  return (
-    <group position={[0, 0.68, -1.08]} rotation={[0.06, Math.PI, 0]}>
-      <mesh>
-        <boxGeometry args={[1.26, 0.96, 0.12]} />
-        <meshToonMaterial color="#4f465f" />
-      </mesh>
-      <mesh position-z={0.065}>
-        <planeGeometry args={[1.08, 0.78]} />
-        <meshBasicMaterial map={texture} toneMapped={false} />
-      </mesh>
-      <mesh position={[0.5, -0.39, 0.072]}><circleGeometry args={[0.045, 8]} /><meshBasicMaterial color="#b9df78" /></mesh>
-    </group>
-  )
-}
-
 function Ufo() {
   const { runtime, snapshot } = useGame()
   const root = useRef<THREE.Group>(null)
@@ -545,7 +514,6 @@ function Ufo() {
           <coneGeometry args={[0.25, 0.62, 5]} />
           <meshBasicMaterial color="#ffdd67" />
         </mesh>
-        <PilotScreen />
         {snapshot.boostActive && (
           <group position={[0, -0.02, -1.85]} rotation-x={Math.PI / 2}>
             {[-0.62, 0.62].map((x) => (
@@ -585,34 +553,108 @@ function DroppedCaptives() {
   )
 }
 
-function FighterJet() {
+const crowdGeometry: Record<CrowdKind, THREE.BufferGeometry> = {
+  pedestrian: new THREE.CapsuleGeometry(0.3, 0.78, 3, 6),
+  cat: new THREE.BoxGeometry(0.48, 0.34, 0.82).translate(0, -0.3, 0),
+}
+
+function CrowdPool({ kind }: { kind: CrowdKind }) {
+  const { runtime } = useGame()
+  const ref = useRef<THREE.InstancedMesh>(null)
+  const matrix = useMemo(() => new THREE.Matrix4(), [])
+  const position = useMemo(() => new THREE.Vector3(), [])
+  const quaternion = useMemo(() => new THREE.Quaternion(), [])
+  const scale = useMemo(() => new THREE.Vector3(), [])
+  const rotation = useMemo(() => new THREE.Euler(), [])
+  const color = useMemo(() => new THREE.Color(), [])
+  useFrame(({ clock }) => {
+    if (!ref.current) return
+    let count = 0
+    for (const object of runtime.current.crowds.objects) {
+      if (!object.active || object.kind !== kind) continue
+      position.set(object.position.x, object.position.y, object.position.z)
+      rotation.set(object.rotation.x, object.rotation.y, object.rotation.z)
+      quaternion.setFromEuler(rotation)
+      const bounce = object.inBeam ? 1 : 1 + Math.sin(clock.elapsedTime * 8 + object.slot) * 0.04
+      scale.set(kind === 'cat' ? 1.15 : 1, bounce, kind === 'cat' ? 1.15 : 1)
+      matrix.compose(position, quaternion, scale)
+      ref.current.setMatrixAt(count, matrix)
+      ref.current.setColorAt(count, color.set(object.color))
+      count += 1
+    }
+    ref.current.count = count
+    ref.current.instanceMatrix.needsUpdate = true
+    if (ref.current.instanceColor) ref.current.instanceColor.needsUpdate = true
+  })
   return (
-    <group scale={0.9}>
-      <mesh rotation-x={Math.PI / 2}><coneGeometry args={[0.42, 3.1, 7]} /><meshToonMaterial color="#ece3dd" /></mesh>
-      <mesh position={[0, 0, -0.35]}><boxGeometry args={[3.1, 0.13, 1.1]} /><meshToonMaterial color="#e88d9d" /></mesh>
-      <mesh position={[0, 0.4, -1]}><boxGeometry args={[0.14, 0.85, 0.8]} /><meshToonMaterial color="#665084" /></mesh>
-      <mesh position={[0, 0, -1.7]}><circleGeometry args={[0.25, 8]} /><meshBasicMaterial color="#64eaff" /></mesh>
-    </group>
+    <instancedMesh ref={ref} args={[crowdGeometry[kind], undefined, kind === 'cat' ? CAT_MAX : PEDESTRIAN_MAX]} frustumCulled={false}>
+      <meshToonMaterial vertexColors emissive={kind === 'cat' ? '#6b3d20' : '#472035'} emissiveIntensity={0.18} />
+    </instancedMesh>
   )
 }
 
-function Fighters() {
-  const { runtime, snapshot } = useGame()
-  const group = useRef<THREE.Group>(null)
+function CrowdPools() {
+  return <group><CrowdPool kind="pedestrian" /><CrowdPool kind="cat" /></group>
+}
+
+const enemyGeometry: Record<EnemyKind, THREE.BufferGeometry> = {
+  soldier: new THREE.CapsuleGeometry(0.38, 0.82, 3, 6),
+  helicopter: new THREE.BoxGeometry(2.8, 0.72, 3.4),
+  'anti-air': new THREE.CylinderGeometry(0.9, 1.15, 1.8, 8),
+  fighter: new THREE.ConeGeometry(0.68, 4.2, 7),
+  balloon: new THREE.SphereGeometry(4.2, 14, 9),
+}
+
+const enemyColor: Record<EnemyKind, string> = {
+  soldier: '#f36f76',
+  helicopter: '#75618f',
+  'anti-air': '#534d67',
+  fighter: '#ece3dd',
+  balloon: '#ff8bb6',
+}
+
+function EnemyPool({ kind }: { kind: EnemyKind }) {
+  const { runtime } = useGame()
+  const ref = useRef<THREE.InstancedMesh>(null)
+  const matrix = useMemo(() => new THREE.Matrix4(), [])
+  const position = useMemo(() => new THREE.Vector3(), [])
+  const quaternion = useMemo(() => new THREE.Quaternion(), [])
+  const scale = useMemo(() => new THREE.Vector3(1, 1, 1), [])
+  const rotation = useMemo(() => new THREE.Euler(), [])
   useFrame(() => {
-    if (!group.current) return
+    const mesh = ref.current
+    if (!mesh) return
     const player = runtime.current.drone.position
-    group.current.children.forEach((fighter, index) => {
-      const angle = runtime.current.sessionTime * (0.55 + index * 0.07) + index * 2.25
-      const position = fighterOrbitPosition(player, runtime.current.sessionTime, index)
-      fighter.position.set(position.x, position.y, position.z)
-      fighter.rotation.y = Math.atan2(player.x - fighter.position.x, player.z - fighter.position.z)
-      fighter.rotation.z = Math.sin(angle) * 0.28
-    })
+    let count = 0
+    for (const enemy of runtime.current.enemies.slots) {
+      if (!enemy.active || enemy.kind !== kind) continue
+      position.set(enemy.position.x, enemy.position.y, enemy.position.z)
+      const yaw = Math.atan2(player.x - enemy.position.x, player.z - enemy.position.z)
+      rotation.set(kind === 'fighter' ? Math.PI / 2 : 0, yaw, kind === 'fighter' ? Math.sin(enemy.phase) * 0.22 : 0)
+      quaternion.setFromEuler(rotation)
+      scale.setScalar(kind === 'soldier' ? 1.05 : 1)
+      matrix.compose(position, quaternion, scale)
+      mesh.setMatrixAt(count, matrix)
+      count += 1
+    }
+    mesh.count = count
+    mesh.instanceMatrix.needsUpdate = true
   })
   return (
-    <group ref={group}>
-      {Array.from({ length: snapshot.activeFighters }, (_, index) => <group key={index}><FighterJet /></group>)}
+    <instancedMesh ref={ref} args={[enemyGeometry[kind], undefined, ENEMY_CAPS[kind]]} frustumCulled={false}>
+      <meshToonMaterial color={enemyColor[kind]} emissive={kind === 'balloon' ? '#802646' : '#241b35'} emissiveIntensity={0.25} />
+    </instancedMesh>
+  )
+}
+
+function EnemyPools() {
+  return (
+    <group>
+      <EnemyPool kind="soldier" />
+      <EnemyPool kind="helicopter" />
+      <EnemyPool kind="anti-air" />
+      <EnemyPool kind="fighter" />
+      <EnemyPool kind="balloon" />
     </group>
   )
 }
@@ -642,9 +684,12 @@ function LaserProjectiles() {
   const direction = useMemo(() => new THREE.Vector3(), [])
   const scale = useMemo(() => new THREE.Vector3(), [])
   const quaternion = useMemo(() => new THREE.Quaternion(), [])
-  const up = useMemo(() => new THREE.Vector3(0, 1, 0), [])
+  const side = useMemo(() => new THREE.Vector3(), [])
+  const facing = useMemo(() => new THREE.Vector3(), [])
+  const normal = useMemo(() => new THREE.Vector3(), [])
+  const basis = useMemo(() => new THREE.Matrix4(), [])
   const geometry = useMemo(() => {
-    const result = new THREE.CylinderGeometry(0.07, 0.22, 1, 8, 1, true)
+    const result = new THREE.PlaneGeometry(1, 1)
     const phases = new Float32Array(LASER_MAX_PROJECTILES)
     for (let index = 0; index < phases.length; index += 1) phases[index] = (index * 0.61803398875) % 1
     result.setAttribute('beamPhase', new THREE.InstancedBufferAttribute(phases, 1))
@@ -658,8 +703,7 @@ function LaserProjectiles() {
       varying float vLength;
       varying float vPhase;
       void main() {
-        float expectedRadius = mix(.22, .07, uv.y);
-        vRadial = clamp(length(position.xz) / max(.001, expectedRadius), 0.0, 1.0);
+        vRadial = abs(uv.x - .5) * 2.0;
         vLength = uv.y;
         vPhase = beamPhase;
         gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
@@ -692,7 +736,7 @@ function LaserProjectiles() {
     geometry.dispose()
     material.dispose()
   }, [geometry, material])
-  useFrame(({ clock }) => {
+  useFrame(({ clock, camera }) => {
     if (!ref.current) return
     material.uniforms.uTime!.value = clock.elapsedTime
     let count = 0
@@ -706,8 +750,14 @@ function LaserProjectiles() {
         projectile.position.y - direction.y * visibleLength / 2,
         projectile.position.z - direction.z * visibleLength / 2,
       )
-      quaternion.setFromUnitVectors(up, direction)
-      scale.set(1, visibleLength, 1)
+      facing.copy(camera.position).sub(position).normalize()
+      side.crossVectors(direction, facing)
+      if (side.lengthSq() < 0.0001) side.set(1, 0, 0)
+      else side.normalize()
+      normal.crossVectors(side, direction).normalize()
+      basis.makeBasis(side, direction, normal)
+      quaternion.setFromRotationMatrix(basis)
+      scale.set(0.72, visibleLength, 1)
       matrix.compose(position, quaternion, scale)
       ref.current.setMatrixAt(count, matrix)
       count += 1
@@ -722,36 +772,66 @@ function LaserProjectiles() {
 
 function LaserBursts() {
   const { runtime } = useGame()
-  const ref = useRef<THREE.InstancedMesh>(null)
+  const rings = useRef<THREE.InstancedMesh>(null)
+  const sparks = useRef<THREE.InstancedMesh>(null)
+  const flashes = useRef<THREE.InstancedMesh>(null)
   const matrix = useMemo(() => new THREE.Matrix4(), [])
   const position = useMemo(() => new THREE.Vector3(), [])
   const scale = useMemo(() => new THREE.Vector3(), [])
   const color = useMemo(() => new THREE.Color(), [])
+  const quaternion = useMemo(() => new THREE.Quaternion(), [])
+  const spin = useMemo(() => new THREE.Quaternion(), [])
+  const forward = useMemo(() => new THREE.Vector3(0, 0, 1), [])
   useFrame(({ camera }) => {
-    if (!ref.current) return
+    if (!rings.current || !sparks.current || !flashes.current) return
     let count = 0
     for (const burst of runtime.current.laserBursts) {
       if (!burst.active) continue
       const remaining = burst.life / burst.duration
-      const size = burst.kind === 'muzzle'
+      const ringSize = burst.kind === 'muzzle'
         ? 0.35 + remaining * 0.9
         : 0.25 + (1 - remaining) * 2.35
       position.set(burst.position.x, burst.position.y, burst.position.z)
-      scale.setScalar(size)
+      scale.setScalar(ringSize)
       matrix.compose(position, camera.quaternion, scale)
-      ref.current.setMatrixAt(count, matrix)
-      ref.current.setColorAt(count, color.set(burst.kind === 'muzzle' ? '#fff3a3' : '#ff79bd').multiplyScalar(0.45 + remaining * 0.85))
+      rings.current.setMatrixAt(count, matrix)
+      rings.current.setColorAt(count, color.set(burst.color).multiplyScalar(0.45 + remaining * 0.85))
+
+      quaternion.copy(camera.quaternion)
+      spin.setFromAxisAngle(forward, count * 1.91 + (1 - remaining) * 1.4)
+      quaternion.multiply(spin)
+      scale.set(0.12 + remaining * 0.14, 0.8 + (1 - remaining) * 2.8, 0.12)
+      matrix.compose(position, quaternion, scale)
+      sparks.current.setMatrixAt(count, matrix)
+      sparks.current.setColorAt(count, color.set(burst.color).multiplyScalar(0.75 + remaining * 0.5))
+
+      scale.setScalar((burst.kind === 'muzzle' ? 0.5 : 1.25) * remaining)
+      matrix.compose(position, camera.quaternion, scale)
+      flashes.current.setMatrixAt(count, matrix)
+      flashes.current.setColorAt(count, color.set(burst.color).multiplyScalar(0.7 + remaining))
       count += 1
     }
-    ref.current.count = count
-    ref.current.instanceMatrix.needsUpdate = true
-    if (ref.current.instanceColor) ref.current.instanceColor.needsUpdate = true
+    for (const mesh of [rings.current, sparks.current, flashes.current]) {
+      mesh.count = count
+      mesh.instanceMatrix.needsUpdate = true
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
+    }
   })
   return (
-    <instancedMesh ref={ref} args={[undefined, undefined, LASER_MAX_BURSTS]} frustumCulled={false} renderOrder={6}>
-      <ringGeometry args={[0.62, 1, 24]} />
-      <meshBasicMaterial vertexColors transparent opacity={0.9} depthWrite={false} side={THREE.DoubleSide} blending={THREE.AdditiveBlending} toneMapped={false} />
-    </instancedMesh>
+    <group>
+      <instancedMesh ref={rings} args={[undefined, undefined, LASER_MAX_BURSTS]} frustumCulled={false} renderOrder={6}>
+        <ringGeometry args={[0.62, 1, 24]} />
+        <meshBasicMaterial vertexColors transparent opacity={0.9} depthWrite={false} side={THREE.DoubleSide} blending={THREE.AdditiveBlending} toneMapped={false} />
+      </instancedMesh>
+      <instancedMesh ref={sparks} args={[undefined, undefined, LASER_MAX_BURSTS]} frustumCulled={false} renderOrder={7}>
+        <tetrahedronGeometry args={[1, 0]} />
+        <meshBasicMaterial vertexColors transparent opacity={0.86} depthWrite={false} blending={THREE.AdditiveBlending} toneMapped={false} />
+      </instancedMesh>
+      <instancedMesh ref={flashes} args={[undefined, undefined, LASER_MAX_BURSTS]} frustumCulled={false} renderOrder={8}>
+        <circleGeometry args={[1, 12]} />
+        <meshBasicMaterial vertexColors transparent opacity={0.78} depthWrite={false} side={THREE.DoubleSide} blending={THREE.AdditiveBlending} toneMapped={false} />
+      </instancedMesh>
+    </group>
   )
 }
 
@@ -913,9 +993,10 @@ export function DroneScene() {
       <PullableCars />
       <DrivingTraffic />
       <MissionTargets />
+      <CrowdPools />
       <DroppedCaptives />
       <GroundPolice />
-      <Fighters />
+      <EnemyPools />
       <LaserProjectiles />
       <LaserBursts />
       <TractorBeam />

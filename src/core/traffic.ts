@@ -1,7 +1,7 @@
 import type { Vec3 } from './drone'
 import { PARKED_CAR_COLORS, WORLD_CELL_SIZE } from './world'
 
-export const TRAFFIC_MAX_CARS = 16
+export const TRAFFIC_MAX_CARS = 32
 export const TRAFFIC_SPAWN_MIN_DISTANCE = 60
 export const TRAFFIC_SPAWN_MAX_DISTANCE = 140
 export const TRAFFIC_REMOVE_DISTANCE = 180
@@ -101,6 +101,7 @@ function spawnTrafficCar(state: TrafficState, view: TrafficView) {
       ? { x: candidateX, y: 0.65, z: Math.round(candidateZ / WORLD_CELL_SIZE) * WORLD_CELL_SIZE + laneOffset }
       : { x: Math.round(candidateX / WORLD_CELL_SIZE) * WORLD_CELL_SIZE + laneOffset, y: 0.65, z: candidateZ }
     if (trafficCarIsVisible(position, view)) continue
+    if (state.cars.some((other) => other.active && Math.hypot(other.position.x - position.x, other.position.z - position.z) < 5.5)) continue
 
     car.generation += 1
     car.id = `traffic:${car.slot}:${car.generation}`
@@ -154,7 +155,7 @@ export function stepTraffic(state: TrafficState, view: TrafficView, dt: number) 
   }
 
   if (state.spawnTimer <= 0 && activeCount < TRAFFIC_MAX_CARS) {
-    state.spawnTimer = spawnTrafficCar(state, view) ? 0.42 : 0.16
+    state.spawnTimer = spawnTrafficCar(state, view) ? 0.24 : 0.12
   }
   return state
 }

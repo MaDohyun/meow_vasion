@@ -59,6 +59,7 @@ button { font: inherit; }
 .wanted-stars { display: flex; justify-content: center; gap: 4px; height: 29px; }
 .wanted-stars i { color: #686077; font-family: Arial,sans-serif; font-size: 27px; font-style: normal; line-height: 28px; -webkit-text-stroke: 1px #fff0be; }
 .wanted-stars i[data-active="true"] { color: var(--yellow); -webkit-text-stroke-color: #5e3645; text-shadow: 0 0 10px #ffbe55; animation: star-pop .26s steps(2); }
+.risk-multiplier { display:block; margin:-1px 0 4px; color:var(--cyan); font-size:15px; line-height:1; letter-spacing:2px; text-shadow:0 0 10px rgba(105,247,255,.7); }
 @keyframes star-pop { from { transform: scale(1.7) rotate(-18deg); } to { transform: scale(1); } }
 .heat-track { height: 4px; overflow: hidden; background: #111426; }
 .heat-track i { display: block; height: 100%; background: linear-gradient(90deg,var(--cyan),var(--yellow),var(--coral)); }

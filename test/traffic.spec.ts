@@ -12,6 +12,7 @@ const view = { position: { x: 0, y: 3, z: 0 }, heading: 0 }
 
 describe('pooled road traffic', () => {
   it('spawns outside the camera view and stays under the fixed cap', () => {
+    expect(TRAFFIC_MAX_CARS).toBeGreaterThanOrEqual(30)
     const state = createTrafficState(12345)
     stepTraffic(state, view, 1 / 60)
     const first = state.cars.find((car) => car.active)

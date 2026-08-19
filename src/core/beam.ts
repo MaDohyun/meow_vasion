@@ -1,6 +1,6 @@
 import type { Vec3 } from './drone'
 
-export type BeamObjectKind = 'car'
+export type BeamObjectKind = 'car' | 'pedestrian' | 'cat'
 
 export type BeamObject = {
   id: string
@@ -11,8 +11,13 @@ export type BeamObject = {
   velocity: Vec3
   rotation: Vec3
   angularVelocity: Vec3
+  active: boolean
   inBeam: boolean
   tether: number
+  playerTouched: boolean
+  destroying: boolean
+  destroyTimer: number
+  explosionPending: boolean
 }
 
 export type BeamField = {
@@ -32,14 +37,14 @@ export type BeamProfile = {
 }
 
 const GROUND_HEIGHT = 0.65
-export const BEAM_MIN_GRIP = 0.075
-export const BEAM_GRIP_EXPONENT = 2.4
+export const BEAM_MIN_GRIP = 0.11
+export const BEAM_GRIP_EXPONENT = 2.8
 
 export function beamProfile(boosting: boolean, radiusScale = 1): BeamProfile {
   const scale = Math.max(0.1, radiusScale)
   const profile = boosting
-    ? { maxDrop: 24, baseRadius: 3.8, coneSpread: 0.22, spring: 8.5, response: 22 }
-    : { maxDrop: 15, baseRadius: 2.4, coneSpread: 0.16, spring: 5.2, response: 10 }
+    ? { maxDrop: 56, baseRadius: 5.4, coneSpread: 0.29, spring: 25.5, response: 58 }
+    : { maxDrop: 36, baseRadius: 3.4, coneSpread: 0.22, spring: 15.6, response: 32 }
   return {
     ...profile,
     baseRadius: profile.baseRadius * scale,
@@ -70,16 +75,53 @@ export function beamGrip(drop: number, maxDrop: number, minGrip = BEAM_MIN_GRIP,
   return minGrip + (1 - minGrip) * Math.pow(1 - dropRatio, Math.max(2, exponent))
 }
 
+export function beginCarDestruction(object: BeamObject, direction: Vec3, inheritedVelocity: Vec3) {
+  if (!object.active || object.kind !== 'car' || object.destroying) return false
+  object.destroying = true
+  object.destroyTimer = 0.52
+  object.explosionPending = true
+  object.inBeam = false
+  object.tether = 0
+  object.playerTouched = true
+  object.velocity.x = direction.x * 31 + inheritedVelocity.x * 0.22
+  object.velocity.y = direction.y * 31 + inheritedVelocity.y * 0.08 + 10
+  object.velocity.z = direction.z * 31 + inheritedVelocity.z * 0.22
+  const spin = object.id.length % 2 === 0 ? 1 : -1
+  object.angularVelocity.x = spin * 9
+  object.angularVelocity.y = spin * 13
+  object.angularVelocity.z = -spin * 7
+  return true
+}
+
 export function stepBeamObjects(objects: BeamObject[], field: BeamField, dt: number) {
   const d = Math.min(Math.max(0, dt), 0.05)
   const profile = beamProfile(field.boosting, field.radiusScale)
 
   for (const object of objects) {
+    if (!object.active) continue
+    if (object.destroying) {
+      object.destroyTimer = Math.max(0, object.destroyTimer - d)
+      object.velocity.y -= 7.5 * d
+      object.position.x += object.velocity.x * d
+      object.position.y += object.velocity.y * d
+      object.position.z += object.velocity.z * d
+      object.rotation.x += object.angularVelocity.x * d
+      object.rotation.y += object.angularVelocity.y * d
+      object.rotation.z += object.angularVelocity.z * d
+      if (object.destroyTimer <= 0) {
+        object.destroying = false
+        object.active = false
+        object.inBeam = false
+        object.tether = 0
+      }
+      continue
+    }
     const captured = isInsideBeam(object, field)
     object.inBeam = captured
 
     if (captured) {
-      const mass = Math.max(0.45, object.mass)
+      object.playerTouched = true
+      const mass = Math.max(0.08, object.mass)
       const drop = Math.max(0, field.position.y - object.position.y)
       const grip = beamGrip(drop, profile.maxDrop)
       const spring = profile.spring * grip / mass
@@ -93,10 +135,11 @@ export function stepBeamObjects(objects: BeamObject[], field: BeamField, dt: num
         y: Math.max(GROUND_HEIGHT + 0.8, field.position.y - 1.8 - layer * 0.48),
         z: field.position.z + Math.sin(angle) * orbit,
       }
-      const verticalOffset = Math.max(-4, Math.min(4, anchor.y - object.position.y))
+      const verticalLimit = profile.maxDrop * 0.34
+      const verticalOffset = Math.max(-verticalLimit, Math.min(verticalLimit, anchor.y - object.position.y))
       const desired = {
         x: field.velocity.x + (anchor.x - object.position.x) * spring,
-        y: field.velocity.y + verticalOffset * spring,
+        y: field.velocity.y + verticalOffset * spring * grip,
         z: field.velocity.z + (anchor.z - object.position.z) * spring,
       }
       if (anchor.y > object.position.y) desired.y = Math.max(desired.y, 0.9)
@@ -139,5 +182,53 @@ export function stepBeamObjects(objects: BeamObject[], field: BeamField, dt: num
     }
   }
 
+  separateTouchedBeamObjects(objects)
+
   return objects
+}
+
+function separateTouchedBeamObjects(objects: BeamObject[]) {
+  const minimumDistance = 2.15
+  for (let leftIndex = 0; leftIndex < objects.length; leftIndex += 1) {
+    const left = objects[leftIndex]!
+    if (!left.active || left.destroying || !left.playerTouched) continue
+    for (let rightIndex = leftIndex + 1; rightIndex < objects.length; rightIndex += 1) {
+      const right = objects[rightIndex]!
+      if (!right.active || right.destroying || !right.playerTouched) continue
+      const dx = right.position.x - left.position.x
+      const dy = right.position.y - left.position.y
+      const dz = right.position.z - left.position.z
+      const distance = Math.hypot(dx, dy, dz)
+      if (distance >= minimumDistance) continue
+      const safeDistance = Math.max(0.001, distance)
+      const nx = distance < 0.001 ? 1 : dx / safeDistance
+      const ny = distance < 0.001 ? 0 : dy / safeDistance
+      const nz = distance < 0.001 ? 0 : dz / safeDistance
+      const inverseLeft = 1 / Math.max(0.08, left.mass)
+      const inverseRight = 1 / Math.max(0.08, right.mass)
+      const inverseTotal = inverseLeft + inverseRight
+      const overlap = minimumDistance - distance
+      const leftShare = inverseLeft / inverseTotal
+      const rightShare = inverseRight / inverseTotal
+      left.position.x -= nx * overlap * leftShare
+      left.position.y -= ny * overlap * leftShare
+      left.position.z -= nz * overlap * leftShare
+      right.position.x += nx * overlap * rightShare
+      right.position.y += ny * overlap * rightShare
+      right.position.z += nz * overlap * rightShare
+      const relativeVelocity = (right.velocity.x - left.velocity.x) * nx + (right.velocity.y - left.velocity.y) * ny + (right.velocity.z - left.velocity.z) * nz
+      if (relativeVelocity < 0) {
+        const impulse = -relativeVelocity * 0.62 / inverseTotal
+        left.velocity.x -= nx * impulse * inverseLeft
+        left.velocity.y -= ny * impulse * inverseLeft
+        left.velocity.z -= nz * impulse * inverseLeft
+        right.velocity.x += nx * impulse * inverseRight
+        right.velocity.y += ny * impulse * inverseRight
+        right.velocity.z += nz * impulse * inverseRight
+      }
+      const spin = 0.45 + overlap * 0.9
+      left.angularVelocity.z -= spin * rightShare
+      right.angularVelocity.z += spin * leftShare
+    }
+  }
 }
