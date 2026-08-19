@@ -63,7 +63,7 @@ import {
   type ProceduralCar,
 } from './core/world'
 import { captureTrafficCar, createTrafficState, releaseTrafficSlot, stepTraffic, TRAFFIC_MAX_CARS, type TrafficCar, type TrafficState } from './core/traffic'
-import { tone, unlockAudio } from './audio'
+import { setBgmWanted, startBgm, stopBgm, tone } from './audio'
 
 export type GamePhase = 'intro' | 'playing' | 'results'
 
@@ -486,6 +486,7 @@ function updatePilotStatus(game: GameRuntime) {
 }
 
 function endRun(game: GameRuntime, title: string, victory: boolean) {
+  stopBgm()
   game.phase = 'results'
   game.resultTitle = title
   game.victory = victory
@@ -498,6 +499,7 @@ function endRun(game: GameRuntime, title: string, victory: boolean) {
 function raiseWanted(game: GameRuntime) {
   if (game.wanted >= 5) return
   game.wanted += 1
+  setBgmWanted(game.wanted)
   game.wantedPulse = 1
   game.maxWanted = Math.max(game.maxWanted, game.wanted)
   game.fighterAttackTimer = Math.max(game.fighterAttackTimer, 2.2)
@@ -667,6 +669,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerdown', move)
       document.documentElement.removeEventListener('mouseleave', leave)
+      stopBgm()
     }
   }, [])
 
@@ -947,7 +950,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   }, [publish, readInput])
 
   const start = useCallback(() => {
-    unlockAudio()
+    startBgm()
     pointer.current = { x: 0, y: 0 }
     const game = runtime.current
     game.phase = 'playing'
@@ -957,6 +960,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   }, [publish])
 
   const restart = useCallback(() => {
+    startBgm()
     pointer.current = { x: 0, y: 0 }
     runtime.current = makeRuntime()
     runtime.current.phase = 'playing'
