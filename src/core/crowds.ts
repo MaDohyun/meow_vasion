@@ -4,6 +4,8 @@ import type { Aabb, Vec3 } from './drone'
 export type CrowdKind = 'pedestrian' | 'cat'
 export const PEDESTRIAN_MAX = 28
 export const CAT_MAX = 7
+export const INITIAL_PEDESTRIANS = 16
+export const INITIAL_CATS = 7
 export const CROWD_REMOVE_DISTANCE = 155
 export const CROWD_ABSORB_DISTANCE = 3.35
 export const CROWD_ABSORB_TIME = 0.24
@@ -23,6 +25,7 @@ export type CrowdState = {
   spawnTimer: number
   randomState: number
   nearbyPedestrians: number
+  initialSpawnDone: boolean
 }
 
 export type CrowdView = {
@@ -65,7 +68,13 @@ export function createCrowdState(seed = 0xc47cafe): CrowdState {
   const objects: CrowdObject[] = []
   for (let slot = 0; slot < PEDESTRIAN_MAX; slot += 1) objects.push(makeCrowdObject('pedestrian', slot))
   for (let slot = 0; slot < CAT_MAX; slot += 1) objects.push(makeCrowdObject('cat', slot))
-  return { objects, spawnTimer: 0, randomState: seed >>> 0 || 1, nearbyPedestrians: 0 }
+  return {
+    objects,
+    spawnTimer: 0,
+    randomState: seed >>> 0 || 1,
+    nearbyPedestrians: 0,
+    initialSpawnDone: false,
+  }
 }
 
 function random(state: CrowdState) {
@@ -120,6 +129,18 @@ function spawnCrowdObject(state: CrowdState, view: CrowdView, kind: CrowdKind) {
 export function stepCrowds(state: CrowdState, view: CrowdView, dt: number) {
   const d = Math.min(Math.max(0, dt), 0.05)
   state.spawnTimer -= d
+  if (!state.initialSpawnDone) {
+    // Seed a healthy recovery supply immediately. If a caller already supplied
+    // an active object (for example while restoring a save), preserve it and
+    // let the normal cadence take over instead of doubling the crowd.
+    const hasActiveCrowd = state.objects.some((object) => object.active)
+    state.initialSpawnDone = true
+    if (!hasActiveCrowd) {
+      for (let index = 0; index < INITIAL_PEDESTRIANS; index += 1) spawnCrowdObject(state, view, 'pedestrian')
+      for (let index = 0; index < INITIAL_CATS; index += 1) spawnCrowdObject(state, view, 'cat')
+    }
+    state.spawnTimer = 0.16
+  }
   let pedestrians = 0
   let cats = 0
   let nearbyPedestrians = 0

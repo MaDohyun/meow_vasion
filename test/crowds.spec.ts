@@ -3,6 +3,8 @@ import { beginCarDestruction, stepBeamObjects, type BeamObject } from '../src/co
 import {
   CAT_MAX,
   CROWD_ABSORB_TIME,
+  INITIAL_CATS,
+  INITIAL_PEDESTRIANS,
   PEDESTRIAN_MAX,
   activeCrowdCount,
   beginNearbyCrowdAbsorption,
@@ -33,6 +35,9 @@ describe('pooled city crowds and destructible cars', () => {
     const state = createCrowdState(42)
     expect(state.objects).toHaveLength(PEDESTRIAN_MAX + CAT_MAX)
     const view = { position: { x: 0, y: 3, z: 0 }, heading: 0 }
+    stepCrowds(state, view, 0)
+    expect(activeCrowdCount(state, 'pedestrian')).toBe(INITIAL_PEDESTRIANS)
+    expect(activeCrowdCount(state, 'cat')).toBe(INITIAL_CATS)
     for (let frame = 0; frame < 420; frame += 1) {
       stepCrowds(state, view, 0.05)
       stepBeamObjects(state.objects, inactiveBeam, 0.05)
