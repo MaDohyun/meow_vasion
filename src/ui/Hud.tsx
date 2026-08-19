@@ -1,5 +1,6 @@
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { useGame } from '../GameContext'
+import { WEAPON_DEFINITIONS, WEAPON_IDS } from '../core/weapons'
 import { pilotFrameStyle } from '../render/pilotArt'
 
 const formatTime = (seconds: number) => {
@@ -94,7 +95,7 @@ function MobileControls() {
 }
 
 function Intro() {
-  const { start } = useGame()
+  const { snapshot, start, selectWeapon } = useGame()
   return (
     <div className="overlay intro-overlay">
       <div className="sun-disc" />
@@ -104,13 +105,31 @@ function Intro() {
       <div className="title-kicker">UFO ATTACK SURVIVAL</div>
       <h1><span>UFO</span><span>어택 서바이벌</span></h1>
       <p className="tagline">최대한 오래 살아남으면서 도시를 파괴하세요</p>
+      <div className="weapon-picker" aria-label="starting weapon selection">
+        {WEAPON_IDS.map((weapon) => {
+          const definition = WEAPON_DEFINITIONS[weapon]
+          return (
+            <button
+              key={weapon}
+              className={`weapon-choice ${snapshot.selectedWeapon === weapon ? 'selected' : ''}`}
+              onClick={() => selectWeapon(weapon)}
+              type="button"
+            >
+              <b>{definition.shortLabel}</b>
+              <strong>{definition.label}</strong>
+              <small>{definition.description}</small>
+            </button>
+          )
+        })}
+      </div>
       <button className="primary-button" onClick={start}>START SURVIVAL</button>
       <div className="controls-card">
         <span><b>W/S</b> FLY WHERE YOU LOOK</span>
         <span><b>A/D</b> RIGHT / LEFT</span>
         <span><b>MOUSE</b> 3D STEER / AIM</span>
         <span><b>E</b> HOLD TRACTOR BEAM · ABSORB TIME</span>
-        <span><b>Q</b> TAP LASER · <b>R</b> DROP CARS</span>
+        <span><b>Q</b> TAP LASER · AUTO WEAPON FIRES</span>
+        <span><b>R</b> DROP CARS</span>
         <span><b>SPACE</b> TURBO BOOST</span>
       </div>
     </div>
@@ -178,6 +197,7 @@ export function Hud() {
           </div>
           <div className="cargo-readout"><span>CARGO · {snapshot.loadedCars}/{snapshot.maxLoadedCars}</span><b>{Math.round(snapshot.cargoSlowdown * 100)}% SLOWDOWN</b></div>
           <div className="altitude-alert" data-active={snapshot.height >= 28}><span>{snapshot.height >= 28 ? 'AA BAND' : snapshot.height > 5.5 ? 'ARMOR BAND' : 'GROUND BAND'}</span><b>{snapshot.height >= 28 ? 'MISSILES LIVE' : snapshot.height > 5.5 ? 'TANKS LIVE' : 'GROUND UNITS LIVE'}</b></div>
+          <div className="weapon-readout"><span>AUTO · {WEAPON_DEFINITIONS[snapshot.selectedWeapon].shortLabel}</span><b>{snapshot.activeWeaponProjectiles} LIVE</b></div>
         </section>
 
         <section className="flight-card panel">

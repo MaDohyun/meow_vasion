@@ -6,6 +6,7 @@ test('loads first frame and validates combat and high-altitude flight', async ({
   const started = Date.now()
   await page.goto('/')
   await expect(page.getByRole('button', { name: 'START SURVIVAL' })).toBeVisible()
+  await page.getByRole('button', { name: /ORBIT/ }).click()
   await page.getByRole('button', { name: 'START SURVIVAL' }).click()
   await expect(page.locator('canvas')).toBeVisible()
   expect(Date.now() - started).toBeLessThan(3000)
@@ -16,6 +17,9 @@ test('loads first frame and validates combat and high-altitude flight', async ({
   await page.waitForTimeout(550)
   const heldShotMetrics = JSON.parse(await page.locator('canvas').getAttribute('data-render-metrics') ?? '{}')
   expect(heldShotMetrics.laserShotsFired).toBe(1)
+  expect(heldShotMetrics.selectedWeapon).toBe('orbit-satellite')
+  expect(heldShotMetrics.weaponShotsFired).toBeGreaterThan(0)
+  expect(heldShotMetrics.activeWeaponProjectiles).toBeGreaterThan(0)
   expect(heldShotMetrics.activeTraffic).toBeGreaterThan(0)
 
   await page.keyboard.press('q')

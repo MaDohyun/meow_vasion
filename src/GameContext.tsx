@@ -22,6 +22,7 @@ import { requestedPilotExpression, updatePilotExpression, type PilotExpression }
 import { activeWorldColliders, createActiveWorld, updateActiveWorld, WORLD_MAX_CARS, WORLD_REMOVE_RADIUS, type ActiveWorld, type ProceduralCar } from './core/world'
 import { captureTrafficCar, createTrafficState, releaseTrafficSlot, stepTraffic, TRAFFIC_MAX_CARS, type TrafficCar, type TrafficState } from './core/traffic'
 import { setBgmWave, startBgm, stopBgm, tone } from './audio'
+import { activeWeaponProjectileCount, createWeaponState, stepWeapons, type WeaponHitHandler, type WeaponId, type WeaponState, type WeaponTarget, type WeaponView } from './core/weapons'
 
 export type GamePhase = 'intro' | 'playing' | 'results'
 
@@ -56,6 +57,11 @@ export type GameRuntime = {
   laserProjectiles: LaserProjectile[]
   laserBursts: LaserBurst[]
   laserTargets: LaserSphereTarget[]
+  selectedWeapon: WeaponId
+  weapons: WeaponState
+  weaponTargets: WeaponTarget[]
+  weaponView: WeaponView
+  weaponHitHandler: WeaponHitHandler
   enemies: EnemyState
   enemiesDown: number
   beamObjects: BeamObject[]
@@ -100,6 +106,9 @@ export type GameSnapshot = {
   beamTargetId: string | null
   laserActive: boolean
   laserFlash: number
+  selectedWeapon: WeaponId
+  weaponShotsFired: number
+  activeWeaponProjectiles: number
   activeEnemies: number
   enemiesDown: number
   beamObjectCount: number
@@ -122,6 +131,7 @@ type GameContextValue = {
   advance: (dt: number) => void
   start: () => void
   restart: () => void
+  selectWeapon: (weapon: WeaponId) => void
   setMobileInput: (input: Partial<MobileInput>) => void
 }
 
@@ -159,7 +169,7 @@ function makeTrafficBeamObject(car: TrafficCar): BeamObject {
   }
 }
 
-function makeRuntime(): GameRuntime {
+function makeRuntime(initialWeapon: WeaponId = 'homing-missile'): GameRuntime {
   const drone = createDroneState()
   drone.position = { x: 0, y: 2.8, z: 54.5 }
   drone.heading = Math.PI
@@ -169,7 +179,11 @@ function makeRuntime(): GameRuntime {
   const traffic = createTrafficState((Math.random() * 0xffffffff) >>> 0)
   const enemies = createEnemyState()
   const crowdThreats = [{ ...drone.position }, ...traffic.cars.map((car) => ({ ...car.position })), ...enemies.slots.map((enemy) => ({ ...enemy.position })), ...crowds.objects.map((object) => ({ ...object.position }))]
-  return {
+  const weapons = createWeaponState(initialWeapon)
+  const weaponTargets: WeaponTarget[] = []
+  const weaponView: WeaponView = { position: drone.position, heading: drone.heading, pitch: drone.pitch, targets: weaponTargets }
+  let runtime: GameRuntime
+  runtime = {
     drone,
     world,
     worldColliders: activeWorldColliders(world),
@@ -196,6 +210,11 @@ function makeRuntime(): GameRuntime {
     laserProjectiles: createLaserPool(),
     laserBursts: createLaserBurstPool(),
     laserTargets: [],
+    selectedWeapon: initialWeapon,
+    weapons,
+    weaponTargets,
+    weaponView,
+    weaponHitHandler: (targetId, damage) => registerEnemyHit(runtime, targetId, damage, 'AUTO'),
     enemies,
     enemiesDown: 0,
     beamObjects: world.cars.map(makeBeamObject),
@@ -217,6 +236,7 @@ function makeRuntime(): GameRuntime {
     pilotPreviousCars: 0,
     pilotPreviousThreat: 0,
   }
+  return runtime
 }
 
 function syncBeamObjects(game: GameRuntime) {
@@ -241,6 +261,27 @@ function writeLaserSphereTarget(targets: LaserSphereTarget[], slot: number, id: 
   target.radius = radius
   targets[slot] = target
   return slot + 1
+}
+
+function writeWeaponTarget(targets: WeaponTarget[], slot: number, id: string, center: Vec3, radius: number) {
+  const target = targets[slot] ?? { id, center: { x: 0, y: 0, z: 0 }, radius }
+  target.id = id
+  target.center.x = center.x
+  target.center.y = center.y
+  target.center.z = center.z
+  target.radius = radius
+  targets[slot] = target
+  return slot + 1
+}
+
+function syncWeaponTargets(game: GameRuntime) {
+  let slot = 0
+  for (const enemy of game.enemies.slots) {
+    if (!enemy.active) continue
+    slot = writeWeaponTarget(game.weaponTargets, slot, enemy.id, enemy.position, enemy.kind === 'boss' ? 7 : enemy.hitRadius)
+  }
+  game.weaponTargets.length = slot
+  return game.weaponTargets
 }
 
 function laserSphereTargets(game: GameRuntime) {
@@ -289,15 +330,19 @@ function dropCars(game: GameRuntime) {
   }
 }
 
-function registerEnemyLaserHit(game: GameRuntime, id: string) {
-  const result = hitEnemy(game.enemies, id)
+function registerEnemyHit(game: GameRuntime, id: string, damage: number, source: 'LASER' | 'AUTO') {
+  const result = hitEnemy(game.enemies, id, damage)
   if (!result.destroyed || !result.kind) return
   const reward = result.kind === 'boss' ? 1200 : result.kind === 'tank' ? 260 : result.kind === 'anti-air' ? 180 : result.kind === 'fighter' ? 140 : result.kind === 'helicopter' ? 80 : result.kind === 'police-car' ? 55 : 35
   game.enemiesDown += 1
   game.score += reward
-  game.message = `${result.kind.toUpperCase()} POPPED · +${reward}`
+  game.message = `${source} ${result.kind.toUpperCase()} POPPED · +${reward}`
   game.messageTime = 1.4
   tone('upgrade')
+}
+
+function registerEnemyLaserHit(game: GameRuntime, id: string) {
+  registerEnemyHit(game, id, 1, 'LASER')
 }
 
 function destroyCar(game: GameRuntime, id: string, direction: Vec3) {
@@ -389,6 +434,9 @@ function snapshotOf(game: GameRuntime): GameSnapshot {
     beamTargetId: game.beamTargetId,
     laserActive: game.laserActive,
     laserFlash: game.laserFlash,
+    selectedWeapon: game.selectedWeapon,
+    weaponShotsFired: game.weapons.shotsFired,
+    activeWeaponProjectiles: activeWeaponProjectileCount(game.weapons),
     activeEnemies: activeEnemyCount(game.enemies),
     enemiesDown: game.enemiesDown,
     beamObjectCount: game.loadedCars,
@@ -558,6 +606,12 @@ export function GameProvider({ children }: { children: ReactNode }) {
     syncEnemyTiers(game.enemies, game.sessionTime, game.drone.position, game.drone.heading, d)
     syncAntiAirEnemies(game.enemies, game.sessionTime, game.world.buildings)
     stepEnemies(game.enemies, game.drone.position, d)
+    syncWeaponTargets(game)
+    game.weaponView.position = game.drone.position
+    game.weaponView.heading = game.drone.heading
+    game.weaponView.pitch = game.drone.pitch
+    game.weaponView.targets = game.weaponTargets
+    stepWeapons(game.weapons, game.weaponView, d, game.weaponHitHandler)
     if (collision.hit && collision.impulse > 2.5 && game.collisionCooldown <= 0) { game.collisionCooldown = 0.45; registerImpact(game, 'BUILDING') }
 
     game.beamActive = input.beam
@@ -642,10 +696,18 @@ export function GameProvider({ children }: { children: ReactNode }) {
     publish()
   }, [publish])
 
+  const selectWeapon = useCallback((weapon: WeaponId) => {
+    const game = runtime.current
+    if (game.phase !== 'intro') return
+    game.selectedWeapon = weapon
+    game.weapons = createWeaponState(weapon)
+    publish()
+  }, [publish])
+
   const restart = useCallback(() => {
     startBgm()
     pointer.current = { x: 0, y: 0 }
-    runtime.current = makeRuntime()
+    runtime.current = makeRuntime(runtime.current.selectedWeapon)
     runtime.current.phase = 'playing'
     runtime.current.message = 'NEW RUN · ABSORB TIME TO SURVIVE'
     runtime.current.messageTime = 3
@@ -653,7 +715,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   }, [publish])
 
   const setMobileInput = useCallback((input: Partial<MobileInput>) => { Object.assign(mobile.current, input) }, [])
-  const value = useMemo<GameContextValue>(() => ({ runtime, snapshot, readInput, advance, start, restart, setMobileInput }), [advance, readInput, restart, setMobileInput, snapshot, start])
+  const value = useMemo<GameContextValue>(() => ({ runtime, snapshot, readInput, advance, start, restart, selectWeapon, setMobileInput }), [advance, readInput, restart, selectWeapon, setMobileInput, snapshot, start])
   return <GameContext.Provider value={value}>{children}</GameContext.Provider>
 }
 
