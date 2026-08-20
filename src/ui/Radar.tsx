@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useGame } from '../GameContext'
 import { isDroneMine } from '../core/enemies'
+import { projectToRadar } from './radarProjection'
 
 /**
  * Local contact radar.
@@ -47,20 +48,11 @@ export function Radar() {
     const scale = center / RADAR_RANGE
     let frame = 0
 
-    const plot = (x: number, z: number, sin: number, cos: number) => {
-      // Rotate into craft space so forward is up.
-      const rx = x * cos - z * sin
-      const rz = x * sin + z * cos
-      return { px: center + rx * scale, py: center - rz * scale }
-    }
-
     const draw = () => {
       frame = requestAnimationFrame(draw)
       const game = runtime.current
       const player = game.drone.position
       const heading = game.drone.heading
-      const sin = Math.sin(-heading)
-      const cos = Math.cos(-heading)
       context.clearRect(0, 0, size, size)
 
       const pulse = 0.45 + 0.55 * Math.abs(Math.sin(performance.now() * 0.006))
@@ -68,7 +60,7 @@ export function Radar() {
         const dx = x - player.x
         const dz = z - player.z
         if (Math.hypot(dx, dz) > RADAR_RANGE) return
-        const { px, py } = plot(dx, dz, sin, cos)
+        const { px, py } = projectToRadar(dx, dz, heading, center, scale)
         context.globalAlpha = alpha
         context.fillStyle = color
         context.fillRect(px - radius, py - radius, radius * 2, radius * 2)
