@@ -13,7 +13,7 @@ const UPGRADES = { speed: 0.45, stability: 0, rack: 0, special: 'none' as const 
  * bodies, the player shrinks no matter how well they fly, so this guards the
  * core loop rather than any one function.
  */
-function flyAndFeed(seconds: number, startSize = SIZE_START, seed = 4242) {
+function flyAndFeed(seconds: number, startSize = SIZE_START, seed = 4242, steer = false) {
   const drone = createDroneState()
   drone.position = { x: 0, y: 3.2, z: 0 }
   const crowds = createCrowdState(seed)
@@ -21,10 +21,30 @@ function flyAndFeed(seconds: number, startSize = SIZE_START, seed = 4242) {
   let size = startSize
   let absorbed = 0
   const input: DroneInput = { throttle: 1, steer: 0, strafe: 0, lookPitch: 0, vertical: 0, special: false }
+  // A steering pilot points at the nearest gathering, the way a player reading
+  // the radar would. Crowds arrive in knots, so this is the intended play - the
+  // blind pass below is the floor, not the target.
+  const aimAtNearest = (position: { x: number; z: number }, heading: number) => {
+    let best = Number.POSITIVE_INFINITY
+    let bearing = heading
+    for (const object of crowds.objects) {
+      if (!object.active) continue
+      const dx = object.position.x - position.x
+      const dz = object.position.z - position.z
+      const distance = Math.hypot(dx, dz)
+      if (distance >= best) continue
+      best = distance
+      bearing = Math.atan2(dx, dz)
+    }
+    if (!Number.isFinite(best)) return 0
+    const delta = Math.atan2(Math.sin(bearing - heading), Math.cos(bearing - heading))
+    return Math.max(-1, Math.min(1, delta * 1.6))
+  }
   const dt = 1 / 60
   let state = drone
   for (let frame = 0; frame < seconds * 60; frame += 1) {
     const profile = sizeProfile(size)
+    if (steer) input.steer = aimAtNearest(state.position, state.heading)
     state = stepDrone(state, input, dt, 0, UPGRADES)
     state.position.y = 3.2
     const threats = [{ ...state.position }]
@@ -50,34 +70,38 @@ function flyAndFeed(seconds: number, startSize = SIZE_START, seed = 4242) {
  * people, so every measurement here is an average. Tuning the loop against one
  * sample means tuning against noise.
  */
-function averageFeed(seconds: number, startSize = SIZE_START) {
+function averageFeed(seconds: number, startSize = SIZE_START, steer = false) {
   const seeds = [4242, 9137, 31, 77021, 555, 12345]
   let total = 0
-  for (const seed of seeds) total += flyAndFeed(seconds, startSize, seed).absorbed
+  for (const seed of seeds) total += flyAndFeed(seconds, startSize, seed, steer).absorbed
   return total / seeds.length
 }
 
 describe('feeding is the core loop', () => {
-  it('a competent low pass keeps the craft fed', () => {
-    const average = averageFeed(25)
-    console.log('absorbed per 25s pass:', average)
-    // Enough that a clean run grows, but not so many that the beam vacuums a
-    // whole block without the player aiming it.
-    expect(average).toBeGreaterThanOrEqual(6)
+  it('rewards steering toward a gathering over flying straight', () => {
+    const blind = averageFeed(25)
+    const steered = averageFeed(25, SIZE_START, true)
+    console.log('absorbed per 25s — blind:', blind, 'steered:', steered)
+    // Crowds arrive in knots so they can be spotted and flown to. If going to
+    // them were not clearly better, the clustering would be decoration.
+    expect(steered).toBeGreaterThan(blind * 1.5)
+  })
+
+  it('keeps even a blind pass above starvation', () => {
+    // The floor matters: a player who is busy dodging must not starve outright.
+    expect(averageFeed(25)).toBeGreaterThanOrEqual(4)
   })
 
   it('feeding outpaces a steady trickle of chip damage', () => {
     // If a run cannot out-feed routine hits, size only ever goes down and the
     // growth loop is decorative.
-    const average = averageFeed(25)
-    const gained = average * SIZE_GAIN.pedestrian
-    const rifleHitsSurvived = gained / SIZE_LOSS.rifle
-    expect(rifleHitsSurvived).toBeGreaterThan(3)
+    const gained = averageFeed(25, SIZE_START, true) * SIZE_GAIN.pedestrian
+    expect(gained / SIZE_LOSS.rifle).toBeGreaterThan(4)
   })
 
   it('a bigger craft feeds faster, because the beam widened', () => {
-    const small = averageFeed(18, SIZE_START)
-    const big = averageFeed(18, 2.4)
+    const small = averageFeed(18, SIZE_START, true)
+    const big = averageFeed(18, 2.4, true)
     expect(big).toBeGreaterThan(small)
   })
 })

@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { collideDrone, createDroneState, stepDrone, type Aabb, type DroneInput, type DroneState, type Vec3 } from './core/drone'
 import { beamProfile, beginCarDestruction, isInsideBeam, stepBeamObjects, type BeamField, type BeamObject } from './core/beam'
 import { beginNearbyCrowdAbsorption, createCrowdState, stepCrowds, type CrowdState } from './core/crowds'
+import { STRINGS, readStoredLanguage, storeLanguage, type Language, type MessageKey } from './i18n'
 import { createDaylightSample, sampleDaylight, type DaylightSample } from './core/daylight'
 import {
   createHazardState,
@@ -91,6 +92,8 @@ export type GameRuntime = {
   crowdThreats: Vec3[]
   phase: GamePhase
   message: string
+  messageKey: MessageKey | null
+  messageArg: number
   messageTime: number
   impactFlash: number
   hitstop: number
@@ -151,6 +154,8 @@ export type GameSnapshot = {
   enemiesDown: number
   beamObjectCount: number
   message: string
+  messageKey: MessageKey | null
+  messageArg: number
   impactFlash: number
   pickupPulse: number
   timeBonusPulse: number
@@ -186,6 +191,9 @@ type GameContextValue = {
   selectWeapon: (weapon: WeaponId) => void
   quality: RenderQuality
   setQuality: (quality: RenderQuality) => void
+  language: Language
+  setLanguage: (language: Language) => void
+  t: (typeof STRINGS)[Language]
   setMobileInput: (input: Partial<MobileInput>) => void
 }
 
@@ -295,7 +303,9 @@ function makeRuntime(initialWeapon: WeaponId = 'homing-missile'): GameRuntime {
     destroyedCars: new Set<string>(),
     crowdThreats,
     phase: 'intro',
-    message: 'ABSORB PEOPLE · KEEP THE CLOCK ALIVE',
+    message: '',
+    messageKey: 'msgRunStart',
+    messageArg: 0,
     messageTime: 4,
     impactFlash: 0,
     hitstop: 0,
@@ -425,7 +435,7 @@ function dropCars(game: GameRuntime) {
   }
   game.loadedCars = 0
   if (dropped > 0) {
-    game.message = `CARGO RELEASED · ${dropped} CARS`
+    setMessage(game, 'msgDumped', 1.1, dropped)
     game.messageTime = 1.1
     tone('upgrade')
   }
@@ -437,8 +447,7 @@ function registerEnemyHit(game: GameRuntime, id: string, damage: number, source:
   const reward = result.kind === 'boss' ? 1200 : result.kind === 'tank' ? 260 : result.kind === 'anti-air' ? 180 : result.kind === 'fighter' ? 140 : result.kind === 'helicopter' ? 80 : result.kind === 'police-car' ? 55 : 35
   game.enemiesDown += 1
   game.score += reward
-  game.message = `${source} ${result.kind.toUpperCase()} POPPED · +${reward}`
-  game.messageTime = 1.4
+  setMessage(game, 'msgEnemyDown', 1.4, reward)
   tone('upgrade')
 }
 
@@ -483,8 +492,7 @@ function absorbCrowd(game: GameRuntime, kind: 'cat' | 'pedestrian') {
   game.absorbedCount += 1
   game.score += reward
   game.pickupPulse = 1
-  game.message = `${kind === 'cat' ? 'CAT' : 'PERSON'} ABSORBED · +${reward}`
-  game.messageTime = 1.25
+  setMessage(game, kind === 'cat' ? 'msgAbsorbedCat' : 'msgAbsorbedPerson', 1.25, reward)
   tone('pickup')
 }
 
@@ -523,8 +531,7 @@ function registerImpact(game: GameRuntime, source: 'ENEMY' | 'BUILDING', loss?: 
   // hit without leaving the whole late game permanently vibrating.
   game.hitstop = HITSTOP_TIME
   shrink(game, source === 'BUILDING' ? 'building' : loss ?? 'contact')
-  game.message = `${source} IMPACT · SIZE DOWN`
-  game.messageTime = 1.8
+  setMessage(game, 'msgImpact', 1.8)
   tone(source === 'BUILDING' ? 'impact' : 'warning')
   if ('vibrate' in navigator) navigator.vibrate?.([35, 20, 35])
 }
@@ -568,6 +575,8 @@ function snapshotOf(game: GameRuntime): GameSnapshot {
     enemiesDown: game.enemiesDown,
     beamObjectCount: game.loadedCars,
     message: game.messageTime > 0 ? game.message : '',
+    messageKey: game.messageTime > 0 ? game.messageKey : null,
+    messageArg: game.messageArg,
     impactFlash: game.impactFlash,
     pickupPulse: game.pickupPulse,
     timeBonusPulse: game.timeBonusPulse,
@@ -598,6 +607,17 @@ function updatePilotStatus(game: GameRuntime) {
   game.pilotPreviousThreat = game.waveStage
 }
 
+/**
+ * Callouts are stored as a key, not a sentence. The simulation writes what
+ * happened; the interface decides what language to say it in.
+ */
+function setMessage(game: GameRuntime, key: MessageKey, seconds: number, arg = 0) {
+  game.messageKey = key
+  game.messageArg = arg
+  game.message = ''
+  game.messageTime = seconds
+}
+
 function endRun(game: GameRuntime, title: string, victory: boolean) {
   stopBgm()
   game.phase = 'results'
@@ -606,6 +626,7 @@ function endRun(game: GameRuntime, title: string, victory: boolean) {
   game.beamActive = false
   game.laserActive = false
   game.message = title
+  game.messageKey = null
   game.messageTime = 10
 }
 
@@ -613,6 +634,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const runtime = useRef(makeRuntime())
   const [snapshot, setSnapshot] = useState(() => snapshotOf(runtime.current))
   const [quality, setQualityState] = useState<RenderQuality>(readStoredQuality)
+  const [language, setLanguageState] = useState<Language>(readStoredLanguage)
   const keys = useRef<Record<string, boolean>>({})
   const pointer = useRef({ x: 0, y: 0 })
   const mobile = useRef<MobileInput>({ throttle: 0, steer: 0, strafe: 0, lookPitch: 0, vertical: 0, special: false, beam: false, laser: false, drop: false, active: false })
@@ -699,14 +721,11 @@ export function GameProvider({ children }: { children: ReactNode }) {
     game.laserFlash = Math.max(0, game.laserFlash - d)
     stepLaserBursts(game.laserBursts, d)
     stepLaserProjectiles(game.laserProjectiles, d)
+    // One end condition for the clock. It used to fire here AND again on
+    // sessionTime, and since the round length and the target were the same
+    // number both hit on the same frame.
     if (game.remainingTime <= 0) {
       endRun(game, 'SURVIVED THE RAID', true)
-      updatePilotStatus(game)
-      publish()
-      return
-    }
-    if (game.sessionTime >= SURVIVAL_TARGET_TIME) {
-      endRun(game, 'SURVIVAL COMPLETE', true)
       updatePilotStatus(game)
       publish()
       return
@@ -720,7 +739,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     }
     const turboActive = input.special && game.turbo > 0.02
     if (turboActive) {
-      if (game.drone.boostRemaining <= 0) { game.message = 'TURBO ENGAGED'; game.messageTime = 1.2; tone('upgrade') }
+      if (game.drone.boostRemaining <= 0) { setMessage(game, 'msgTurbo', 1.2); tone('upgrade') }
       game.turbo = Math.max(0, game.turbo - d * 0.31)
       game.drone.boostRemaining = Math.max(game.drone.boostRemaining, 0.12)
     } else game.turbo = Math.min(1, game.turbo + d * 0.13)
@@ -744,6 +763,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     if (game.waveStage !== game.pilotPreviousThreat) {
       setBgmWave(game.waveStage)
       game.message = waveLabelForTime(game.sessionTime)
+      game.messageKey = null
       game.messageTime = 2.2
       tone('upgrade')
     }
@@ -787,8 +807,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       // another name.
       if (game.daze <= 0) game.daze = DAZE_TIME
       game.impactFlash = 1
-      game.message = 'EXPLOSIVE DETONATED · SIZE DOWN'
-      game.messageTime = 1.6
+      setMessage(game, 'msgDetonated', 1.6)
       tone('warning')
     }
     let absorbedCrowd = beginNearbyCrowdAbsorption(game.crowds, game.drone.position, game.sizeProfile.absorbDistance)
@@ -834,7 +853,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       triggerLaserBurst(game.laserBursts, 'muzzle', projectile.position)
       if (aim.targetKind) triggerLaserBurst(game.laserBursts, 'impact', aim.point, aim.targetKind === 'car' ? '#ffb24d' : aim.targetKind === 'fighter' ? '#ff557f' : aim.targetKind === 'building' ? '#6deeff' : '#fff0a1')
       if (aim.targetKind === 'fighter' && aim.targetId) registerEnemyLaserHit(game, aim.targetId)
-      if (aim.targetKind === 'car' && aim.targetId && destroyCar(game, aim.targetId, direction)) { game.message = 'CAR LAUNCHED · +50'; game.messageTime = 0.9 }
+      if (aim.targetKind === 'car' && aim.targetId && destroyCar(game, aim.targetId, direction)) { setMessage(game, 'msgCarLaunched', 0.9) }
       game.laserShotsFired += 1
       tone('pickup')
     }
@@ -861,8 +880,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     pointer.current = { x: 0, y: 0 }
     const game = runtime.current
     game.phase = 'playing'
-    game.message = 'ABSORB PEOPLE · KEEP THE CLOCK ALIVE'
-    game.messageTime = 3
+    setMessage(game, 'msgRunStart', 3)
     publish()
   }, [publish])
 
@@ -873,6 +891,11 @@ export function GameProvider({ children }: { children: ReactNode }) {
     } catch {
       // Not being able to remember the choice is not worth failing the toggle.
     }
+  }, [])
+
+  const setLanguage = useCallback((next: Language) => {
+    setLanguageState(next)
+    storeLanguage(next)
   }, [])
 
   const selectWeapon = useCallback((weapon: WeaponId) => {
@@ -894,7 +917,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   }, [publish])
 
   const setMobileInput = useCallback((input: Partial<MobileInput>) => { Object.assign(mobile.current, input) }, [])
-  const value = useMemo<GameContextValue>(() => ({ runtime, snapshot, readInput, advance, start, restart, selectWeapon, setMobileInput, quality, setQuality }), [advance, quality, readInput, restart, selectWeapon, setMobileInput, setQuality, snapshot, start])
+  const value = useMemo<GameContextValue>(() => ({ runtime, snapshot, readInput, advance, start, restart, selectWeapon, setMobileInput, quality, setQuality, language, setLanguage, t: STRINGS[language] }), [advance, quality, readInput, restart, selectWeapon, setMobileInput, setQuality, snapshot, start, language, setLanguage])
   return <GameContext.Provider value={value}>{children}</GameContext.Provider>
 }
 
