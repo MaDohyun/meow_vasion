@@ -25,7 +25,7 @@ function flyAndFeed(seconds: number, startSize = SIZE_START, seed = 4242) {
   let state = drone
   for (let frame = 0; frame < seconds * 60; frame += 1) {
     const profile = sizeProfile(size)
-    state = stepDrone(state, input, dt, profile.drag, UPGRADES)
+    state = stepDrone(state, input, dt, 0, UPGRADES)
     state.position.y = 3.2
     const threats = [{ ...state.position }]
     stepCrowds(crowds, { position: state.position, heading: state.heading, threats, crowdThreatStart: 1 }, dt)

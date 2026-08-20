@@ -4,6 +4,12 @@ import { beamProfile, beginCarDestruction, isInsideBeam, stepBeamObjects, type B
 import { beginNearbyCrowdAbsorption, createCrowdState, stepCrowds, type CrowdState } from './core/crowds'
 import { createDaylightSample, sampleDaylight, type DaylightSample } from './core/daylight'
 import {
+  createHazardState,
+  detonateReachedHazard,
+  stepHazards,
+  type HazardState,
+} from './core/hazards'
+import {
   SIZE_MIN,
   SIZE_START,
   growSize,
@@ -43,7 +49,6 @@ export type GamePhase = 'intro' | 'playing' | 'results'
 // and one way to lose.
 export const RUN_SECONDS = 180
 export const SURVIVAL_TARGET_TIME = RUN_SECONDS
-export const MAX_CARRIED_CARS = 6
 
 export type GameRuntime = {
   drone: DroneState
@@ -93,6 +98,10 @@ export type GameRuntime = {
   sizeProfile: SizeProfile
   sizePulse: number
   absorbedCount: number
+  ballast: number
+  hazards: HazardState
+  daze: number
+  dumpLockout: number
   daylight: DaylightSample
   pickupPulse: number
   timeBonusPulse: number
@@ -122,8 +131,9 @@ export type GameSnapshot = {
   sizeMin: number
   sizePulse: number
   absorbedCount: number
+  ballast: number
+  daze: number
   loadedCars: number
-  maxLoadedCars: number
   cargoSlowdown: number
   turbo: number
   boostActive: boolean
@@ -182,6 +192,23 @@ type GameContextValue = {
 const GameContext = createContext<GameContextValue | null>(null)
 const UFO_UPGRADES = { speed: 0.45, stability: 0, rack: 0, special: 'none' as const }
 const HITSTOP_TIME = 0.05
+/** Converts hanging mass into flight load. A single car (mass 2.4) should be
+ *  felt immediately; three should be close to crippling. */
+const BALLAST_DRAG = 0.85
+/**
+ * A detonation makes the craft sluggish; it never takes the controls away.
+ * Input keeps registering, it just responds badly, so the player is still
+ * flying instead of watching. Stuns are the most frustrating thing a game can
+ * do, and this one already costs a lot of size.
+ */
+const DAZE_TIME = 1.2
+const DAZE_DRAG = 9
+/**
+ * Refuses new pickups briefly after a dump. Without it the still-held beam
+ * re-grabs whatever was just released on the next frame, and the escape hatch
+ * does nothing - measured as ballast never dropping after pressing release.
+ */
+const DUMP_LOCKOUT = 0.7
 
 function makeBeamObject(car: ProceduralCar): BeamObject {
   return {
@@ -276,6 +303,10 @@ function makeRuntime(initialWeapon: WeaponId = 'homing-missile'): GameRuntime {
     sizeProfile: sizeProfile(SIZE_START),
     sizePulse: 0,
     absorbedCount: 0,
+    ballast: 0,
+    hazards: createHazardState(),
+    daze: 0,
+    dumpLockout: 0,
     daylight: createDaylightSample(),
     pickupPulse: 0,
     timeBonusPulse: 0,
@@ -344,26 +375,45 @@ function laserSphereTargets(game: GameRuntime) {
   return game.laserTargets
 }
 
+/**
+ * Total mass hanging off the beam.
+ *
+ * Inanimate objects cannot be absorbed, so once the beam grabs one it stays
+ * there, and its mass is what slows the craft. Mass rather than a count: a car
+ * and a fire extinguisher should not cost the same.
+ *
+ * This is where the entire speed penalty comes from. A wider beam - which is
+ * what growing buys - sweeps up people faster but also fouls more easily, so
+ * the tax lands on sloppy beam work rather than on being large.
+ */
+function beamBallast(game: GameRuntime) {
+  let mass = 0
+  for (const object of game.beamObjects) {
+    if (!object.active || (!object.inBeam && object.tether <= 0.02)) continue
+    mass += object.mass
+  }
+  for (const hazard of game.hazards.objects) {
+    if (!hazard.active || (!hazard.inBeam && hazard.tether <= 0.02)) continue
+    mass += hazard.mass
+  }
+  return mass
+}
+
 function loadedCarCount(game: GameRuntime) {
   let count = 0
   for (const object of game.beamObjects) if (object.active && (object.inBeam || object.tether > 0.02)) count += 1
-  return Math.min(MAX_CARRIED_CARS, count)
-}
-
-function limitLoadedCars(game: GameRuntime) {
-  let count = 0
-  for (const object of game.beamObjects) {
-    if (!object.active || (!object.inBeam && object.tether <= 0.02)) continue
-    count += 1
-    if (count <= MAX_CARRIED_CARS) continue
-    object.inBeam = false
-    object.tether = 0
-    object.velocity.y = Math.max(1.5, object.velocity.y)
-  }
+  return count
 }
 
 function dropCars(game: GameRuntime) {
   let dropped = 0
+  // Hazards release too: dumping the load is the escape hatch, and it has to
+  // work on the thing you most want to get rid of.
+  for (const hazard of game.hazards.objects) {
+    if (!hazard.active || (!hazard.inBeam && hazard.tether <= 0.02)) continue
+    hazard.inBeam = false
+    hazard.tether = 0
+  }
   for (const object of game.beamObjects) {
     if (!object.active || (!object.inBeam && object.tether <= 0.02)) continue
     object.inBeam = false
@@ -480,7 +530,7 @@ function registerImpact(game: GameRuntime, source: 'ENEMY' | 'BUILDING', loss?: 
 }
 
 function snapshotOf(game: GameRuntime): GameSnapshot {
-  const slowdown = Math.max(0, 1 - (game.loadedCars > 0 ? 1 / (1 + game.loadedCars * 0.13) : 1))
+  const slowdown = Math.max(0, 1 - 1 / (1 + game.ballast * BALLAST_DRAG * 0.13))
   return {
     phase: game.phase,
     speed: Math.hypot(game.drone.velocity.x, game.drone.velocity.y, game.drone.velocity.z),
@@ -498,8 +548,9 @@ function snapshotOf(game: GameRuntime): GameSnapshot {
     sizeMin: SIZE_MIN,
     sizePulse: game.sizePulse,
     absorbedCount: game.absorbedCount,
+    ballast: game.ballast,
+    daze: game.daze,
     loadedCars: game.loadedCars,
-    maxLoadedCars: MAX_CARRIED_CARS,
     cargoSlowdown: slowdown,
     turbo: game.turbo,
     boostActive: game.drone.boostRemaining > 0,
@@ -639,6 +690,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
     game.impactFlash = Math.max(0, game.impactFlash - d * 5)
     game.pickupPulse = Math.max(0, game.pickupPulse - d * 3.2)
     game.sizePulse = Math.max(0, game.sizePulse - d * 2.4)
+    game.daze = Math.max(0, game.daze - d)
+    game.dumpLockout = Math.max(0, game.dumpLockout - d)
     game.timeBonusPulse = Math.max(0, game.timeBonusPulse - d * 2.6)
     game.damageCooldown = Math.max(0, game.damageCooldown - d)
     game.collisionCooldown = Math.max(0, game.collisionCooldown - d)
@@ -661,7 +714,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
     const dropPressed = input.drop && !game.dropInputHeld
     game.dropInputHeld = input.drop
-    if (dropPressed) dropCars(game)
+    if (dropPressed) {
+      dropCars(game)
+      game.dumpLockout = DUMP_LOCKOUT
+    }
     const turboActive = input.special && game.turbo > 0.02
     if (turboActive) {
       if (game.drone.boostRemaining <= 0) { game.message = 'TURBO ENGAGED'; game.messageTime = 1.2; tone('upgrade') }
@@ -669,11 +725,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
       game.drone.boostRemaining = Math.max(game.drone.boostRemaining, 0.12)
     } else game.turbo = Math.min(1, game.turbo + d * 0.13)
 
-    game.loadedCars = loadedCarCount(game)
     const flightInput: DroneInput = { ...input, special: false }
-    // Size is folded into the flight load, so growing costs agility and
-    // shrinking hands it back.
-    const stepped = stepDrone(game.drone, flightInput, d, game.loadedCars + game.sizeProfile.drag, UFO_UPGRADES)
+    // Only ballast slows the craft. Size is deliberately absent: growth is what
+    // the player is good at, and taxing it directly punishes them for winning.
+    const stepped = stepDrone(game.drone, flightInput, d, game.ballast * BALLAST_DRAG + (game.daze > 0 ? DAZE_DRAG : 0), UFO_UPGRADES)
     const nextWorld = updateActiveWorld(game.world, stepped.position)
     if (nextWorld !== game.world) {
       game.world = nextWorld
@@ -708,23 +763,42 @@ export function GameProvider({ children }: { children: ReactNode }) {
     syncCrowdThreats(game)
     stepCrowds(game.crowds, { position: game.drone.position, heading: game.drone.heading, colliders: game.worldColliders, threats: game.crowdThreats, crowdThreatStart: 1 + game.traffic.cars.length + game.enemies.slots.length }, d)
     const beamField: BeamField = { active: game.beamActive, boosting: turboActive, position: game.drone.position, velocity: game.drone.velocity, radiusScale: game.sizeProfile.beamScale }
-    if (game.beamActive && game.loadedCars < MAX_CARRIED_CARS) {
+    // No pickup cap: hanging mass is its own limit, and a craft that grabbed
+    // too much should feel it rather than be quietly protected from it.
+    if (game.beamActive && game.dumpLockout <= 0) {
       for (const car of game.traffic.cars) {
         if (!car.active || !isInsideBeam(car, beamField)) continue
         const captured = captureTrafficCar(game.traffic, car.id)
         if (captured) game.beamObjects.unshift(makeTrafficBeamObject(captured))
       }
     }
-    stepBeamObjects(game.beamObjects, beamField, d)
-    stepBeamObjects(game.crowds.objects, beamField, d)
+    stepHazards(game.hazards, { position: game.drone.position, heading: game.drone.heading, elapsed: game.sessionTime }, d)
+    // Suppress the whole field during the lockout, otherwise the dumped load is
+    // simply picked straight back up.
+    const pullField: BeamField = game.dumpLockout > 0 ? { ...beamField, active: false } : beamField
+    stepBeamObjects(game.beamObjects, pullField, d)
+    stepBeamObjects(game.crowds.objects, pullField, d)
+    stepBeamObjects(game.hazards.objects, pullField, d)
+    const detonated = detonateReachedHazard(game.hazards, game.drone.position)
+    if (detonated) {
+      triggerLaserBurst(game.laserBursts, 'impact', detonated.position, '#ff7a3d')
+      shrink(game, 'explosive')
+      // Only re-arm from zero: chained dazes would compound into a stun by
+      // another name.
+      if (game.daze <= 0) game.daze = DAZE_TIME
+      game.impactFlash = 1
+      game.message = 'EXPLOSIVE DETONATED · SIZE DOWN'
+      game.messageTime = 1.6
+      tone('warning')
+    }
     let absorbedCrowd = beginNearbyCrowdAbsorption(game.crowds, game.drone.position, game.sizeProfile.absorbDistance)
     while (absorbedCrowd) {
       triggerLaserBurst(game.laserBursts, 'impact', absorbedCrowd.position, '#fff06d')
       absorbCrowd(game, absorbedCrowd.kind)
       absorbedCrowd = beginNearbyCrowdAbsorption(game.crowds, game.drone.position, game.sizeProfile.absorbDistance)
     }
-    limitLoadedCars(game)
     game.loadedCars = loadedCarCount(game)
+    game.ballast = beamBallast(game)
     for (let index = game.beamObjects.length - 1; index >= 0; index -= 1) {
       const object = game.beamObjects[index]!
       if (!object.active && object.explosionPending) {

@@ -19,7 +19,6 @@ describe('craft size as the only resource', () => {
   })
 
   it('trades reach for agility as it grows', () => {
-    const small = sizeProfile(SIZE_MIN)
     const start = sizeProfile(SIZE_START)
     const big = sizeProfile(SIZE_MAX)
     // Growing buys beam and score...
@@ -27,16 +26,16 @@ describe('craft size as the only resource', () => {
     expect(big.beamPower).toBeGreaterThan(start.beamPower)
     expect(big.absorbDistance).toBeGreaterThan(start.absorbDistance)
     expect(big.scoreMultiplier).toBeGreaterThan(start.scoreMultiplier)
-    // ...and pays in handling and in being a bigger target.
-    expect(big.drag).toBeGreaterThan(start.drag)
+    // ...and pays only by being a bigger target. Speed is deliberately not a
+    // cost of growth; that tax belongs to beam ballast instead.
     expect(big.hitRadius).toBeGreaterThan(start.hitRadius)
   })
 
-  it('makes a shrunken craft faster, so a bad hit is recoverable', () => {
-    // Negative drag is the whole point: without it, small means weak beam AND
-    // sluggish, which is an unrecoverable spiral.
-    expect(sizeProfile(SIZE_MIN).drag).toBeLessThan(0)
-    expect(sizeProfile(SIZE_START).drag).toBe(0)
+  it('never charges speed for growing', () => {
+    // Growth is what the player is good at. Taxing it directly punishes them
+    // for succeeding, on a curve they cannot influence; the speed penalty lives
+    // on hanging ballast, which is answerable with beam discipline.
+    expect('drag' in sizeProfile(SIZE_MAX)).toBe(false)
   })
 
   it('pulls the camera back as the craft grows', () => {
