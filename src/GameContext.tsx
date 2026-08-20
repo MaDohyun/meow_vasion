@@ -848,6 +848,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     if (game.enemies.contactKills > 0) {
       game.enemiesDown += game.enemies.contactKills
       game.score += game.enemies.contactKills * 35
+      triggerLaserBurst(game.laserBursts, 'impact', game.enemies.lastContactPoint, '#ff9a3d')
     }
     if (contactDamage > 0) registerImpact(game, 'ENEMY', 'contact')
     updatePilotStatus(game)

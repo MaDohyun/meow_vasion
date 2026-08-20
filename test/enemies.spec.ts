@@ -6,6 +6,7 @@ import {
   airBandForSlot,
   createEnemyState,
   hitEnemy,
+  isDroneMine,
   isAntiAirBuilding,
   resolveEnemyContacts,
   syncAntiAirEnemies,
@@ -87,7 +88,9 @@ describe('time-based enemy waves', () => {
   it('keeps air units on their own heading instead of chasing the player', () => {
     const { state } = fillWave(70)
     const player = { x: 10, y: 14, z: 20 }
-    const drone = state.slots.find((enemy) => enemy.kind === 'drone' && enemy.active)!
+    // Mines are excluded on purpose: they are supposed to sit still. This guards
+    // the passing drones, which must cross and carry on rather than latch on.
+    const drone = state.slots.find((enemy) => enemy.kind === 'drone' && enemy.active && !isDroneMine(enemy))!
     const startDistance = Math.hypot(drone.position.x - player.x, drone.position.z - player.z)
     const heading = drone.phase
     for (let tick = 0; tick < 120; tick += 1) stepEnemies(state, player, 1 / 60)
@@ -98,13 +101,28 @@ describe('time-based enemy waves', () => {
     expect(Math.abs(drone.phase - heading)).toBeLessThan(0.2)
   })
 
-  it('holds each air type in its own altitude band so climbing is an escape', () => {
+  it('holds helicopters in their altitude band so climbing is an escape', () => {
     const { state } = fillWave(70)
     const highPlayer = { x: 10, y: 95, z: 20 }
     for (let tick = 0; tick < 240; tick += 1) stepEnemies(state, highPlayer, 1 / 60)
     for (const enemy of state.slots) {
-      if (!enemy.active || (enemy.kind !== 'drone' && enemy.kind !== 'helicopter')) continue
+      if (!enemy.active || enemy.kind !== 'helicopter') continue
       expect(Math.abs(enemy.position.y - airBandForSlot(enemy.kind, enemy.slot))).toBeLessThan(1.5)
+    }
+  })
+
+  it('never lets a drone climb after the player', () => {
+    // Drones no longer use altitude bands at all - each one keeps the height it
+    // spawned at, so altitude is a place the player can escape to.
+    const { state } = fillWave(70)
+    const heights = state.slots
+      .filter((enemy) => enemy.active && enemy.kind === 'drone')
+      .map((enemy) => ({ enemy, y: enemy.position.y }))
+    for (let tick = 0; tick < 240; tick += 1) stepEnemies(state, { x: 10, y: 95, z: 20 }, 1 / 60)
+    for (const { enemy, y } of heights) {
+      if (!enemy.active) continue
+      // Mines bob a little; nothing rises toward the player.
+      expect(enemy.position.y).toBeLessThan(y + 2)
     }
   })
 

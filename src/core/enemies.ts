@@ -54,9 +54,23 @@ export const ENEMY_CAPS: Record<EnemyKind, number> = {
 
 export const ENEMY_MAX_PROJECTILES = 96
 
-// Air units travel on a heading fixed at spawn. Drones hold a straight line;
-// helicopters keep a slow yaw so the sky does not read as parallel tracks.
-const AIR_TRAVEL_SPEED: Record<'drone' | 'helicopter', number> = { drone: 12, helicopter: 15 }
+/**
+ * Drones are suicide drones: no weapons, no pursuit, they only detonate on
+ * contact. Two populations, decided at spawn:
+ *
+ * - `fixed` ones hang motionless in the air. They are mines, and the reward for
+ *   reading the sky before flying through it.
+ * - `outbound` ones commit to a straight line through a point picked near the
+ *   player AT SPAWN and never adjust. The line is fixed, so it can be read and
+ *   sidestepped; a homing version would just be a tax on being seen.
+ *
+ * Helicopters keep a slow yaw so the sky does not read as parallel tracks.
+ */
+const AIR_TRAVEL_SPEED: Record<'drone' | 'helicopter', number> = { drone: 19, helicopter: 15 }
+/** Share of drones that hover as mines rather than making a pass. */
+export const DRONE_MINE_SHARE = 0.4
+/** Mines drift up and down a little so they read as alive, not as scenery. */
+const MINE_BOB = 1.4
 const AIR_TURN_RATE: Record<'drone' | 'helicopter', number> = { drone: 0.05, helicopter: 0.22 }
 const AIR_DESPAWN_DISTANCE = 240
 
@@ -66,10 +80,16 @@ export function airBandForSlot(kind: 'drone' | 'helicopter', slot: number) {
   return kind === 'drone' ? 5 + (slot % 5) * 3.2 : 19 + (slot % 4) * 4.5
 }
 
+export function isDroneMine(enemy: EnemySlot) {
+  return enemy.kind === 'drone' && enemy.mode === 'fixed'
+}
+
 // Body-contact damage. Drones are the only unit that dies on contact, which is
 // what makes ploughing through a swarm a real choice instead of a death.
 export const ENEMY_CONTACT_DAMAGE: Record<EnemyKind, number> = {
-  drone: 3,
+  // Detonating on you is the drone's entire purpose, so it costs more than
+  // brushing a vehicle.
+  drone: 5,
   police: 2,
   'police-car': 3,
   helicopter: 4,
@@ -127,6 +147,8 @@ export type EnemyState = {
   /** Kind of the last projectile that connected, so the caller can price the
    *  hit by weapon rather than by a raw damage number. */
   lastHitKind: EnemyProjectileKind | null
+  /** Where the last suicide drone detonated, for the explosion effect. */
+  lastContactPoint: Vec3
 }
 
 const ORDER: EnemyKind[] = ['drone', 'police', 'police-car', 'helicopter', 'soldier', 'fighter', 'anti-air', 'tank', 'boss']
@@ -214,7 +236,7 @@ export function createEnemyState(seed = 0x91eab7) {
   const slots: EnemySlot[] = []
   for (const kind of ORDER) for (let slot = 0; slot < ENEMY_CAPS[kind]; slot += 1) slots.push(makeSlot(kind, slot))
   const projectiles = Array.from({ length: ENEMY_MAX_PROJECTILES }, (_, slot) => makeProjectile(slot))
-  return { slots, projectiles, destroyedAntiAir: new Set<string>(), waveStage: 0, spawnTimer: 0, randomState: seed >>> 0 || 1, contactKills: 0, lastHitKind: null } satisfies EnemyState
+  return { slots, projectiles, destroyedAntiAir: new Set<string>(), waveStage: 0, spawnTimer: 0, randomState: seed >>> 0 || 1, contactKills: 0, lastHitKind: null, lastContactPoint: { x: 0, y: 0, z: 0 } } satisfies EnemyState
 }
 
 export function isAntiAirBuilding(building: Pick<ProceduralBuilding, 'cellX' | 'cellZ'>) {
@@ -259,7 +281,24 @@ function resetSlot(enemy: EnemySlot, player: Vec3, heading: number, state: Enemy
       ? airBandForSlot(enemy.kind, enemy.slot)
       : Math.min(118, Math.max(8, player.y + 10))
   }
-  if (enemy.kind === 'drone' || enemy.kind === 'helicopter') {
+  if (enemy.kind === 'drone') {
+    // Decided once, here. A drone never converts between the two.
+    enemy.mode = random(state) < DRONE_MINE_SHARE ? 'fixed' : 'outbound'
+    if (enemy.mode === 'fixed') {
+      // Mines are seeded across the whole altitude range, including right in the
+      // band a player skimming the rooftops would use.
+      enemy.position.y = 4 + random(state) * 26
+    } else {
+      // The pass line is locked to a point near where the player is NOW. It is
+      // not updated afterwards, so it can be read and stepped out of.
+      const aimX = player.x + (random(state) - 0.5) * 34
+      const aimZ = player.z + (random(state) - 0.5) * 34
+      enemy.phase = Math.atan2(aimX - enemy.position.x, aimZ - enemy.position.z)
+      enemy.target.x = aimX
+      enemy.target.z = aimZ
+      enemy.target.y = enemy.position.y
+    }
+  } else if (enemy.kind === 'helicopter') {
     // Aim the travel heading at a scattered point near the player so the path
     // crosses the play area once and then carries on past it.
     const aimX = player.x + (random(state) - 0.5) * 46
@@ -382,10 +421,24 @@ function stepAirEnemy(enemy: EnemySlot, player: Vec3, d: number) {
   // No chase mode. On an endless map, letting air units latch onto the player
   // removes the point of flying anywhere: the same drones stay glued to you and
   // repositioning stops being a decision.
+  enemy.age += d
+  if (isDroneMine(enemy)) {
+    // Holds station. The bob is cosmetic; the hazard is that it does not move.
+    enemy.position.y = enemy.target.y + Math.sin(enemy.age * 1.3 + enemy.phase) * MINE_BOB
+    // Mines are only cleared by leaving them far behind, never by waiting.
+    if (distanceToPlayer(enemy, player) > AIR_DESPAWN_DISTANCE) enemy.active = false
+    return
+  }
   const kind = enemy.kind === 'drone' ? 'drone' : 'helicopter'
   const speed = AIR_TRAVEL_SPEED[kind]
   enemy.position.x += Math.sin(enemy.phase) * speed * d
   enemy.position.z += Math.cos(enemy.phase) * speed * d
+  if (enemy.kind === 'drone') {
+    // Dead straight, and no altitude tracking: the line committed to at spawn is
+    // the line it flies, which is what makes it dodgeable.
+    if (distanceToPlayer(enemy, player) > AIR_DESPAWN_DISTANCE) enemy.active = false
+    return
+  }
   enemy.phase += d * AIR_TURN_RATE[kind]
   const band = airBandForSlot(kind, enemy.slot)
   enemy.position.y += (band - enemy.position.y) * (1 - Math.exp(-1.4 * d))
@@ -547,6 +600,9 @@ export function resolveEnemyContacts(state: EnemyState, player: Vec3, playerRadi
     const contact = ENEMY_CONTACT_DAMAGE[enemy.kind]
     if (contact > damage) damage = contact
     if (enemy.kind !== 'drone') continue
+    state.lastContactPoint.x = enemy.position.x
+    state.lastContactPoint.y = enemy.position.y
+    state.lastContactPoint.z = enemy.position.z
     enemy.active = false
     enemy.hp = 0
     enemy.respawn = 4.5
