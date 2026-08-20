@@ -696,6 +696,12 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const advance = useCallback((dt: number) => {
     const game = runtime.current
     if (game.phase !== 'playing') return
+    // A run can end anywhere inside this tick - collapse fires from a hit, not
+    // just from the clock - and the next tick returns above before publishing.
+    // Without forcing a publish on the transition, whether the results screen
+    // appeared at all came down to where the throttle accumulator happened to
+    // be. Losing was silently invisible about half the time.
+    const phaseAtEntry = game.phase
     if (game.hitstop > 0) {
       // Freeze on real time, not simulation time, so the pause cannot be
       // stretched or skipped by the frame rate.
@@ -872,7 +878,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
     if (contactDamage > 0) registerImpact(game, 'ENEMY', 'contact')
     updatePilotStatus(game)
     publishAccumulator.current += d
-    if (publishAccumulator.current >= 0.06) { publishAccumulator.current = 0; publish() }
+    if (game.phase !== phaseAtEntry || publishAccumulator.current >= 0.06) {
+      publishAccumulator.current = 0
+      publish()
+    }
   }, [publish, readInput])
 
   const start = useCallback(() => {

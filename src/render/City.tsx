@@ -797,7 +797,11 @@ function RoofStructurePool({ variant }: { variant: number }) {
 
   return (
     <instancedMesh ref={ref} args={[roofStructureGeometries[variant], undefined, WORLD_MAX_BUILDINGS]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }}>
-      <meshToonMaterial vertexColors gradientMap={toonGradient} />
+      {/* No vertexColors: these parts are plain box/cylinder geometry with no
+          colour attribute, and enabling it makes the shader read one that is
+          not there - the rooftops rendered solid black. The tint arrives via
+          setColorAt, which works independently of this flag. */}
+      <meshToonMaterial gradientMap={toonGradient} />
     </instancedMesh>
   )
 }
