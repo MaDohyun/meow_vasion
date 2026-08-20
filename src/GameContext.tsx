@@ -73,6 +73,7 @@ export type GameRuntime = {
   message: string
   messageTime: number
   impactFlash: number
+  hitstop: number
   pickupPulse: number
   timeBonusPulse: number
   timeBonusAmount: number
@@ -137,6 +138,7 @@ type GameContextValue = {
 
 const GameContext = createContext<GameContextValue | null>(null)
 const UFO_UPGRADES = { speed: 0.45, stability: 0, rack: 0, special: 'none' as const }
+const HITSTOP_TIME = 0.05
 
 function makeBeamObject(car: ProceduralCar): BeamObject {
   return {
@@ -226,6 +228,7 @@ function makeRuntime(initialWeapon: WeaponId = 'homing-missile'): GameRuntime {
     message: 'ABSORB PEOPLE · KEEP THE CLOCK ALIVE',
     messageTime: 4,
     impactFlash: 0,
+    hitstop: 0,
     pickupPulse: 0,
     timeBonusPulse: 0,
     timeBonusAmount: 0,
@@ -402,6 +405,9 @@ function registerImpact(game: GameRuntime, source: 'ENEMY' | 'BUILDING', customD
   if (game.damageCooldown > 0 || game.phase !== 'playing') return
   game.damageCooldown = 1.05
   game.impactFlash = 1
+  // Replaces the old continuous camera shake: a single short freeze reads as a
+  // hit without leaving the whole late game permanently vibrating.
+  game.hitstop = HITSTOP_TIME
   const damage = customDamage ?? (source === 'BUILDING' ? 4 : 8)
   game.remainingTime = Math.max(0, game.remainingTime - damage)
   game.message = `${source} IMPACT · TIME -${damage}s`
@@ -546,6 +552,12 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const advance = useCallback((dt: number) => {
     const game = runtime.current
     if (game.phase !== 'playing') return
+    if (game.hitstop > 0) {
+      // Freeze on real time, not simulation time, so the pause cannot be
+      // stretched or skipped by the frame rate.
+      game.hitstop = Math.max(0, game.hitstop - dt)
+      return
+    }
     const d = Math.min(dt, 0.05)
     const input = readInput()
     game.aimX = pointer.current.x
