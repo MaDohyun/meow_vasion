@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { collideDrone, createDroneState, stepDrone, type Aabb, type DroneInput, type DroneState, type Vec3 } from './core/drone'
 import { beamProfile, beginCarDestruction, isInsideBeam, stepBeamObjects, type BeamField, type BeamObject } from './core/beam'
 import { beginNearbyCrowdAbsorption, createCrowdState, stepCrowds, type CrowdState } from './core/crowds'
-import { activeEnemyCount, createEnemyState, hitEnemy, nearbyEnemyContacts, stepEnemies, stepEnemyProjectiles, syncAntiAirEnemies, syncEnemyTiers, waveLabelForTime, waveStageForTime, type EnemyState } from './core/enemies'
+import { activeEnemyCount, createEnemyState, hitEnemy, resolveEnemyContacts, stepEnemies, stepEnemyProjectiles, syncAntiAirEnemies, syncEnemyTiers, waveLabelForTime, waveStageForTime, type EnemyState } from './core/enemies'
 import {
   createLaserPool,
   createLaserBurstPool,
@@ -691,8 +691,12 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
     const projectileDamage = stepEnemyProjectiles(game.enemies, game.drone.position, d)
     if (projectileDamage > 0) registerImpact(game, 'ENEMY', Math.min(12, projectileDamage))
-    const enemyContacts = nearbyEnemyContacts(game.enemies, game.drone.position)
-    if (enemyContacts > 0) registerImpact(game, 'ENEMY', 3)
+    const contactDamage = resolveEnemyContacts(game.enemies, game.drone.position)
+    if (game.enemies.contactKills > 0) {
+      game.enemiesDown += game.enemies.contactKills
+      game.score += game.enemies.contactKills * 35
+    }
+    if (contactDamage > 0) registerImpact(game, 'ENEMY', contactDamage)
     updatePilotStatus(game)
     publishAccumulator.current += d
     if (publishAccumulator.current >= 0.06) { publishAccumulator.current = 0; publish() }

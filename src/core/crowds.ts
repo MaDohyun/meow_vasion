@@ -10,6 +10,22 @@ export const CROWD_REMOVE_DISTANCE = 155
 export const CROWD_ABSORB_DISTANCE = 3.35
 export const CROWD_ABSORB_TIME = 0.24
 
+// Flee thresholds are split so the state cannot flip on a single frame. A calm
+// crowd member only starts running inside FLEE_ENTER, and a running one only
+// calms down once it is past the wider FLEE_EXIT ring.
+const FLEE_ENTER_DISTANCE: Record<CrowdKind, number> = { pedestrian: 14, cat: 18 }
+const FLEE_EXIT_DISTANCE: Record<CrowdKind, number> = { pedestrian: 20, cat: 26 }
+const FLEE_HOLD_TIME = 0.9
+const FLEE_SPEED: Record<CrowdKind, number> = { pedestrian: 7, cat: 7.8 }
+const WANDER_SPEED: Record<CrowdKind, number> = { pedestrian: 1.7, cat: 2.35 }
+const FLEE_BLEND = 9
+const WANDER_BLEND = 4
+const TURN_COOLDOWN = 0.35
+const COLLIDER_MARGIN = 0.55
+const SPAWN_CLEARANCE = 0.9
+const SPAWN_ATTEMPTS = 6
+const GOLDEN_ANGLE = 2.399963
+
 export type CrowdObject = BeamObject & {
   kind: CrowdKind
   slot: number
@@ -18,6 +34,8 @@ export type CrowdObject = BeamObject & {
   wanderTimer: number
   pauseTimer: number
   fleeTimer: number
+  turnCooldown: number
+  slideDirection: number
 }
 
 export type CrowdState = {
@@ -26,6 +44,7 @@ export type CrowdState = {
   randomState: number
   nearbyPedestrians: number
   initialSpawnDone: boolean
+  seedAngle: number
 }
 
 export type CrowdView = {
@@ -61,6 +80,8 @@ function makeCrowdObject(kind: CrowdKind, slot: number): CrowdObject {
     wanderTimer: 0,
     pauseTimer: 0,
     fleeTimer: 0,
+    turnCooldown: 0,
+    slideDirection: 0,
   }
 }
 
@@ -74,6 +95,7 @@ export function createCrowdState(seed = 0xc47cafe): CrowdState {
     randomState: seed >>> 0 || 1,
     nearbyPedestrians: 0,
     initialSpawnDone: false,
+    seedAngle: 0,
   }
 }
 
@@ -86,34 +108,65 @@ function random(state: CrowdState) {
   return state.randomState / 0xffffffff
 }
 
-function spawnCrowdObject(state: CrowdState, view: CrowdView, kind: CrowdKind) {
+function blockedAt(view: CrowdView, x: number, z: number, margin: number) {
+  if (!view.colliders) return false
+  for (const collider of view.colliders) {
+    if (x > collider.minX - margin && x < collider.maxX + margin && z > collider.minZ - margin && z < collider.maxZ + margin) return true
+  }
+  return false
+}
+
+type CrowdPlacement = { angle: number; distance: number }
+
+// The run-start seed and the steady-state respawn want different placements:
+// seeding scatters the whole ring around the player so the city looks alive in
+// every direction, while respawns stay behind the view so nothing pops in.
+function spawnCrowdObject(state: CrowdState, view: CrowdView, kind: CrowdKind, placement?: CrowdPlacement) {
   let object: CrowdObject | null = null
   for (const candidate of state.objects) {
     if (!candidate.active && candidate.kind === kind) { object = candidate; break }
   }
   if (!object) return false
-  const distance = 34 + random(state) * 42
-  const angle = view.heading + Math.PI + (random(state) - 0.5) * 1.65
+  let x = 0
+  let z = 0
+  let placed = false
+  for (let attempt = 0; attempt < SPAWN_ATTEMPTS; attempt += 1) {
+    // Widen the search on each retry so a dense block of buildings cannot make
+    // a seed slot fail outright.
+    const spread = placement ? 0.35 + attempt * 0.55 : 1.65
+    const angle = placement
+      ? placement.angle + (random(state) - 0.5) * spread
+      : view.heading + Math.PI + (random(state) - 0.5) * spread
+    const distance = placement
+      ? placement.distance * (0.85 + random(state) * (0.3 + attempt * 0.15))
+      : 34 + random(state) * 42
+    x = view.position.x + Math.sin(angle) * distance
+    z = view.position.z + Math.cos(angle) * distance
+    if (!blockedAt(view, x, z, SPAWN_CLEARANCE)) { placed = true; break }
+  }
+  if (!placed) return false
   object.generation += 1
   object.id = `crowd:${kind}:${object.slot}:${object.generation}`
-  object.position.x = view.position.x + Math.sin(angle) * distance
+  object.position.x = x
   object.position.y = 0.65
-  object.position.z = view.position.z + Math.cos(angle) * distance
+  object.position.z = z
   object.heading = kind === 'pedestrian'
     ? Math.round(random(state) * 4) * Math.PI / 2
     : random(state) * Math.PI * 2
   object.rotation.x = 0
   object.rotation.y = object.heading
   object.rotation.z = 0
-  object.velocity.x = Math.sin(object.heading) * (kind === 'cat' ? 2.4 : 1.75)
+  object.velocity.x = Math.sin(object.heading) * WANDER_SPEED[kind]
   object.velocity.y = 0
-  object.velocity.z = Math.cos(object.heading) * (kind === 'cat' ? 2.4 : 1.75)
+  object.velocity.z = Math.cos(object.heading) * WANDER_SPEED[kind]
   object.angularVelocity.x = 0
   object.angularVelocity.y = 0
   object.angularVelocity.z = 0
   object.wanderTimer = 1 + random(state) * 3
   object.pauseTimer = 0
   object.fleeTimer = 0
+  object.turnCooldown = 0
+  object.slideDirection = 0
   object.active = true
   object.inBeam = false
   object.tether = 0
@@ -126,6 +179,20 @@ function spawnCrowdObject(state: CrowdState, view: CrowdView, kind: CrowdKind) {
   return true
 }
 
+// Golden-angle stepping spreads the seed evenly over the full circle; plain
+// random angles clump badly at these counts.
+function seedInitialCrowd(state: CrowdState, view: CrowdView) {
+  const total = INITIAL_PEDESTRIANS + INITIAL_CATS
+  for (let index = 0; index < total; index += 1) {
+    const kind: CrowdKind = index % 3 === 2 && index / 3 < INITIAL_CATS ? 'cat' : 'pedestrian'
+    state.seedAngle += GOLDEN_ANGLE
+    const distance = 20 + (index / Math.max(1, total - 1)) * 70
+    if (!spawnCrowdObject(state, view, kind, { angle: state.seedAngle, distance })) {
+      spawnCrowdObject(state, view, kind === 'cat' ? 'pedestrian' : 'cat', { angle: state.seedAngle, distance })
+    }
+  }
+}
+
 export function stepCrowds(state: CrowdState, view: CrowdView, dt: number) {
   const d = Math.min(Math.max(0, dt), 0.05)
   state.spawnTimer -= d
@@ -135,10 +202,7 @@ export function stepCrowds(state: CrowdState, view: CrowdView, dt: number) {
     // let the normal cadence take over instead of doubling the crowd.
     const hasActiveCrowd = state.objects.some((object) => object.active)
     state.initialSpawnDone = true
-    if (!hasActiveCrowd) {
-      for (let index = 0; index < INITIAL_PEDESTRIANS; index += 1) spawnCrowdObject(state, view, 'pedestrian')
-      for (let index = 0; index < INITIAL_CATS; index += 1) spawnCrowdObject(state, view, 'cat')
-    }
+    if (!hasActiveCrowd) seedInitialCrowd(state, view)
     state.spawnTimer = 0.16
   }
   let pedestrians = 0
@@ -166,9 +230,10 @@ export function stepCrowds(state: CrowdState, view: CrowdView, dt: number) {
       let fleeDx = dx
       let fleeDz = dz
       if (view.threats) {
-        const selfThreatIndex = (view.crowdThreatStart ?? -1) + (object.kind === 'cat' ? PEDESTRIAN_MAX + object.slot : object.slot)
-        for (let threatIndex = 0; threatIndex < view.threats.length; threatIndex += 1) {
-          if (threatIndex === selfThreatIndex) continue
+        // Crowd entries sit at the tail of the shared threat array. Skipping
+        // them stops two pedestrians from panicking each other forever.
+        const threatCount = view.crowdThreatStart ?? view.threats.length
+        for (let threatIndex = 0; threatIndex < threatCount; threatIndex += 1) {
           const threat = view.threats[threatIndex]
           if (!threat) continue
           const threatDx = object.position.x - threat.x
@@ -181,17 +246,23 @@ export function stepCrowds(state: CrowdState, view: CrowdView, dt: number) {
           }
         }
       }
-      const fleeing = threatDistance < (object.kind === 'cat' ? 20 : 14)
-      if (fleeing) object.fleeTimer = 0.9
+      // Hysteresis: the trigger ring widens once already fleeing, so hovering
+      // right at the threshold cannot toggle the state every frame.
+      const wasFleeing = object.fleeTimer > 0
+      const trigger = wasFleeing ? FLEE_EXIT_DISTANCE[object.kind] : FLEE_ENTER_DISTANCE[object.kind]
+      if (threatDistance < trigger) object.fleeTimer = FLEE_HOLD_TIME
       else object.fleeTimer = Math.max(0, object.fleeTimer - d)
       object.pauseTimer = Math.max(0, object.pauseTimer - d)
-      if (fleeing) {
+      object.turnCooldown = Math.max(0, object.turnCooldown - d)
+      if (object.fleeTimer > 0) {
         const inverse = 1 / Math.max(0.001, threatDistance)
-        const speed = object.kind === 'cat' ? 11 : 7.5
-        object.velocity.x = fleeDx * inverse * speed
-        object.velocity.z = fleeDz * inverse * speed
+        const speed = FLEE_SPEED[object.kind]
+        const blend = 1 - Math.exp(-FLEE_BLEND * d)
+        object.velocity.x += (fleeDx * inverse * speed - object.velocity.x) * blend
+        object.velocity.z += (fleeDz * inverse * speed - object.velocity.z) * blend
         object.heading = Math.atan2(object.velocity.x, object.velocity.z)
         object.wanderTimer = 0.8
+        object.pauseTimer = 0
       } else if (object.pauseTimer > 0) {
         object.velocity.x *= Math.exp(-8 * d)
         object.velocity.z *= Math.exp(-8 * d)
@@ -204,30 +275,55 @@ export function stepCrowds(state: CrowdState, view: CrowdView, dt: number) {
           object.wanderTimer = 1.2 + random(state) * 3.5
           if (random(state) < (object.kind === 'cat' ? 0.3 : 0.16)) object.pauseTimer = 0.35 + random(state) * 0.9
         }
-        const speed = object.kind === 'cat' ? 2.35 : 1.7
-        const blend = 1 - Math.exp(-4 * d)
+        const speed = WANDER_SPEED[object.kind]
+        const blend = 1 - Math.exp(-WANDER_BLEND * d)
         object.velocity.x += (Math.sin(object.heading) * speed - object.velocity.x) * blend
         object.velocity.z += (Math.cos(object.heading) * speed - object.velocity.z) * blend
       }
       object.rotation.y = object.heading
+      // Resolve each axis on its own so a body pressed against a wall slides
+      // along it. Zeroing both axes and flipping the heading every frame is
+      // what made fleeing crowds vibrate in place.
       const nextX = object.position.x + object.velocity.x * d
       const nextZ = object.position.z + object.velocity.z * d
-      let blocked = false
+      let blockedX = false
+      let blockedZ = false
       if (view.colliders) {
         for (const collider of view.colliders) {
-          if (nextX > collider.minX - 0.55 && nextX < collider.maxX + 0.55 && nextZ > collider.minZ - 0.55 && nextZ < collider.maxZ + 0.55) {
-            blocked = true
-            break
-          }
+          const spanX = object.position.x > collider.minX - COLLIDER_MARGIN && object.position.x < collider.maxX + COLLIDER_MARGIN
+          const spanZ = object.position.z > collider.minZ - COLLIDER_MARGIN && object.position.z < collider.maxZ + COLLIDER_MARGIN
+          const nextSpanX = nextX > collider.minX - COLLIDER_MARGIN && nextX < collider.maxX + COLLIDER_MARGIN
+          const nextSpanZ = nextZ > collider.minZ - COLLIDER_MARGIN && nextZ < collider.maxZ + COLLIDER_MARGIN
+          if (!blockedX && nextSpanX && spanZ) blockedX = true
+          if (!blockedZ && spanX && nextSpanZ) blockedZ = true
+          if (blockedX && blockedZ) break
         }
       }
-      if (blocked) {
-        object.heading += Math.PI * (random(state) < 0.5 ? 0.5 : -0.5)
-        object.velocity.x = 0
-        object.velocity.z = 0
-      } else {
-        object.position.x = nextX
-        object.position.z = nextZ
+      if (blockedX || blockedZ) {
+        // Sliding alone does nothing when the approach is head-on, because the
+        // tangential component is zero. Commit to one side for as long as the
+        // wall is in the way so the body walks around it instead of stalling.
+        if (object.slideDirection === 0) object.slideDirection = random(state) < 0.5 ? -1 : 1
+        const push = object.fleeTimer > 0 ? FLEE_SPEED[object.kind] : WANDER_SPEED[object.kind]
+        if (blockedX) {
+          object.velocity.x = 0
+          if (!blockedZ && Math.abs(object.velocity.z) < push * 0.5) object.velocity.z = object.slideDirection * push
+        }
+        if (blockedZ) {
+          object.velocity.z = 0
+          if (!blockedX && Math.abs(object.velocity.x) < push * 0.5) object.velocity.x = object.slideDirection * push
+        }
+      } else object.slideDirection = 0
+      // Integrate after the velocity fix-up, not from the pre-resolution
+      // nextX/nextZ, so a slide push actually moves the body this frame.
+      object.position.x += object.velocity.x * d
+      object.position.z += object.velocity.z * d
+      if (blockedX && blockedZ && object.turnCooldown <= 0) {
+        // Wedged into a corner: pick a new heading, but only on a cooldown so
+        // this cannot become a per-frame direction flip.
+        object.heading += Math.PI * (0.5 + random(state) * 0.5) * (random(state) < 0.5 ? -1 : 1)
+        object.turnCooldown = TURN_COOLDOWN
+        object.wanderTimer = Math.min(object.wanderTimer, 0.4)
       }
     }
     if (!object.inBeam && object.tether <= 0.02 && distance > CROWD_REMOVE_DISTANCE) object.active = false

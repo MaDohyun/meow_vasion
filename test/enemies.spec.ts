@@ -3,9 +3,11 @@ import {
   ENEMY_CAPS,
   ENEMY_MAX_HP,
   activeEnemyCount,
+  airBandForSlot,
   createEnemyState,
   hitEnemy,
   isAntiAirBuilding,
+  resolveEnemyContacts,
   syncAntiAirEnemies,
   syncEnemyTiers,
   stepEnemies,
@@ -80,5 +82,61 @@ describe('time-based enemy waves', () => {
     }
     expect(fighter.position.x).not.toBe(startX)
     expect(state.slots.some((enemy) => enemy.kind === ('balloon' as never))).toBe(false)
+  })
+
+  it('keeps air units on their own heading instead of chasing the player', () => {
+    const { state } = fillWave(70)
+    const player = { x: 10, y: 14, z: 20 }
+    const drone = state.slots.find((enemy) => enemy.kind === 'drone' && enemy.active)!
+    const startDistance = Math.hypot(drone.position.x - player.x, drone.position.z - player.z)
+    const heading = drone.phase
+    for (let tick = 0; tick < 120; tick += 1) stepEnemies(state, player, 1 / 60)
+    // A chasing unit converges on the player and parks there. A travelling one
+    // crosses the area and keeps going, so its distance must not settle.
+    const endDistance = Math.hypot(drone.position.x - player.x, drone.position.z - player.z)
+    expect(Math.abs(endDistance - startDistance)).toBeGreaterThan(4)
+    expect(Math.abs(drone.phase - heading)).toBeLessThan(0.2)
+  })
+
+  it('holds each air type in its own altitude band so climbing is an escape', () => {
+    const { state } = fillWave(70)
+    const highPlayer = { x: 10, y: 95, z: 20 }
+    for (let tick = 0; tick < 240; tick += 1) stepEnemies(state, highPlayer, 1 / 60)
+    for (const enemy of state.slots) {
+      if (!enemy.active || (enemy.kind !== 'drone' && enemy.kind !== 'helicopter')) continue
+      expect(Math.abs(enemy.position.y - airBandForSlot(enemy.kind, enemy.slot))).toBeLessThan(1.5)
+    }
+  })
+
+  it('lets helicopters actually open fire', () => {
+    const state = createEnemyState()
+    const player = { x: 0, y: 12, z: 0 }
+    const helicopter = state.slots.find((enemy) => enemy.kind === 'helicopter')!
+    helicopter.active = true
+    helicopter.position = { x: 0, y: 22, z: 30 }
+    helicopter.attackTimer = 0
+    for (let tick = 0; tick < 90; tick += 1) stepEnemies(state, player, 1 / 60)
+    expect(state.projectiles.some((projectile) => projectile.active)).toBe(true)
+  })
+
+  it('destroys a drone the player flies through and never lets contacts stack', () => {
+    const state = createEnemyState()
+    const player = { x: 0, y: 8, z: 0 }
+    const drones = state.slots.filter((enemy) => enemy.kind === 'drone').slice(0, 3)
+    for (const drone of drones) {
+      drone.active = true
+      drone.hitRadius = 0.75
+      drone.position = { x: 0, y: 8, z: 0 }
+    }
+    const tank = state.slots.find((enemy) => enemy.kind === 'tank')!
+    tank.active = true
+    tank.hitRadius = 2.8
+    tank.position = { x: 0, y: 8, z: 0 }
+    const damage = resolveEnemyContacts(state, player)
+    // Worst single contact, not the sum of four bodies.
+    expect(damage).toBe(5)
+    expect(state.contactKills).toBe(3)
+    expect(drones.every((drone) => !drone.active)).toBe(true)
+    expect(tank.active).toBe(true)
   })
 })
