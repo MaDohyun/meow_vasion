@@ -54,6 +54,32 @@ export const ENEMY_CAPS: Record<EnemyKind, number> = {
 
 export const ENEMY_MAX_PROJECTILES = 96
 
+// Air units travel on a heading fixed at spawn. Drones hold a straight line;
+// helicopters keep a slow yaw so the sky does not read as parallel tracks.
+const AIR_TRAVEL_SPEED: Record<'drone' | 'helicopter', number> = { drone: 12, helicopter: 15 }
+const AIR_TURN_RATE: Record<'drone' | 'helicopter', number> = { drone: 0.05, helicopter: 0.22 }
+const AIR_DESPAWN_DISTANCE = 240
+
+// Each air type owns an altitude band and stays in it. Climbing out of a band
+// has to be a real escape, which it is not if the enemy follows you up.
+export function airBandForSlot(kind: 'drone' | 'helicopter', slot: number) {
+  return kind === 'drone' ? 5 + (slot % 5) * 3.2 : 19 + (slot % 4) * 4.5
+}
+
+// Body-contact damage. Drones are the only unit that dies on contact, which is
+// what makes ploughing through a swarm a real choice instead of a death.
+export const ENEMY_CONTACT_DAMAGE: Record<EnemyKind, number> = {
+  drone: 3,
+  police: 2,
+  'police-car': 3,
+  helicopter: 4,
+  soldier: 2,
+  fighter: 5,
+  'anti-air': 4,
+  tank: 5,
+  boss: 8,
+}
+
 export type EnemySlot = {
   id: string
   kind: EnemyKind
@@ -97,6 +123,7 @@ export type EnemyState = {
   waveStage: number
   spawnTimer: number
   randomState: number
+  contactKills: number
 }
 
 const ORDER: EnemyKind[] = ['drone', 'police', 'police-car', 'helicopter', 'soldier', 'fighter', 'anti-air', 'tank', 'boss']
@@ -184,7 +211,7 @@ export function createEnemyState(seed = 0x91eab7) {
   const slots: EnemySlot[] = []
   for (const kind of ORDER) for (let slot = 0; slot < ENEMY_CAPS[kind]; slot += 1) slots.push(makeSlot(kind, slot))
   const projectiles = Array.from({ length: ENEMY_MAX_PROJECTILES }, (_, slot) => makeProjectile(slot))
-  return { slots, projectiles, destroyedAntiAir: new Set<string>(), waveStage: 0, spawnTimer: 0, randomState: seed >>> 0 || 1 } satisfies EnemyState
+  return { slots, projectiles, destroyedAntiAir: new Set<string>(), waveStage: 0, spawnTimer: 0, randomState: seed >>> 0 || 1, contactKills: 0 } satisfies EnemyState
 }
 
 export function isAntiAirBuilding(building: Pick<ProceduralBuilding, 'cellX' | 'cellZ'>) {
@@ -225,7 +252,16 @@ function resetSlot(enemy: EnemySlot, player: Vec3, heading: number, state: Enemy
   } else {
     enemy.position.x = player.x + Math.sin(angle) * distance
     enemy.position.z = player.z + Math.cos(angle) * distance
-    enemy.position.y = enemy.kind === 'drone' ? Math.min(110, Math.max(3, player.y + 5)) : Math.min(118, Math.max(8, player.y + 10))
+    enemy.position.y = enemy.kind === 'drone' || enemy.kind === 'helicopter'
+      ? airBandForSlot(enemy.kind, enemy.slot)
+      : Math.min(118, Math.max(8, player.y + 10))
+  }
+  if (enemy.kind === 'drone' || enemy.kind === 'helicopter') {
+    // Aim the travel heading at a scattered point near the player so the path
+    // crosses the play area once and then carries on past it.
+    const aimX = player.x + (random(state) - 0.5) * 46
+    const aimZ = player.z + (random(state) - 0.5) * 46
+    enemy.phase = Math.atan2(aimX - enemy.position.x, aimZ - enemy.position.z)
   }
   enemy.target.x = player.x + (random(state) - 0.5) * 24
   enemy.target.y = enemy.position.y
@@ -340,30 +376,17 @@ function fireProjectile(state: EnemyState, enemy: EnemySlot, kind: EnemyProjecti
 }
 
 function stepAirEnemy(enemy: EnemySlot, player: Vec3, d: number) {
-  const distance = distanceToPlayer(enemy, player)
-  const chaseRange = enemy.kind === 'drone' ? 64 : 105
-  if (enemy.mode === 'roam' && distance <= chaseRange) enemy.mode = 'chase'
-  if (enemy.mode === 'chase') {
-    enemy.age += d
-    if (distance > 210 || enemy.age > 24) { enemy.mode = 'roam'; enemy.age = 0 }
-    else {
-      const orbit = enemy.kind === 'drone' ? 14 + enemy.slot % 3 * 2 : 28 + enemy.slot % 3 * 4
-      const desiredX = player.x + Math.sin(enemy.phase) * orbit
-      const desiredZ = player.z + Math.cos(enemy.phase) * orbit
-      const blend = 1 - Math.exp(-(enemy.kind === 'drone' ? 1.7 : 1.1) * d)
-      enemy.position.x += (desiredX - enemy.position.x) * blend
-      enemy.position.z += (desiredZ - enemy.position.z) * blend
-      const desiredY = Math.min(120, Math.max(3, player.y + (enemy.kind === 'drone' ? 3 : 8)))
-      enemy.position.y += (desiredY - enemy.position.y) * blend
-      enemy.phase += d * (enemy.kind === 'drone' ? 1.2 : 0.48)
-    }
-  } else {
-    const speed = enemy.kind === 'drone' ? 7 : 10
-    enemy.position.x += Math.sin(enemy.phase) * speed * d
-    enemy.position.z += Math.cos(enemy.phase) * speed * d
-    enemy.phase += d * 0.2
-    if (distance > 240) enemy.active = false
-  }
+  // No chase mode. On an endless map, letting air units latch onto the player
+  // removes the point of flying anywhere: the same drones stay glued to you and
+  // repositioning stops being a decision.
+  const kind = enemy.kind === 'drone' ? 'drone' : 'helicopter'
+  const speed = AIR_TRAVEL_SPEED[kind]
+  enemy.position.x += Math.sin(enemy.phase) * speed * d
+  enemy.position.z += Math.cos(enemy.phase) * speed * d
+  enemy.phase += d * AIR_TURN_RATE[kind]
+  const band = airBandForSlot(kind, enemy.slot)
+  enemy.position.y += (band - enemy.position.y) * (1 - Math.exp(-1.4 * d))
+  if (distanceToPlayer(enemy, player) > AIR_DESPAWN_DISTANCE) enemy.active = false
 }
 
 function stepGroundEnemy(enemy: EnemySlot, player: Vec3, d: number) {
@@ -425,30 +448,33 @@ export function stepEnemies(state: EnemyState, player: Vec3, dt: number) {
     if (enemy.telegraph > 0) {
       enemy.telegraph = Math.max(0, enemy.telegraph - d)
       if (enemy.telegraph <= 0) {
-        if (enemy.kind === 'police' || enemy.kind === 'soldier') fireProjectile(state, enemy, 'rifle')
+        if (enemy.kind === 'police' || enemy.kind === 'soldier' || enemy.kind === 'helicopter') fireProjectile(state, enemy, 'rifle')
         else if (enemy.kind === 'police-car') fireProjectile(state, enemy, 'shell')
         else if (enemy.kind === 'tank') fireProjectile(state, enemy, 'shell')
         else if (enemy.kind === 'anti-air') fireProjectile(state, enemy, 'missile')
         else if (enemy.kind === 'fighter') fireProjectile(state, enemy, 'rocket')
         else if (enemy.kind === 'boss') fireProjectile(state, enemy, enemy.slot % 2 === 0 ? 'boss-beam' : 'missile')
         enemy.aiming = false
-        enemy.attackTimer = enemy.kind === 'boss' ? 2.5 : enemy.kind === 'anti-air' ? 3.8 : enemy.kind === 'tank' ? 2.8 : 2.2
+        enemy.attackTimer = enemy.kind === 'boss' ? 2.5 : enemy.kind === 'anti-air' ? 3.8 : enemy.kind === 'tank' ? 2.8 : enemy.kind === 'helicopter' ? 1.6 : 2.2
       }
     } else if (enemy.attackTimer <= 0) {
       const distance = distanceToPlayer(enemy, player)
       const low = player.y <= 5.5
       const middle = player.y > 5.5 && player.y < 28
       const high = player.y >= 28
+      // Drones are deliberately absent here: they deal contact damage only.
+      // Thirty-six of them firing would bury the screen in projectiles.
       const canAttack = (enemy.kind === 'police' || enemy.kind === 'soldier') ? low && distance < 48
         : enemy.kind === 'police-car' ? low && distance < 58
-          : enemy.kind === 'tank' ? middle && distance < 100
-            : enemy.kind === 'anti-air' ? high && distance < 145
-              : enemy.kind === 'boss' || enemy.kind === 'fighter'
+          : enemy.kind === 'helicopter' ? !high && distance < 78
+            : enemy.kind === 'tank' ? middle && distance < 100
+              : enemy.kind === 'anti-air' ? high && distance < 145
+                : enemy.kind === 'boss' || enemy.kind === 'fighter'
       if (canAttack) {
-        const kind = enemy.kind === 'police' || enemy.kind === 'soldier' ? 'rifle' : enemy.kind === 'police-car' || enemy.kind === 'tank' ? 'shell' : enemy.kind === 'anti-air' ? 'missile' : enemy.kind === 'fighter' ? 'rocket' : 'boss-beam'
+        const kind = enemy.kind === 'police' || enemy.kind === 'soldier' || enemy.kind === 'helicopter' ? 'rifle' : enemy.kind === 'police-car' || enemy.kind === 'tank' ? 'shell' : enemy.kind === 'anti-air' ? 'missile' : enemy.kind === 'fighter' ? 'rocket' : 'boss-beam'
         const speed = kind === 'rifle' ? 22 : kind === 'shell' ? 18 : kind === 'missile' ? 25 : kind === 'rocket' ? 24 : 16
         const damage = kind === 'rifle' ? 2 : kind === 'shell' ? (enemy.kind === 'tank' ? 5 : 4) : kind === 'missile' ? 10 : kind === 'rocket' ? 3 : 7
-        aimProjectile(state, enemy, player, kind, speed, damage, enemy.kind === 'boss' ? 1.1 : enemy.kind === 'anti-air' ? 0.8 : 0.52)
+        aimProjectile(state, enemy, player, kind, speed, damage, enemy.kind === 'boss' ? 1.1 : enemy.kind === 'anti-air' ? 0.8 : enemy.kind === 'helicopter' ? 0.45 : 0.52)
       }
     }
   }
@@ -502,11 +528,22 @@ export function nearbyEnemyThreats(state: EnemyState, player: Vec3) {
   return count
 }
 
-export function nearbyEnemyContacts(state: EnemyState, player: Vec3) {
-  let count = 0
+// Returns the worst single contact damage for this tick and, as a side effect,
+// destroys any drone the player flew through. Damage is a max rather than a sum
+// so a dense pack cannot stack into an instant kill.
+export function resolveEnemyContacts(state: EnemyState, player: Vec3, playerRadius = 1.4) {
+  let damage = 0
+  state.contactKills = 0
   for (const enemy of state.slots) {
     if (!enemy.active) continue
-    if (distanceToPlayer(enemy, player) <= enemy.hitRadius + 1.4) count += 1
+    if (distanceToPlayer(enemy, player) > enemy.hitRadius + playerRadius) continue
+    const contact = ENEMY_CONTACT_DAMAGE[enemy.kind]
+    if (contact > damage) damage = contact
+    if (enemy.kind !== 'drone') continue
+    enemy.active = false
+    enemy.hp = 0
+    enemy.respawn = 4.5
+    state.contactKills += 1
   }
-  return count
+  return damage
 }

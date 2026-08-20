@@ -31,31 +31,120 @@ function car(): BeamObject {
 }
 
 describe('pooled city crowds and destructible cars', () => {
-  it('keeps fixed pedestrian and rare-cat pools and spawns behind view', () => {
+  it('keeps fixed pools and scatters the run-start seed all around the player', () => {
     const state = createCrowdState(42)
     expect(state.objects).toHaveLength(PEDESTRIAN_MAX + CAT_MAX)
     const view = { position: { x: 0, y: 3, z: 0 }, heading: 0 }
     stepCrowds(state, view, 0)
     expect(activeCrowdCount(state, 'pedestrian')).toBe(INITIAL_PEDESTRIANS)
     expect(activeCrowdCount(state, 'cat')).toBe(INITIAL_CATS)
+    const seeded = state.objects.filter((object) => object.active)
+    // The seed used to land entirely in a cone behind the view, which read as a
+    // crowd stuck to the player's back. Every quadrant should be occupied now.
+    const quadrants = new Set(seeded.map((object) => `${object.position.x >= 0}:${object.position.z >= 0}`))
+    expect(quadrants.size).toBe(4)
+    for (const object of seeded) {
+      const distance = Math.hypot(object.position.x, object.position.z)
+      expect(distance).toBeGreaterThan(12)
+      expect(distance).toBeLessThan(110)
+    }
     for (let frame = 0; frame < 420; frame += 1) {
       stepCrowds(state, view, 0.05)
       stepBeamObjects(state.objects, inactiveBeam, 0.05)
     }
     expect(activeCrowdCount(state, 'pedestrian')).toBeGreaterThan(activeCrowdCount(state, 'cat'))
     expect(activeCrowdCount(state, 'cat')).toBeGreaterThan(0)
-    expect(state.objects.filter((object) => object.active).every((object) => object.position.z < 80)).toBe(true)
+  })
+
+  it('still seeds the crowd inside a dense block of buildings', () => {
+    const colliders = []
+    // A tight grid of city blocks over the whole seed ring.
+    for (let x = -120; x <= 120; x += 22) {
+      for (let z = -120; z <= 120; z += 22) {
+        colliders.push({ minX: x, maxX: x + 14, minY: 0, maxY: 20, minZ: z, maxZ: z + 14 })
+      }
+    }
+    const state = createCrowdState(77)
+    stepCrowds(state, { position: { x: 3, y: 3, z: 5 }, heading: 1.2, colliders }, 0)
+    const seeded = state.objects.filter((object) => object.active)
+    expect(seeded.length).toBeGreaterThanOrEqual(INITIAL_PEDESTRIANS + INITIAL_CATS - 2)
+    for (const object of seeded) {
+      const inside = colliders.some((collider) =>
+        object.position.x > collider.minX && object.position.x < collider.maxX &&
+        object.position.z > collider.minZ && object.position.z < collider.maxZ)
+      expect(inside).toBe(false)
+    }
   })
 
   it('makes pedestrians flee a low approaching UFO and caches nearby density', () => {
     const state = createCrowdState(7)
+    state.initialSpawnDone = true
+    state.spawnTimer = 999
     const pedestrian = state.objects.find((object) => object.kind === 'pedestrian')!
     pedestrian.active = true
     pedestrian.position = { x: 2, y: 0.65, z: 0 }
     pedestrian.velocity = { x: 0, y: 0, z: 0 }
-    stepCrowds(state, { position: { x: 0, y: 3, z: 0 }, heading: 0 }, 1 / 60)
-    expect(pedestrian.velocity.x).toBeGreaterThan(7)
+    const view = { position: { x: 0, y: 3, z: 0 }, heading: 0 }
+    // Flee speed is now blended in rather than slammed on, so it builds over a
+    // few frames instead of snapping between wander and sprint every tick.
+    for (let frame = 0; frame < 30; frame += 1) stepCrowds(state, view, 1 / 60)
+    expect(pedestrian.velocity.x).toBeGreaterThan(6)
     expect(state.nearbyPedestrians).toBe(1)
+  })
+
+  it('holds the flee state through the hysteresis band instead of flickering', () => {
+    const state = createCrowdState(11)
+    state.initialSpawnDone = true
+    const pedestrian = state.objects.find((object) => object.kind === 'pedestrian')!
+    pedestrian.active = true
+    pedestrian.position = { x: 14, y: 0.65, z: 0 }
+    pedestrian.velocity = { x: 0, y: 0, z: 0 }
+    const view = { position: { x: 0, y: 3, z: 0 }, heading: 0 }
+    // Park the pedestrian right on the old single threshold. Under the previous
+    // logic this toggled flee on and off every frame, which is what made the
+    // crowd vibrate; the wider exit ring has to keep it committed.
+    for (let frame = 0; frame < 4; frame += 1) stepCrowds(state, view, 1 / 60)
+    expect(pedestrian.fleeTimer).toBeGreaterThan(0)
+    for (let frame = 0; frame < 20; frame += 1) {
+      pedestrian.position.x = 15
+      pedestrian.position.z = 0
+      stepCrowds(state, view, 1 / 60)
+      expect(pedestrian.fleeTimer).toBeGreaterThan(0)
+    }
+  })
+
+  it('keeps cats faster than people but slow enough to be caught', () => {
+    const state = createCrowdState(3)
+    state.initialSpawnDone = true
+    const cat = state.objects.find((object) => object.kind === 'cat')!
+    const pedestrian = state.objects.find((object) => object.kind === 'pedestrian')!
+    for (const object of [cat, pedestrian]) {
+      object.active = true
+      object.position = { x: 0, y: 0.65, z: object === cat ? 6 : -6 }
+      object.velocity = { x: 0, y: 0, z: 0 }
+    }
+    const view = { position: { x: 0, y: 3, z: 0 }, heading: 0 }
+    for (let frame = 0; frame < 40; frame += 1) stepCrowds(state, view, 1 / 60)
+    const catSpeed = Math.hypot(cat.velocity.x, cat.velocity.z)
+    const pedestrianSpeed = Math.hypot(pedestrian.velocity.x, pedestrian.velocity.z)
+    expect(catSpeed).toBeGreaterThan(pedestrianSpeed)
+    expect(catSpeed).toBeLessThan(9)
+  })
+
+  it('slides a fleeing pedestrian along a wall instead of stalling on it', () => {
+    const state = createCrowdState(5)
+    state.initialSpawnDone = true
+    const pedestrian = state.objects.find((object) => object.kind === 'pedestrian')!
+    pedestrian.active = true
+    pedestrian.position = { x: 0, y: 0.65, z: 8 }
+    pedestrian.velocity = { x: 0, y: 0, z: 0 }
+    // A long wall straight ahead of the escape direction.
+    const colliders = [{ minX: -60, maxX: 60, minY: 0, maxY: 12, minZ: 11, maxZ: 13 }]
+    const view = { position: { x: 0, y: 3, z: 0 }, heading: 0, colliders }
+    for (let frame = 0; frame < 90; frame += 1) stepCrowds(state, view, 1 / 60)
+    expect(pedestrian.position.z).toBeLessThan(11)
+    // Blocked on z only, it should still be making progress along x.
+    expect(Math.abs(pedestrian.position.x)).toBeGreaterThan(2)
   })
 
   it('gives cats and pedestrians much less beam mass than cars', () => {
