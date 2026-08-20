@@ -87,8 +87,11 @@ describe('deterministic infinite city', () => {
         expect((cellZ + 1) * WORLD_CELL_SIZE - building.position.z - building.size.z / 2).toBeGreaterThanOrEqual(4.5 - 1e-8)
       }
     }
-    expect(buildings / (61 * 61)).toBeGreaterThan(0.44)
-    expect(buildings / (61 * 61)).toBeLessThan(0.52)
+    // Density band, not a fixed number: the point is that the city stays a city
+    // rather than a field or a solid block. Raised from ~48% when the skyline
+    // was thickened by about a third.
+    expect(buildings / (61 * 61)).toBeGreaterThan(0.57)
+    expect(buildings / (61 * 61)).toBeLessThan(0.67)
   })
 
   it('mixes mostly low-rise buildings with a meaningful high-rise tier', () => {

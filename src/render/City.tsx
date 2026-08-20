@@ -153,18 +153,28 @@ const roadTexture = pixelTexture((context) => {
     context.fillStyle = index % 4 === 0 ? 'rgba(190,215,255,.14)' : 'rgba(0,0,0,.22)'
     context.fillRect(x, y, index % 5 === 0 ? 2 : 1, 1)
   }
-  // Centre line plus edge markings. At night these are most of what makes the
-  // road shape readable, so they are the brightest thing on the ground.
+  // Centre line only. At night this is what makes the road shape readable.
+  //
+  // Crosswalks used to be painted in here, which meant one in the middle of
+  // every single road tile - the ground turned into a field of white stripes.
+  // Anything drawn into a repeating texture repeats everywhere by definition,
+  // so they moved out to their own sparse pool below.
   context.fillStyle = GROUND.ROAD_MARKING
   for (let x = 18; x < 112; x += 22) context.fillRect(x, 15, 12, 2)
-  context.fillStyle = 'rgba(232,237,245,.78)'
-  for (let y = 3; y < 30; y += 5) {
-    context.fillRect(2, y, 12, 2)
-    context.fillRect(114, y, 12, 2)
+  // Kerb lines, dimmed right down: they used to be brighter than the lane
+  // markings and landed on every tile seam.
+  context.fillStyle = 'rgba(232,237,245,.26)'
+  for (let y = 4; y < 30; y += 9) {
+    context.fillRect(4, y, 8, 1)
+    context.fillRect(116, y, 8, 1)
   }
-  context.fillStyle = GROUND.CROSSWALK
-  for (let y = 2; y < 30; y += 6) context.fillRect(60, y, 8, 3)
 }, 128, 32)
+
+const crosswalkTexture = pixelTexture((context) => {
+  context.clearRect(0, 0, 32, 32)
+  context.fillStyle = GROUND.CROSSWALK
+  for (let x = 2; x < 30; x += 7) context.fillRect(x, 4, 4, 24)
+}, 32, 32)
 
 // Materials the daylight cycle drives. They are module-level because every
 // pooled instance shares one, so the cycle updates a handful of objects per
@@ -665,6 +675,61 @@ const beaconMaterial = (() => {
   return material
 })()
 
+// Crosswalks sit at a minority of intersections, chosen by cell hash so the
+// layout is deterministic and does not shimmer as cells stream in and out.
+const CROSSWALK_RADIUS_CELLS = 4
+const CROSSWALK_CELLS = (CROSSWALK_RADIUS_CELLS * 2 + 1) ** 2
+const CROSSWALK_SHARE = 5
+
+function CrosswalkPool() {
+  const { runtime } = useGame()
+  const ref = useRef<THREE.InstancedMesh>(null)
+  const lastKey = useRef('')
+  const matrix = useMemo(() => new THREE.Matrix4(), [])
+  const position = useMemo(() => new THREE.Vector3(), [])
+  const scale = useMemo(() => new THREE.Vector3(), [])
+  const flat = useMemo(() => new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0)), [])
+  const flatTurned = useMemo(() => new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, Math.PI / 2)), [])
+
+  useFrame(() => {
+    const mesh = ref.current
+    if (!mesh) return
+    const world = runtime.current.world
+    const key = `${world.cellX}:${world.cellZ}`
+    if (key === lastKey.current) return
+    lastKey.current = key
+    let slot = 0
+    for (let dz = -CROSSWALK_RADIUS_CELLS; dz <= CROSSWALK_RADIUS_CELLS; dz += 1) {
+      for (let dx = -CROSSWALK_RADIUS_CELLS; dx <= CROSSWALK_RADIUS_CELLS; dx += 1) {
+        if (slot >= CROSSWALK_CELLS) break
+        const cellX = world.cellX + dx
+        const cellZ = world.cellZ + dz
+        const seed = seedForWorldCell(cellX, cellZ, 0xc7085)
+        if (seed % 100 >= CROSSWALK_SHARE * 4) continue
+        const acrossX = seed % 2 === 0
+        position.set(
+          cellX * WORLD_CELL_SIZE + (acrossX ? 7 : 0),
+          0.03,
+          cellZ * WORLD_CELL_SIZE + (acrossX ? 0 : 7),
+        )
+        scale.set(7.2, 6.4, 1)
+        matrix.compose(position, acrossX ? flatTurned : flat, scale)
+        mesh.setMatrixAt(slot, matrix)
+        slot += 1
+      }
+    }
+    mesh.count = slot
+    mesh.instanceMatrix.needsUpdate = true
+  })
+
+  return (
+    <instancedMesh ref={ref} args={[undefined, undefined, CROSSWALK_CELLS]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }}>
+      <planeGeometry args={[1, 1]} />
+      <meshBasicMaterial map={crosswalkTexture} transparent depthWrite={false} />
+    </instancedMesh>
+  )
+}
+
 const BEACON_MIN_HEIGHT = 26
 
 function RoofBeaconPool() {
@@ -814,6 +879,7 @@ export const City = memo(function City() {
       {Array.from({ length: ROOF_STRUCTURE_VARIANTS }, (_, variant) => (
         <RoofStructurePool key={variant} variant={variant} />
       ))}
+      <CrosswalkPool />
       <StreetLightPool />
       <RoofBeaconPool />
       <DistantBuildingPool />

@@ -55,13 +55,24 @@ export function Radar() {
       const heading = game.drone.heading
       context.clearRect(0, 0, size, size)
 
-      const pulse = 0.45 + 0.55 * Math.abs(Math.sin(performance.now() * 0.006))
-      const dot = (x: number, z: number, color: string, radius: number, alpha = 1) => {
+      // Nothing on here blinks. An earlier version pulsed the alpha of mines
+      // and explosives to mark them out, but on a two-pixel dot a swing between
+      // 0.45 and 1.0 twice a second reads as the contact vanishing and coming
+      // back - it looked like the radar was leaking objects while the player sat
+      // still. A dashboard has to hold still to be read.
+      const dot = (x: number, z: number, color: string, radius: number, hollow = false) => {
         const dx = x - player.x
         const dz = z - player.z
         if (Math.hypot(dx, dz) > RADAR_RANGE) return
         const { px, py } = projectToRadar(dx, dz, heading, center, scale)
-        context.globalAlpha = alpha
+        if (hollow) {
+          // Mines are marked by shape instead: an outline reads as "parked
+          // hazard" next to the solid squares of things that are moving.
+          context.strokeStyle = color
+          context.lineWidth = 1.5
+          context.strokeRect(px - radius, py - radius, radius * 2, radius * 2)
+          return
+        }
         context.fillStyle = color
         context.fillRect(px - radius, py - radius, radius * 2, radius * 2)
       }
@@ -80,7 +91,7 @@ export function Radar() {
       }
       for (const hazard of game.hazards.objects) {
         if (!hazard.active) continue
-        dot(hazard.position.x, hazard.position.z, COLORS.explosive, 2.5, pulse)
+        dot(hazard.position.x, hazard.position.z, COLORS.explosive, 2.5)
       }
       for (const enemy of game.enemies.slots) {
         if (!enemy.active) continue
@@ -90,12 +101,11 @@ export function Radar() {
           enemy.position.z,
           mine ? COLORS.mine : COLORS.hostile,
           enemy.kind === 'boss' ? 4 : enemy.kind === 'drone' ? 2 : 2.5,
-          mine ? pulse : 1,
+          mine,
         )
       }
 
       // The craft last, so nothing can cover it.
-      context.globalAlpha = 1
       context.fillStyle = '#ffffff'
       context.beginPath()
       context.moveTo(center, center - 5)
