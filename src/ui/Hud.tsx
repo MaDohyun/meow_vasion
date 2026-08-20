@@ -95,7 +95,7 @@ function MobileControls() {
 }
 
 function Intro() {
-  const { snapshot, start, selectWeapon } = useGame()
+  const { snapshot, start, selectWeapon, quality, setQuality } = useGame()
   return (
     <div className="overlay intro-overlay">
       <div className="sun-disc" />
@@ -123,6 +123,19 @@ function Intro() {
         })}
       </div>
       <button className="primary-button" onClick={start}>START SURVIVAL</button>
+      <div className="quality-picker" role="group" aria-label="render quality">
+        <span>GRAPHICS</span>
+        {(['high', 'low'] as const).map((level) => (
+          <button
+            key={level}
+            type="button"
+            className={quality === level ? 'selected' : ''}
+            onClick={() => setQuality(level)}
+          >
+            {level.toUpperCase()}
+          </button>
+        ))}
+      </div>
       <div className="controls-card">
         <span><b>W/S</b> FLY WHERE YOU LOOK</span>
         <span><b>A/D</b> RIGHT / LEFT</span>

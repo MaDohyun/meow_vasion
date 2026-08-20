@@ -5,6 +5,9 @@ import * as THREE from 'three'
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { useGame } from '../GameContext'
+import { BUILDING, ENTITY, FX, LIGHT, SKY } from '../constants/palette'
+import { applyRimLight } from './rimLight'
+import { radialGlowTexture } from './textures'
 import { beamProfile, beamVisualLength } from '../core/beam'
 import { CAT_MAX, CROWD_ABSORB_TIME, PEDESTRIAN_MAX, type CrowdKind } from '../core/crowds'
 import { ENEMY_CAPS, type EnemyKind } from '../core/enemies'
@@ -258,7 +261,7 @@ function PullableCars() {
       </instancedMesh>
       <instancedMesh ref={lightbar} args={[undefined, undefined, WORLD_MAX_CARS + TRAFFIC_MAX_CARS]} frustumCulled={false}>
         <boxGeometry args={[0.95, 0.16, 0.28]} />
-        <meshBasicMaterial color="#ffce55" />
+        <meshBasicMaterial color={FX.HEADLIGHT} toneMapped={false} />
       </instancedMesh>
       <instancedMesh ref={glow} args={[undefined, undefined, WORLD_MAX_CARS + TRAFFIC_MAX_CARS]} frustumCulled={false} renderOrder={3}>
         <ringGeometry args={[1.25, 1.55, 18]} />
@@ -324,7 +327,7 @@ function DrivingTraffic() {
       </instancedMesh>
       <instancedMesh ref={lamps} args={[undefined, undefined, TRAFFIC_MAX_CARS]} frustumCulled={false}>
         <boxGeometry args={[0.95, 0.16, 0.28]} />
-        <meshBasicMaterial color="#ffce55" />
+        <meshBasicMaterial color={FX.HEADLIGHT} toneMapped={false} />
       </instancedMesh>
     </group>
   )
@@ -420,6 +423,39 @@ function PilotModel() {
   )
 }
 
+// A soft pool of light on the ground under the craft. Blob shadows read as
+// nothing at night, but altitude and horizontal position still have to be
+// legible, and a pool that shrinks and brightens as you descend does both.
+function UfoGroundPool() {
+  const { runtime, snapshot } = useGame()
+  const ref = useRef<THREE.Mesh>(null)
+  useFrame(() => {
+    const mesh = ref.current
+    if (!mesh) return
+    const drone = runtime.current.drone.position
+    mesh.position.set(drone.x, 0.06, drone.z)
+    const altitude = Math.max(0, drone.y)
+    const spread = 2.4 + altitude * 0.34
+    mesh.scale.setScalar(spread)
+    const material = mesh.material as THREE.MeshBasicMaterial
+    material.opacity = Math.max(0.05, 0.42 - altitude * 0.0035) * (snapshot.beamActive ? 1.5 : 1)
+  })
+  return (
+    <mesh ref={ref} rotation-x={-Math.PI / 2} frustumCulled={false} renderOrder={-1}>
+      <circleGeometry args={[1, 28]} />
+      <meshBasicMaterial
+        color={ENTITY.UFO_POOL}
+        map={radialGlowTexture}
+        transparent
+        opacity={0.35}
+        depthWrite={false}
+        blending={THREE.AdditiveBlending}
+        toneMapped={false}
+      />
+    </mesh>
+  )
+}
+
 function Ufo() {
   const { runtime, snapshot } = useGame()
   const root = useRef<THREE.Group>(null)
@@ -472,14 +508,16 @@ function Ufo() {
     <group ref={root}>
       <group scale={1.08}>
         <PilotModel />
+        {/* The hull carries its own emissive so the craft never sinks into the
+            night city. Finding yourself instantly is the whole readability bar. */}
         <mesh scale={[1, 0.32, 1]}>
           <sphereGeometry args={[1.72, 20, 10]} />
-          <meshToonMaterial color="#d8c9b5" />
-          <Edges threshold={15} color="#322b48" />
+          <meshToonMaterial color={ENTITY.UFO_HULL} emissive={ENTITY.UFO_HULL} emissiveIntensity={0.55} />
+          <Edges threshold={15} color="#5a5170" />
         </mesh>
         <mesh position-y={0.25} scale={[1, 0.55, 1]}>
           <sphereGeometry args={[0.82, 18, 10, 0, Math.PI * 2, 0, Math.PI / 2]} />
-          <meshToonMaterial color="#8ce8e8" emissive="#326f89" emissiveIntensity={0.55} transparent opacity={0.86} />
+          <meshToonMaterial color={ENTITY.UFO_DOME} emissive={ENTITY.UFO_DOME} emissiveIntensity={0.9} transparent opacity={0.9} />
           <Edges threshold={15} color="#432f6b" />
         </mesh>
         <mesh position-y={-0.2}>
@@ -489,7 +527,7 @@ function Ufo() {
         </mesh>
         <mesh position-y={-0.39} rotation-x={Math.PI / 2}>
           <ringGeometry args={[0.47, 0.92, 22]} />
-          <meshBasicMaterial color={snapshot.beamActive ? '#baffdc' : '#ffcb63'} />
+          <meshBasicMaterial color={snapshot.beamActive ? '#baffdc' : '#ffcb63'} toneMapped={false} />
         </mesh>
         <group ref={rim}>
           {Array.from({ length: 10 }, (_, index) => {
@@ -497,7 +535,7 @@ function Ufo() {
             return (
               <mesh key={index} position={[Math.sin(angle) * 1.43, -0.05, Math.cos(angle) * 1.43]}>
                 <sphereGeometry args={[0.12, 6, 4]} />
-                <meshBasicMaterial color={index % 2 ? '#67f2ff' : '#ff6fae'} />
+                <meshBasicMaterial color={index % 2 ? '#67f2ff' : '#ff6fae'} toneMapped={false} />
               </mesh>
             )
           })}
@@ -526,6 +564,41 @@ function Ufo() {
     </group>
   )
 }
+
+// Crowd and enemy bodies are absorb targets and threats respectively, so both
+// have to stay findable in the dark. Each family keeps its own rim colour: one
+// shared colour would erase the type read the wave design depends on.
+const crowdMaterial: Record<CrowdKind, THREE.Material> = {
+  pedestrian: applyRimLight(new THREE.MeshToonMaterial({ vertexColors: true, emissive: new THREE.Color(ENTITY.PEDESTRIAN_GLOW), emissiveIntensity: 0.34 }), ENTITY.PEDESTRIAN_GLOW, 0.75),
+  cat: applyRimLight(new THREE.MeshToonMaterial({ vertexColors: true, emissive: new THREE.Color(ENTITY.CAT_GLOW), emissiveIntensity: 0.34 }), ENTITY.CAT_GLOW, 0.85),
+}
+
+const ENEMY_GLOW: Record<EnemyKind, string> = {
+  drone: ENTITY.DRONE_GLOW,
+  police: ENTITY.POLICE_GLOW,
+  'police-car': ENTITY.POLICE_CAR_GLOW,
+  soldier: ENTITY.SOLDIER_GLOW,
+  helicopter: ENTITY.HELICOPTER_GLOW,
+  fighter: ENTITY.FIGHTER_GLOW,
+  'anti-air': ENTITY.ANTI_AIR_GLOW,
+  tank: ENTITY.TANK_GLOW,
+  boss: ENTITY.BOSS_GLOW,
+}
+
+const enemyMaterial = Object.fromEntries(
+  (Object.keys(ENEMY_GLOW) as EnemyKind[]).map((kind) => [
+    kind,
+    applyRimLight(
+      new THREE.MeshToonMaterial({
+        vertexColors: true,
+        emissive: new THREE.Color(ENEMY_GLOW[kind]),
+        emissiveIntensity: kind === 'boss' ? 0.5 : 0.3,
+      }),
+      ENEMY_GLOW[kind],
+      kind === 'boss' ? 1 : 0.7,
+    ),
+  ]),
+) as Record<EnemyKind, THREE.Material>
 
 const crowdGeometry: Record<CrowdKind, THREE.BufferGeometry> = {
   pedestrian: pedestrianGeometry(),
@@ -566,9 +639,7 @@ function CrowdPool({ kind }: { kind: CrowdKind }) {
     if (ref.current.instanceColor) ref.current.instanceColor.needsUpdate = true
   })
   return (
-    <instancedMesh ref={ref} args={[crowdGeometry[kind], undefined, kind === 'cat' ? CAT_MAX : PEDESTRIAN_MAX]} frustumCulled={false}>
-      <meshToonMaterial vertexColors emissive={kind === 'cat' ? '#3d2418' : '#37192d'} emissiveIntensity={0.2} />
-    </instancedMesh>
+    <instancedMesh ref={ref} args={[crowdGeometry[kind], crowdMaterial[kind], kind === 'cat' ? CAT_MAX : PEDESTRIAN_MAX]} frustumCulled={false} />
   )
 }
 
@@ -630,9 +701,7 @@ function EnemyPool({ kind }: { kind: EnemyKind }) {
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
   })
   return (
-    <instancedMesh ref={ref} args={[enemyGeometry[kind], undefined, ENEMY_CAPS[kind]]} frustumCulled={false}>
-      <meshToonMaterial vertexColors emissive={kind === 'boss' ? '#641d35' : kind === 'drone' ? '#154f66' : '#171525'} emissiveIntensity={kind === 'boss' ? 0.42 : 0.22} />
-    </instancedMesh>
+    <instancedMesh ref={ref} args={[enemyGeometry[kind], enemyMaterial[kind], ENEMY_CAPS[kind]]} frustumCulled={false} />
   )
 }
 
@@ -684,7 +753,9 @@ function EnemyWarnings() {
   return (
     <instancedMesh ref={ref} args={[undefined, undefined, ENEMY_WARNING_CAPACITY]} frustumCulled={false} renderOrder={4}>
       <ringGeometry args={[0.82, 1, 20]} />
-      <meshBasicMaterial vertexColors transparent opacity={0.76} depthWrite={false} side={THREE.DoubleSide} />
+      {/* The aim telegraph is the player's only warning; it must not dim with
+          the rest of the scene at night. */}
+      <meshBasicMaterial vertexColors transparent opacity={0.9} depthWrite={false} side={THREE.DoubleSide} toneMapped={false} />
     </instancedMesh>
   )
 }
@@ -1018,32 +1089,85 @@ function PerformanceProbe() {
   return null
 }
 
+const skyUniforms = {
+  uHorizon: { value: new THREE.Color(SKY.HORIZON) },
+  uMiddle: { value: new THREE.Color(SKY.MIDDLE) },
+  uTop: { value: new THREE.Color(SKY.TOP) },
+  uStar: { value: new THREE.Color(SKY.STAR) },
+  uTime: { value: 0 },
+}
+
+const skyVertexShader = `
+  varying vec3 vPosition;
+  void main() {
+    vPosition = position;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`
+
+// Stars are drawn inside the sky shader rather than as geometry: a starfield
+// mesh would be another draw call and another pool to cull, and this costs a
+// hash per pixel on a dome that is already being shaded.
+const skyFragmentShader = `
+  uniform vec3 uHorizon;
+  uniform vec3 uMiddle;
+  uniform vec3 uTop;
+  uniform vec3 uStar;
+  uniform float uTime;
+  varying vec3 vPosition;
+
+  float hash(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+  }
+
+  void main() {
+    vec3 direction = normalize(vPosition);
+    float h = direction.y;
+    vec3 color = mix(uHorizon, uMiddle, smoothstep(-0.10, 0.28, h));
+    color = mix(color, uTop, smoothstep(0.28, 0.88, h));
+
+    // Cell the dome, keep one candidate star per cell, and only light the few
+    // that clear the threshold. Fades out near the horizon so the city glow
+    // does not end up full of stars sitting behind buildings.
+    vec2 cell = floor(direction.xz * 78.0 / max(0.25, abs(direction.y) + 0.35));
+    float pick = hash(cell);
+    float star = smoothstep(0.9955, 1.0, pick);
+    float twinkle = 0.65 + 0.35 * sin(uTime * 1.7 + pick * 90.0);
+    color += uStar * star * twinkle * smoothstep(0.02, 0.35, h);
+    gl_FragColor = vec4(color, 1.0);
+  }
+`
+
 function Sky() {
   const skyRoot = useRef<THREE.Group>(null)
-  const sunLight = useRef<THREE.DirectionalLight>(null)
+  const moonLight = useRef<THREE.DirectionalLight>(null)
   const lightTarget = useMemo(() => new THREE.Object3D(), [])
   const clouds = useMemo(() => [
     [-62, 38, -90, 1.4], [45, 50, -115, 1.8], [82, 33, -65, 1.1],
     [-95, 48, 15, 1.5], [18, 55, 88, 1.3], [-40, 31, 105, 1.1],
   ] as [number, number, number, number][], [])
-  useFrame(({ camera }) => {
+  useFrame(({ camera, clock }) => {
+    skyUniforms.uTime.value = clock.elapsedTime
     if (skyRoot.current) skyRoot.current.position.set(camera.position.x, 0, camera.position.z)
     lightTarget.position.set(camera.position.x, 0, camera.position.z)
     lightTarget.updateMatrixWorld()
-    if (sunLight.current) sunLight.current.position.set(camera.position.x - 45, 70, camera.position.z + 35)
+    if (moonLight.current) moonLight.current.position.set(camera.position.x + 60, 90, camera.position.z - 120)
   })
   return (
     <>
-      <color attach="background" args={['#a8d9d5']} />
-      <fog attach="fog" args={['#a8c9c7', 180, 650]} />
-      <ambientLight color="#f2fff4" intensity={1.2} />
-      <hemisphereLight args={['#e2f7ef', '#c99598', 1.65]} />
+      <color attach="background" args={[SKY.BACKGROUND]} />
+      <fog attach="fog" args={[SKY.FOG, 150, 560]} />
+      {/* The light COUNT is fixed on purpose. three.js keys shader programs on
+          it, so adding a lamp here would recompile every material in the scene.
+          Night is built from emissive surfaces instead — see the palette notes. */}
+      <ambientLight color={LIGHT.AMBIENT} intensity={0.52} />
+      <hemisphereLight args={[LIGHT.HEMI_SKY, LIGHT.HEMI_GROUND, 0.72]} />
       <directionalLight
-        ref={sunLight}
+        ref={moonLight}
         target={lightTarget}
-        position={[-45, 70, 35]}
-        color="#fff0c4"
-        intensity={3.15}
+        position={[60, 90, -120]}
+        color={LIGHT.MOON}
+        intensity={0.85}
       />
       <primitive object={lightTarget} />
       <group ref={skyRoot}>
@@ -1052,20 +1176,21 @@ function Sky() {
           <shaderMaterial
             side={THREE.BackSide}
             depthWrite={false}
-            vertexShader={`varying vec3 vPosition; void main(){ vPosition=position; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`}
-            fragmentShader={`varying vec3 vPosition; void main(){ float h=normalize(vPosition).y; vec3 horizon=vec3(1.0,.73,.69); vec3 middle=vec3(.59,.80,.79); vec3 top=vec3(.46,.59,.73); vec3 c=mix(horizon,middle,smoothstep(-.18,.20,h)); c=mix(c,top,smoothstep(.20,.82,h)); gl_FragColor=vec4(c,1.0); }`}
+            uniforms={skyUniforms}
+            vertexShader={skyVertexShader}
+            fragmentShader={skyFragmentShader}
           />
         </mesh>
-        <group position={[70, 125, -320]}>
-          <mesh><circleGeometry args={[58, 48]} /><meshBasicMaterial color="#ffe36f" fog={false} /></mesh>
-          <mesh position-z={-0.2}><ringGeometry args={[64, 76, 48]} /><meshBasicMaterial color="#ff8e68" transparent opacity={0.25} fog={false} /></mesh>
+        <group position={[-150, 150, -300]}>
+          <mesh><circleGeometry args={[34, 40]} /><meshBasicMaterial color={SKY.MOON} fog={false} toneMapped={false} /></mesh>
+          <mesh position-z={-0.2}><circleGeometry args={[70, 40]} /><meshBasicMaterial color={SKY.MOON_HALO} transparent opacity={0.16} fog={false} blending={THREE.AdditiveBlending} depthWrite={false} toneMapped={false} /></mesh>
         </group>
         {clouds.map(([x, y, z, scale], index) => (
           <group key={index} position={[x, y, z]} scale={scale}>
             {([[-5, 0, 0, 5], [0, 1.4, 0, 7], [6, 0, 0, 4.5], [1, -1.2, 0, 6]] as [number, number, number, number][]).map((part, partIndex) => (
               <mesh key={partIndex} position={[part[0], part[1], part[2]]} scale={[part[3], part[3] * 0.42, 1]}>
                 <sphereGeometry args={[1, 10, 6]} />
-                <meshBasicMaterial color="#fff1da" transparent opacity={0.72} fog />
+                <meshBasicMaterial color={SKY.CLOUD} transparent opacity={0.55} fog />
               </mesh>
             ))}
           </group>
@@ -1076,7 +1201,7 @@ function Sky() {
 }
 
 export function DroneScene() {
-  const { snapshot } = useGame()
+  const { snapshot, quality } = useGame()
   return (
     <>
       <Sky />
@@ -1095,8 +1220,9 @@ export function DroneScene() {
       <LaserProjectiles />
       <LaserBursts />
       <TractorBeam />
+      <UfoGroundPool />
       <Ufo />
-      <PostFx speed={snapshot.speed} impact={snapshot.impactFlash} />
+      <PostFx speed={snapshot.speed} impact={snapshot.impactFlash} quality={quality} />
     </>
   )
 }
