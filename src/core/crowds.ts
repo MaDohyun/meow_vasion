@@ -2,11 +2,16 @@ import type { BeamObject } from './beam'
 import type { Aabb, Vec3 } from './drone'
 
 export type CrowdKind = 'pedestrian' | 'cat'
-export const PEDESTRIAN_MAX = 28
-export const CAT_MAX = 7
-export const INITIAL_PEDESTRIANS = 16
-export const INITIAL_CATS = 7
-export const CROWD_REMOVE_DISTANCE = 155
+export const PEDESTRIAN_MAX = 42
+export const CAT_MAX = 11
+export const INITIAL_PEDESTRIANS = 24
+export const INITIAL_CATS = 9
+// Tight on purpose. The pool is fixed size, so stragglers left alive far behind
+// the player squat in every slot and block respawns near the path: the pool
+// saturated at 53 bodies while only two or three were ever within reach.
+// Recycling early keeps the supply in front of the player instead of trailing
+// it. Kept just outside the respawn ring so bodies are not culled on arrival.
+export const CROWD_REMOVE_DISTANCE = 112
 export const CROWD_ABSORB_DISTANCE = 3.35
 export const CROWD_ABSORB_TIME = 0.24
 
@@ -24,6 +29,20 @@ const TURN_COOLDOWN = 0.35
 const COLLIDER_MARGIN = 0.55
 const SPAWN_CLEARANCE = 0.9
 const SPAWN_ATTEMPTS = 6
+// Respawns land in the arc the player is flying into.
+//
+// They used to appear directly behind, so a player flying a straight line
+// outran the entire crowd supply and never met a new body. Ringing them evenly
+// was no better: only about three percent of a full circle falls inside the
+// beam corridor, which measured out at four catches per pass - exactly what the
+// geometry predicts.
+//
+// The arc is wide enough that people still arrive from the flanks and steering
+// toward them beats flying straight, and far enough out that arrivals are
+// masked by the city rather than popping in.
+const RESPAWN_MIN_DISTANCE = 56
+const RESPAWN_RANGE = 44
+const RESPAWN_ARC = 1.75
 const GOLDEN_ANGLE = 2.399963
 
 export type CrowdObject = BeamObject & {
@@ -133,13 +152,13 @@ function spawnCrowdObject(state: CrowdState, view: CrowdView, kind: CrowdKind, p
   for (let attempt = 0; attempt < SPAWN_ATTEMPTS; attempt += 1) {
     // Widen the search on each retry so a dense block of buildings cannot make
     // a seed slot fail outright.
-    const spread = placement ? 0.35 + attempt * 0.55 : 1.65
+    const spread = 0.35 + attempt * 0.55
     const angle = placement
       ? placement.angle + (random(state) - 0.5) * spread
-      : view.heading + Math.PI + (random(state) - 0.5) * spread
+      : view.heading + (random(state) - 0.5) * RESPAWN_ARC
     const distance = placement
       ? placement.distance * (0.85 + random(state) * (0.3 + attempt * 0.15))
-      : 34 + random(state) * 42
+      : RESPAWN_MIN_DISTANCE + random(state) * RESPAWN_RANGE
     x = view.position.x + Math.sin(angle) * distance
     z = view.position.z + Math.cos(angle) * distance
     if (!blockedAt(view, x, z, SPAWN_CLEARANCE)) { placed = true; break }
@@ -338,7 +357,7 @@ export function stepCrowds(state: CrowdState, view: CrowdView, dt: number) {
   return state
 }
 
-export function beginNearbyCrowdAbsorption(state: CrowdState, ufoPosition: Vec3) {
+export function beginNearbyCrowdAbsorption(state: CrowdState, ufoPosition: Vec3, reach = CROWD_ABSORB_DISTANCE) {
   for (const object of state.objects) {
     if (!object.active || object.absorbing || !object.inBeam) continue
     const distance = Math.hypot(
@@ -346,7 +365,7 @@ export function beginNearbyCrowdAbsorption(state: CrowdState, ufoPosition: Vec3)
       object.position.y - ufoPosition.y,
       object.position.z - ufoPosition.z,
     )
-    if (distance > CROWD_ABSORB_DISTANCE) continue
+    if (distance > reach) continue
     object.absorbing = true
     object.absorbTimer = CROWD_ABSORB_TIME
     object.inBeam = false

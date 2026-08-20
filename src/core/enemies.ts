@@ -124,6 +124,9 @@ export type EnemyState = {
   spawnTimer: number
   randomState: number
   contactKills: number
+  /** Kind of the last projectile that connected, so the caller can price the
+   *  hit by weapon rather than by a raw damage number. */
+  lastHitKind: EnemyProjectileKind | null
 }
 
 const ORDER: EnemyKind[] = ['drone', 'police', 'police-car', 'helicopter', 'soldier', 'fighter', 'anti-air', 'tank', 'boss']
@@ -211,7 +214,7 @@ export function createEnemyState(seed = 0x91eab7) {
   const slots: EnemySlot[] = []
   for (const kind of ORDER) for (let slot = 0; slot < ENEMY_CAPS[kind]; slot += 1) slots.push(makeSlot(kind, slot))
   const projectiles = Array.from({ length: ENEMY_MAX_PROJECTILES }, (_, slot) => makeProjectile(slot))
-  return { slots, projectiles, destroyedAntiAir: new Set<string>(), waveStage: 0, spawnTimer: 0, randomState: seed >>> 0 || 1, contactKills: 0 } satisfies EnemyState
+  return { slots, projectiles, destroyedAntiAir: new Set<string>(), waveStage: 0, spawnTimer: 0, randomState: seed >>> 0 || 1, contactKills: 0, lastHitKind: null } satisfies EnemyState
 }
 
 export function isAntiAirBuilding(building: Pick<ProceduralBuilding, 'cellX' | 'cellZ'>) {
@@ -481,9 +484,10 @@ export function stepEnemies(state: EnemyState, player: Vec3, dt: number) {
   return state
 }
 
-export function stepEnemyProjectiles(state: EnemyState, player: Vec3, dt: number) {
+export function stepEnemyProjectiles(state: EnemyState, player: Vec3, dt: number, playerRadius = 1.25) {
   const d = Math.min(Math.max(0, dt), 0.05)
   let damage = 0
+  state.lastHitKind = null
   for (const projectile of state.projectiles) {
     if (!projectile.active) continue
     projectile.position.x += projectile.velocity.x * d
@@ -491,8 +495,11 @@ export function stepEnemyProjectiles(state: EnemyState, player: Vec3, dt: number
     projectile.position.z += projectile.velocity.z * d
     projectile.life -= d
     const distance = Math.hypot(projectile.position.x - player.x, projectile.position.y - player.y, projectile.position.z - player.z)
-    if (distance <= projectile.radius + 1.25) {
+    if (distance <= projectile.radius + playerRadius) {
       projectile.active = false
+      // Worst hit wins rather than the sum: a burst arriving on one frame
+      // should not price out as a single catastrophic blow.
+      if (!state.lastHitKind || projectile.damage > damage) state.lastHitKind = projectile.kind
       damage += projectile.damage
     } else if (projectile.life <= 0 || distance > 260) projectile.active = false
   }

@@ -3,6 +3,17 @@ import { collideDrone, createDroneState, stepDrone, type Aabb, type DroneInput, 
 import { beamProfile, beginCarDestruction, isInsideBeam, stepBeamObjects, type BeamField, type BeamObject } from './core/beam'
 import { beginNearbyCrowdAbsorption, createCrowdState, stepCrowds, type CrowdState } from './core/crowds'
 import { createDaylightSample, sampleDaylight, type DaylightSample } from './core/daylight'
+import {
+  SIZE_MIN,
+  SIZE_START,
+  growSize,
+  isSizeFatal,
+  shrinkSize,
+  sizeProfile,
+  type SizeGainKind,
+  type SizeLossKind,
+  type SizeProfile,
+} from './core/size'
 import { activeEnemyCount, createEnemyState, hitEnemy, resolveEnemyContacts, stepEnemies, stepEnemyProjectiles, syncAntiAirEnemies, syncEnemyTiers, waveLabelForTime, waveStageForTime, type EnemyState } from './core/enemies'
 import {
   createLaserPool,
@@ -27,8 +38,11 @@ import { activeWeaponProjectileCount, createWeaponState, stepWeapons, type Weapo
 
 export type GamePhase = 'intro' | 'playing' | 'results'
 
-export const SURVIVAL_START_TIME = 45
-export const SURVIVAL_TARGET_TIME = 180
+// The clock is the round length, not a resource. Absorbing no longer buys time:
+// size is the only thing the player is managing, so there is one number to read
+// and one way to lose.
+export const RUN_SECONDS = 180
+export const SURVIVAL_TARGET_TIME = RUN_SECONDS
 export const MAX_CARRIED_CARS = 6
 
 export type GameRuntime = {
@@ -75,6 +89,10 @@ export type GameRuntime = {
   messageTime: number
   impactFlash: number
   hitstop: number
+  size: number
+  sizeProfile: SizeProfile
+  sizePulse: number
+  absorbedCount: number
   daylight: DaylightSample
   pickupPulse: number
   timeBonusPulse: number
@@ -99,6 +117,11 @@ export type GameSnapshot = {
   waveStage: number
   daylightLabel: string
   nightFactor: number
+  size: number
+  sizeRatio: number
+  sizeMin: number
+  sizePulse: number
+  absorbedCount: number
   loadedCars: number
   maxLoadedCars: number
   cargoSlowdown: number
@@ -210,7 +233,7 @@ function makeRuntime(initialWeapon: WeaponId = 'homing-missile'): GameRuntime {
     world,
     worldColliders: activeWorldColliders(world),
     sessionTime: 0,
-    remainingTime: SURVIVAL_START_TIME,
+    remainingTime: RUN_SECONDS,
     score: 0,
     waveStage: 0,
     loadedCars: 0,
@@ -249,6 +272,10 @@ function makeRuntime(initialWeapon: WeaponId = 'homing-missile'): GameRuntime {
     messageTime: 4,
     impactFlash: 0,
     hitstop: 0,
+    size: SIZE_START,
+    sizeProfile: sizeProfile(SIZE_START),
+    sizePulse: 0,
+    absorbedCount: 0,
     daylight: createDaylightSample(),
     pickupPulse: 0,
     timeBonusPulse: 0,
@@ -382,15 +409,31 @@ function destroyCar(game: GameRuntime, id: string, direction: Vec3) {
   return true
 }
 
+function grow(game: GameRuntime, kind: SizeGainKind) {
+  const before = game.size
+  game.size = growSize(game.size, kind)
+  game.sizeProfile = sizeProfile(game.size)
+  game.sizePulse = 1
+  return game.size - before
+}
+
+/** Every shrink runs through here so the fail check lives in exactly one place. */
+function shrink(game: GameRuntime, kind: SizeLossKind) {
+  game.size = shrinkSize(game.size, kind)
+  game.sizeProfile = sizeProfile(game.size)
+  game.sizePulse = 1
+  if (isSizeFatal(game.size)) endRun(game, 'CORE COLLAPSED', false)
+}
+
 function absorbCrowd(game: GameRuntime, kind: 'cat' | 'pedestrian') {
-  const seconds = kind === 'cat' ? 12 : 4
-  const reward = kind === 'cat' ? 40 : 15
-  game.remainingTime += seconds
+  // Score scales with size, so a big craft earns more per body. Growing is
+  // worth chasing beyond simply staying alive.
+  const reward = Math.round((kind === 'cat' ? 40 : 15) * game.sizeProfile.scoreMultiplier)
+  grow(game, kind)
+  game.absorbedCount += 1
   game.score += reward
-  game.timeBonusAmount = seconds
-  game.timeBonusPulse = 1
   game.pickupPulse = 1
-  game.message = `${kind === 'cat' ? 'CAT' : 'PERSON'} ABSORBED · +${seconds}s · +${reward}`
+  game.message = `${kind === 'cat' ? 'CAT' : 'PERSON'} ABSORBED · +${reward}`
   game.messageTime = 1.25
   tone('pickup')
 }
@@ -422,16 +465,15 @@ function syncCrowdThreats(game: GameRuntime) {
   }
 }
 
-function registerImpact(game: GameRuntime, source: 'ENEMY' | 'BUILDING', customDamage?: number) {
+function registerImpact(game: GameRuntime, source: 'ENEMY' | 'BUILDING', loss?: SizeLossKind) {
   if (game.damageCooldown > 0 || game.phase !== 'playing') return
   game.damageCooldown = 1.05
   game.impactFlash = 1
   // Replaces the old continuous camera shake: a single short freeze reads as a
   // hit without leaving the whole late game permanently vibrating.
   game.hitstop = HITSTOP_TIME
-  const damage = customDamage ?? (source === 'BUILDING' ? 4 : 8)
-  game.remainingTime = Math.max(0, game.remainingTime - damage)
-  game.message = `${source} IMPACT · TIME -${damage}s`
+  shrink(game, source === 'BUILDING' ? 'building' : loss ?? 'contact')
+  game.message = `${source} IMPACT · SIZE DOWN`
   game.messageTime = 1.8
   tone(source === 'BUILDING' ? 'impact' : 'warning')
   if ('vibrate' in navigator) navigator.vibrate?.([35, 20, 35])
@@ -451,6 +493,11 @@ function snapshotOf(game: GameRuntime): GameSnapshot {
     waveStage: game.waveStage,
     daylightLabel: game.daylight.label,
     nightFactor: game.daylight.nightFactor,
+    size: game.size,
+    sizeRatio: game.sizeProfile.ratio,
+    sizeMin: SIZE_MIN,
+    sizePulse: game.sizePulse,
+    absorbedCount: game.absorbedCount,
     loadedCars: game.loadedCars,
     maxLoadedCars: MAX_CARRIED_CARS,
     cargoSlowdown: slowdown,
@@ -591,6 +638,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     game.messageTime = Math.max(0, game.messageTime - d)
     game.impactFlash = Math.max(0, game.impactFlash - d * 5)
     game.pickupPulse = Math.max(0, game.pickupPulse - d * 3.2)
+    game.sizePulse = Math.max(0, game.sizePulse - d * 2.4)
     game.timeBonusPulse = Math.max(0, game.timeBonusPulse - d * 2.6)
     game.damageCooldown = Math.max(0, game.damageCooldown - d)
     game.collisionCooldown = Math.max(0, game.collisionCooldown - d)
@@ -599,7 +647,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     stepLaserBursts(game.laserBursts, d)
     stepLaserProjectiles(game.laserProjectiles, d)
     if (game.remainingTime <= 0) {
-      endRun(game, 'TIME DEPLETED', false)
+      endRun(game, 'SURVIVED THE RAID', true)
       updatePilotStatus(game)
       publish()
       return
@@ -623,7 +671,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
     game.loadedCars = loadedCarCount(game)
     const flightInput: DroneInput = { ...input, special: false }
-    const stepped = stepDrone(game.drone, flightInput, d, game.loadedCars, UFO_UPGRADES)
+    // Size is folded into the flight load, so growing costs agility and
+    // shrinking hands it back.
+    const stepped = stepDrone(game.drone, flightInput, d, game.loadedCars + game.sizeProfile.drag, UFO_UPGRADES)
     const nextWorld = updateActiveWorld(game.world, stepped.position)
     if (nextWorld !== game.world) {
       game.world = nextWorld
@@ -657,7 +707,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     stepTraffic(game.traffic, { position: game.drone.position, heading: game.drone.heading }, d)
     syncCrowdThreats(game)
     stepCrowds(game.crowds, { position: game.drone.position, heading: game.drone.heading, colliders: game.worldColliders, threats: game.crowdThreats, crowdThreatStart: 1 + game.traffic.cars.length + game.enemies.slots.length }, d)
-    const beamField: BeamField = { active: game.beamActive, boosting: turboActive, position: game.drone.position, velocity: game.drone.velocity, radiusScale: 1 }
+    const beamField: BeamField = { active: game.beamActive, boosting: turboActive, position: game.drone.position, velocity: game.drone.velocity, radiusScale: game.sizeProfile.beamScale }
     if (game.beamActive && game.loadedCars < MAX_CARRIED_CARS) {
       for (const car of game.traffic.cars) {
         if (!car.active || !isInsideBeam(car, beamField)) continue
@@ -667,11 +717,11 @@ export function GameProvider({ children }: { children: ReactNode }) {
     }
     stepBeamObjects(game.beamObjects, beamField, d)
     stepBeamObjects(game.crowds.objects, beamField, d)
-    let absorbedCrowd = beginNearbyCrowdAbsorption(game.crowds, game.drone.position)
+    let absorbedCrowd = beginNearbyCrowdAbsorption(game.crowds, game.drone.position, game.sizeProfile.absorbDistance)
     while (absorbedCrowd) {
       triggerLaserBurst(game.laserBursts, 'impact', absorbedCrowd.position, '#fff06d')
       absorbCrowd(game, absorbedCrowd.kind)
-      absorbedCrowd = beginNearbyCrowdAbsorption(game.crowds, game.drone.position)
+      absorbedCrowd = beginNearbyCrowdAbsorption(game.crowds, game.drone.position, game.sizeProfile.absorbDistance)
     }
     limitLoadedCars(game)
     game.loadedCars = loadedCarCount(game)
@@ -716,14 +766,16 @@ export function GameProvider({ children }: { children: ReactNode }) {
     }
     game.laserActive = game.laserFlash > 0
 
-    const projectileDamage = stepEnemyProjectiles(game.enemies, game.drone.position, d)
-    if (projectileDamage > 0) registerImpact(game, 'ENEMY', Math.min(12, projectileDamage))
-    const contactDamage = resolveEnemyContacts(game.enemies, game.drone.position)
+    const projectileDamage = stepEnemyProjectiles(game.enemies, game.drone.position, d, game.sizeProfile.hitRadius)
+    if (projectileDamage > 0) registerImpact(game, 'ENEMY', game.enemies.lastHitKind ?? 'contact')
+    // A bigger craft is a bigger target: the same stream of fire is harder to
+    // survive once fat, which is what stops growth from being free.
+    const contactDamage = resolveEnemyContacts(game.enemies, game.drone.position, game.sizeProfile.hitRadius)
     if (game.enemies.contactKills > 0) {
       game.enemiesDown += game.enemies.contactKills
       game.score += game.enemies.contactKills * 35
     }
-    if (contactDamage > 0) registerImpact(game, 'ENEMY', contactDamage)
+    if (contactDamage > 0) registerImpact(game, 'ENEMY', 'contact')
     updatePilotStatus(game)
     publishAccumulator.current += d
     if (publishAccumulator.current >= 0.06) { publishAccumulator.current = 0; publish() }
