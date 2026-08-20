@@ -218,3 +218,8 @@ button { font: inherit; }
 
 .mass-pulse { animation: mass-pop .22s steps(3); }
 @keyframes mass-pop { 0% { transform: scale(1.18); } 100% { transform: scale(1); } }
+
+/* Dazed reads as the craft reeling, not as the game taking the controls away:
+   input still registers throughout, it just responds badly. */
+.hud[data-dazed="true"] { animation: daze-reel .16s steps(2) infinite; }
+@keyframes daze-reel { 0% { transform: translate(0,0); } 50% { transform: translate(3px,-2px); } 100% { transform: translate(-2px,2px); } }

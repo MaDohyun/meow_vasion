@@ -19,6 +19,7 @@ import { setRimNightFactor } from './rimLight'
 import { radialGlowTexture } from './textures'
 import { beamProfile, beamVisualLength } from '../core/beam'
 import { CAT_MAX, CROWD_ABSORB_TIME, PEDESTRIAN_MAX, type CrowdKind } from '../core/crowds'
+import { HAZARD_MAX } from '../core/hazards'
 import { type DaylightKeyframe, type DaylightSample } from '../core/daylight'
 import { ENEMY_CAPS, type EnemyKind } from '../core/enemies'
 import {
@@ -177,6 +178,8 @@ declare global {
       activeEnemies: number
       activeCrowds: number
       beamedCrowds: number
+      activeHazards: number
+      ballast: number
       absorbedCount: number
       size: number
       activeEnemyProjectiles: number
@@ -631,6 +634,77 @@ function CrowdPool({ kind }: { kind: CrowdKind }) {
   })
   return (
     <instancedMesh ref={ref} args={[crowdGeometry[kind], crowdMaterial[kind], kind === 'cat' ? CAT_MAX : PEDESTRIAN_MAX]} frustumCulled={false} />
+  )
+}
+
+// Explosives have to be legible before they are swallowed, not after. The body
+// is a hot red drum, it carries a floating warning ring, and both brighten as
+// the alarm rises while it hangs from the beam - so the window to hit release
+// is signposted the whole way in.
+const hazardBodyGeometry = mergeModel([
+  coloredPart(new THREE.CylinderGeometry(0.62, 0.62, 1.5, 10), '#d8342a'),
+  coloredPart(new THREE.CylinderGeometry(0.66, 0.66, 0.16, 10).translate(0, 0.45, 0), '#ffd44d'),
+  coloredPart(new THREE.CylinderGeometry(0.66, 0.66, 0.16, 10).translate(0, -0.45, 0), '#ffd44d'),
+  coloredPart(new THREE.CylinderGeometry(0.2, 0.2, 0.3, 6).translate(0, 0.88, 0), '#8c2f28'),
+])
+
+const hazardBodyMaterial = new THREE.MeshToonMaterial({
+  vertexColors: true,
+  emissive: new THREE.Color('#ff3b23'),
+  emissiveIntensity: 0.5,
+  toneMapped: false,
+})
+
+function HazardPool() {
+  const { runtime } = useGame()
+  const bodies = useRef<THREE.InstancedMesh>(null)
+  const rings = useRef<THREE.InstancedMesh>(null)
+  const matrix = useMemo(() => new THREE.Matrix4(), [])
+  const position = useMemo(() => new THREE.Vector3(), [])
+  const scale = useMemo(() => new THREE.Vector3(), [])
+  const quaternion = useMemo(() => new THREE.Quaternion(), [])
+  const euler = useMemo(() => new THREE.Euler(), [])
+  const flatRotation = useMemo(() => new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0)), [])
+  const color = useMemo(() => new THREE.Color(), [])
+
+  useFrame(({ clock }) => {
+    const body = bodies.current
+    const ring = rings.current
+    if (!body || !ring) return
+    let count = 0
+    const blink = 0.55 + 0.45 * Math.sin(clock.elapsedTime * 7)
+    for (const hazard of runtime.current.hazards.objects) {
+      if (!hazard.active) continue
+      position.set(hazard.position.x, hazard.position.y, hazard.position.z)
+      euler.set(hazard.rotation.x, hazard.rotation.y, hazard.rotation.z)
+      quaternion.setFromEuler(euler)
+      scale.setScalar(1)
+      matrix.compose(position, quaternion, scale)
+      body.setMatrixAt(count, matrix)
+      // The ring pulses faster and brighter the closer this is to going off.
+      const urgency = blink * (0.5 + hazard.alarm * 0.5) + hazard.alarm * 0.4
+      position.y += 1.5 + hazard.alarm * 0.6
+      scale.setScalar(1.5 + hazard.alarm * 1.4)
+      matrix.compose(position, flatRotation, scale)
+      ring.setMatrixAt(count, matrix)
+      ring.setColorAt(count, color.setRGB(1, 0.28 - hazard.alarm * 0.2, 0.2).multiplyScalar(0.6 + urgency))
+      count += 1
+    }
+    body.count = count
+    ring.count = count
+    body.instanceMatrix.needsUpdate = true
+    ring.instanceMatrix.needsUpdate = true
+    if (ring.instanceColor) ring.instanceColor.needsUpdate = true
+  })
+
+  return (
+    <group>
+      <instancedMesh ref={bodies} args={[hazardBodyGeometry, hazardBodyMaterial, HAZARD_MAX]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }} />
+      <instancedMesh ref={rings} args={[undefined, undefined, HAZARD_MAX]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }} renderOrder={4}>
+        <ringGeometry args={[0.7, 1, 16]} />
+        <meshBasicMaterial vertexColors transparent opacity={0.95} depthWrite={false} side={THREE.DoubleSide} toneMapped={false} />
+      </instancedMesh>
+    </group>
   )
 }
 
@@ -1090,6 +1164,8 @@ function PerformanceProbe() {
       activeEnemies: runtime.current.enemies.slots.filter((enemy) => enemy.active).length,
       activeCrowds: runtime.current.crowds.objects.filter((object) => object.active).length,
       beamedCrowds: runtime.current.crowds.objects.filter((object) => object.active && object.inBeam).length,
+      activeHazards: runtime.current.hazards.objects.filter((object) => object.active).length,
+      ballast: runtime.current.ballast,
       absorbedCount: runtime.current.absorbedCount,
       size: runtime.current.size,
       activeEnemyProjectiles: runtime.current.enemies.projectiles.filter((projectile) => projectile.active).length,
@@ -1373,6 +1449,7 @@ export function DroneScene() {
       <PullableCars />
       <DrivingTraffic />
       <CrowdPools />
+      <HazardPool />
       <EnemyPools />
       <EnemyWarnings />
       <EnemyProjectiles />

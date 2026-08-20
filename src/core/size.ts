@@ -6,18 +6,21 @@
  * ends the run. There is no health bar because the craft itself is the readout:
  * the player can see exactly how they are doing by looking at their own body.
  *
- * Two relationships keep growth from being free:
+ * Size deliberately does NOT affect speed. Growth is the thing the player is
+ * good at, and taxing it directly punishes them for succeeding, on a curve they
+ * cannot influence.
  *
- * 1. A bigger craft is slower and turns worse. Growth buys reach and power and
- *    pays for it in agility, so "get as big as possible" is a real decision
- *    rather than the obviously correct one.
- * 2. A bigger craft is a bigger target. The hit radius scales with size, so the
- *    same bullet stream is harder to survive once fat.
+ * Two costs keep growth honest instead, and both are answerable with skill:
  *
- * The inverse matters just as much. A shrinking craft gets FASTER, which is the
- * only thing standing between a bad hit and an unrecoverable death spiral:
- * small means a weak beam, but it also means you can dodge long enough to feed
- * yourself back up.
+ * 1. A bigger craft is a bigger target - the hit radius scales, so the same fire
+ *    is harder to survive once fat. Dodging is the answer.
+ * 2. A bigger beam is easier to foul. The cone widens with size, which sweeps up
+ *    people faster but also snags cars and other dead weight, and dead weight is
+ *    what actually slows the craft down (see beam ballast). Beam discipline is
+ *    the answer.
+ *
+ * So the speed penalty exists, but it is charged for sloppy beam work rather
+ * than for being large.
  */
 
 export const SIZE_START = 1
@@ -26,12 +29,16 @@ export const SIZE_START = 1
 export const SIZE_MIN = 0.62
 export const SIZE_MAX = 3.1
 
-/** Growth per absorbed body. Cats are worth more than people, which is what
- *  makes chasing the fast, evasive target worthwhile. */
+/**
+ * Growth per absorbed body. Cats are worth more than people, which is what makes
+ * chasing the fast, evasive target worthwhile.
+ *
+ * Only living things are here. Inanimate objects cannot be absorbed at all -
+ * they hang off the beam as ballast, which is the whole cost structure.
+ */
 export const SIZE_GAIN = {
   pedestrian: 0.036,
   cat: 0.058,
-  car: 0.022,
 } as const
 
 export type SizeGainKind = keyof typeof SIZE_GAIN
@@ -63,8 +70,6 @@ export type SizeProfile = {
   absorbDistance: number
   /** Body radius for incoming fire and contact damage. */
   hitRadius: number
-  /** Effective load handed to the flight model: bigger is heavier. */
-  drag: number
   /** Chase camera pull-back. */
   cameraDistance: number
   /** Points multiplier; being big is worth more than being alive. */
@@ -92,9 +97,6 @@ export function sizeProfile(size: number): SizeProfile {
     beamPower: 0.45 + clamped * 0.62,
     absorbDistance: 2.1 + clamped * 1.5,
     hitRadius: 1.05 * clamped,
-    // Positive above the starting size, negative below it, so shrinking hands
-    // back agility instead of only taking things away.
-    drag: (clamped - SIZE_START) * 3.4,
     cameraDistance: clamped * 2.6,
     scoreMultiplier: clamped,
   }

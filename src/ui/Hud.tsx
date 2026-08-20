@@ -142,7 +142,7 @@ function Intro() {
         <span><b>MOUSE</b> 3D STEER / AIM</span>
         <span><b>E</b> HOLD TRACTOR BEAM · ABSORB TO GROW</span>
         <span><b>Q</b> TAP LASER · AUTO WEAPON FIRES</span>
-        <span><b>R</b> DROP CARS</span>
+        <span><b>R</b> DUMP BEAM LOAD</span>
         <span><b>SPACE</b> TURBO BOOST</span>
       </div>
     </div>
@@ -180,7 +180,7 @@ export function Hud() {
     : 'READY'
   return (
     <>
-      <div className="hud">
+      <div className="hud" data-dazed={snapshot.daze > 0}>
         <section className={`time-card panel ${snapshot.sizeRatio <= 0.12 ? 'time-warning' : ''}`}>
           <span className="eyebrow">MASS</span>
           <strong className={snapshot.sizePulse > 0.01 ? 'mass-pulse' : ''}>×{snapshot.size.toFixed(2)}</strong>
@@ -211,7 +211,13 @@ export function Hud() {
           <div className="beam-readout" data-active={snapshot.beamActive} data-error={!snapshot.beamAvailable}>
             <span>E · BEAM</span><b>{beamStatus}</b>
           </div>
-          <div className="cargo-readout"><span>CARGO · {snapshot.loadedCars}/{snapshot.maxLoadedCars}</span><b>{Math.round(snapshot.cargoSlowdown * 100)}% SLOWDOWN</b></div>
+          {/* Hanging mass is the only thing slowing the craft, so it has to be
+              visible - otherwise the player just feels sluggish for no stated
+              reason and has no cue to hit R. */}
+          <div className="cargo-readout" data-error={snapshot.ballast > 4}>
+            <span>DRAG · {snapshot.ballast.toFixed(1)}t{snapshot.loadedCars > 0 ? ` · R TO DUMP` : ''}</span>
+            <b>{Math.round(snapshot.cargoSlowdown * 100)}% SLOWDOWN</b>
+          </div>
           <div className="altitude-alert" data-active={snapshot.height >= 28}><span>{snapshot.height >= 28 ? 'AA BAND' : snapshot.height > 5.5 ? 'ARMOR BAND' : 'GROUND BAND'}</span><b>{snapshot.height >= 28 ? 'MISSILES LIVE' : snapshot.height > 5.5 ? 'TANKS LIVE' : 'GROUND UNITS LIVE'}</b></div>
           <div className="weapon-readout"><span>AUTO · {WEAPON_DEFINITIONS[snapshot.selectedWeapon].shortLabel}</span><b>{snapshot.activeWeaponProjectiles} LIVE</b></div>
         </section>

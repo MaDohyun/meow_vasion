@@ -1,6 +1,14 @@
 import type { Vec3 } from './drone'
 
-export type BeamObjectKind = 'car' | 'pedestrian' | 'cat'
+export type BeamObjectKind = 'car' | 'pedestrian' | 'cat' | 'explosive'
+
+/**
+ * Nothing inanimate can be absorbed. It hangs off the beam instead, and its
+ * mass is what slows the craft - that is the entire speed penalty in the game.
+ */
+export function isAbsorbable(kind: BeamObjectKind) {
+  return kind === 'pedestrian' || kind === 'cat'
+}
 
 export type BeamObject = {
   id: string
