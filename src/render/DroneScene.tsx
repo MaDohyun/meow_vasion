@@ -21,7 +21,7 @@ import { beamProfile, beamVisualLength } from '../core/beam'
 import { CAT_MAX, CROWD_ABSORB_TIME, PEDESTRIAN_MAX, type CrowdKind } from '../core/crowds'
 import { HAZARD_MAX } from '../core/hazards'
 import { type DaylightKeyframe, type DaylightSample } from '../core/daylight'
-import { ENEMY_CAPS, type EnemyKind } from '../core/enemies'
+import { ENEMY_CAPS, isDroneMine, type EnemyKind } from '../core/enemies'
 import {
   LASER_MAX_PROJECTILES,
   LASER_MAX_BURSTS,
@@ -753,7 +753,14 @@ function EnemyPool({ kind }: { kind: EnemyKind }) {
       matrix.compose(position, quaternion, scale)
       mesh.setMatrixAt(count, matrix)
       if (enemy.aiming) color.set('#ff6573')
-      else if (kind === 'drone') color.set('#68e4ec')
+      else if (kind === 'drone') {
+        // A motionless mine is only fair if it announces itself. Passing drones
+        // stay cyan; mines pulse red so the sky can be read before entering it.
+        if (isDroneMine(enemy)) {
+          const pulse = 0.55 + 0.45 * Math.sin(runtime.current.sessionTime * 6 + enemy.phase)
+          color.setRGB(1, 0.24 * pulse, 0.28 * pulse)
+        } else color.set('#68e4ec')
+      }
       else if (kind === 'police' || kind === 'police-car') color.set('#e9edf0')
       else if (kind === 'tank' || kind === 'anti-air') color.set('#7f8765')
       else if (kind === 'boss') color.set('#a85d69')
