@@ -2,6 +2,7 @@ import { useFrame } from '@react-three/fiber'
 import { memo, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { useGame } from '../GameContext'
 import { BUILDING, FX, GROUND } from '../constants/palette'
 import { radialGlowTexture } from './textures'
@@ -28,7 +29,7 @@ const toonGradient = (() => {
   return texture
 })()
 
-const roundedBuildingGeometry = new RoundedBoxGeometry(1, 1, 1, 2, 0.055)
+const roundedBuildingGeometry = new RoundedBoxGeometry(1, 1, 1, 2, 0.032)
 const roundedRoofGeometry = new RoundedBoxGeometry(1, 1, 1, 2, 0.11)
 
 function pixelTexture(draw: (context: CanvasRenderingContext2D) => void, width = 64, height = 64) {
@@ -639,11 +640,97 @@ function RoofBeaconPool() {
   )
 }
 
+
+// Every building is a box, so the skyline reads as one shape repeated. Rooftop
+// clutter is the cheapest way to break that up: the parts are merged into a
+// single geometry per variant, so a variant costs one draw call no matter how
+// many buildings use it.
+const ROOF_STRUCTURE_VARIANTS = 4
+
+function roofStructureGeometry(variant: number) {
+  const parts: THREE.BufferGeometry[] = []
+  const push = (geometry: THREE.BufferGeometry, x: number, y: number, z: number) => {
+    geometry.translate(x, y, z)
+    parts.push(geometry)
+  }
+  // Stair housing, present on every variant so there is always a hard edge
+  // breaking the roofline.
+  push(new THREE.BoxGeometry(2.6, 2.2, 2.6), -1.4, 1.1, 1.2)
+  if (variant === 0) {
+    push(new THREE.CylinderGeometry(1.15, 1.15, 2.4, 8), 1.8, 1.2, -1.4)
+    push(new THREE.CylinderGeometry(0.12, 0.12, 3.4, 4), 1.8, 4.1, -1.4)
+  } else if (variant === 1) {
+    push(new THREE.BoxGeometry(4.4, 1.1, 3.2), 0.9, 0.55, -1.1)
+    push(new THREE.CylinderGeometry(0.1, 0.1, 6.2, 4), 2.4, 3.6, -1.1)
+  } else if (variant === 2) {
+    // Stepped cap: a second, smaller slab set back from the edges.
+    push(new THREE.BoxGeometry(6.2, 1.8, 6.2), 0, 0.9, 0)
+    push(new THREE.BoxGeometry(3.4, 1.5, 3.4), 0.4, 2.5, -0.4)
+  } else {
+    push(new THREE.BoxGeometry(1.1, 4.6, 1.1), 2.2, 2.3, 1.9)
+    push(new THREE.BoxGeometry(1.1, 3.2, 1.1), -2.3, 1.6, -2.0)
+    push(new THREE.CylinderGeometry(0.09, 0.09, 4.2, 4), 0.2, 2.1, -2.4)
+  }
+  return mergeGeometries(parts, false)!
+}
+
+const roofStructureGeometries = Array.from({ length: ROOF_STRUCTURE_VARIANTS }, (_, index) => roofStructureGeometry(index))
+
+const ROOF_STRUCTURE_MIN_HEIGHT = 14
+
+function RoofStructurePool({ variant }: { variant: number }) {
+  const { runtime } = useGame()
+  const ref = useRef<THREE.InstancedMesh>(null)
+  const lastKey = useRef('')
+  const matrix = useMemo(() => new THREE.Matrix4(), [])
+  const position = useMemo(() => new THREE.Vector3(), [])
+  const scale = useMemo(() => new THREE.Vector3(), [])
+  const rotation = useMemo(() => new THREE.Quaternion(), [])
+  const euler = useMemo(() => new THREE.Euler(), [])
+  const color = useMemo(() => new THREE.Color(), [])
+
+  useFrame(() => {
+    const mesh = ref.current
+    if (!mesh) return
+    const world = runtime.current.world
+    if (world.key === lastKey.current) return
+    lastKey.current = world.key
+    let slot = 0
+    for (const building of world.buildings) {
+      if (building.size.y < ROOF_STRUCTURE_MIN_HEIGHT) continue
+      const seed = seedForWorldCell(building.cellX, building.cellZ, 0x700f7)
+      if (seed % ROOF_STRUCTURE_VARIANTS !== variant) continue
+      position.set(building.position.x, building.size.y + 0.7, building.position.z)
+      euler.set(0, (seed >>> 5) % 4 * Math.PI / 2, 0)
+      rotation.setFromEuler(euler)
+      // Keep the clutter inside the roof footprint on narrow buildings.
+      const fit = Math.min(1, Math.min(building.size.x, building.size.z) / 9)
+      scale.setScalar(0.55 + fit * 0.55)
+      matrix.compose(position, rotation, scale)
+      mesh.setMatrixAt(slot, matrix)
+      mesh.setColorAt(slot, color.set(building.roof))
+      slot += 1
+    }
+    mesh.count = slot
+    mesh.instanceMatrix.needsUpdate = true
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
+  })
+
+  return (
+    <instancedMesh ref={ref} args={[roofStructureGeometries[variant], undefined, WORLD_MAX_BUILDINGS]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }}>
+      <meshToonMaterial vertexColors gradientMap={toonGradient} />
+    </instancedMesh>
+  )
+}
+
 export const City = memo(function City() {
   return (
     <group>
       <GroundPool />
       <BuildingPool />
+      {Array.from({ length: ROOF_STRUCTURE_VARIANTS }, (_, variant) => (
+        <RoofStructurePool key={variant} variant={variant} />
+      ))}
       <StreetLightPool />
       <RoofBeaconPool />
       <DistantBuildingPool />
