@@ -125,6 +125,20 @@ export type GameSnapshot = {
 
 export type PlayerInput = DroneInput & { beam: boolean; laser: boolean; drop: boolean }
 type MobileInput = PlayerInput & { active: boolean }
+export type RenderQuality = 'high' | 'low'
+
+const QUALITY_STORAGE_KEY = 'ufo-attack-quality'
+
+function readStoredQuality(): RenderQuality {
+  if (typeof window === 'undefined') return 'high'
+  try {
+    return window.localStorage.getItem(QUALITY_STORAGE_KEY) === 'low' ? 'low' : 'high'
+  } catch {
+    // Private-mode browsers throw on storage access; the default is fine.
+    return 'high'
+  }
+}
+
 type GameContextValue = {
   runtime: React.MutableRefObject<GameRuntime>
   snapshot: GameSnapshot
@@ -133,6 +147,8 @@ type GameContextValue = {
   start: () => void
   restart: () => void
   selectWeapon: (weapon: WeaponId) => void
+  quality: RenderQuality
+  setQuality: (quality: RenderQuality) => void
   setMobileInput: (input: Partial<MobileInput>) => void
 }
 
@@ -491,6 +507,7 @@ function endRun(game: GameRuntime, title: string, victory: boolean) {
 export function GameProvider({ children }: { children: ReactNode }) {
   const runtime = useRef(makeRuntime())
   const [snapshot, setSnapshot] = useState(() => snapshotOf(runtime.current))
+  const [quality, setQualityState] = useState<RenderQuality>(readStoredQuality)
   const keys = useRef<Record<string, boolean>>({})
   const pointer = useRef({ x: 0, y: 0 })
   const mobile = useRef<MobileInput>({ throttle: 0, steer: 0, strafe: 0, lookPitch: 0, vertical: 0, special: false, beam: false, laser: false, drop: false, active: false })
@@ -712,6 +729,15 @@ export function GameProvider({ children }: { children: ReactNode }) {
     publish()
   }, [publish])
 
+  const setQuality = useCallback((next: RenderQuality) => {
+    setQualityState(next)
+    try {
+      window.localStorage.setItem(QUALITY_STORAGE_KEY, next)
+    } catch {
+      // Not being able to remember the choice is not worth failing the toggle.
+    }
+  }, [])
+
   const selectWeapon = useCallback((weapon: WeaponId) => {
     const game = runtime.current
     if (game.phase !== 'intro') return
@@ -731,7 +757,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   }, [publish])
 
   const setMobileInput = useCallback((input: Partial<MobileInput>) => { Object.assign(mobile.current, input) }, [])
-  const value = useMemo<GameContextValue>(() => ({ runtime, snapshot, readInput, advance, start, restart, selectWeapon, setMobileInput }), [advance, readInput, restart, selectWeapon, setMobileInput, snapshot, start])
+  const value = useMemo<GameContextValue>(() => ({ runtime, snapshot, readInput, advance, start, restart, selectWeapon, setMobileInput, quality, setQuality }), [advance, quality, readInput, restart, selectWeapon, setMobileInput, setQuality, snapshot, start])
   return <GameContext.Provider value={value}>{children}</GameContext.Provider>
 }
 

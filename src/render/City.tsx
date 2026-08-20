@@ -3,6 +3,8 @@ import { memo, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
 import { useGame } from '../GameContext'
+import { BUILDING, FX, GROUND } from '../constants/palette'
+import { radialGlowTexture } from './textures'
 import {
   BUILDING_SIGN_LABELS,
   BUILDING_SIGN_COLORS,
@@ -13,6 +15,7 @@ import {
   WORLD_MAX_DISTANT_BUILDINGS,
   WORLD_SPAWN_RADIUS,
   WORLD_LOD_RADIUS,
+  seedForWorldCell,
   type GroundVariant,
 } from '../core/world'
 
@@ -42,28 +45,67 @@ function pixelTexture(draw: (context: CanvasRenderingContext2D) => void, width =
   return texture
 }
 
-const facadeTexture = pixelTexture((context) => {
-  context.fillStyle = '#e7e3cf'
-  context.fillRect(0, 0, 64, 64)
-  context.fillStyle = 'rgba(40,32,58,.16)'
-  for (let y = 0; y < 64; y += 8) context.fillRect(0, y, 64, 1)
-  for (let row = 0; row < 6; row += 1) {
-    for (let column = 0; column < 5; column += 1) {
-      const lit = (row * 7 + column * 5) % 6 === 0
-      context.fillStyle = lit ? '#fff1b8' : (row + column) % 3 === 0 ? '#708a91' : '#536d79'
-      context.fillRect(5 + column * 12, 6 + row * 9, 7, 5)
-      context.fillStyle = lit ? '#fffbe1' : '#91a8ab'
-      context.fillRect(6 + column * 12, 6 + row * 9, 2, 1)
+// Four facade variants in a 2x2 atlas. A per-instance slot picks one, so the
+// skyline does not read as the same building repeated - see facadeSlot below.
+const FACADE_TILES = 2
+const FACADE_TILE = 64
+const FACADE_SIZE = FACADE_TILE * FACADE_TILES
+
+// Window rows/columns are laid out once and reused by both the colour map and
+// the emissive map, so the glow lands exactly on the lit panes.
+function forEachWindow(callback: (x: number, y: number, lit: boolean, cool: boolean, variant: number) => void) {
+  for (let tile = 0; tile < FACADE_TILES * FACADE_TILES; tile += 1) {
+    const originX = (tile % FACADE_TILES) * FACADE_TILE
+    const originY = Math.floor(tile / FACADE_TILES) * FACADE_TILE
+    for (let row = 0; row < 6; row += 1) {
+      for (let column = 0; column < 5; column += 1) {
+        // A different stride per variant keeps the four patterns from lining up.
+        const stride = [6, 4, 5, 3][tile]!
+        const offset = [0, 2, 1, 3][tile]!
+        const lit = (row * 7 + column * 5 + offset) % stride === 0
+        const cool = lit && (row + column + tile) % 4 === 0
+        callback(originX + 5 + column * 12, originY + 6 + row * 9, lit, cool, tile)
+      }
     }
   }
-  context.fillStyle = '#675d70'
-  context.fillRect(0, 59, 64, 5)
-})
+}
+
+const facadeTexture = pixelTexture((context) => {
+  context.fillStyle = BUILDING.FACADE_WALL
+  context.fillRect(0, 0, FACADE_SIZE, FACADE_SIZE)
+  context.fillStyle = BUILDING.FACADE_SEAM
+  for (let y = 0; y < FACADE_SIZE; y += 8) context.fillRect(0, y, FACADE_SIZE, 1)
+  forEachWindow((x, y, lit, cool) => {
+    context.fillStyle = lit ? (cool ? BUILDING.WINDOW_COOL : BUILDING.WINDOW_LIT) : BUILDING.WINDOW_DARK
+    context.fillRect(x, y, 7, 5)
+    context.fillStyle = lit ? BUILDING.WINDOW_LIT_HOT : BUILDING.WINDOW_DIM
+    context.fillRect(x + 1, y, 2, 1)
+  })
+  // Street-level band stays dark so the base of every tower grounds into night.
+  for (let tile = 0; tile < FACADE_TILES; tile += 1) {
+    context.fillStyle = BUILDING.FACADE_BASE
+    context.fillRect(0, tile * FACADE_TILE + 59, FACADE_SIZE, 5)
+  }
+}, FACADE_SIZE, FACADE_SIZE)
+
+// Black everywhere except the lit panes. Fed to emissiveMap so the walls stay
+// unlit while the windows carry the glow.
+const facadeEmissiveTexture = pixelTexture((context) => {
+  context.fillStyle = '#000000'
+  context.fillRect(0, 0, FACADE_SIZE, FACADE_SIZE)
+  forEachWindow((x, y, lit, cool) => {
+    if (!lit) return
+    context.fillStyle = cool ? BUILDING.WINDOW_COOL : BUILDING.WINDOW_LIT
+    context.fillRect(x, y, 7, 5)
+    context.fillStyle = BUILDING.WINDOW_LIT_HOT
+    context.fillRect(x + 1, y, 2, 1)
+  })
+}, FACADE_SIZE, FACADE_SIZE)
 
 const roofTexture = pixelTexture((context) => {
-  context.fillStyle = '#e7e3cf'
+  context.fillStyle = BUILDING.ROOF
   context.fillRect(0, 0, 64, 64)
-  context.strokeStyle = 'rgba(255,255,255,.24)'
+  context.strokeStyle = 'rgba(150,175,225,.10)'
   for (let value = 0; value <= 64; value += 8) {
     context.beginPath(); context.moveTo(value, 0); context.lineTo(value, 64); context.stroke()
     context.beginPath(); context.moveTo(0, value); context.lineTo(64, value); context.stroke()
@@ -71,9 +113,9 @@ const roofTexture = pixelTexture((context) => {
 })
 
 const lotTexture = pixelTexture((context) => {
-  context.fillStyle = '#ded9bd'
+  context.fillStyle = '#ffffff'
   context.fillRect(0, 0, 64, 64)
-  context.strokeStyle = 'rgba(63,52,69,.24)'
+  context.strokeStyle = 'rgba(0,0,0,.30)'
   context.lineWidth = 1
   for (let value = 0; value <= 64; value += 8) {
     context.beginPath(); context.moveTo(value, 0); context.lineTo(value, 64); context.stroke()
@@ -82,28 +124,58 @@ const lotTexture = pixelTexture((context) => {
   for (let index = 0; index < 96; index += 1) {
     const x = index * 29 % 64
     const y = index * 47 % 64
-    context.fillStyle = index % 3 === 0 ? 'rgba(255,255,230,.3)' : 'rgba(51,46,63,.12)'
+    context.fillStyle = index % 3 === 0 ? 'rgba(255,255,255,.22)' : 'rgba(0,0,0,.16)'
+    context.fillRect(x, y, 1, 1)
+  }
+})
+
+// Repeating asphalt for the base plane. UVs are locked to world space by
+// GroundBase so the pattern streams past instead of travelling with the player,
+// which is most of the speed read at ground level.
+const asphaltTexture = pixelTexture((context) => {
+  context.fillStyle = GROUND.BASE
+  context.fillRect(0, 0, 64, 64)
+  for (let index = 0; index < 220; index += 1) {
+    const x = index * 37 % 64
+    const y = index * 23 % 64
+    context.fillStyle = index % 5 === 0 ? 'rgba(180,205,255,.10)' : 'rgba(0,0,0,.22)'
     context.fillRect(x, y, 1, 1)
   }
 })
 
 const roadTexture = pixelTexture((context) => {
-  context.fillStyle = '#6f7e87'
+  context.fillStyle = GROUND.ROAD
   context.fillRect(0, 0, 128, 32)
   for (let index = 0; index < 180; index += 1) {
     const x = index * 37 % 128
     const y = index * 19 % 32
-    context.fillStyle = index % 4 === 0 ? 'rgba(218,235,226,.28)' : 'rgba(69,76,91,.2)'
+    context.fillStyle = index % 4 === 0 ? 'rgba(190,215,255,.14)' : 'rgba(0,0,0,.22)'
     context.fillRect(x, y, index % 5 === 0 ? 2 : 1, 1)
   }
-  context.fillStyle = '#ffe7a3'
+  // Centre line plus edge markings. At night these are most of what makes the
+  // road shape readable, so they are the brightest thing on the ground.
+  context.fillStyle = GROUND.ROAD_MARKING
   for (let x = 18; x < 112; x += 22) context.fillRect(x, 15, 12, 2)
-  context.fillStyle = 'rgba(255,244,206,.84)'
+  context.fillStyle = 'rgba(232,237,245,.78)'
   for (let y = 3; y < 30; y += 5) {
     context.fillRect(2, y, 12, 2)
     context.fillRect(114, y, 12, 2)
   }
+  context.fillStyle = GROUND.CROSSWALK
+  for (let y = 2; y < 30; y += 6) context.fillRect(60, y, 8, 3)
 }, 128, 32)
+
+const distantWindowTexture = pixelTexture((context) => {
+  context.fillStyle = '#000000'
+  context.fillRect(0, 0, 32, 32)
+  for (let row = 0; row < 16; row += 1) {
+    for (let column = 0; column < 10; column += 1) {
+      if ((row * 5 + column * 3) % 7 !== 0) continue
+      context.fillStyle = (row + column) % 5 === 0 ? BUILDING.WINDOW_COOL : BUILDING.WINDOW_LIT
+      context.fillRect(2 + column * 3, 2 + row * 2, 2, 1)
+    }
+  }
+}, 32, 32)
 
 const SIGN_COLUMNS = 4
 const SIGN_ROWS = Math.ceil(BUILDING_SIGN_LABELS.length / SIGN_COLUMNS)
@@ -135,8 +207,8 @@ function DistantBuildingPool() {
   const scale = useMemo(() => new THREE.Vector3(), [])
   const rotation = useMemo(() => new THREE.Quaternion(), [])
   const color = useMemo(() => new THREE.Color(), [])
-  const nearColor = useMemo(() => new THREE.Color('#a3b5bd'), [])
-  const farColor = useMemo(() => new THREE.Color('#8fa0ac'), [])
+  const nearColor = useMemo(() => new THREE.Color(BUILDING.DISTANT), [])
+  const farColor = useMemo(() => new THREE.Color(BUILDING.DISTANT_FAR), [])
 
   useFrame(() => {
     if (!silhouettes.current) return
@@ -162,19 +234,58 @@ function DistantBuildingPool() {
 
   return (
     <instancedMesh ref={silhouettes} args={[roundedBuildingGeometry, undefined, WORLD_MAX_DISTANT_BUILDINGS]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }}>
-      <meshToonMaterial color="#ffffff" gradientMap={toonGradient} />
+      {/* Speckled window light on the horizon. A coarse dot pattern is enough
+          at this distance and keeps the skyline from reading as a flat wall. */}
+      <meshToonMaterial
+        color="#ffffff"
+        gradientMap={toonGradient}
+        emissive={new THREE.Color('#ffffff')}
+        emissiveMap={distantWindowTexture}
+        emissiveIntensity={0.85}
+      />
     </instancedMesh>
   )
 }
 
 const GROUND_CELL_COUNT = (WORLD_GROUND_RADIUS_CELLS * 2 + 1) ** 2
+const GROUND_SPAN = WORLD_CELL_SIZE * (WORLD_GROUND_RADIUS_CELLS * 2 + 1)
 const GROUND_COLORS: Record<GroundVariant, string> = {
-  grass: '#a9c99d',
-  parking: '#b8b4ad',
-  sand: '#e5d2a6',
-  plaza: '#d6c5b6',
-  pond: '#9fc8cb',
-  vacant: '#c7c39f',
+  grass: GROUND.grass,
+  parking: GROUND.parking,
+  sand: GROUND.sand,
+  plaza: GROUND.plaza,
+  pond: GROUND.pond,
+  vacant: GROUND.vacant,
+}
+
+// The base plane is its own mesh so its UVs can be pinned to world space. As one
+// instance among the lot tiles it had to share their material, and a shared map
+// offset would have dragged every tile with it.
+function GroundBase() {
+  const { runtime } = useGame()
+  const mesh = useRef<THREE.Mesh>(null)
+  const map = useMemo(() => {
+    const texture = asphaltTexture.clone()
+    texture.wrapS = THREE.RepeatWrapping
+    texture.wrapT = THREE.RepeatWrapping
+    texture.repeat.set(GROUND_SPAN / 8, GROUND_SPAN / 8)
+    texture.needsUpdate = true
+    return texture
+  }, [])
+  useFrame(() => {
+    if (!mesh.current) return
+    const drone = runtime.current.drone.position
+    mesh.current.position.set(drone.x, -0.014, drone.z)
+    // Scroll the texture against the movement so the ground reads as passing
+    // underneath rather than being dragged along.
+    map.offset.set(drone.x / 8, -drone.z / 8)
+  })
+  return (
+    <mesh ref={mesh} rotation={[-Math.PI / 2, 0, 0]} frustumCulled={false}>
+      <planeGeometry args={[GROUND_SPAN, GROUND_SPAN]} />
+      <meshToonMaterial map={map} gradientMap={toonGradient} />
+    </mesh>
+  )
 }
 
 function GroundPool() {
@@ -199,18 +310,13 @@ function GroundPool() {
     const cells = groundCellsAround(drone)
     let lotSlot = 0
     let roadSlot = 0
-    const groundSpan = WORLD_CELL_SIZE * (WORLD_GROUND_RADIUS_CELLS * 2 + 1)
-    position.set((world.cellX + 0.5) * WORLD_CELL_SIZE, -0.012, (world.cellZ + 0.5) * WORLD_CELL_SIZE)
-    scale.set(groundSpan, groundSpan, 1)
-    matrix.compose(position, planeRotation, scale)
-    lots.current.setMatrixAt(lotSlot, matrix)
-    lots.current.setColorAt(lotSlot, color.set('#b9bf9e'))
-    lotSlot += 1
     cells.forEach((cell) => {
       const centerX = (cell.cellX + 0.5) * WORLD_CELL_SIZE
       const centerZ = (cell.cellZ + 0.5) * WORLD_CELL_SIZE
       const definedLot = cell.ground === 'parking' || cell.ground === 'plaza' || cell.ground === 'pond'
-      if (definedLot && cell.seed % 100 < 68 && lotSlot < GROUND_CELL_COUNT) {
+      // Lowered from 68%: at night the tile grid was the most obvious thing on
+      // the ground, which is the opposite of what should draw the eye.
+      if (definedLot && cell.seed % 100 < 45 && lotSlot < GROUND_CELL_COUNT) {
         const lotSize = WORLD_CELL_SIZE - 5 - (cell.seed >>> 9) % 5
         const jitterX = ((cell.seed >>> 17) % 5) - 2
         const jitterZ = ((cell.seed >>> 22) % 5) - 2
@@ -242,6 +348,7 @@ function GroundPool() {
 
   return (
     <group>
+      <GroundBase />
       <instancedMesh ref={lots} args={[undefined, undefined, GROUND_CELL_COUNT]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }}>
         <planeGeometry args={[1, 1]} />
         <meshToonMaterial map={lotTexture} gradientMap={toonGradient} />
@@ -268,6 +375,52 @@ function BuildingPool() {
   const planeRotation = useMemo(() => new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0)), [])
   const sideRotation = useMemo(() => new THREE.Quaternion().setFromEuler(new THREE.Euler(0, Math.PI / 2, 0)), [])
   const color = useMemo(() => new THREE.Color(), [])
+  const facadeSlots = useMemo(() => new Float32Array(WORLD_MAX_BUILDINGS), [])
+  const bodyGeometry = useMemo(() => {
+    const geometry = roundedBuildingGeometry.clone()
+    geometry.setAttribute('facadeSlot', new THREE.InstancedBufferAttribute(facadeSlots, 1))
+    return geometry
+  }, [facadeSlots])
+  // Windows glow through emissiveMap while the walls stay unlit. The atlas slot
+  // is patched in rather than baked into UVs so all buildings keep sharing one
+  // geometry and one draw call.
+  const bodyMaterial = useMemo(() => {
+    const material = new THREE.MeshToonMaterial({
+      color: '#ffffff',
+      map: facadeTexture,
+      gradientMap: toonGradient,
+      emissive: new THREE.Color('#ffffff'),
+      emissiveMap: facadeEmissiveTexture,
+      emissiveIntensity: 1.35,
+    })
+    material.onBeforeCompile = (shader) => {
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nattribute float facadeSlot;\nvarying float vFacadeSlot;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvFacadeSlot = facadeSlot;')
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', `#include <common>
+          varying float vFacadeSlot;
+          vec2 facadeAtlasUv(vec2 uv) {
+            float tiles = ${FACADE_TILES.toFixed(1)};
+            float column = mod(vFacadeSlot, tiles);
+            float row = floor(vFacadeSlot / tiles);
+            return (fract(uv) + vec2(column, row)) / tiles;
+          }`)
+        .replace('#include <map_fragment>', `
+          #ifdef USE_MAP
+            diffuseColor *= texture2D(map, facadeAtlasUv(vMapUv));
+          #endif
+        `)
+        .replace('#include <emissivemap_fragment>', `
+          #ifdef USE_EMISSIVEMAP
+            totalEmissiveRadiance *= texture2D(emissiveMap, facadeAtlasUv(vEmissiveMapUv)).rgb;
+          #endif
+        `)
+    }
+    // Distinguishes this program from any other toon material in the scene.
+    material.customProgramCacheKey = () => 'facade-atlas'
+    return material
+  }, [])
   const signSlots = useMemo(() => new Float32Array(WORLD_MAX_BUILDINGS), [])
   const signGeometry = useMemo(() => {
     const geometry = new THREE.BoxGeometry(1, 1, 1)
@@ -304,6 +457,7 @@ function BuildingPool() {
       matrix.compose(position, rotation, scale)
       bodies.current!.setMatrixAt(index, matrix)
       bodies.current!.setColorAt(index, color.set(building.color))
+      facadeSlots[index] = seedForWorldCell(building.cellX, building.cellZ, 0xfacade) % (FACADE_TILES * FACADE_TILES)
 
       position.set(building.position.x, building.size.y + 0.38, building.position.z)
       scale.set(building.size.x * 0.94, 0.76, building.size.z * 0.94)
@@ -332,6 +486,7 @@ function BuildingPool() {
       mesh.instanceMatrix.needsUpdate = true
     }
     signGeometry.getAttribute('signSlot').needsUpdate = true
+    bodyGeometry.getAttribute('facadeSlot').needsUpdate = true
     if (bodies.current.instanceColor) bodies.current.instanceColor.needsUpdate = true
     if (roofs.current.instanceColor) roofs.current.instanceColor.needsUpdate = true
   })
@@ -340,11 +495,11 @@ function BuildingPool() {
     <group>
       <instancedMesh ref={shadows} args={[undefined, undefined, WORLD_MAX_BUILDINGS]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }}>
         <planeGeometry args={[1, 1]} />
-        <meshBasicMaterial color="#28313d" transparent opacity={0.28} depthWrite={false} />
+        {/* Barely there at night. A daytime-strength blob reads as a brown
+            puddle once the ground goes dark. */}
+        <meshBasicMaterial color="#05070f" transparent opacity={0.30} depthWrite={false} />
       </instancedMesh>
-      <instancedMesh ref={bodies} args={[roundedBuildingGeometry, undefined, WORLD_MAX_BUILDINGS]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }}>
-        <meshToonMaterial color="#ffffff" map={facadeTexture} gradientMap={toonGradient} />
-      </instancedMesh>
+      <instancedMesh ref={bodies} args={[bodyGeometry, bodyMaterial, WORLD_MAX_BUILDINGS]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }} />
       <instancedMesh ref={roofs} args={[roundedRoofGeometry, undefined, WORLD_MAX_BUILDINGS]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }}>
         <meshToonMaterial color="#ffffff" map={roofTexture} gradientMap={toonGradient} />
       </instancedMesh>
@@ -353,11 +508,144 @@ function BuildingPool() {
   )
 }
 
+
+// Streetlights and roof beacons are emissive geometry, not lights. Adding real
+// point lights would change the scene light count and force a full material
+// recompile, which is a visible stall.
+const STREETLIGHT_RADIUS_CELLS = 5
+const STREETLIGHT_CELLS = (STREETLIGHT_RADIUS_CELLS * 2 + 1) ** 2
+const STREETLIGHT_COUNT = STREETLIGHT_CELLS * 2
+
+function StreetLightPool() {
+  const { runtime } = useGame()
+  const heads = useRef<THREE.InstancedMesh>(null)
+  const pools = useRef<THREE.InstancedMesh>(null)
+  const lastKey = useRef('')
+  const matrix = useMemo(() => new THREE.Matrix4(), [])
+  const position = useMemo(() => new THREE.Vector3(), [])
+  const scale = useMemo(() => new THREE.Vector3(), [])
+  const rotation = useMemo(() => new THREE.Quaternion(), [])
+  const planeRotation = useMemo(() => new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0)), [])
+
+  useFrame(() => {
+    if (!heads.current || !pools.current) return
+    const world = runtime.current.world
+    const key = `${world.cellX}:${world.cellZ}`
+    if (key === lastKey.current) return
+    lastKey.current = key
+    let slot = 0
+    for (let dz = -STREETLIGHT_RADIUS_CELLS; dz <= STREETLIGHT_RADIUS_CELLS; dz += 1) {
+      for (let dx = -STREETLIGHT_RADIUS_CELLS; dx <= STREETLIGHT_RADIUS_CELLS; dx += 1) {
+        const cellX = world.cellX + dx
+        const cellZ = world.cellZ + dz
+        // One lamp on each of the cell's two roads, set back to the kerb.
+        const spots: [number, number][] = [
+          [cellX * WORLD_CELL_SIZE + 4.6, (cellZ + 0.5) * WORLD_CELL_SIZE],
+          [(cellX + 0.5) * WORLD_CELL_SIZE, cellZ * WORLD_CELL_SIZE + 4.6],
+        ]
+        for (const [x, z] of spots) {
+          if (slot >= STREETLIGHT_COUNT) break
+          position.set(x, 6.2, z)
+          scale.set(0.9, 0.34, 0.9)
+          matrix.compose(position, rotation, scale)
+          heads.current!.setMatrixAt(slot, matrix)
+          position.set(x, 0.045, z)
+          scale.set(11, 11, 1)
+          matrix.compose(position, planeRotation, scale)
+          pools.current!.setMatrixAt(slot, matrix)
+          slot += 1
+        }
+      }
+    }
+    heads.current.count = slot
+    pools.current.count = slot
+    heads.current.instanceMatrix.needsUpdate = true
+    pools.current.instanceMatrix.needsUpdate = true
+  })
+
+  return (
+    <group>
+      <instancedMesh ref={heads} args={[undefined, undefined, STREETLIGHT_COUNT]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }}>
+        <boxGeometry args={[1, 1, 1]} />
+        <meshBasicMaterial color={FX.STREETLIGHT} toneMapped={false} />
+      </instancedMesh>
+      <instancedMesh ref={pools} args={[undefined, undefined, STREETLIGHT_COUNT]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }}>
+        <circleGeometry args={[0.5, 14]} />
+        <meshBasicMaterial
+          color={FX.STREETLIGHT_CONE}
+          map={radialGlowTexture}
+          transparent
+          opacity={0.34}
+          depthWrite={false}
+          blending={THREE.AdditiveBlending}
+          toneMapped={false}
+        />
+      </instancedMesh>
+    </group>
+  )
+}
+
+const BEACON_MIN_HEIGHT = 26
+
+function RoofBeaconPool() {
+  const { runtime } = useGame()
+  const ref = useRef<THREE.InstancedMesh>(null)
+  const matrix = useMemo(() => new THREE.Matrix4(), [])
+  const position = useMemo(() => new THREE.Vector3(), [])
+  const scale = useMemo(() => new THREE.Vector3(0.85, 0.85, 0.85), [])
+  const rotation = useMemo(() => new THREE.Quaternion(), [])
+  const color = useMemo(() => new THREE.Color(), [])
+  const base = useMemo(() => new THREE.Color(BUILDING.BEACON), [])
+  const phases = useRef<number[]>([])
+  const elapsed = useRef(0)
+  const lastKey = useRef('')
+
+  useFrame((_, dt) => {
+    const mesh = ref.current
+    if (!mesh) return
+    const world = runtime.current.world
+    if (world.key !== lastKey.current) {
+      lastKey.current = world.key
+      let slot = 0
+      phases.current.length = 0
+      for (const building of world.buildings) {
+        if (building.size.y < BEACON_MIN_HEIGHT) continue
+        position.set(building.position.x, building.size.y + 1.1, building.position.z)
+        matrix.compose(position, rotation, scale)
+        mesh.setMatrixAt(slot, matrix)
+        phases.current.push(seedForWorldCell(building.cellX, building.cellZ, 0xbeac04) % 100 / 100 * Math.PI * 2)
+        slot += 1
+      }
+      mesh.count = slot
+      mesh.instanceMatrix.needsUpdate = true
+    }
+    // Throttled: a beacon blink does not need per-frame resolution, and this
+    // loop touches every tall building on screen.
+    elapsed.current += dt
+    if (elapsed.current < 0.08) return
+    elapsed.current = 0
+    for (let index = 0; index < mesh.count; index += 1) {
+      const pulse = 0.25 + 0.75 * Math.pow(Math.max(0, Math.sin(performance.now() * 0.0016 + phases.current[index]!)), 6)
+      mesh.setColorAt(index, color.copy(base).multiplyScalar(pulse))
+    }
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
+  })
+
+  return (
+    <instancedMesh ref={ref} args={[undefined, undefined, WORLD_MAX_BUILDINGS]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }}>
+      <sphereGeometry args={[0.5, 6, 4]} />
+      <meshBasicMaterial toneMapped={false} />
+    </instancedMesh>
+  )
+}
+
 export const City = memo(function City() {
   return (
     <group>
       <GroundPool />
       <BuildingPool />
+      <StreetLightPool />
+      <RoofBeaconPool />
       <DistantBuildingPool />
     </group>
   )

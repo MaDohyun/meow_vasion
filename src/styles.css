@@ -208,3 +208,8 @@ button { font: inherit; }
   .score-card { width:190px; }
   .weapon-picker { grid-template-columns:repeat(2,minmax(150px,1fr)); max-width:620px; }
 }
+
+.quality-picker { z-index:2; display:flex; align-items:center; gap:8px; margin-top:14px; padding:7px 12px; background:rgba(20,26,48,.82); border:3px solid var(--cream); box-shadow:4px 4px 0 var(--ink); }
+.quality-picker span { font-size:8px; font-weight:1000; letter-spacing:1.6px; color:var(--cream); }
+.quality-picker button { padding:5px 12px; color:var(--cream); background:transparent; border:2px solid rgba(233,231,214,.45); font-size:8px; font-weight:1000; letter-spacing:1.4px; cursor:pointer; }
+.quality-picker button.selected { color:var(--ink); background:var(--cyan); border-color:var(--cream); }
