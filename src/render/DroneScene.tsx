@@ -262,7 +262,7 @@ function PullableCars() {
       </instancedMesh>
       <instancedMesh ref={glow} args={[undefined, undefined, WORLD_MAX_CARS + TRAFFIC_MAX_CARS]} frustumCulled={false} renderOrder={3}>
         <ringGeometry args={[1.25, 1.55, 18]} />
-        <meshBasicMaterial color="#a7fff0" transparent opacity={0.9} depthWrite={false} blending={THREE.AdditiveBlending} />
+        <meshBasicMaterial color="#a7fff0" transparent opacity={0.9} depthWrite={false} blending={THREE.AdditiveBlending} toneMapped={false} />
       </instancedMesh>
     </group>
   )
@@ -368,7 +368,7 @@ function BeamFlowRings({ length, radius, boosting }: { length: number; radius: n
           rotation-x={-Math.PI / 2}
           renderOrder={3}
         >
-          <meshBasicMaterial color="#efffff" transparent opacity={0} depthWrite={false} blending={THREE.AdditiveBlending} />
+          <meshBasicMaterial color="#efffff" transparent opacity={0} depthWrite={false} blending={THREE.AdditiveBlending} toneMapped={false} />
         </mesh>
       ))}
     </group>
@@ -392,7 +392,7 @@ function TractorBeam() {
     <group ref={root} position={[runtime.current.drone.position.x, runtime.current.drone.position.y, runtime.current.drone.position.z]}>
       <mesh position-y={-length / 2} renderOrder={2}>
         <coneGeometry args={[radius, length, 24, 1, true]} />
-        <meshBasicMaterial color={color} transparent opacity={snapshot.boostActive ? 0.38 : 0.28} side={THREE.DoubleSide} depthWrite={false} blending={THREE.AdditiveBlending} />
+        <meshBasicMaterial color={color} transparent opacity={snapshot.boostActive ? 0.38 : 0.28} side={THREE.DoubleSide} depthWrite={false} blending={THREE.AdditiveBlending} toneMapped={false} />
       </mesh>
       <BeamFlowRings length={length} radius={radius} boosting={snapshot.boostActive} />
     </group>
@@ -454,9 +454,6 @@ function Ufo() {
       Math.max(1, game.drone.position.y + 3.6 + speedRatio * 1.1 + altitudeView - forwardY * distance * 0.72),
       game.drone.position.z - forwardZ * distance,
     )
-    const threatShake = snapshot.waveStage * 0.028
-    cameraPosition.x += Math.sin(game.sessionTime * 71) * threatShake
-    cameraPosition.y += Math.cos(game.sessionTime * 59) * threatShake * 0.6
     camera.position.lerp(cameraPosition, 1 - Math.exp(-5.5 * dt))
     cameraTarget.set(
       game.drone.position.x + forwardX * (5.5 + speedRatio * 3),
@@ -515,7 +512,7 @@ function Ufo() {
               <group key={x} position-x={x}>
                 <mesh>
                   <coneGeometry args={[0.24, 2.2, 8]} />
-                  <meshBasicMaterial color="#69f7ff" transparent opacity={0.82} depthWrite={false} blending={THREE.AdditiveBlending} />
+                  <meshBasicMaterial color="#69f7ff" transparent opacity={0.82} depthWrite={false} blending={THREE.AdditiveBlending} toneMapped={false} />
                 </mesh>
                 <mesh position-y={0.34}>
                   <coneGeometry args={[0.13, 1.35, 7]} />
@@ -722,7 +719,7 @@ function EnemyProjectiles() {
   return (
     <instancedMesh ref={ref} args={[undefined, undefined, 96]} frustumCulled={false} renderOrder={5}>
       <sphereGeometry args={[1, 6, 4]} />
-      <meshBasicMaterial vertexColors transparent opacity={0.94} depthWrite={false} blending={THREE.AdditiveBlending} />
+      <meshBasicMaterial vertexColors transparent opacity={0.94} depthWrite={false} blending={THREE.AdditiveBlending} toneMapped={false} />
     </instancedMesh>
   )
 }

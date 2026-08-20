@@ -1,4 +1,5 @@
 import { Preload, useProgress } from '@react-three/drei'
+import * as THREE from 'three'
 import { Canvas, useThree } from '@react-three/fiber'
 import { Suspense, useCallback, useEffect, useState } from 'react'
 import { GameProvider } from './GameContext'
@@ -81,6 +82,11 @@ export default function App() {
           gl={{ antialias: false, powerPreference: 'high-performance', alpha: false }}
           onCreated={({ gl }) => {
             gl.outputColorSpace = 'srgb'
+            // Scene lighting sums well above 1.0. Without tone mapping the
+            // default NoToneMapping clips it flat and the pastel palette washes
+            // out to white. ACES rolls the highlights off instead.
+            gl.toneMapping = THREE.ACESFilmicToneMapping
+            gl.toneMappingExposure = 1.05
           }}
         >
           <Suspense fallback={null}>
