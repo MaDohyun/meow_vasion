@@ -6,8 +6,8 @@ export const WORLD_SPAWN_RADIUS = 250
 export const WORLD_REMOVE_RADIUS = 300
 export const WORLD_LOD_RADIUS = 600
 export const WORLD_REFRESH_DISTANCE = 10
-export const WORLD_MAX_BUILDINGS = 128
-export const WORLD_MAX_DISTANT_BUILDINGS = 420
+export const WORLD_MAX_BUILDINGS = 168
+export const WORLD_MAX_DISTANT_BUILDINGS = 540
 export const WORLD_MAX_CARS = 48
 export const WORLD_GROUND_RADIUS_CELLS = 9
 
@@ -112,11 +112,17 @@ export function worldCellCenter(cell: number) {
 export function getProceduralCell(cellX: number, cellZ: number, worldSeed = WORLD_SEED): ProceduralCell {
   const seed = seedForWorldCell(cellX, cellZ, worldSeed)
   const roll = seed % 100
-  const kind: WorldCellKind = roll < 48
+  // Roughly a third denser than before. The pools below were raised to match:
+  // lifting the odds without lifting the caps just crops the far end of the
+  // skyline, so the city ends up no fuller, only more sharply cut off.
+  // Bands: building 62%, parked car 10%, intersection 12%, empty 16%.
+  // Every threshold shifts together - moving only the first one would have
+  // swallowed the intersection band whole.
+  const kind: WorldCellKind = roll < 62
     ? 'building'
-    : roll < 58
+    : roll < 72
       ? 'parked-car'
-      : roll < 70
+      : roll < 84
         ? 'intersection'
         : 'empty'
   const id = `${cellX}:${cellZ}`
