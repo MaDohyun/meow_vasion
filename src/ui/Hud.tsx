@@ -140,7 +140,7 @@ function Intro() {
         <span><b>W/S</b> FLY WHERE YOU LOOK</span>
         <span><b>A/D</b> RIGHT / LEFT</span>
         <span><b>MOUSE</b> 3D STEER / AIM</span>
-        <span><b>E</b> HOLD TRACTOR BEAM · ABSORB TIME</span>
+        <span><b>E</b> HOLD TRACTOR BEAM · ABSORB TO GROW</span>
         <span><b>Q</b> TAP LASER · AUTO WEAPON FIRES</span>
         <span><b>R</b> DROP CARS</span>
         <span><b>SPACE</b> TURBO BOOST</span>
@@ -153,15 +153,15 @@ function Results() {
   const { snapshot, restart } = useGame()
   return (
     <div className={`overlay results-overlay ${snapshot.victory ? 'victory' : 'defeat'}`}>
-      <span className="eyebrow">{snapshot.victory ? 'SURVIVAL COMPLETE' : 'TIME DEPLETED'}</span>
+      <span className="eyebrow">{snapshot.victory ? 'SURVIVED THE RAID' : 'CORE COLLAPSED'}</span>
       <h2>{snapshot.resultTitle}</h2>
       <strong className="final-score">{Math.floor(snapshot.score).toLocaleString()}</strong>
       <p>FINAL INFAMY SCORE</p>
       <div className="result-stats">
         <span><b>{formatTime(snapshot.survivalTime)}</b> SURVIVED</span>
         <span><b>{snapshot.waveStage}</b> WAVE</span>
-        <span><b>{snapshot.enemiesDown}</b> ENEMIES</span>
-        <span><b>{snapshot.loadedCars}</b> CARS</span>
+        <span><b>{snapshot.absorbedCount}</b> ABSORBED</span>
+        <span><b>×{snapshot.size.toFixed(2)}</b> FINAL MASS</span>
       </div>
       <button className="primary-button" onClick={restart}>RAID AGAIN</button>
     </div>
@@ -181,12 +181,15 @@ export function Hud() {
   return (
     <>
       <div className="hud">
-        <section className={`time-card panel ${snapshot.remainingTime <= 10 ? 'time-warning' : ''}`}>
-          <span className="eyebrow">SURVIVAL CLOCK</span>
-          <strong>{formatTime(snapshot.remainingTime)}</strong>
-          <p>ABSORB PEOPLE AND CATS TO GAIN TIME</p>
-          <div className="time-progress"><i style={{ width: `${Math.min(100, snapshot.remainingTime / snapshot.survivalTarget * 100)}%` }} /></div>
-          <small>ELAPSED {formatTime(snapshot.survivalTime)} / CLEAR {formatTime(snapshot.survivalTarget)}</small>
+        <section className={`time-card panel ${snapshot.sizeRatio <= 0.12 ? 'time-warning' : ''}`}>
+          <span className="eyebrow">MASS</span>
+          <strong className={snapshot.sizePulse > 0.01 ? 'mass-pulse' : ''}>×{snapshot.size.toFixed(2)}</strong>
+          <p>ABSORB PEOPLE AND CATS TO GROW</p>
+          {/* Size is the only fail state, so this bar is the health bar. It reads
+              from the death threshold rather than from zero: the number that
+              matters is how much room is left before collapse. */}
+          <div className="time-progress"><i style={{ width: `${Math.max(2, snapshot.sizeRatio * 100)}%` }} /></div>
+          <small>COLLAPSE AT ×{snapshot.sizeMin.toFixed(2)} / CLOCK {formatTime(snapshot.remainingTime)}</small>
         </section>
 
         <section className="score-card panel">

@@ -175,6 +175,10 @@ declare global {
       activeTraffic: number
       activeLaserProjectiles: number
       activeEnemies: number
+      activeCrowds: number
+      beamedCrowds: number
+      absorbedCount: number
+      size: number
       activeEnemyProjectiles: number
       laserShotsFired: number
       weaponShotsFired: number
@@ -437,7 +441,7 @@ function UfoGroundPool() {
     const drone = runtime.current.drone.position
     mesh.position.set(drone.x, 0.06, drone.z)
     const altitude = Math.max(0, drone.y)
-    const spread = 2.4 + altitude * 0.34
+    const spread = 2.4 * runtime.current.sizeProfile.size + altitude * 0.34
     mesh.scale.setScalar(spread)
     const material = mesh.material as THREE.MeshBasicMaterial
     // Reads as a cast light at night and as nothing much at noon, which is
@@ -481,7 +485,9 @@ function Ufo() {
       root.current.rotation.y = game.drone.heading
       root.current.rotation.z = game.drone.visualTilt * 0.72
       const pickupPop = Math.sin((1 - snapshot.pickupPulse) * Math.PI) * snapshot.pickupPulse
-      root.current.scale.setScalar(1 + pickupPop * 0.12)
+      // The craft IS the health bar: its size is the run's only resource, so it
+      // has to be read off the body rather than a gauge.
+      root.current.scale.setScalar(game.sizeProfile.size * (1 + pickupPop * 0.12))
     }
     if (rim.current) rim.current.rotation.y += dt * (snapshot.beamActive ? 7 : 2.8)
 
@@ -499,7 +505,9 @@ function Ufo() {
     const forwardZ = Math.cos(heading) * horizontalForward
     const speedRatio = Math.min(1, snapshot.speed / 30)
     const altitudeView = Math.max(0, game.drone.position.y - 6) * 0.12
-    const distance = 7.8 + speedRatio * 3.3 + altitudeView
+    // Pull back with size, or a grown craft fills the screen and hides the
+    // bodies it is trying to reach.
+    const distance = 9.4 + speedRatio * 3.3 + altitudeView + game.sizeProfile.cameraDistance
     cameraPosition.set(
       game.drone.position.x - forwardX * distance,
       Math.max(1, game.drone.position.y + 3.6 + speedRatio * 1.1 + altitudeView - forwardY * distance * 0.72),
@@ -1080,6 +1088,10 @@ function PerformanceProbe() {
       activeTraffic,
       activeLaserProjectiles: runtime.current.laserProjectiles.filter((projectile) => projectile.active).length,
       activeEnemies: runtime.current.enemies.slots.filter((enemy) => enemy.active).length,
+      activeCrowds: runtime.current.crowds.objects.filter((object) => object.active).length,
+      beamedCrowds: runtime.current.crowds.objects.filter((object) => object.active && object.inBeam).length,
+      absorbedCount: runtime.current.absorbedCount,
+      size: runtime.current.size,
       activeEnemyProjectiles: runtime.current.enemies.projectiles.filter((projectile) => projectile.active).length,
       laserShotsFired: runtime.current.laserShotsFired,
       weaponShotsFired: runtime.current.weapons.shotsFired,

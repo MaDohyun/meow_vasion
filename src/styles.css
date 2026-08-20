@@ -215,3 +215,6 @@ button { font: inherit; }
 .quality-picker span { font-size:8px; font-weight:1000; letter-spacing:1.6px; color:var(--cream); }
 .quality-picker button { padding:5px 12px; color:var(--cream); background:transparent; border:2px solid rgba(233,231,214,.45); font-size:8px; font-weight:1000; letter-spacing:1.4px; cursor:pointer; }
 .quality-picker button.selected { color:var(--ink); background:var(--cyan); border-color:var(--cream); }
+
+.mass-pulse { animation: mass-pop .22s steps(3); }
+@keyframes mass-pop { 0% { transform: scale(1.18); } 100% { transform: scale(1); } }

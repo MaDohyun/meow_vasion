@@ -44,9 +44,11 @@ export const BEAM_GRIP_EXPONENT = 2.8
 
 export function beamProfile(boosting: boolean, radiusScale = 1): BeamProfile {
   const scale = Math.max(0.1, radiusScale)
+  // Widened for the growth loop: the beam is the only verb, so a pass over a
+  // street has to actually sweep it rather than thread a needle.
   const profile = boosting
-    ? { maxDrop: 56, baseRadius: 5.4, coneSpread: 0.29, spring: 25.5, response: 58 }
-    : { maxDrop: 36, baseRadius: 3.4, coneSpread: 0.22, spring: 15.6, response: 32 }
+    ? { maxDrop: 56, baseRadius: 8.2, coneSpread: 0.34, spring: 25.5, response: 58 }
+    : { maxDrop: 36, baseRadius: 5.8, coneSpread: 0.27, spring: 15.6, response: 32 }
   return {
     ...profile,
     baseRadius: profile.baseRadius * scale,

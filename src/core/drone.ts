@@ -79,11 +79,17 @@ const approach = (value: number, target: number, amount: number) =>
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
 
+/**
+ * `load` is effective mass, not a count. Cargo contributes to it, and so does
+ * the craft's own size - a fat craft is slow and turns badly, a shrunken one is
+ * quick. That inverse is what keeps a bad hit recoverable instead of the start
+ * of a death spiral, so `load` is allowed to go negative.
+ */
 export function stepDrone(
   state: DroneState,
   input: DroneInput,
   dt: number,
-  cargoCount: number,
+  load: number,
   upgrades: DroneUpgrades,
 ): DroneState {
   const d = Math.min(dt, 0.05)
@@ -104,10 +110,10 @@ export function stepDrone(
   }
 
   const speedUpgrade = 1 + upgrades.speed * 0.12
-  const cargoAcceleration = Math.pow(0.9, cargoCount)
-  const cargoTurn = Math.pow(0.93, cargoCount)
+  const cargoAcceleration = Math.pow(0.9, load)
+  const cargoTurn = Math.pow(0.93, load)
   const isBoosting = next.boostRemaining > 0
-  const cargoSpeed = 1 / (1 + Math.max(0, cargoCount) * 0.13)
+  const cargoSpeed = 1 / (1 + load * 0.13)
   const topSpeed = (isBoosting ? DRONE_DEFAULTS.boostSpeed : DRONE_DEFAULTS.maxSpeed) * speedUpgrade * cargoSpeed
   const lowFlightBonus = next.position.y <= 1.5 ? 1.12 : 1
   const targetSpeed = input.throttle >= 0
@@ -135,7 +141,7 @@ export function stepDrone(
   const strafeSpeed = (input.strafe ?? 0) * 14.5
   const desiredX = forwardX * next.speed + rightX * strafeSpeed
   const desiredZ = forwardZ * next.speed + rightZ * strafeSpeed
-  const lateralRetention = clamp(0.88 + cargoCount * 0.018, 0.88, 0.97)
+  const lateralRetention = clamp(0.88 + load * 0.018, 0.88, 0.97)
   const steeringGrip = 1 - Math.pow(lateralRetention, d * 60)
   next.velocity.x += (desiredX - next.velocity.x) * steeringGrip
   next.velocity.z += (desiredZ - next.velocity.z) * steeringGrip
