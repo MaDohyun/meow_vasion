@@ -192,7 +192,7 @@ export function Hud() {
         <section className="score-card panel">
           <span className="eyebrow">DESTRUCTION SCORE</span>
           <strong>{Math.floor(snapshot.score).toLocaleString()}</strong>
-          <div><b>WAVE {snapshot.waveStage}</b> · EVENTS ONLY</div>
+          <div><b>WAVE {snapshot.waveStage}</b> · {snapshot.daylightLabel}</div>
           <time>RUN {formatTime(snapshot.survivalTime)}</time>
         </section>
 

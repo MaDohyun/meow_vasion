@@ -6,10 +6,11 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { useGame } from '../GameContext'
 import { BUILDING, ENTITY, FX, LIGHT, SKY } from '../constants/palette'
-import { applyRimLight } from './rimLight'
+import { applyRimLight, setRimNightFactor } from './rimLight'
 import { radialGlowTexture } from './textures'
 import { beamProfile, beamVisualLength } from '../core/beam'
 import { CAT_MAX, CROWD_ABSORB_TIME, PEDESTRIAN_MAX, type CrowdKind } from '../core/crowds'
+import { type DaylightKeyframe, type DaylightSample } from '../core/daylight'
 import { ENEMY_CAPS, type EnemyKind } from '../core/enemies'
 import {
   LASER_MAX_PROJECTILES,
@@ -18,7 +19,7 @@ import {
 import { WEAPON_POOL_CAPS, type WeaponProjectileKind } from '../core/weapons'
 import { TRAFFIC_MAX_CARS } from '../core/traffic'
 import { WORLD_MAX_CARS } from '../core/world'
-import { City } from './City'
+import { City, applyCityDaylight } from './City'
 import { PostFx } from './PostFx'
 
 const roundedCarBodyGeometry = new RoundedBoxGeometry(1.8, 0.62, 3.1, 2, 0.15)
@@ -438,7 +439,12 @@ function UfoGroundPool() {
     const spread = 2.4 + altitude * 0.34
     mesh.scale.setScalar(spread)
     const material = mesh.material as THREE.MeshBasicMaterial
-    material.opacity = Math.max(0.05, 0.42 - altitude * 0.0035) * (snapshot.beamActive ? 1.5 : 1)
+    // Reads as a cast light at night and as nothing much at noon, which is
+    // exactly when a glowing puddle on lit tarmac would look wrong.
+    const nightFactor = runtime.current.daylight.nightFactor
+    material.opacity = Math.max(0.05, 0.42 - altitude * 0.0035)
+      * (snapshot.beamActive ? 1.5 : 1)
+      * (0.18 + nightFactor * 0.82)
   })
   return (
     <mesh ref={ref} rotation-x={-Math.PI / 2} frustumCulled={false} renderOrder={-1}>
@@ -460,6 +466,8 @@ function Ufo() {
   const { runtime, snapshot } = useGame()
   const root = useRef<THREE.Group>(null)
   const rim = useRef<THREE.Group>(null)
+  const hullMaterial = useRef<THREE.MeshToonMaterial>(null)
+  const domeMaterial = useRef<THREE.MeshToonMaterial>(null)
   const cameraTarget = useMemo(() => new THREE.Vector3(), [])
   const cameraPosition = useMemo(() => new THREE.Vector3(), [])
   const { camera } = useThree()
@@ -475,6 +483,12 @@ function Ufo() {
       root.current.scale.setScalar(1 + pickupPop * 0.12)
     }
     if (rim.current) rim.current.rotation.y += dt * (snapshot.beamActive ? 7 : 2.8)
+
+    // The craft's self-lighting is a night affordance. Left at full strength it
+    // blows out to a white disc under a midday sun.
+    const nightFactor = game.daylight.nightFactor
+    if (hullMaterial.current) hullMaterial.current.emissiveIntensity = 0.08 + nightFactor * 0.5
+    if (domeMaterial.current) domeMaterial.current.emissiveIntensity = 0.3 + nightFactor * 0.6
 
     const heading = game.drone.heading
     const pitch = game.drone.pitch
@@ -512,12 +526,12 @@ function Ufo() {
             night city. Finding yourself instantly is the whole readability bar. */}
         <mesh scale={[1, 0.32, 1]}>
           <sphereGeometry args={[1.72, 20, 10]} />
-          <meshToonMaterial color={ENTITY.UFO_HULL} emissive={ENTITY.UFO_HULL} emissiveIntensity={0.55} />
+          <meshToonMaterial ref={hullMaterial} color={ENTITY.UFO_HULL} emissive={ENTITY.UFO_HULL} emissiveIntensity={0.55} />
           <Edges threshold={15} color="#5a5170" />
         </mesh>
         <mesh position-y={0.25} scale={[1, 0.55, 1]}>
           <sphereGeometry args={[0.82, 18, 10, 0, Math.PI * 2, 0, Math.PI / 2]} />
-          <meshToonMaterial color={ENTITY.UFO_DOME} emissive={ENTITY.UFO_DOME} emissiveIntensity={0.9} transparent opacity={0.9} />
+          <meshToonMaterial ref={domeMaterial} color={ENTITY.UFO_DOME} emissive={ENTITY.UFO_DOME} emissiveIntensity={0.9} transparent opacity={0.9} />
           <Edges threshold={15} color="#432f6b" />
         </mesh>
         <mesh position-y={-0.2}>
@@ -1057,6 +1071,26 @@ function FixedEffectLights() {
   )
 }
 
+/**
+ * Pushes the cycle into every shared material once per frame. Centralised so
+ * there is one place that knows what "night" does to the scene, instead of a
+ * dozen components each sampling the clock.
+ */
+function DaylightMaterials() {
+  const { runtime } = useGame()
+  const applied = useRef(-1)
+  useFrame(() => {
+    const nightFactor = runtime.current.daylight.nightFactor
+    // Skip when nothing moved: the cycle is slow and these writes touch
+    // materials shared by every pooled instance.
+    if (Math.abs(nightFactor - applied.current) < 0.002) return
+    applied.current = nightFactor
+    applyCityDaylight(nightFactor)
+    setRimNightFactor(nightFactor)
+  })
+  return null
+}
+
 function PerformanceProbe() {
   const { runtime } = useGame()
   const elapsed = useRef(0)
@@ -1094,6 +1128,7 @@ const skyUniforms = {
   uMiddle: { value: new THREE.Color(SKY.MIDDLE) },
   uTop: { value: new THREE.Color(SKY.TOP) },
   uStar: { value: new THREE.Color(SKY.STAR) },
+  uStarIntensity: { value: 1 },
   uTime: { value: 0 },
 }
 
@@ -1107,12 +1142,14 @@ const skyVertexShader = `
 
 // Stars are drawn inside the sky shader rather than as geometry: a starfield
 // mesh would be another draw call and another pool to cull, and this costs a
-// hash per pixel on a dome that is already being shaded.
+// hash per pixel on a dome that is already being shaded. uStarIntensity fades
+// them in as the run turns to night.
 const skyFragmentShader = `
   uniform vec3 uHorizon;
   uniform vec3 uMiddle;
   uniform vec3 uTop;
   uniform vec3 uStar;
+  uniform float uStarIntensity;
   uniform float uTime;
   varying vec3 vPosition;
 
@@ -1129,41 +1166,167 @@ const skyFragmentShader = `
     // Cell the dome, keep one candidate star per cell, and only light the few
     // that clear the threshold. Fades out near the horizon so the city glow
     // does not end up full of stars sitting behind buildings.
-    vec2 cell = floor(direction.xz * 78.0 / max(0.25, abs(direction.y) + 0.35));
-    float pick = hash(cell);
-    float star = smoothstep(0.9955, 1.0, pick);
-    float twinkle = 0.65 + 0.35 * sin(uTime * 1.7 + pick * 90.0);
-    color += uStar * star * twinkle * smoothstep(0.02, 0.35, h);
+    if (uStarIntensity > 0.001) {
+      vec2 cell = floor(direction.xz * 78.0 / max(0.25, abs(direction.y) + 0.35));
+      float pick = hash(cell);
+      float star = smoothstep(0.9955, 1.0, pick);
+      float twinkle = 0.65 + 0.35 * sin(uTime * 1.7 + pick * 90.0);
+      color += uStar * star * twinkle * smoothstep(0.02, 0.35, h) * uStarIntensity;
+    }
     gl_FragColor = vec4(color, 1.0);
   }
 `
 
+/**
+ * Scratch colours for the sky mix. Module scope on purpose: this runs every
+ * frame and the whole render layer is written to avoid per-tick allocation.
+ */
+const daylightScratch = {
+  background: new THREE.Color(),
+  fog: new THREE.Color(),
+  ambient: new THREE.Color(),
+  hemiSky: new THREE.Color(),
+  hemiGround: new THREE.Color(),
+  sun: new THREE.Color(),
+  cloud: new THREE.Color(),
+  from: new THREE.Color(),
+  to: new THREE.Color(),
+}
+
+/** Keyframe hex strings parsed once into linear-space colours. Mixing there
+ *  rather than in sRGB keeps a sunset from going muddy through the midpoint. */
+const daylightColorCache = new Map<string, THREE.Color>()
+function cachedColor(hex: string) {
+  let color = daylightColorCache.get(hex)
+  if (!color) {
+    color = new THREE.Color(hex)
+    daylightColorCache.set(hex, color)
+  }
+  return color
+}
+
+function mixDaylight(
+  out: THREE.Color,
+  sample: DaylightSample,
+  channel: keyof DaylightKeyframe['colors'],
+) {
+  return out.lerpColors(cachedColor(sample.from.colors[channel]), cachedColor(sample.to.colors[channel]), sample.blend)
+}
+
+const SUN_DISTANCE = 330
+
 function Sky() {
+  const { runtime } = useGame()
   const skyRoot = useRef<THREE.Group>(null)
-  const moonLight = useRef<THREE.DirectionalLight>(null)
+  const keyLight = useRef<THREE.DirectionalLight>(null)
+  const ambient = useRef<THREE.AmbientLight>(null)
+  const hemisphere = useRef<THREE.HemisphereLight>(null)
+  const sunBody = useRef<THREE.Mesh>(null)
+  const sunHalo = useRef<THREE.Mesh>(null)
+  const moonBody = useRef<THREE.Mesh>(null)
+  const moonHalo = useRef<THREE.Mesh>(null)
+  const cloudRoot = useRef<THREE.Group>(null)
   const lightTarget = useMemo(() => new THREE.Object3D(), [])
   const clouds = useMemo(() => [
     [-62, 38, -90, 1.4], [45, 50, -115, 1.8], [82, 33, -65, 1.1],
     [-95, 48, 15, 1.5], [18, 55, 88, 1.3], [-40, 31, 105, 1.1],
   ] as [number, number, number, number][], [])
-  useFrame(({ camera, clock }) => {
+
+  useFrame(({ camera, clock, scene }) => {
     skyUniforms.uTime.value = clock.elapsedTime
     if (skyRoot.current) skyRoot.current.position.set(camera.position.x, 0, camera.position.z)
     lightTarget.position.set(camera.position.x, 0, camera.position.z)
     lightTarget.updateMatrixWorld()
-    if (moonLight.current) moonLight.current.position.set(camera.position.x + 60, 90, camera.position.z - 120)
+
+    const sample = runtime.current.daylight
+
+    mixDaylight(skyUniforms.uHorizon.value, sample, 'horizon')
+    mixDaylight(skyUniforms.uMiddle.value, sample, 'middle')
+    mixDaylight(skyUniforms.uTop.value, sample, 'top')
+    skyUniforms.uStarIntensity.value = sample.starIntensity
+
+    if (scene.background instanceof THREE.Color) {
+      scene.background.copy(mixDaylight(daylightScratch.background, sample, 'background'))
+    }
+    if (scene.fog instanceof THREE.Fog) {
+      scene.fog.color.copy(mixDaylight(daylightScratch.fog, sample, 'fog'))
+      scene.fog.near = sample.fogNear
+      scene.fog.far = sample.fogFar
+    }
+
+    if (ambient.current) {
+      ambient.current.color.copy(mixDaylight(daylightScratch.ambient, sample, 'ambient'))
+      ambient.current.intensity = sample.ambientIntensity
+    }
+    if (hemisphere.current) {
+      hemisphere.current.color.copy(mixDaylight(daylightScratch.hemiSky, sample, 'hemiSky'))
+      hemisphere.current.groundColor.copy(mixDaylight(daylightScratch.hemiGround, sample, 'hemiGround'))
+      hemisphere.current.intensity = sample.hemiIntensity
+    }
+
+    // One directional light for the whole cycle: it is the sun while the sun is
+    // up and the moon afterwards. Adding a second would change the scene light
+    // count and force every material to recompile mid-run.
+    const bodyAltitude = sample.sunOpacity >= sample.moonOpacity ? sample.sunAltitude : sample.moonAltitude
+    if (keyLight.current) {
+      keyLight.current.color.copy(mixDaylight(daylightScratch.sun, sample, 'sun'))
+      keyLight.current.intensity = sample.sunIntensity
+      keyLight.current.position.set(
+        camera.position.x - Math.cos(bodyAltitude) * 90,
+        Math.max(12, Math.sin(bodyAltitude) * 120 + 40),
+        camera.position.z + 60,
+      )
+    }
+
+    // Sun and moon ride the same arc half a turn apart, so one sets as the
+    // other rises.
+    const place = (mesh: THREE.Mesh | null, altitude: number, side: number) => {
+      if (!mesh) return
+      mesh.position.set(
+        Math.cos(altitude) * SUN_DISTANCE * side,
+        Math.sin(altitude) * SUN_DISTANCE,
+        -SUN_DISTANCE * 0.55,
+      )
+    }
+    place(sunBody.current, sample.sunAltitude, -1)
+    place(sunHalo.current, sample.sunAltitude, -1)
+    place(moonBody.current, sample.moonAltitude, 1)
+    place(moonHalo.current, sample.moonAltitude, 1)
+    const fade = (mesh: THREE.Mesh | null, opacity: number, scale = 1) => {
+      if (!mesh) return
+      const material = mesh.material as THREE.MeshBasicMaterial
+      material.opacity = opacity * scale
+      mesh.visible = opacity > 0.01
+    }
+    if (sunBody.current) (sunBody.current.material as THREE.MeshBasicMaterial).color.copy(mixDaylight(daylightScratch.sun, sample, 'sun'))
+    fade(sunBody.current, sample.sunOpacity)
+    fade(sunHalo.current, sample.sunOpacity, 0.3)
+    fade(moonBody.current, sample.moonOpacity)
+    fade(moonHalo.current, sample.moonOpacity, 0.2)
+
+    if (cloudRoot.current) {
+      mixDaylight(daylightScratch.cloud, sample, 'cloud')
+      cloudRoot.current.traverse((object) => {
+        const mesh = object as THREE.Mesh
+        if (!mesh.isMesh) return
+        const material = mesh.material as THREE.MeshBasicMaterial
+        material.color.copy(daylightScratch.cloud)
+        material.opacity = 0.72 - sample.nightFactor * 0.2
+      })
+    }
   })
+
   return (
     <>
       <color attach="background" args={[SKY.BACKGROUND]} />
       <fog attach="fog" args={[SKY.FOG, 150, 560]} />
       {/* The light COUNT is fixed on purpose. three.js keys shader programs on
           it, so adding a lamp here would recompile every material in the scene.
-          Night is built from emissive surfaces instead — see the palette notes. */}
-      <ambientLight color={LIGHT.AMBIENT} intensity={0.52} />
-      <hemisphereLight args={[LIGHT.HEMI_SKY, LIGHT.HEMI_GROUND, 0.72]} />
+          Night is built from emissive surfaces instead - see the palette notes. */}
+      <ambientLight ref={ambient} color={LIGHT.AMBIENT} intensity={0.52} />
+      <hemisphereLight ref={hemisphere} args={[LIGHT.HEMI_SKY, LIGHT.HEMI_GROUND, 0.72]} />
       <directionalLight
-        ref={moonLight}
+        ref={keyLight}
         target={lightTarget}
         position={[60, 90, -120]}
         color={LIGHT.MOON}
@@ -1181,20 +1344,34 @@ function Sky() {
             fragmentShader={skyFragmentShader}
           />
         </mesh>
-        <group position={[-150, 150, -300]}>
-          <mesh><circleGeometry args={[34, 40]} /><meshBasicMaterial color={SKY.MOON} fog={false} toneMapped={false} /></mesh>
-          <mesh position-z={-0.2}><circleGeometry args={[70, 40]} /><meshBasicMaterial color={SKY.MOON_HALO} transparent opacity={0.16} fog={false} blending={THREE.AdditiveBlending} depthWrite={false} toneMapped={false} /></mesh>
+        <mesh ref={sunHalo}>
+          <circleGeometry args={[96, 40]} />
+          <meshBasicMaterial color="#ffcf8a" transparent opacity={0.3} fog={false} blending={THREE.AdditiveBlending} depthWrite={false} toneMapped={false} />
+        </mesh>
+        <mesh ref={sunBody}>
+          <circleGeometry args={[46, 44]} />
+          <meshBasicMaterial color="#ffe7bd" transparent fog={false} toneMapped={false} />
+        </mesh>
+        <mesh ref={moonHalo}>
+          <circleGeometry args={[70, 40]} />
+          <meshBasicMaterial color={SKY.MOON_HALO} transparent opacity={0.16} fog={false} blending={THREE.AdditiveBlending} depthWrite={false} toneMapped={false} />
+        </mesh>
+        <mesh ref={moonBody}>
+          <circleGeometry args={[34, 40]} />
+          <meshBasicMaterial color={SKY.MOON} transparent fog={false} toneMapped={false} />
+        </mesh>
+        <group ref={cloudRoot}>
+          {clouds.map(([x, y, z, scale], index) => (
+            <group key={index} position={[x, y, z]} scale={scale}>
+              {([[-5, 0, 0, 5], [0, 1.4, 0, 7], [6, 0, 0, 4.5], [1, -1.2, 0, 6]] as [number, number, number, number][]).map((part, partIndex) => (
+                <mesh key={partIndex} position={[part[0], part[1], part[2]]} scale={[part[3], part[3] * 0.42, 1]}>
+                  <sphereGeometry args={[1, 10, 6]} />
+                  <meshBasicMaterial color={SKY.CLOUD} transparent opacity={0.72} fog />
+                </mesh>
+              ))}
+            </group>
+          ))}
         </group>
-        {clouds.map(([x, y, z, scale], index) => (
-          <group key={index} position={[x, y, z]} scale={scale}>
-            {([[-5, 0, 0, 5], [0, 1.4, 0, 7], [6, 0, 0, 4.5], [1, -1.2, 0, 6]] as [number, number, number, number][]).map((part, partIndex) => (
-              <mesh key={partIndex} position={[part[0], part[1], part[2]]} scale={[part[3], part[3] * 0.42, 1]}>
-                <sphereGeometry args={[1, 10, 6]} />
-                <meshBasicMaterial color={SKY.CLOUD} transparent opacity={0.55} fog />
-              </mesh>
-            ))}
-          </group>
-        ))}
       </group>
     </>
   )
@@ -1207,6 +1384,7 @@ export function DroneScene() {
       <Sky />
       <LaserAimController />
       <WorldTick />
+      <DaylightMaterials />
       <FixedEffectLights />
       <PerformanceProbe />
       <City />

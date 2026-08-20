@@ -11,12 +11,26 @@ import * as THREE from 'three'
  * in scope there and it lands before tone mapping, so the rim behaves like the
  * rest of the emissive surfaces in the scene.
  */
+/**
+ * Live rim uniforms, so the cycle can dial the effect back in daylight where a
+ * bright sky already separates silhouettes and a rim just looks like a halo.
+ */
+const rimStrengthUniforms: { uniform: { value: number }; base: number }[] = []
+
+export function setRimNightFactor(nightFactor: number) {
+  for (const entry of rimStrengthUniforms) {
+    entry.uniform.value = entry.base * (0.35 + nightFactor * 0.65)
+  }
+}
+
 export function applyRimLight(material: THREE.Material, color: string, strength = 0.55, power = 2.6) {
   const rim = new THREE.Color(color)
   material.onBeforeCompile = (shader) => {
+    const strengthUniform = { value: strength }
     shader.uniforms.uRimColor = { value: rim }
-    shader.uniforms.uRimStrength = { value: strength }
+    shader.uniforms.uRimStrength = strengthUniform
     shader.uniforms.uRimPower = { value: power }
+    rimStrengthUniforms.push({ uniform: strengthUniform, base: strength })
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', `#include <common>
         uniform vec3 uRimColor;

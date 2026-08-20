@@ -40,35 +40,40 @@ export const LIGHT = {
   MOON: '#b9caff',
 } as const
 
+// Surfaces are authored at daylight brightness. Night is produced by dropping
+// the lights, not by baking darkness in - a night-baked texture cannot be lifted
+// back to daylight, which is what the day-to-night cycle needs it to do.
 export const GROUND = {
-  BASE: '#1d2436',
-  ROAD: '#232a3a',
-  ROAD_MARKING: '#f0e6b4',
-  CROSSWALK: '#e8edf5',
-  grass: '#26382c',
-  parking: '#2a2f3c',
-  sand: '#3a3427',
-  plaza: '#31303e',
-  pond: '#16303c',
-  vacant: '#2b2c26',
+  BASE: '#8d9384',
+  ROAD: '#6f7887',
+  ROAD_MARKING: '#ffe7a3',
+  CROSSWALK: '#f3f6fa',
+  grass: '#a9c99d',
+  parking: '#b8b4ad',
+  sand: '#e5d2a6',
+  plaza: '#d6c5b6',
+  pond: '#9fc8cb',
+  vacant: '#c7c39f',
 } as const
 
 export const BUILDING = {
-  /** Multiplied over the per-building tint to sink facades into the dark. */
-  FACADE_WALL: '#2b3145',
-  FACADE_SEAM: 'rgba(8,10,20,.45)',
-  FACADE_BASE: '#171b28',
-  ROOF: '#262c3e',
+  /** Daylight wall tone. The night look comes from the lights, not from here. */
+  FACADE_WALL: '#e7e3cf',
+  FACADE_SEAM: 'rgba(40,32,58,.16)',
+  FACADE_BASE: '#8d8494',
+  ROOF: '#ded9c4',
   /** Lit and unlit windows. The lit ones are the whole night skyline. */
   WINDOW_LIT: '#ffe6a6',
   WINDOW_LIT_HOT: '#fffbe8',
   WINDOW_COOL: '#9fdcff',
-  WINDOW_DARK: '#1b2231',
-  WINDOW_DIM: '#28303f',
+  /** Unlit glass in the colour map. Windows only look lit through the emissive
+   *  map, so they read as plain glass under a midday sky. */
+  WINDOW_DARK: '#5b7480',
+  WINDOW_DIM: '#8ea3aa',
   /** Blinking obstruction light on tall roofs. */
   BEACON: '#ff5566',
-  DISTANT: '#1b2540',
-  DISTANT_FAR: '#141c33',
+  DISTANT: '#9fb0bd',
+  DISTANT_FAR: '#8b9cab',
 } as const
 
 /** Emissive tints per entity family. Kept distinct on purpose: a single enemy

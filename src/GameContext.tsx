@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { collideDrone, createDroneState, stepDrone, type Aabb, type DroneInput, type DroneState, type Vec3 } from './core/drone'
 import { beamProfile, beginCarDestruction, isInsideBeam, stepBeamObjects, type BeamField, type BeamObject } from './core/beam'
 import { beginNearbyCrowdAbsorption, createCrowdState, stepCrowds, type CrowdState } from './core/crowds'
+import { createDaylightSample, sampleDaylight, type DaylightSample } from './core/daylight'
 import { activeEnemyCount, createEnemyState, hitEnemy, resolveEnemyContacts, stepEnemies, stepEnemyProjectiles, syncAntiAirEnemies, syncEnemyTiers, waveLabelForTime, waveStageForTime, type EnemyState } from './core/enemies'
 import {
   createLaserPool,
@@ -74,6 +75,7 @@ export type GameRuntime = {
   messageTime: number
   impactFlash: number
   hitstop: number
+  daylight: DaylightSample
   pickupPulse: number
   timeBonusPulse: number
   timeBonusAmount: number
@@ -95,6 +97,8 @@ export type GameSnapshot = {
   survivalTarget: number
   score: number
   waveStage: number
+  daylightLabel: string
+  nightFactor: number
   loadedCars: number
   maxLoadedCars: number
   cargoSlowdown: number
@@ -245,6 +249,7 @@ function makeRuntime(initialWeapon: WeaponId = 'homing-missile'): GameRuntime {
     messageTime: 4,
     impactFlash: 0,
     hitstop: 0,
+    daylight: createDaylightSample(),
     pickupPulse: 0,
     timeBonusPulse: 0,
     timeBonusAmount: 0,
@@ -444,6 +449,8 @@ function snapshotOf(game: GameRuntime): GameSnapshot {
     survivalTarget: SURVIVAL_TARGET_TIME,
     score: game.score,
     waveStage: game.waveStage,
+    daylightLabel: game.daylight.label,
+    nightFactor: game.daylight.nightFactor,
     loadedCars: game.loadedCars,
     maxLoadedCars: MAX_CARRIED_CARS,
     cargoSlowdown: slowdown,
@@ -625,6 +632,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
     }
     const collision = collideDrone(stepped, game.worldColliders)
     game.drone = collision.state
+    // One sample per tick, written into the runtime's own object so the render
+    // layer can read it without sampling again or allocating.
+    sampleDaylight(game.sessionTime, game.daylight)
     game.waveStage = waveStageForTime(game.sessionTime)
     if (game.waveStage !== game.pilotPreviousThreat) {
       setBgmWave(game.waveStage)
