@@ -11,7 +11,7 @@ export const INITIAL_CATS = 9
 // saturated at 53 bodies while only two or three were ever within reach.
 // Recycling early keeps the supply in front of the player instead of trailing
 // it. Kept just outside the respawn ring so bodies are not culled on arrival.
-export const CROWD_REMOVE_DISTANCE = 112
+export const CROWD_REMOVE_DISTANCE = 185
 export const CROWD_ABSORB_DISTANCE = 3.35
 export const CROWD_ABSORB_TIME = 0.24
 
@@ -40,9 +40,18 @@ const SPAWN_ATTEMPTS = 6
 // The arc is wide enough that people still arrive from the flanks and steering
 // toward them beats flying straight, and far enough out that arrivals are
 // masked by the city rather than popping in.
-const RESPAWN_MIN_DISTANCE = 56
-const RESPAWN_RANGE = 44
+const RESPAWN_MIN_DISTANCE = 92
+const RESPAWN_RANGE = 62
 const RESPAWN_ARC = 1.75
+/**
+ * Bodies arrive in knots rather than evenly sprinkled.
+ *
+ * Spread evenly, a crowd is background texture: there is nowhere better to fly
+ * than anywhere else. Clustered, a gathering is visible from a distance and on
+ * the radar, so choosing where to go becomes a decision instead of drifting.
+ */
+const CLUSTER_SIZE = 5
+const CLUSTER_SPREAD = 11
 const GOLDEN_ANGLE = 2.399963
 
 export type CrowdObject = BeamObject & {
@@ -64,6 +73,9 @@ export type CrowdState = {
   nearbyPedestrians: number
   initialSpawnDone: boolean
   seedAngle: number
+  clusterX: number
+  clusterZ: number
+  clusterLeft: number
 }
 
 export type CrowdView = {
@@ -115,6 +127,9 @@ export function createCrowdState(seed = 0xc47cafe): CrowdState {
     nearbyPedestrians: 0,
     initialSpawnDone: false,
     seedAngle: 0,
+    clusterX: 0,
+    clusterZ: 0,
+    clusterLeft: 0,
   }
 }
 
@@ -153,17 +168,28 @@ function spawnCrowdObject(state: CrowdState, view: CrowdView, kind: CrowdKind, p
     // Widen the search on each retry so a dense block of buildings cannot make
     // a seed slot fail outright.
     const spread = 0.35 + attempt * 0.55
-    const angle = placement
-      ? placement.angle + (random(state) - 0.5) * spread
-      : view.heading + (random(state) - 0.5) * RESPAWN_ARC
-    const distance = placement
-      ? placement.distance * (0.85 + random(state) * (0.3 + attempt * 0.15))
-      : RESPAWN_MIN_DISTANCE + random(state) * RESPAWN_RANGE
-    x = view.position.x + Math.sin(angle) * distance
-    z = view.position.z + Math.cos(angle) * distance
+    if (placement) {
+      const angle = placement.angle + (random(state) - 0.5) * spread
+      const distance = placement.distance * (0.85 + random(state) * (0.3 + attempt * 0.15))
+      x = view.position.x + Math.sin(angle) * distance
+      z = view.position.z + Math.cos(angle) * distance
+    } else {
+      // Open a fresh knot once the current one is used up.
+      if (state.clusterLeft <= 0) {
+        const angle = view.heading + (random(state) - 0.5) * RESPAWN_ARC
+        const distance = RESPAWN_MIN_DISTANCE + random(state) * RESPAWN_RANGE
+        state.clusterX = view.position.x + Math.sin(angle) * distance
+        state.clusterZ = view.position.z + Math.cos(angle) * distance
+        state.clusterLeft = CLUSTER_SIZE
+      }
+      const jitter = CLUSTER_SPREAD * (0.4 + attempt * 0.5)
+      x = state.clusterX + (random(state) - 0.5) * jitter
+      z = state.clusterZ + (random(state) - 0.5) * jitter
+    }
     if (!blockedAt(view, x, z, SPAWN_CLEARANCE)) { placed = true; break }
   }
   if (!placed) return false
+  if (!placement) state.clusterLeft -= 1
   object.generation += 1
   object.id = `crowd:${kind}:${object.slot}:${object.generation}`
   object.position.x = x
