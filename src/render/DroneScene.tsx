@@ -6,7 +6,16 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { useGame } from '../GameContext'
 import { BUILDING, ENTITY, FX, LIGHT, SKY } from '../constants/palette'
-import { applyRimLight, setRimNightFactor } from './rimLight'
+import {
+  applyEntityDaylight,
+  carBodyMaterial,
+  carCabinMaterial,
+  carLampMaterial,
+  carShadowMaterial,
+  crowdMaterial,
+  enemyMaterial,
+} from './entityMaterials'
+import { setRimNightFactor } from './rimLight'
 import { radialGlowTexture } from './textures'
 import { beamProfile, beamVisualLength } from '../core/beam'
 import { CAT_MAX, CROWD_ABSORB_TIME, PEDESTRIAN_MAX, type CrowdKind } from '../core/crowds'
@@ -252,17 +261,13 @@ function PullableCars() {
     <group>
       <instancedMesh ref={shadow} args={[undefined, undefined, WORLD_MAX_CARS + TRAFFIC_MAX_CARS]} frustumCulled={false}>
         <planeGeometry args={[1, 1]} />
-        <meshBasicMaterial color="#28313d" transparent opacity={0.32} depthWrite={false} />
+        <primitive object={carShadowMaterial} attach="material" />
       </instancedMesh>
-      <instancedMesh ref={body} args={[roundedCarBodyGeometry, undefined, WORLD_MAX_CARS + TRAFFIC_MAX_CARS]} frustumCulled={false}>
-        <meshToonMaterial />
-      </instancedMesh>
-      <instancedMesh ref={cabin} args={[roundedCarCabinGeometry, undefined, WORLD_MAX_CARS + TRAFFIC_MAX_CARS]} frustumCulled={false}>
-        <meshToonMaterial color="#b7dfe0" />
-      </instancedMesh>
+      <instancedMesh ref={body} args={[roundedCarBodyGeometry, carBodyMaterial, WORLD_MAX_CARS + TRAFFIC_MAX_CARS]} frustumCulled={false} />
+      <instancedMesh ref={cabin} args={[roundedCarCabinGeometry, carCabinMaterial, WORLD_MAX_CARS + TRAFFIC_MAX_CARS]} frustumCulled={false} />
       <instancedMesh ref={lightbar} args={[undefined, undefined, WORLD_MAX_CARS + TRAFFIC_MAX_CARS]} frustumCulled={false}>
         <boxGeometry args={[0.95, 0.16, 0.28]} />
-        <meshBasicMaterial color={FX.HEADLIGHT} toneMapped={false} />
+        <primitive object={carLampMaterial} attach="material" />
       </instancedMesh>
       <instancedMesh ref={glow} args={[undefined, undefined, WORLD_MAX_CARS + TRAFFIC_MAX_CARS]} frustumCulled={false} renderOrder={3}>
         <ringGeometry args={[1.25, 1.55, 18]} />
@@ -318,17 +323,13 @@ function DrivingTraffic() {
     <group>
       <instancedMesh ref={shadows} args={[undefined, undefined, TRAFFIC_MAX_CARS]} frustumCulled={false}>
         <planeGeometry args={[1, 1]} />
-        <meshBasicMaterial color="#28313d" transparent opacity={0.3} depthWrite={false} />
+        <primitive object={carShadowMaterial} attach="material" />
       </instancedMesh>
-      <instancedMesh ref={body} args={[roundedCarBodyGeometry, undefined, TRAFFIC_MAX_CARS]} frustumCulled={false}>
-        <meshToonMaterial />
-      </instancedMesh>
-      <instancedMesh ref={cabin} args={[roundedCarCabinGeometry, undefined, TRAFFIC_MAX_CARS]} frustumCulled={false}>
-        <meshToonMaterial color="#b7dfe0" />
-      </instancedMesh>
+      <instancedMesh ref={body} args={[roundedCarBodyGeometry, carBodyMaterial, TRAFFIC_MAX_CARS]} frustumCulled={false} />
+      <instancedMesh ref={cabin} args={[roundedCarCabinGeometry, carCabinMaterial, TRAFFIC_MAX_CARS]} frustumCulled={false} />
       <instancedMesh ref={lamps} args={[undefined, undefined, TRAFFIC_MAX_CARS]} frustumCulled={false}>
         <boxGeometry args={[0.95, 0.16, 0.28]} />
-        <meshBasicMaterial color={FX.HEADLIGHT} toneMapped={false} />
+        <primitive object={carLampMaterial} attach="material" />
       </instancedMesh>
     </group>
   )
@@ -582,38 +583,6 @@ function Ufo() {
 // Crowd and enemy bodies are absorb targets and threats respectively, so both
 // have to stay findable in the dark. Each family keeps its own rim colour: one
 // shared colour would erase the type read the wave design depends on.
-const crowdMaterial: Record<CrowdKind, THREE.Material> = {
-  pedestrian: applyRimLight(new THREE.MeshToonMaterial({ vertexColors: true, emissive: new THREE.Color(ENTITY.PEDESTRIAN_GLOW), emissiveIntensity: 0.34 }), ENTITY.PEDESTRIAN_GLOW, 0.75),
-  cat: applyRimLight(new THREE.MeshToonMaterial({ vertexColors: true, emissive: new THREE.Color(ENTITY.CAT_GLOW), emissiveIntensity: 0.34 }), ENTITY.CAT_GLOW, 0.85),
-}
-
-const ENEMY_GLOW: Record<EnemyKind, string> = {
-  drone: ENTITY.DRONE_GLOW,
-  police: ENTITY.POLICE_GLOW,
-  'police-car': ENTITY.POLICE_CAR_GLOW,
-  soldier: ENTITY.SOLDIER_GLOW,
-  helicopter: ENTITY.HELICOPTER_GLOW,
-  fighter: ENTITY.FIGHTER_GLOW,
-  'anti-air': ENTITY.ANTI_AIR_GLOW,
-  tank: ENTITY.TANK_GLOW,
-  boss: ENTITY.BOSS_GLOW,
-}
-
-const enemyMaterial = Object.fromEntries(
-  (Object.keys(ENEMY_GLOW) as EnemyKind[]).map((kind) => [
-    kind,
-    applyRimLight(
-      new THREE.MeshToonMaterial({
-        vertexColors: true,
-        emissive: new THREE.Color(ENEMY_GLOW[kind]),
-        emissiveIntensity: kind === 'boss' ? 0.5 : 0.3,
-      }),
-      ENEMY_GLOW[kind],
-      kind === 'boss' ? 1 : 0.7,
-    ),
-  ]),
-) as Record<EnemyKind, THREE.Material>
-
 const crowdGeometry: Record<CrowdKind, THREE.BufferGeometry> = {
   pedestrian: pedestrianGeometry(),
   cat: catGeometry(),
@@ -1086,6 +1055,7 @@ function DaylightMaterials() {
     if (Math.abs(nightFactor - applied.current) < 0.002) return
     applied.current = nightFactor
     applyCityDaylight(nightFactor)
+    applyEntityDaylight(nightFactor)
     setRimNightFactor(nightFactor)
   })
   return null
