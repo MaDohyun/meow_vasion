@@ -76,10 +76,10 @@ const facadeTexture = pixelTexture((context) => {
   context.fillRect(0, 0, FACADE_SIZE, FACADE_SIZE)
   context.fillStyle = BUILDING.FACADE_SEAM
   for (let y = 0; y < FACADE_SIZE; y += 8) context.fillRect(0, y, FACADE_SIZE, 1)
-  forEachWindow((x, y, lit, cool) => {
-    context.fillStyle = lit ? (cool ? BUILDING.WINDOW_COOL : BUILDING.WINDOW_LIT) : BUILDING.WINDOW_DARK
+  forEachWindow((x, y) => {
+    context.fillStyle = BUILDING.WINDOW_DARK
     context.fillRect(x, y, 7, 5)
-    context.fillStyle = lit ? BUILDING.WINDOW_LIT_HOT : BUILDING.WINDOW_DIM
+    context.fillStyle = BUILDING.WINDOW_DIM
     context.fillRect(x + 1, y, 2, 1)
   })
   // Street-level band stays dark so the base of every tower grounds into night.
@@ -166,6 +166,40 @@ const roadTexture = pixelTexture((context) => {
   for (let y = 2; y < 30; y += 6) context.fillRect(60, y, 8, 3)
 }, 128, 32)
 
+// Materials the daylight cycle drives. They are module-level because every
+// pooled instance shares one, so the cycle updates a handful of objects per
+// frame rather than walking the scene.
+const cityDaylightMaterials = {
+  facade: null as THREE.MeshToonMaterial | null,
+  roof: null as THREE.MeshToonMaterial | null,
+  distant: null as THREE.MeshToonMaterial | null,
+  lot: null as THREE.MeshToonMaterial | null,
+  groundBase: null as THREE.MeshToonMaterial | null,
+  streetlight: null as THREE.MeshBasicMaterial | null,
+  streetPool: null as THREE.MeshBasicMaterial | null,
+  beacon: null as THREE.MeshBasicMaterial | null,
+  road: null as THREE.MeshBasicMaterial | null,
+}
+
+/**
+ * Surfaces are authored at daylight brightness and darkened by the lights, so
+ * the cycle only has to handle the emissive side here: lit windows, streetlights
+ * and beacons are wrong under a midday sky and ramp in with nightFactor rather
+ * than switching on at a threshold.
+ *
+ * Roads are the exception. Their material is unlit, so the cycle dims it by hand
+ * or the asphalt would stay noon-bright at midnight.
+ */
+export function applyCityDaylight(nightFactor: number) {
+  const materials = cityDaylightMaterials
+  if (materials.road) materials.road.color.setScalar(1 - nightFactor * 0.62)
+  if (materials.facade) materials.facade.emissiveIntensity = 1.5 * nightFactor
+  if (materials.distant) materials.distant.emissiveIntensity = 0.85 * nightFactor
+  if (materials.streetlight) materials.streetlight.opacity = nightFactor
+  if (materials.streetPool) materials.streetPool.opacity = 0.34 * nightFactor
+  if (materials.beacon) materials.beacon.opacity = nightFactor
+}
+
 const distantWindowTexture = pixelTexture((context) => {
   context.fillStyle = '#000000'
   context.fillRect(0, 0, 32, 32)
@@ -198,6 +232,18 @@ const signAtlas = pixelTexture((context) => {
     context.fillText(label, x + slotWidth / 2, y + slotHeight / 2)
   })
 }, 512, 384)
+
+const distantBuildingMaterial = (() => {
+  const material = new THREE.MeshToonMaterial({
+    color: '#ffffff',
+    gradientMap: toonGradient,
+    emissive: new THREE.Color('#ffffff'),
+    emissiveMap: distantWindowTexture,
+    emissiveIntensity: 0.85,
+  })
+  cityDaylightMaterials.distant = material
+  return material
+})()
 
 function DistantBuildingPool() {
   const { runtime } = useGame()
@@ -237,13 +283,7 @@ function DistantBuildingPool() {
     <instancedMesh ref={silhouettes} args={[roundedBuildingGeometry, undefined, WORLD_MAX_DISTANT_BUILDINGS]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }}>
       {/* Speckled window light on the horizon. A coarse dot pattern is enough
           at this distance and keeps the skyline from reading as a flat wall. */}
-      <meshToonMaterial
-        color="#ffffff"
-        gradientMap={toonGradient}
-        emissive={new THREE.Color('#ffffff')}
-        emissiveMap={distantWindowTexture}
-        emissiveIntensity={0.85}
-      />
+      <primitive object={distantBuildingMaterial} attach="material" />
     </instancedMesh>
   )
 }
@@ -281,13 +321,29 @@ function GroundBase() {
     // underneath rather than being dragged along.
     map.offset.set(drone.x / 8, -drone.z / 8)
   })
+  const material = useMemo(() => {
+    const created = new THREE.MeshToonMaterial({ color: '#ffffff', map, gradientMap: toonGradient })
+    cityDaylightMaterials.groundBase = created
+    return created
+  }, [map])
   return (
-    <mesh ref={mesh} rotation={[-Math.PI / 2, 0, 0]} frustumCulled={false}>
+    <mesh ref={mesh} rotation={[-Math.PI / 2, 0, 0]} frustumCulled={false} material={material}>
       <planeGeometry args={[GROUND_SPAN, GROUND_SPAN]} />
-      <meshToonMaterial map={map} gradientMap={toonGradient} />
     </mesh>
   )
 }
+
+const lotMaterial = (() => {
+  const material = new THREE.MeshToonMaterial({ color: '#ffffff', map: lotTexture, gradientMap: toonGradient })
+  cityDaylightMaterials.lot = material
+  return material
+})()
+
+const roadMaterial = (() => {
+  const material = new THREE.MeshBasicMaterial({ color: '#ffffff', map: roadTexture })
+  cityDaylightMaterials.road = material
+  return material
+})()
 
 function GroundPool() {
   const { runtime } = useGame()
@@ -352,15 +408,21 @@ function GroundPool() {
       <GroundBase />
       <instancedMesh ref={lots} args={[undefined, undefined, GROUND_CELL_COUNT]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }}>
         <planeGeometry args={[1, 1]} />
-        <meshToonMaterial map={lotTexture} gradientMap={toonGradient} />
+        <primitive object={lotMaterial} attach="material" />
       </instancedMesh>
       <instancedMesh ref={roads} args={[undefined, undefined, GROUND_CELL_COUNT * 2]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }}>
         <planeGeometry args={[1, 1]} />
-        <meshBasicMaterial color="#ffffff" map={roadTexture} />
+        <primitive object={roadMaterial} attach="material" />
       </instancedMesh>
     </group>
   )
 }
+
+const roofMaterial = (() => {
+  const material = new THREE.MeshToonMaterial({ color: '#ffffff', map: roofTexture, gradientMap: toonGradient })
+  cityDaylightMaterials.roof = material
+  return material
+})()
 
 function BuildingPool() {
   const { runtime } = useGame()
@@ -420,6 +482,7 @@ function BuildingPool() {
     }
     // Distinguishes this program from any other toon material in the scene.
     material.customProgramCacheKey = () => 'facade-atlas'
+    cityDaylightMaterials.facade = material
     return material
   }, [])
   const signSlots = useMemo(() => new Float32Array(WORLD_MAX_BUILDINGS), [])
@@ -501,9 +564,7 @@ function BuildingPool() {
         <meshBasicMaterial color="#05070f" transparent opacity={0.30} depthWrite={false} />
       </instancedMesh>
       <instancedMesh ref={bodies} args={[bodyGeometry, bodyMaterial, WORLD_MAX_BUILDINGS]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }} />
-      <instancedMesh ref={roofs} args={[roundedRoofGeometry, undefined, WORLD_MAX_BUILDINGS]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }}>
-        <meshToonMaterial color="#ffffff" map={roofTexture} gradientMap={toonGradient} />
-      </instancedMesh>
+      <instancedMesh ref={roofs} args={[roundedRoofGeometry, roofMaterial, WORLD_MAX_BUILDINGS]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }} />
       <instancedMesh ref={signs} args={[signGeometry, signMaterial, WORLD_MAX_BUILDINGS]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }} />
     </group>
   )
@@ -516,6 +577,26 @@ function BuildingPool() {
 const STREETLIGHT_RADIUS_CELLS = 5
 const STREETLIGHT_CELLS = (STREETLIGHT_RADIUS_CELLS * 2 + 1) ** 2
 const STREETLIGHT_COUNT = STREETLIGHT_CELLS * 2
+
+const streetLightHeadMaterial = (() => {
+  const material = new THREE.MeshBasicMaterial({ color: FX.STREETLIGHT, transparent: true, opacity: 1, toneMapped: false })
+  cityDaylightMaterials.streetlight = material
+  return material
+})()
+
+const streetLightPoolMaterial = (() => {
+  const material = new THREE.MeshBasicMaterial({
+    color: FX.STREETLIGHT_CONE,
+    map: radialGlowTexture,
+    transparent: true,
+    opacity: 0.34,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    toneMapped: false,
+  })
+  cityDaylightMaterials.streetPool = material
+  return material
+})()
 
 function StreetLightPool() {
   const { runtime } = useGame()
@@ -568,23 +649,21 @@ function StreetLightPool() {
     <group>
       <instancedMesh ref={heads} args={[undefined, undefined, STREETLIGHT_COUNT]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }}>
         <boxGeometry args={[1, 1, 1]} />
-        <meshBasicMaterial color={FX.STREETLIGHT} toneMapped={false} />
+        <primitive object={streetLightHeadMaterial} attach="material" />
       </instancedMesh>
       <instancedMesh ref={pools} args={[undefined, undefined, STREETLIGHT_COUNT]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }}>
         <circleGeometry args={[0.5, 14]} />
-        <meshBasicMaterial
-          color={FX.STREETLIGHT_CONE}
-          map={radialGlowTexture}
-          transparent
-          opacity={0.34}
-          depthWrite={false}
-          blending={THREE.AdditiveBlending}
-          toneMapped={false}
-        />
+        <primitive object={streetLightPoolMaterial} attach="material" />
       </instancedMesh>
     </group>
   )
 }
+
+const beaconMaterial = (() => {
+  const material = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 1, toneMapped: false })
+  cityDaylightMaterials.beacon = material
+  return material
+})()
 
 const BEACON_MIN_HEIGHT = 26
 
@@ -635,7 +714,7 @@ function RoofBeaconPool() {
   return (
     <instancedMesh ref={ref} args={[undefined, undefined, WORLD_MAX_BUILDINGS]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }}>
       <sphereGeometry args={[0.5, 6, 4]} />
-      <meshBasicMaterial toneMapped={false} />
+      <primitive object={beaconMaterial} attach="material" />
     </instancedMesh>
   )
 }

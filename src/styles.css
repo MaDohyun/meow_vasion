@@ -129,14 +129,12 @@ button { font: inherit; }
 
 .overlay { position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center; flex-direction: column; pointer-events: auto; }
 .overlay, .loading-overlay { cursor: auto; }
-/* Night, to match the city the run drops you into. A sunset title card in
-   front of a night game reads as two different products. */
-.intro-overlay { overflow: hidden; color: var(--cream); background: linear-gradient(#060a18 0, #111c3d 42%, #243a63 78%, #37507f); }
+/* Morning, because that is where the run opens. The sky darkens as the run
+   goes on, so the title card matches the first minute rather than the last. */
+.intro-overlay { overflow: hidden; color: var(--ink); background: linear-gradient(#3f7fb8 0, #7fc0d2 34%, #ffcba4 74%, #ffe3b8); }
 .intro-overlay::before { content:""; position:absolute; inset:0; background: linear-gradient(90deg,transparent 49.5%,rgba(255,255,255,.08) 50%,transparent 50.5%); background-size: 38px 38px; opacity:.28; }
-.intro-overlay::after { content: ""; position: absolute; left: -5%; right: -5%; bottom: -8%; height: 36%; background: repeating-linear-gradient(90deg, #0d1224 0 5%, #080c1a 5% 9%), radial-gradient(1.6px 1.6px at 2% 30%, #ffe6a6 50%, transparent 51%) repeat; background-size: auto, 26px 34px; clip-path: polygon(0 42%,6% 23%,12% 39%,19% 5%,26% 31%,34% 13%,41% 44%,49% 4%,57% 28%,64% 9%,72% 40%,80% 17%,89% 35%,95% 20%,100% 31%,100% 100%,0 100%); }
-.sun-disc { position: absolute; top: 8%; width: 232px; height: 232px; border-radius: 50%; background: #f4f1e4; box-shadow: 0 0 0 18px rgba(147,166,216,.14), 0 0 90px rgba(147,166,216,.45); }
-/* Star scatter, drawn with a repeating radial gradient rather than markup. */
-.intro-overlay .sun-disc::after { content:""; position:fixed; inset:0; z-index:-1; background-image: radial-gradient(1.5px 1.5px at 12% 18%, #dfe8ff 50%, transparent 51%), radial-gradient(1.5px 1.5px at 78% 12%, #dfe8ff 50%, transparent 51%), radial-gradient(1.5px 1.5px at 34% 32%, #cfe0ff 50%, transparent 51%), radial-gradient(2px 2px at 62% 26%, #ffffff 50%, transparent 51%), radial-gradient(1.5px 1.5px at 88% 34%, #dfe8ff 50%, transparent 51%), radial-gradient(1.5px 1.5px at 22% 8%, #ffffff 50%, transparent 51%); opacity:.85; pointer-events:none; }
+.intro-overlay::after { content: ""; position: absolute; left: -5%; right: -5%; bottom: -8%; height: 36%; background: repeating-linear-gradient(90deg, #2c3249 0 5%, #20273e 5% 9%); clip-path: polygon(0 42%,6% 23%,12% 39%,19% 5%,26% 31%,34% 13%,41% 44%,49% 4%,57% 28%,64% 9%,72% 40%,80% 17%,89% 35%,95% 20%,100% 31%,100% 100%,0 100%); }
+.sun-disc { position: absolute; top: 8%; width: 268px; height: 268px; border-radius: 50%; background: #ffe7bd; box-shadow: 0 0 0 18px rgba(255,231,189,.22), 0 0 90px rgba(255,214,140,.55); }
 .ufo-poster { position:absolute; z-index:1; top:6%; left:50%; width:210px; height:125px; transform:translateX(-50%) rotate(-5deg); filter:drop-shadow(9px 11px 0 rgba(41,35,63,.3)); }
 .ufo-dome { position:absolute; top:8px; left:73px; width:66px; height:49px; background:#69e5e7; border:7px solid var(--ink); border-radius:50% 50% 12% 12%; }
 .ufo-saucer { position:absolute; top:42px; left:25px; width:160px; height:50px; background:var(--cream); border:8px solid var(--ink); border-radius:50%; box-shadow:inset 0 -16px 0 var(--violet); }
@@ -145,7 +143,7 @@ button { font: inherit; }
 .title-kicker { z-index:2; margin-top: 62px; padding:7px 12px; color:var(--cream); background:var(--ink); font-size:10px; font-weight:1000; letter-spacing:3px; transform:rotate(-2deg); }
 .intro-overlay h1 { z-index:2; margin:20px 0 31px; font-family:Impact,Haettenschweiler,sans-serif; font-size:clamp(72px,13.4vw,162px); font-style:italic; letter-spacing:-3px; line-height:.68; text-shadow:7px 7px 0 var(--cream),12px 12px 0 var(--pink),17px 17px 0 var(--ink); transform:skew(-7deg); }
 .intro-overlay h1 span { display:block; }
-.tagline { z-index:2; margin:6px 0; color:var(--cream); font-size:12px; font-weight:1000; letter-spacing:3px; }
+.tagline { z-index:2; margin:6px 0; font-size:12px; font-weight:1000; letter-spacing:3px; }
 .primary-button { z-index:2; margin-top:15px; padding:14px 29px; color:var(--ink); background:var(--green); border:4px solid var(--cream); box-shadow:7px 7px 0 var(--ink); font-weight:1000; letter-spacing:2px; cursor:pointer; }
 .primary-button:hover { transform:translate(2px,2px); box-shadow:5px 5px 0 var(--ink); }
 .controls-card { z-index:2; display:flex; gap:13px; margin-top:27px; padding:9px 12px; color:var(--cream); background:rgba(41,35,63,.93); font-size:8px; }
