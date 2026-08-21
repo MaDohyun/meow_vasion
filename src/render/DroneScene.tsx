@@ -399,7 +399,12 @@ function BeamFlowRings({ length, radius, boosting }: { length: number; radius: n
 function TractorBeam() {
   const { runtime, snapshot } = useGame()
   const root = useRef<THREE.Group>(null)
-  const profile = beamProfile(snapshot.boostActive)
+  // Same scales the physics uses. These were left at their defaults, so the
+  // drawn beam never widened or lengthened with the craft while the pickup
+  // volume did - the visible beam and the beam that actually catches things
+  // were two different shapes.
+  const size = runtime.current.sizeProfile
+  const profile = beamProfile(snapshot.boostActive, size.beamScale, size.beamReach)
   const length = Math.max(0.8, beamVisualLength(runtime.current.drone.position.y, profile.maxDrop))
   const radius = profile.baseRadius + length * profile.coneSpread
   useFrame(() => {

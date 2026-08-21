@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { BEAM_MIN_GRIP, absorptionScore, beamGrip, beamProfile, beamVisualLength, beginNearbyBeamObjectAbsorption, isInsideBeam, stepBeamObjects, type BeamField, type BeamObject } from '../src/core/beam'
+import { SIZE_MAX, SIZE_MIN, sizeProfile } from '../src/core/size'
 
 const makeCar = (id = 'car-1', x = 0, y = 0.65, z = 0): BeamObject => ({
   id,
@@ -49,17 +50,46 @@ describe('tractor beam physics', () => {
     expect(boosted.velocity.x).toBeGreaterThan(normal.velocity.x * 1.45)
   })
 
-  it('supports upgrade radius scaling without extending beam drop', () => {
+  it('keeps radius scaling and reach scaling on separate axes', () => {
+    // Widening the cone must not lengthen it. Asserted as a relationship rather
+    // than against fixed numbers, so retuning the beam does not break the test
+    // that guards the property.
     expect(beamProfile(false, 1.5).baseRadius).toBeCloseTo(beamProfile(false).baseRadius * 1.5)
     expect(beamProfile(false, 1.5).coneSpread).toBeCloseTo(beamProfile(false).coneSpread * 1.5)
-    expect(beamProfile(false, 1.5).maxDrop).toBe(36)
-    expect(beamProfile(true).maxDrop).toBe(56)
+    expect(beamProfile(false, 1.5).maxDrop).toBe(beamProfile(false).maxDrop)
+
+    expect(beamProfile(false, 1, 2).maxDrop).toBeCloseTo(beamProfile(false).maxDrop * 2)
+    expect(beamProfile(false, 1, 2).baseRadius).toBeCloseTo(beamProfile(false).baseRadius)
+    expect(beamProfile(true).maxDrop).toBeGreaterThan(beamProfile(false).maxDrop)
+  })
+
+  it('stops a weak beam short of ground that a strong one reaches', () => {
+    const weak = sizeProfile(SIZE_MIN)
+    const strong = sizeProfile(SIZE_MAX)
+    const weakReach = beamProfile(false, weak.beamScale, weak.beamReach).maxDrop
+    const strongReach = beamProfile(false, strong.beamScale, strong.beamReach).maxDrop
+    expect(weakReach).toBeLessThan(strongReach)
+    // Hovering at a height the strong beam covers and the weak one does not:
+    // the weak beam has to end in mid-air rather than touch the street.
+    const altitude = (weakReach + strongReach) / 2
+    expect(beamVisualLength(altitude, weakReach)).toBe(weakReach)
+    expect(beamVisualLength(altitude, weakReach)).toBeLessThan(altitude - 0.15)
+    expect(beamVisualLength(altitude, strongReach)).toBeCloseTo(altitude - 0.15)
   })
 
   it('keeps visual length tied to ground and range rather than a lifted target', () => {
     expect(beamVisualLength(12, beamProfile(false).maxDrop)).toBeCloseTo(11.85)
     expect(beamVisualLength(80, beamProfile(false).maxDrop)).toBe(beamProfile(false).maxDrop)
     expect(beamVisualLength(80, beamProfile(true).maxDrop)).toBe(beamProfile(true).maxDrop)
+  })
+
+  it('still weakens toward the far end of whatever reach it has', () => {
+    // Reach changed; falloff did not. The far end of the cone must stay weak,
+    // or the beam becomes a rigid rod that happens to be shorter.
+    const reach = beamProfile(false).maxDrop
+    expect(beamGrip(0, reach)).toBeGreaterThan(beamGrip(reach * 0.5, reach))
+    expect(beamGrip(reach * 0.5, reach)).toBeGreaterThan(beamGrip(reach, reach))
+    expect(beamGrip(reach, reach)).toBeCloseTo(BEAM_MIN_GRIP)
   })
 
   it('lifts a heavy car more slowly than a light object', () => {

@@ -845,7 +845,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     stepTraffic(game.traffic, { position: game.drone.position, heading: game.drone.heading }, d)
     syncCrowdThreats(game)
     stepCrowds(game.crowds, { position: game.drone.position, heading: game.drone.heading, colliders: game.worldColliders, threats: game.crowdThreats, crowdThreatStart: 1 + game.traffic.cars.length + game.enemies.slots.length, spawnZones: game.crowdSpawnZones }, d)
-    const beamField: BeamField = { active: game.beamActive, boosting: turboActive, position: game.drone.position, velocity: game.drone.velocity, radiusScale: game.sizeProfile.beamScale }
+    const beamField: BeamField = { active: game.beamActive, boosting: turboActive, position: game.drone.position, velocity: game.drone.velocity, radiusScale: game.sizeProfile.beamScale, reachScale: game.sizeProfile.beamReach }
     // No pickup cap: hanging mass is its own limit, and a craft that grabbed
     // too much should feel it rather than be quietly protected from it.
     if (game.beamActive && game.dumpLockout <= 0) {
