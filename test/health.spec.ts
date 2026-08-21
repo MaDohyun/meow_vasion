@@ -1,3 +1,5 @@
+import { surfaceHeightAt } from '../src/core/beam'
+import type { Aabb } from '../src/core/drone'
 import { describe, expect, it } from 'vitest'
 import {
   HEALTH_LOSS,
@@ -101,5 +103,20 @@ describe('health as the survival resource', () => {
     const absorptions = Math.log(SIZE_MAX / SIZE_START) / Math.log(1 + SIZE_GAIN.pedestrian)
     expect(absorptions).toBeGreaterThan(60)
     expect(absorptions).toBeLessThan(180)
+  })
+})
+
+describe('overload', () => {
+  it('lands a dropped object on the roof it was dropped over', () => {
+    // Objects used to fall straight through buildings and lie down in the
+    // street, so a load released over a rooftop turned up on the pavement.
+    const roof: Aabb = { minX: -10, maxX: 10, minY: 0, maxY: 24, minZ: -10, maxZ: 10 }
+    expect(surfaceHeightAt(0, 0, [roof])).toBe(roof.maxY)
+    expect(surfaceHeightAt(40, 0, [roof])).toBeLessThan(2)
+    expect(surfaceHeightAt(0, 0, undefined)).toBeLessThan(2)
+    // The tallest thing underfoot wins, not the first one found.
+    const tower: Aabb = { minX: -4, maxX: 4, minY: 0, maxY: 60, minZ: -4, maxZ: 4 }
+    expect(surfaceHeightAt(0, 0, [roof, tower])).toBe(tower.maxY)
+    expect(surfaceHeightAt(0, 0, [tower, roof])).toBe(tower.maxY)
   })
 })

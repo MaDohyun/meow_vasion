@@ -13,14 +13,14 @@ const UPGRADES = { speed: 0.45, stability: 0, rack: 0, special: 'none' as const 
  * bodies, the player shrinks no matter how well they fly, so this guards the
  * core loop rather than any one function.
  */
-function flyAndFeed(seconds: number, startSize = SIZE_START, seed = 4242, steer = false, altitude = 7) {
+function flyAndFeed(seconds: number, startSize = SIZE_START, seed = 4242, steer = false, altitude = 7, park = false) {
   const drone = createDroneState()
   drone.position = { x: 0, y: altitude, z: 0 }
   const crowds = createCrowdState(seed)
   stepCrowds(crowds, { position: drone.position, heading: 0 }, 0)
   let size = startSize
   let absorbed = 0
-  const input: DroneInput = { throttle: 1, steer: 0, strafe: 0, lookPitch: 0, vertical: 0, special: false }
+  const input: DroneInput = { throttle: park ? 0 : 1, steer: 0, strafe: 0, lookPitch: 0, vertical: 0, special: false }
   // A steering pilot points at the nearest gathering, the way a player reading
   // the radar would. Crowds arrive in knots, so this is the intended play - the
   // blind pass below is the floor, not the target.
@@ -75,14 +75,25 @@ function flyAndFeed(seconds: number, startSize = SIZE_START, seed = 4242, steer 
  * people, so every measurement here is an average. Tuning the loop against one
  * sample means tuning against noise.
  */
-function averageFeed(seconds: number, startSize = SIZE_START, steer = false) {
+function averageFeed(seconds: number, startSize = SIZE_START, steer = false, altitude = 7, park = false) {
   const seeds = [4242, 9137, 31, 77021, 555, 12345]
   let total = 0
-  for (const seed of seeds) total += flyAndFeed(seconds, startSize, seed, steer).absorbed
+  for (const seed of seeds) total += flyAndFeed(seconds, startSize, seed, steer, altitude, park).absorbed
   return total / seeds.length
 }
 
 describe('feeding is the core loop', () => {
+  it('starves a player who sits still', () => {
+    // Hovering with the beam on used to be the strongest play in the game:
+    // park zones were chosen without looking at how close they were, so a
+    // craft parked over a park had food respawning at its feet indefinitely.
+    // Moving has to be the only way to eat.
+    const parked = averageFeed(25, SIZE_START, false, 7, true)
+    const moving = averageFeed(25)
+    expect(parked).toBeLessThan(moving / 3)
+    expect(parked).toBeLessThan(2)
+  })
+
   it('rewards steering toward a gathering over flying straight', () => {
     const blind = averageFeed(25)
     const steered = averageFeed(25, SIZE_START, true)

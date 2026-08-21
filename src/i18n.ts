@@ -52,6 +52,8 @@ type Strings = {
   hull: string
   repairing: string
   ceiling: string
+  overloaded: string
+  overloadAlarm: string
   clock: string
   score: string
   wave: string
@@ -169,6 +171,8 @@ export const STRINGS: Record<Language, Strings> = {
     hull: '선체',
     repairing: '수리 중',
     ceiling: '상승 한계',
+    overloaded: '과적',
+    overloadAlarm: '과적 — 고도 유지 불가 · R로 투기',
     clock: '남은 시간',
     score: '점수',
     wave: '웨이브',
@@ -265,6 +269,8 @@ export const STRINGS: Record<Language, Strings> = {
     hull: '船体',
     repairing: '修理中',
     ceiling: '上昇限界',
+    overloaded: '過積載',
+    overloadAlarm: '過積載 — 高度を保てません · Rで投棄',
     clock: '残り時間',
     score: 'スコア',
     wave: 'ウェーブ',
@@ -361,6 +367,8 @@ export const STRINGS: Record<Language, Strings> = {
     hull: 'HULL',
     repairing: 'REPAIRING',
     ceiling: 'CEILING',
+    overloaded: 'OVERLOADED',
+    overloadAlarm: 'OVERLOADED — LOSING ALTITUDE · R TO DUMP',
     clock: 'CLOCK',
     score: 'SCORE',
     wave: 'WAVE',
