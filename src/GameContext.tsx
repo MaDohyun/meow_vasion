@@ -874,7 +874,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
     }
     syncEnemyTiers(game.enemies, game.sessionTime, game.drone.position, game.drone.heading, d)
     syncAntiAirEnemies(game.enemies, game.sessionTime, game.world.buildings)
-    stepEnemies(game.enemies, game.drone.position, d)
+    // The craft's velocity goes in with its position: enemies lead the shot,
+    // and the lead is computed from how it is actually moving.
+    stepEnemies(game.enemies, game.drone.position, d, game.drone.velocity)
     if (collision.hit && collision.impulse > 2.5 && game.collisionCooldown <= 0) { game.collisionCooldown = 0.45; registerImpact(game, 'BUILDING') }
 
     game.beamActive = input.beam

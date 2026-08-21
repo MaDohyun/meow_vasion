@@ -132,6 +132,16 @@ export type EnemySlot = BeamObject & {
   attackTimer: number
   telegraph: number
   aiming: boolean
+  /**
+   * Where the shot will leave from, frozen when the enemy starts aiming.
+   *
+   * The intercept is solved from this point, so firing from anywhere else
+   * makes the shot travel a different distance than the solution assumed and
+   * arrive beside the target - a tank that walked a few metres during its own
+   * telegraph missed by exactly that much, every time. It also makes the aim
+   * line honest: the line the player saw is the line the shot takes.
+   */
+  muzzle: Vec3
 }
 
 export type EnemyProjectile = {
@@ -278,6 +288,7 @@ function makeSlot(kind: EnemyKind, slot: number): EnemySlot {
     attackTimer: 1,
     telegraph: 0,
     aiming: false,
+    muzzle: { x: 0, y: 0, z: 0 },
   }
 }
 
@@ -446,12 +457,121 @@ function distanceToPlayer(enemy: EnemySlot, player: Vec3) {
   return Math.hypot(enemy.position.x - player.x, enemy.position.y - player.y, enemy.position.z - player.z)
 }
 
-function aimProjectile(state: EnemyState, enemy: EnemySlot, player: Vec3, kind: EnemyProjectileKind, speed: number, damage: number, telegraph: number) {
+/**
+ * Shot speeds.
+ *
+ * Every one of these is above the craft's cruising speed of 30, and that is the
+ * whole reason they changed. They used to sit between 16 and 25 - slower than
+ * the thing they were shooting at - which means no interception solution
+ * exists at all: a fleeing target simply outruns the bullet. Combined with
+ * aiming at where the player *was*, the real rule of the game was "stand still
+ * and die, move in any direction at all and be immortal", and beam ballast,
+ * the only speed penalty in the game, was protecting nothing.
+ *
+ * Turbo (54) still outruns most of them. That is deliberate: turbo is a
+ * resource, and spending it to outrun a shell is a fair play.
+ */
+export const PROJECTILE_SPEED: Record<EnemyProjectileKind, number> = {
+  rifle: 58,
+  shell: 46,
+  missile: 52,
+  rocket: 44,
+  'boss-beam': 40,
+}
+
+/**
+ * How well each enemy leads a moving target, 0 (shoots where you are) to 1
+ * (shoots exactly where you will be).
+ *
+ * Tiered rather than uniform, because the wave ladder is the difficulty curve:
+ * police and infantry miss often enough that the first minute teaches the rule
+ * without punishing it, and by the time the anti-air network is up, flying
+ * straight is fatal.
+ *
+ * A lower tier still leads the target properly - it just puts the shot down
+ * beside the answer. Scaling the lead instead was the first attempt and it was
+ * wrong: an eighty-percent lead is a twenty-percent shortfall, which at a
+ * hundred metres is a twenty-metre miss every single time, so a tank could
+ * never hit anything at all. Aiming at the right place with a bounded error
+ * makes a low tier look like a near miss rather than like an enemy that cannot
+ * shoot.
+ */
+export const AIM_ERROR_METRES = 16
+
+export const LEAD_ACCURACY: Record<EnemyKind, number> = {
+  drone: 0,
+  police: 0.45,
+  'police-car': 0.6,
+  soldier: 0.45,
+  helicopter: 0.62,
+  fighter: 0.82,
+  tank: 0.8,
+  'anti-air': 1,
+  boss: 1,
+}
+
+/**
+ * Where to shoot so a shot travelling at `speed` meets a target moving at
+ * `velocity`.
+ *
+ * Solves the quadratic for time-to-intercept. When there is no solution - the
+ * target is outrunning the shot - it returns null and the caller fires at the
+ * target's current position instead, because an enemy that holds its fire
+ * whenever the maths fails just goes mute.
+ */
+export function interceptTime(toTarget: Vec3, velocity: Vec3, speed: number) {
+  const a = velocity.x * velocity.x + velocity.y * velocity.y + velocity.z * velocity.z - speed * speed
+  const b = 2 * (toTarget.x * velocity.x + toTarget.y * velocity.y + toTarget.z * velocity.z)
+  const c = toTarget.x * toTarget.x + toTarget.y * toTarget.y + toTarget.z * toTarget.z
+  if (Math.abs(a) < 1e-6) {
+    if (Math.abs(b) < 1e-6) return null
+    const linear = -c / b
+    return linear > 0 ? linear : null
+  }
+  const discriminant = b * b - 4 * a * c
+  if (discriminant < 0) return null
+  const root = Math.sqrt(discriminant)
+  const first = (-b + root) / (2 * a)
+  const second = (-b - root) / (2 * a)
+  const candidates = [first, second].filter((value) => value > 0)
+  if (candidates.length === 0) return null
+  return Math.min(...candidates)
+}
+
+function aimProjectile(state: EnemyState, enemy: EnemySlot, player: Vec3, playerVelocity: Vec3, kind: EnemyProjectileKind, speed: number, damage: number, telegraph: number) {
   enemy.telegraph = telegraph
   enemy.aiming = true
-  enemy.target.x = player.x
-  enemy.target.y = player.y
-  enemy.target.z = player.z
+  const accuracy = LEAD_ACCURACY[enemy.kind]
+  enemy.muzzle.x = enemy.position.x
+  enemy.muzzle.y = enemy.position.y
+  enemy.muzzle.z = enemy.position.z
+  // The shot leaves after the telegraph, so the prediction has to cover the
+  // wait as well as the flight. Leading only for flight time leaves every shot
+  // a telegraph's worth of travel behind - at cruising speed that is fifteen
+  // metres of error against a target one metre wide, which is why simply
+  // predicting was not enough on its own.
+  const atFire = {
+    x: player.x + playerVelocity.x * telegraph,
+    y: player.y + playerVelocity.y * telegraph,
+    z: player.z + playerVelocity.z * telegraph,
+  }
+  const toTarget = {
+    x: atFire.x - enemy.muzzle.x,
+    y: atFire.y - enemy.muzzle.y,
+    z: atFire.z - enemy.muzzle.z,
+  }
+  // Predicted at aim time, not at fire time. The telegraph window is the whole
+  // dodge: change course inside it and the prediction is wrong, hold course and
+  // the shot arrives.
+  const flight = interceptTime(toTarget, playerVelocity, speed) ?? 0
+  const lead = telegraph + flight
+  // Full lead, then a bounded scatter for anything below the top tier. The
+  // scatter is in metres and does not grow with range, so a low tier is
+  // inaccurate rather than useless.
+  const spread = (1 - accuracy) * AIM_ERROR_METRES
+  enemy.target.x = player.x + playerVelocity.x * lead + (random(state) - 0.5) * 2 * spread
+  enemy.target.y = player.y + playerVelocity.y * lead + (random(state) - 0.5) * spread
+  enemy.target.z = player.z + playerVelocity.z * lead + (random(state) - 0.5) * 2 * spread
   if (kind === 'rocket') {
     enemy.target.x += (enemy.slot % 3 - 1) * 13
     enemy.target.z += ((enemy.slot + 1) % 3 - 1) * 13
@@ -465,16 +585,16 @@ function aimProjectile(state: EnemyState, enemy: EnemySlot, player: Vec3, kind: 
 function fireProjectile(state: EnemyState, enemy: EnemySlot, kind: EnemyProjectileKind) {
   const projectile = state.projectiles.find((item) => !item.active)
   if (!projectile) return false
-  const dx = enemy.target.x - enemy.position.x
-  const dy = enemy.target.y - enemy.position.y
-  const dz = enemy.target.z - enemy.position.z
+  const dx = enemy.target.x - enemy.muzzle.x
+  const dy = enemy.target.y - enemy.muzzle.y
+  const dz = enemy.target.z - enemy.muzzle.z
   const distance = Math.max(0.001, Math.hypot(dx, dy, dz))
   const speed = enemy.velocity.x
   projectile.active = true
   projectile.kind = kind
-  projectile.position.x = enemy.position.x
-  projectile.position.y = enemy.position.y
-  projectile.position.z = enemy.position.z
+  projectile.position.x = enemy.muzzle.x
+  projectile.position.y = enemy.muzzle.y
+  projectile.position.z = enemy.muzzle.z
   projectile.velocity.x = dx / distance * speed
   projectile.velocity.y = dy / distance * speed
   projectile.velocity.z = dz / distance * speed
@@ -546,7 +666,9 @@ function stepFighter(enemy: EnemySlot, player: Vec3, d: number) {
   }
 }
 
-export function stepEnemies(state: EnemyState, player: Vec3, dt: number) {
+const STILL: Vec3 = { x: 0, y: 0, z: 0 }
+
+export function stepEnemies(state: EnemyState, player: Vec3, dt: number, playerVelocity: Vec3 = STILL) {
   const d = Math.min(Math.max(0, dt), 0.05)
   for (const enemy of state.slots) {
     if (!enemy.active) continue
@@ -600,9 +722,9 @@ export function stepEnemies(state: EnemyState, player: Vec3, dt: number) {
                 : enemy.kind === 'boss' || enemy.kind === 'fighter'
       if (canAttack) {
         const kind = enemy.kind === 'police' || enemy.kind === 'soldier' || enemy.kind === 'helicopter' ? 'rifle' : enemy.kind === 'police-car' || enemy.kind === 'tank' ? 'shell' : enemy.kind === 'anti-air' ? 'missile' : enemy.kind === 'fighter' ? 'rocket' : 'boss-beam'
-        const speed = kind === 'rifle' ? 22 : kind === 'shell' ? 18 : kind === 'missile' ? 25 : kind === 'rocket' ? 24 : 16
+        const speed = PROJECTILE_SPEED[kind]
         const damage = kind === 'rifle' ? 2 : kind === 'shell' ? (enemy.kind === 'tank' ? 5 : 4) : kind === 'missile' ? 10 : kind === 'rocket' ? 3 : 7
-        aimProjectile(state, enemy, player, kind, speed, damage, enemy.kind === 'boss' ? 1.1 : enemy.kind === 'anti-air' ? 0.8 : enemy.kind === 'helicopter' ? 0.45 : 0.52)
+        aimProjectile(state, enemy, player, playerVelocity, kind, speed, damage, enemy.kind === 'boss' ? 1.1 : enemy.kind === 'anti-air' ? 0.8 : enemy.kind === 'helicopter' ? 0.45 : 0.52)
       }
     }
   }

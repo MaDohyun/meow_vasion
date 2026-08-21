@@ -884,6 +884,79 @@ function EnemyWarnings() {
   )
 }
 
+/**
+ * The aim line: where a shot is about to go.
+ *
+ * The ring under a shooter says someone is aiming. It does not say at what,
+ * and from the air it is a small mark on the ground. Now that shots are led
+ * and fast enough to actually connect, the player needs the other half of the
+ * warning - the line runs from the muzzle to the point the shot is predicted
+ * to meet them, so getting off it is the dodge.
+ *
+ * It exists only while the enemy is aiming. Once the shot leaves, the line goes
+ * with it: a trajectory drawn after the fact is information arriving too late
+ * to use, and at these speeds it would only clutter the screen. Everything the
+ * player gets to decide happens inside the telegraph.
+ */
+const AIM_LINE_CAPACITY = ENEMY_WARNING_CAPACITY
+
+function EnemyAimLines() {
+  const { runtime } = useGame()
+  const ref = useRef<THREE.InstancedMesh>(null)
+  const matrix = useMemo(() => new THREE.Matrix4(), [])
+  const position = useMemo(() => new THREE.Vector3(), [])
+  const scale = useMemo(() => new THREE.Vector3(), [])
+  const quaternion = useMemo(() => new THREE.Quaternion(), [])
+  const axis = useMemo(() => new THREE.Vector3(0, 1, 0), [])
+  const direction = useMemo(() => new THREE.Vector3(), [])
+  const color = useMemo(() => new THREE.Color(), [])
+  useFrame(() => {
+    const mesh = ref.current
+    if (!mesh) return
+    let count = 0
+    for (const enemy of runtime.current.enemies.slots) {
+      if (!enemy.active || !enemy.aiming || enemy.telegraph <= 0) continue
+      // Drawn from the frozen muzzle, which is exactly where the shot will
+      // leave from - so the line the player reacts to is the line they get.
+      direction.set(
+        enemy.target.x - enemy.muzzle.x,
+        enemy.target.y - enemy.muzzle.y,
+        enemy.target.z - enemy.muzzle.z,
+      )
+      const length = direction.length()
+      if (length < 0.5) continue
+      direction.divideScalar(length)
+      quaternion.setFromUnitVectors(axis, direction)
+      position.set(
+        enemy.muzzle.x + direction.x * length * 0.5,
+        enemy.muzzle.y + direction.y * length * 0.5,
+        enemy.muzzle.z + direction.z * length * 0.5,
+      )
+      // Thickens as the telegraph runs out, so "about to fire" is legible
+      // without reading a number.
+      const heat = enemy.kind === 'boss' ? 1.1 : enemy.kind === 'anti-air' ? 0.8 : 0.52
+      const charge = Math.min(1, Math.max(0, 1 - enemy.telegraph / heat))
+      scale.set(0.09 + charge * 0.16, length, 0.09 + charge * 0.16)
+      matrix.compose(position, quaternion, scale)
+      mesh.setMatrixAt(count, matrix)
+      color.set(enemy.kind === 'anti-air' ? '#ffdf5c' : enemy.kind === 'boss' ? '#ff5f7c' : enemy.kind === 'tank' ? '#ff9c54' : enemy.kind === 'fighter' ? '#ff78bd' : '#fff3a3')
+      mesh.setColorAt(count, color)
+      count += 1
+    }
+    mesh.count = count
+    mesh.instanceMatrix.needsUpdate = true
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
+  })
+  return (
+    <instancedMesh ref={ref} args={[undefined, undefined, AIM_LINE_CAPACITY]} frustumCulled={false} renderOrder={4}>
+      <cylinderGeometry args={[1, 1, 1, 5]} />
+      {/* Like the ring: this is the player's warning and must not dim with the
+          night. */}
+      <meshBasicMaterial vertexColors transparent opacity={0.55} depthWrite={false} blending={THREE.AdditiveBlending} toneMapped={false} />
+    </instancedMesh>
+  )
+}
+
 function EnemyProjectiles() {
   const { runtime } = useGame()
   const ref = useRef<THREE.InstancedMesh>(null)
@@ -891,6 +964,8 @@ function EnemyProjectiles() {
   const position = useMemo(() => new THREE.Vector3(), [])
   const scale = useMemo(() => new THREE.Vector3(), [])
   const quaternion = useMemo(() => new THREE.Quaternion(), [])
+  const travel = useMemo(() => new THREE.Vector3(), [])
+  const shotAxis = useMemo(() => new THREE.Vector3(0, 1, 0), [])
   const color = useMemo(() => new THREE.Color(), [])
   useFrame(() => {
     const mesh = ref.current
@@ -900,7 +975,19 @@ function EnemyProjectiles() {
       if (!projectile.active) continue
       position.set(projectile.position.x, projectile.position.y, projectile.position.z)
       const size = projectile.kind === 'boss-beam' ? 1.35 : projectile.kind === 'missile' ? 0.95 : projectile.kind === 'shell' ? 0.8 : 0.48
-      scale.setScalar(size)
+      // Stretched along travel rather than a round dot: at these speeds a
+      // sphere gives no sense of which way a shot is going, and which way it
+      // is going is the only thing the player can act on once it is out.
+      travel.set(projectile.velocity.x, projectile.velocity.y, projectile.velocity.z)
+      const speed = travel.length()
+      if (speed > 0.001) {
+        travel.divideScalar(speed)
+        quaternion.setFromUnitVectors(shotAxis, travel)
+        scale.set(size, size * (1 + speed * 0.05), size)
+      } else {
+        quaternion.identity()
+        scale.setScalar(size)
+      }
       matrix.compose(position, quaternion, scale)
       mesh.setMatrixAt(count, matrix)
       color.set(projectile.kind === 'boss-beam' ? '#ff5f7c' : projectile.kind === 'missile' ? '#ffe05f' : projectile.kind === 'shell' ? '#ff9c54' : projectile.kind === 'rocket' ? '#ff78bd' : '#fff5c7')
@@ -1461,6 +1548,7 @@ export function DroneScene() {
       <HazardPool />
       <EnemyPools />
       <EnemyWarnings />
+      <EnemyAimLines />
       <EnemyProjectiles />
       <LaserProjectiles />
       <LaserBursts />
