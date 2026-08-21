@@ -46,6 +46,10 @@ export const LIGHT = {
 export const GROUND = {
   BASE: '#c2cda8',
   ROAD: '#a3a1aa',
+  /** Pavement and its kerb. Painted into the road tile rather than instanced
+   *  separately, so the streets gain a footpath at no draw-call cost. */
+  PAVEMENT: '#c6c2bb',
+  KERB: '#8f8d92',
   ROAD_MARKING: '#f0d38f',
   CROSSWALK: '#e8e5de',
   BUILDING_PAD: '#cfc3b9',

@@ -696,10 +696,35 @@ const tankerGeometry = mergeModel([
   )),
 ])
 
+// The truck. Deliberately the tanker's opposite in silhouette: a square box
+// body where the tanker has a cylinder, so at flying height the two are told
+// apart by shape alone rather than by reading a colour.
+const truckGeometry = mergeModel([
+  coloredPart(new RoundedBoxGeometry(2.5, 1.75, 2.3, 2, 0.18).translate(0, 0.1, -2.4), '#3f6fa8'),
+  coloredPart(new THREE.BoxGeometry(2.2, 0.85, 0.18).translate(0, 0.32, -3.45), '#1d2436'),
+  coloredPart(new RoundedBoxGeometry(2.7, 2.5, 5.3, 2, 0.12).translate(0, 0.66, 0.95), '#e2e6ec'),
+  // A rib every so often down the box, and a roll-up door at the back.
+  ...[-0.8, 0.6, 2.0].map((z) =>
+    coloredPart(new THREE.BoxGeometry(2.78, 2.56, 0.14).translate(0, 0.66, z), '#c8cedb'),
+  ),
+  coloredPart(new THREE.BoxGeometry(2.4, 2.0, 0.12).translate(0, 0.56, 3.62), '#aeb6c6'),
+  coloredPart(new THREE.BoxGeometry(2.55, 0.28, 5.6).translate(0, -0.68, 0.6), '#2b3242'),
+  ...[-1.05, 1.05].flatMap((x) => [-2.1, 1.5, 2.7].map((z) =>
+    coloredPart(new THREE.CylinderGeometry(0.53, 0.53, 0.32, 10).rotateZ(Math.PI / 2).translate(x, -0.78, z), '#191d2a'),
+  )),
+])
+
 const hazardTankerMaterial = new THREE.MeshToonMaterial({
   vertexColors: true,
   emissive: new THREE.Color('#5a3320'),
   emissiveIntensity: 0.18,
+})
+
+// Cooler and dimmer than the tanker's, so the two do not glow alike at night.
+const hazardTruckMaterial = new THREE.MeshToonMaterial({
+  vertexColors: true,
+  emissive: new THREE.Color('#243347'),
+  emissiveIntensity: 0.14,
 })
 
 /**
@@ -714,6 +739,7 @@ const hazardTankerMaterial = new THREE.MeshToonMaterial({
 function HazardPool() {
   const { runtime } = useGame()
   const bodies = useRef<THREE.InstancedMesh>(null)
+  const trucks = useRef<THREE.InstancedMesh>(null)
   const matrix = useMemo(() => new THREE.Matrix4(), [])
   const position = useMemo(() => new THREE.Vector3(), [])
   const scale = useMemo(() => new THREE.Vector3(), [])
@@ -722,8 +748,10 @@ function HazardPool() {
 
   useFrame(() => {
     const body = bodies.current
-    if (!body) return
-    let count = 0
+    const truck = trucks.current
+    if (!body || !truck) return
+    let tankers = 0
+    let boxes = 0
     for (const hazard of runtime.current.hazards.objects) {
       if (!hazard.active) continue
       position.set(hazard.position.x, hazard.position.y, hazard.position.z)
@@ -732,16 +760,24 @@ function HazardPool() {
       const absorbScale = hazard.absorbing ? Math.max(0.04, hazard.absorbTimer / BEAM_ABSORB_TIME) : 1
       scale.setScalar(absorbScale)
       matrix.compose(position, quaternion, scale)
-      body.setMatrixAt(count, matrix)
-      count += 1
+      if (hazard.kind === 'truck') {
+        truck.setMatrixAt(boxes, matrix)
+        boxes += 1
+      } else {
+        body.setMatrixAt(tankers, matrix)
+        tankers += 1
+      }
     }
-    body.count = count
+    body.count = tankers
+    truck.count = boxes
     body.instanceMatrix.needsUpdate = true
+    truck.instanceMatrix.needsUpdate = true
   })
 
   return (
     <group>
       <instancedMesh ref={bodies} args={[tankerGeometry, hazardTankerMaterial, HAZARD_MAX]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }} />
+      <instancedMesh ref={trucks} args={[truckGeometry, hazardTruckMaterial, HAZARD_MAX]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }} />
     </group>
   )
 }

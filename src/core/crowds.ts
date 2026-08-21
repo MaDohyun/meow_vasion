@@ -1,12 +1,22 @@
 import { BEAM_ABSORB_TIME, beginNearbyBeamObjectAbsorption, type BeamObject } from './beam'
 import type { CrowdSpawnZone } from './cityLandmarks'
 import type { Aabb, Vec3 } from './drone'
+import { WORLD_CELL_SIZE } from './world'
 
 export type CrowdKind = 'pedestrian' | 'cat'
-export const PEDESTRIAN_MAX = 42
-export const CAT_MAX = 11
-export const INITIAL_PEDESTRIANS = 24
-export const INITIAL_CATS = 9
+/**
+ * Pool sizes.
+ *
+ * Raised because a city is the point: the streets read as empty when the whole
+ * crowd fits in a park. The cost is close to linear rather than quadratic -
+ * crowd members are skipped in each other's threat checks (see crowdThreatStart),
+ * so a body only ever tests against the craft and the handful of real threats,
+ * and each of them draws from one instanced pool regardless of count.
+ */
+export const PEDESTRIAN_MAX = 58
+export const CAT_MAX = 14
+export const INITIAL_PEDESTRIANS = 34
+export const INITIAL_CATS = 12
 // Tight on purpose. The pool is fixed size, so stragglers left alive far behind
 // the player squat in every slot and block respawns near the path: the pool
 // saturated at 53 bodies while only two or three were ever within reach.
@@ -76,11 +86,38 @@ const CLUSTER_SIZE = 5
 const CLUSTER_SPREAD = 11
 const GOLDEN_ANGLE = 2.399963
 
+/**
+ * People walk somewhere instead of turning at random.
+ *
+ * A random walk keeps a crowd where it spawned: over a minute the expected
+ * displacement of ninety-degree turns every couple of seconds is close to zero,
+ * so a park seeded with sixteen people still holds sixteen people, in a knot,
+ * and the streets around it stay empty no matter how many bodies the pool
+ * carries. Giving each body a destination on a road spreads the same crowd
+ * across the city on its own, without touching a single spawn weight.
+ *
+ * Destinations sit on the road grid: carriageways run along every multiple of
+ * WORLD_CELL_SIZE, so a lane offset just off the kerb puts the walk on a
+ * pavement rather than through the middle of traffic or across a building.
+ */
+const PAVEMENT_LANE = 3.65
+const DESTINATION_MIN = 26
+const DESTINATION_RANGE = 70
+const DESTINATION_ARRIVE = 3.2
+/** Give-up timer. A destination behind a wall must not strand a body forever. */
+const DESTINATION_TIMEOUT = 26
+/** The rest stay local - a city where nobody ever loiters reads as a parade. */
+const ROAMER_SHARE = 0.22
+
 export type CrowdObject = BeamObject & {
   kind: CrowdKind
   slot: number
   generation: number
   heading: number
+  /** Locals with no errand. They keep the old random walk. */
+  roams: boolean
+  targetX: number
+  targetZ: number
   wanderTimer: number
   pauseTimer: number
   fleeTimer: number
@@ -133,6 +170,9 @@ function makeCrowdObject(kind: CrowdKind, slot: number): CrowdObject {
     diameter: kind === 'cat' ? 0.55 : 0.78,
     scoreValue: kind === 'cat' ? 40 : 15,
     heading: 0,
+    roams: true,
+    targetX: 0,
+    targetZ: 0,
     wanderTimer: 0,
     pauseTimer: 0,
     fleeTimer: 0,
@@ -165,6 +205,28 @@ function random(state: CrowdState) {
   value ^= value << 5
   state.randomState = value >>> 0
   return state.randomState / 0xffffffff
+}
+
+/**
+ * Puts the next errand on a road, a block or two away.
+ *
+ * One axis snaps to the nearest carriageway and steps off it by a lane width;
+ * the other runs along that road. The result is a walk down a street rather
+ * than a diagonal through the block, and because the axis is re-rolled each
+ * time, a body turns corners over a run instead of leaving on a single bearing.
+ */
+function pickDestination(state: CrowdState, object: CrowdObject) {
+  const distance = DESTINATION_MIN + random(state) * DESTINATION_RANGE
+  const along = random(state) < 0.5 ? -1 : 1
+  const lane = (random(state) < 0.5 ? -1 : 1) * PAVEMENT_LANE
+  if (random(state) < 0.5) {
+    object.targetZ = Math.round(object.position.z / WORLD_CELL_SIZE) * WORLD_CELL_SIZE + lane
+    object.targetX = object.position.x + along * distance
+  } else {
+    object.targetX = Math.round(object.position.x / WORLD_CELL_SIZE) * WORLD_CELL_SIZE + lane
+    object.targetZ = object.position.z + along * distance
+  }
+  object.wanderTimer = DESTINATION_TIMEOUT
 }
 
 function blockedAt(view: CrowdView, x: number, z: number, margin: number) {
@@ -268,7 +330,9 @@ function spawnCrowdObject(state: CrowdState, view: CrowdView, kind: CrowdKind, p
   object.angularVelocity.x = 0
   object.angularVelocity.y = 0
   object.angularVelocity.z = 0
+  object.roams = kind === 'cat' || random(state) < ROAMER_SHARE
   object.wanderTimer = 1 + random(state) * 3
+  if (!object.roams) pickDestination(state, object)
   object.pauseTimer = 0
   object.fleeTimer = 0
   object.turnCooldown = 0
@@ -384,6 +448,18 @@ export function stepCrowds(state: CrowdState, view: CrowdView, dt: number) {
       } else if (object.pauseTimer > 0) {
         object.velocity.x *= Math.exp(-8 * d)
         object.velocity.z *= Math.exp(-8 * d)
+      } else if (!object.roams) {
+        object.wanderTimer -= d
+        const toTargetX = object.targetX - object.position.x
+        const toTargetZ = object.targetZ - object.position.z
+        if (Math.hypot(toTargetX, toTargetZ) < DESTINATION_ARRIVE || object.wanderTimer <= 0) {
+          pickDestination(state, object)
+          if (random(state) < 0.18) object.pauseTimer = 0.4 + random(state) * 1.1
+        } else object.heading = Math.atan2(toTargetX, toTargetZ)
+        const speed = WANDER_SPEED[object.kind]
+        const blend = 1 - Math.exp(-WANDER_BLEND * d)
+        object.velocity.x += (Math.sin(object.heading) * speed - object.velocity.x) * blend
+        object.velocity.z += (Math.cos(object.heading) * speed - object.velocity.z) * blend
       } else {
         object.wanderTimer -= d
         if (object.wanderTimer <= 0) {

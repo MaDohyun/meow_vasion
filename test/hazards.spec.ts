@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isAbsorbable } from '../src/core/beam'
+import { CAR_MASS, isAbsorbable } from '../src/core/beam'
 import {
   HAZARD_MAX,
   HAZARD_TRIGGER_DISTANCE,
@@ -9,6 +9,9 @@ import {
   detonateReachedHazard,
   hazardTargetForTime,
   stepHazards,
+  truckTargetForTime,
+  TRUCK_MASS,
+  HAZARD_MASS,
 } from '../src/core/hazards'
 
 const view = (elapsed: number, x = 0, z = 0) => ({ position: { x, y: 6, z }, heading: 0, elapsed })
@@ -31,17 +34,51 @@ describe('ground explosives', () => {
     expect(hazardTargetForTime(600)).toBeLessThanOrEqual(HAZARD_MAX)
   })
 
+  it('keeps tankers rarer than trucks at every point in the run', () => {
+    // The tanker used to be the only heavy vehicle on the road, so a full beam
+    // was more likely to be holding a bomb than a haul. Freight has to be the
+    // common case or the weight mechanic reads as pure punishment.
+    for (const elapsed of [0, 40, 90, 150, 240, 300]) {
+      expect(hazardTargetForTime(elapsed)).toBeLessThan(truckTargetForTime(elapsed))
+    }
+    expect(hazardTargetForTime(300) + truckTargetForTime(300)).toBeLessThanOrEqual(HAZARD_MAX)
+  })
+
+  it('puts trucks on the road from the first second, tankers only later', () => {
+    const state = createHazardState(23)
+    for (let frame = 0; frame < 20 * 60; frame += 1) stepHazards(state, view(10), 1 / 60)
+    expect(activeHazardCount(state, 'truck')).toBeGreaterThan(0)
+    expect(activeHazardCount(state, 'explosive')).toBe(0)
+  })
+
+  it('gives a truck weight worth feeling but nothing to set off', () => {
+    // Between a car and a tanker: heavy enough that the ballast meter moves,
+    // harmless enough that eating one is the reward rather than the trap.
+    expect(TRUCK_MASS).toBeGreaterThan(CAR_MASS)
+    expect(TRUCK_MASS).toBeLessThan(HAZARD_MASS)
+    const state = createHazardState(29)
+    for (let frame = 0; frame < 20 * 60; frame += 1) stepHazards(state, view(10), 1 / 60)
+    const truck = state.objects.find((item) => item.active && item.kind === 'truck')!
+    truck.inBeam = true
+    for (let frame = 0; frame < 60; frame += 1) stepHazards(state, view(10), 1 / 60)
+    expect(truck.alarm).toBe(0)
+    expect(detonateReachedHazard(state, { ...truck.position })).toBeNull()
+    expect(destroyHazard(state, truck.id)).toBeNull()
+    expect(truck.active).toBe(true)
+  })
+
   it('populates up to the target as the run goes on', () => {
     const state = createHazardState(11)
     for (let frame = 0; frame < 60 * 60; frame += 1) stepHazards(state, view(90), 1 / 60)
-    expect(activeHazardCount(state)).toBe(hazardTargetForTime(90))
+    expect(activeHazardCount(state, 'explosive')).toBe(hazardTargetForTime(90))
+    expect(activeHazardCount(state, 'truck')).toBe(truckTargetForTime(90))
   })
 
   it('raises the alarm while held and stands down when released', () => {
     const state = createHazardState(3)
     stepHazards(state, view(90), 1 / 60)
     for (let frame = 0; frame < 120; frame += 1) stepHazards(state, view(90), 1 / 60)
-    const hazard = state.objects.find((item) => item.active)!
+    const hazard = state.objects.find((item) => item.active && item.kind === 'explosive')!
     hazard.inBeam = true
     for (let frame = 0; frame < 60; frame += 1) stepHazards(state, view(90), 1 / 60)
     const heldAlarm = hazard.alarm
