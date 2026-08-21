@@ -1,5 +1,5 @@
 /**
- * Evening-to-night cycle for a run.
+ * Day cycle for a run.
  *
  * The run escalates on a clock - wave stages arrive at fixed elapsed times - so
  * the sky is put on the same clock. You can see how deep into the run you are
@@ -9,20 +9,21 @@
  * dark: lit windows, streetlights, and additive beams and explosions all need a
  * background that has stopped competing with them. A cycle that opened in
  * morning light spent the whole first half of the run - the half where a player
- * forms their impression of the game - under a bright blue sky, and only
- * reached the good picture once they were too busy being shot at to look at it.
- * So the sun is already low when the run begins, and the arc is sunset to
- * night rather than dawn to night.
+ * forms their impression of the game - under a bright blue sky.
  *
- * The cycle still finishes before the run does. The last waves are the ones
- * that need full night, not a sky mid-transition.
+ * But it does not stop at night. Night falls, holds through the middle third
+ * of the run, and then the sun comes back up: dawn lands at about 144 seconds,
+ * which is where the final wave arrives, so the last assault and the sunrise
+ * happen together. Noon lands exactly as the run runs out. Surviving the night
+ * and watching it get light is a better ending than a sky that darkens and then
+ * sits still for the last forty seconds.
  *
  * Pure data and scalars only - no Three.js. The render layer turns the hex
  * strings into colours and does the interpolation in linear space, so this file
  * stays testable.
  */
 
-export type DaylightPhase = 'golden' | 'dusk' | 'night'
+export type DaylightPhase = 'golden' | 'dusk' | 'night' | 'dawn' | 'morning' | 'day'
 
 export type DaylightColors = {
   background: string
@@ -42,6 +43,15 @@ export type DaylightKeyframe = {
   at: number
   phase: DaylightPhase
   label: string
+  /**
+   * City time at this keyframe, in hours since the run opened at six.
+   *
+   * Carried as data rather than derived from a constant rate because the cycle
+   * is not evenly paced - night takes a third of the run on its own. A clock
+   * ticking at a fixed rate would put an eight-in-the-morning reading on a
+   * screen that is plainly still dark.
+   */
+  hour: number
   colors: DaylightColors
   ambientIntensity: number
   hemiIntensity: number
@@ -65,33 +75,20 @@ export type DaylightKeyframe = {
 }
 
 /**
- * Seconds for a full evening-to-night sweep. Shorter than the 180s run so the
- * final waves play out under a settled night sky instead of mid-transition.
+ * Seconds for one evening-to-noon sweep. Matched to the run length so noon
+ * lands exactly as the clock runs out.
  */
-export const DAY_CYCLE_SECONDS = 140
+export const DAY_CYCLE_SECONDS = 180
 
 /** The hour the run opens on. */
 export const DAYLIGHT_START_HOUR = 18
-
-/** One real second is one minute of city time. Chosen so the numbers land
- *  where the design does: the sky settles into night at 20:20, which is the
- *  end of the cycle, and the run runs out at 21:00. */
-export const DAYLIGHT_MINUTES_PER_SECOND = 1
-
-/** Wall-clock time in the city, as `HH:MM`. Runs off elapsed seconds rather
- *  than off cycle progress so it keeps ticking after the sky has settled. */
-export function daylightClock(elapsed: number) {
-  const minutes = DAYLIGHT_START_HOUR * 60 + Math.max(0, elapsed) * DAYLIGHT_MINUTES_PER_SECOND
-  const hour = Math.floor(minutes / 60) % 24
-  const minute = Math.floor(minutes % 60)
-  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
-}
 
 export const DAYLIGHT_KEYFRAMES: DaylightKeyframe[] = [
   {
     at: 0,
     phase: 'golden',
     label: 'EVENING',
+    hour: 0,
     colors: {
       background: '#c9a385',
       horizon: '#ffcf9c',
@@ -119,9 +116,10 @@ export const DAYLIGHT_KEYFRAMES: DaylightKeyframe[] = [
     fogFar: 700,
   },
   {
-    at: 0.26,
+    at: 0.09,
     phase: 'golden',
     label: 'SUNSET',
+    hour: 1,
     colors: {
       background: '#e58a6e',
       horizon: '#ffb072',
@@ -147,9 +145,10 @@ export const DAYLIGHT_KEYFRAMES: DaylightKeyframe[] = [
     fogFar: 660,
   },
   {
-    at: 0.55,
+    at: 0.19,
     phase: 'dusk',
     label: 'DUSK',
+    hour: 2,
     colors: {
       background: '#3d3a6a',
       horizon: '#8a5570',
@@ -175,9 +174,10 @@ export const DAYLIGHT_KEYFRAMES: DaylightKeyframe[] = [
     fogFar: 620,
   },
   {
-    at: 0.8,
+    at: 0.3,
     phase: 'night',
-    label: 'NIGHTFALL',
+    label: 'NIGHT',
+    hour: 3.5,
     colors: {
       background: '#16193c',
       horizon: '#3b4a78',
@@ -195,17 +195,22 @@ export const DAYLIGHT_KEYFRAMES: DaylightKeyframe[] = [
     sunIntensity: 0.42,
     sunAltitude: -0.4,
     moonAltitude: 0.45,
-    sunOpacity: 0.1,
+    sunOpacity: 0.08,
     moonOpacity: 0.95,
-    nightFactor: 0.87,
-    starIntensity: 0.8,
+    // By the time the label says NIGHT it has to look like night; the walk on
+    // to LATE NIGHT is the sky getting deeper, not the lights coming on.
+    nightFactor: 0.96,
+    starIntensity: 0.9,
     fogNear: 160,
     fogFar: 585,
   },
   {
-    at: 1,
+    // The deepest point, and the longest stretch on screen. Waves three, four
+    // and five all arrive between here and the keyframe before it.
+    at: 0.66,
     phase: 'night',
-    label: 'NIGHT',
+    label: 'LATE NIGHT',
+    hour: 9.5,
     colors: {
       background: '#0a1024',
       horizon: '#243a63',
@@ -222,13 +227,102 @@ export const DAYLIGHT_KEYFRAMES: DaylightKeyframe[] = [
     hemiIntensity: 0.2,
     sunIntensity: 0.3,
     sunAltitude: -0.7,
-    moonAltitude: 0.72,
+    moonAltitude: 0.8,
     sunOpacity: 0,
     moonOpacity: 1,
     nightFactor: 1,
     starIntensity: 1,
     fogNear: 150,
     fogFar: 560,
+  },
+  {
+    // Around 144 seconds, which is where the final wave is coming from. The
+    // last assault and the sunrise are meant to land together.
+    at: 0.8,
+    phase: 'dawn',
+    label: 'DAWN',
+    hour: 11.5,
+    colors: {
+      background: '#4a4a72',
+      horizon: '#e08b86',
+      middle: '#4d5182',
+      top: '#232a55',
+      fog: '#57567f',
+      ambient: '#b9b2cf',
+      hemiSky: '#9a9ec8',
+      hemiGround: '#3b3348',
+      sun: '#ffb08a',
+      cloud: '#8d7d97',
+    },
+    ambientIntensity: 0.3,
+    hemiIntensity: 0.42,
+    sunIntensity: 0.7,
+    sunAltitude: -0.05,
+    moonAltitude: 0.22,
+    sunOpacity: 0.45,
+    moonOpacity: 0.6,
+    nightFactor: 0.62,
+    starIntensity: 0.3,
+    fogNear: 175,
+    fogFar: 615,
+  },
+  {
+    at: 0.91,
+    phase: 'morning',
+    label: 'MORNING',
+    hour: 14,
+    colors: {
+      background: '#a8d9d5',
+      horizon: '#ffd0ac',
+      middle: '#9ccbd4',
+      top: '#5f8ec0',
+      fog: '#a8c9c7',
+      ambient: '#f2fff4',
+      hemiSky: '#e2f7ef',
+      hemiGround: '#c99598',
+      sun: '#ffe7bd',
+      cloud: '#fff1da',
+    },
+    ambientIntensity: 0.58,
+    hemiIntensity: 0.85,
+    sunIntensity: 1.45,
+    sunAltitude: 0.3,
+    moonAltitude: -0.4,
+    sunOpacity: 1,
+    moonOpacity: 0,
+    nightFactor: 0.14,
+    starIntensity: 0,
+    fogNear: 200,
+    fogFar: 700,
+  },
+  {
+    at: 1,
+    phase: 'day',
+    label: 'MIDDAY',
+    hour: 18,
+    colors: {
+      background: '#8fcbdc',
+      horizon: '#cfe9e2',
+      middle: '#89bfda',
+      top: '#4f7fbe',
+      fog: '#9dc4cd',
+      ambient: '#f6fffb',
+      hemiSky: '#dff4ff',
+      hemiGround: '#b3a08f',
+      sun: '#fff6d8',
+      cloud: '#ffffff',
+    },
+    ambientIntensity: 0.66,
+    hemiIntensity: 0.95,
+    sunIntensity: 1.7,
+    sunAltitude: 0.85,
+    moonAltitude: -0.9,
+    sunOpacity: 1,
+    moonOpacity: 0,
+    nightFactor: 0,
+    starIntensity: 0,
+    fogNear: 220,
+    fogFar: 760,
   },
 ]
 
@@ -251,6 +345,8 @@ export type DaylightSample = {
   starIntensity: number
   fogNear: number
   fogFar: number
+  /** Hours since the run opened at six. */
+  hour: number
 }
 
 function mix(a: number, b: number, t: number) {
@@ -275,7 +371,12 @@ export function createDaylightSample(): DaylightSample {
  * Pass `out` to reuse a sample across frames. The render loop runs this every
  * tick and the codebase avoids per-tick allocation throughout.
  */
-export function sampleDaylight(elapsed: number, out?: DaylightSample): DaylightSample {
+/**
+ * Which pair of keyframes a moment falls between, and how far. Shared by the
+ * full sample and by the clock so the two can never disagree about what time
+ * the sky is showing.
+ */
+function keyframeSpan(elapsed: number) {
   const progress = daylightProgress(elapsed)
   let index = 0
   for (let i = 0; i < DAYLIGHT_KEYFRAMES.length - 1; i += 1) {
@@ -286,6 +387,25 @@ export function sampleDaylight(elapsed: number, out?: DaylightSample): DaylightS
   const to = DAYLIGHT_KEYFRAMES[Math.min(index + 1, DAYLIGHT_KEYFRAMES.length - 1)]!
   const span = to.at - from.at
   const blend = span <= 0 ? 1 : ease(Math.min(1, Math.max(0, (progress - from.at) / span)))
+  return { progress, from, to, blend }
+}
+
+/** Hours since the run opened. Read off the same interpolation as the sky. */
+export function daylightHour(elapsed: number) {
+  const { from, to, blend } = keyframeSpan(elapsed)
+  return mix(from.hour, to.hour, blend)
+}
+
+/** City time as `HH:MM`, wrapping past midnight. */
+export function daylightClock(elapsed: number) {
+  const minutes = (DAYLIGHT_START_HOUR + daylightHour(elapsed)) * 60
+  const hour = Math.floor(minutes / 60) % 24
+  const minute = Math.floor(minutes % 60)
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
+}
+
+export function sampleDaylight(elapsed: number, out?: DaylightSample): DaylightSample {
+  const { progress, from, to, blend } = keyframeSpan(elapsed)
   const target = out ?? ({} as DaylightSample)
   return Object.assign(target, {
     from,
@@ -307,5 +427,6 @@ export function sampleDaylight(elapsed: number, out?: DaylightSample): DaylightS
     starIntensity: mix(from.starIntensity, to.starIntensity, blend),
     fogNear: mix(from.fogNear, to.fogNear, blend),
     fogFar: mix(from.fogFar, to.fogFar, blend),
+    hour: mix(from.hour, to.hour, blend),
   })
 }
