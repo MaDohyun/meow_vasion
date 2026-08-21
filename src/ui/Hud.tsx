@@ -274,15 +274,21 @@ export function Hud() {
   return (
     <>
       <div className="hud" data-dazed={snapshot.daze > 0}>
-        <section className={`time-card panel ${snapshot.sizeRatio <= 0.12 ? 'time-warning' : ''}`}>
+        {/* Two resources, two readouts. They used to be one - size was health -
+            and that made a hit rewind the best part of the game. */}
+        <section className={`time-card panel ${snapshot.healthRatio <= 0.25 ? 'time-warning' : ''}`}>
           <span className="eyebrow">{t.mass}</span>
           <strong className={snapshot.sizePulse > 0.01 ? 'mass-pulse' : ''}>×{snapshot.size.toFixed(2)}</strong>
           <p>{t.massHint}</p>
-          {/* Size is the only fail state, so this bar is the health bar. It reads
-              from the death threshold rather than from zero: the number that
-              matters is how much room is left before collapse. */}
-          <div className="time-progress"><i style={{ width: `${Math.max(2, snapshot.sizeRatio * 100)}%` }} /></div>
-          <small>{t.collapseAt} ×{snapshot.sizeMin.toFixed(2)} / {t.clock} {formatTime(snapshot.remainingTime)}</small>
+          <div className="health-bar" data-regen={snapshot.regenerating}>
+            {Array.from({ length: snapshot.healthMax }, (_, pip) => (
+              <i key={pip} data-state={snapshot.health >= pip + 1 ? 'full' : snapshot.health > pip ? 'part' : 'empty'} />
+            ))}
+          </div>
+          <small>
+            {t.hull} {Math.ceil(snapshot.health)}/{snapshot.healthMax}
+            {snapshot.regenerating ? ` · ${t.repairing}` : ''} / {t.clock} {formatTime(snapshot.remainingTime)}
+          </small>
         </section>
 
         <section className="score-card panel">
@@ -321,7 +327,9 @@ export function Hud() {
           </div>
           <div className="altitude-alert" data-active={snapshot.height >= 28}>
             <span>{snapshot.height >= 28 ? t.bandAa : snapshot.height > 5.5 ? t.bandArmor : t.bandGround}</span>
-            <b>{snapshot.height >= 28 ? t.bandAaNote : snapshot.height > 5.5 ? t.bandArmorNote : t.bandGroundNote}</b>
+            {/* An unseen rule is not a rule: the craft can only climb as high
+                as its size allows, so the limit has to be on screen. */}
+            <b>{t.ceiling} {Math.round(snapshot.maxAltitude)}m</b>
           </div>
         </section>
 

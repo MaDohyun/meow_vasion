@@ -22,7 +22,8 @@ import {
   stepHazards,
   type HazardState,
 } from './core/hazards'
-import { SIZE_LOSS, SIZE_MIN, SIZE_START, type SizeGainKind, type SizeLossKind, type SizeProfile, clampSize, growSize, growSizeBy, isSizeFatal, shrinkSize, sizeProfile, ufoDiameter } from './core/size'
+import { SIZE_MIN, SIZE_START, type SizeGainKind, type SizeProfile, clampSize, growSize, growSizeBy, sizeProfile, ufoDiameter } from './core/size'
+import { createHealthState, damageHealth, healHealth, healthRatio, isDead, isRegenerating, stepHealth, type HealthLossKind, type HealthState } from './core/health'
 import { activeEnemyCount, createEnemyState, hitEnemy, resolveEnemyContacts, stepEnemies, stepEnemyProjectiles, syncAntiAirEnemies, syncEnemyTiers, waveLabelForTime, waveStageForTime, type EnemyState } from './core/enemies'
 import {
   createLaserPool,
@@ -43,7 +44,7 @@ import { requestedPilotExpression, updatePilotExpression, type PilotExpression }
 import { activeWorldColliders, createActiveWorld, updateActiveWorld, WORLD_MAX_CARS, WORLD_REMOVE_RADIUS, type ActiveWorld, type ProceduralCar } from './core/world'
 import { captureTrafficCar, createTrafficState, releaseTrafficSlot, stepTraffic, TRAFFIC_MAX_CARS, type TrafficCar, type TrafficState } from './core/traffic'
 import { BROADCAST_OPENING_AT, BROADCAST_SECONDS } from './core/broadcast'
-import { applyUpgrade, createUpgradeState, isUpgradeDue, rollUpgradeChoices, upgradeMultiplier, type UpgradeId, type UpgradeState } from './core/upgrades'
+import { REGEN_CARD_INSTANT_HEAL, applyUpgrade, createUpgradeState, isUpgradeDue, rollUpgradeChoices, upgradeMultiplier, type UpgradeId, type UpgradeState } from './core/upgrades'
 import { setBgmWave, startBgm, stopBgm, tone } from './audio'
 
 export type GamePhase = 'intro' | 'playing' | 'upgrade' | 'results'
@@ -109,6 +110,7 @@ export type GameRuntime = {
   hitstop: number
   size: number
   sizeProfile: SizeProfile
+  health: HealthState
   sizePulse: number
   absorbedCount: number
   ballast: number
@@ -154,6 +156,11 @@ export type GameSnapshot = {
   size: number
   sizeRatio: number
   sizeMin: number
+  health: number
+  healthMax: number
+  healthRatio: number
+  regenerating: boolean
+  maxAltitude: number
   sizePulse: number
   absorbedCount: number
   ballast: number
@@ -279,9 +286,9 @@ function makeTrafficBeamObject(car: TrafficCar): BeamObject {
 
 function makeRuntime(): GameRuntime {
   const drone = createDroneState()
-  // Start around the city's mid-rise band instead of at street level. The
-  // opening view immediately reads as flying between buildings.
-  drone.position = { x: 0, y: 18, z: 54.5 }
+  // Down in the streets. The opening craft is small, its ceiling is low, and
+  // its beam is weak - it belongs among the buildings, not above them.
+  drone.position = { x: 0, y: 7, z: 54.5 }
   drone.heading = Math.PI
   const world = createActiveWorld(drone.position)
   const crowdSpawnZones = crowdSpawnZonesAround(drone.position)
@@ -338,6 +345,7 @@ function makeRuntime(): GameRuntime {
     hitstop: 0,
     size: SIZE_START,
     sizeProfile: sizeProfile(SIZE_START),
+    health: createHealthState(),
     sizePulse: 0,
     absorbedCount: 0,
     ballast: 0,
@@ -440,17 +448,20 @@ function dropCars(game: GameRuntime) {
     if (!hazard.active || (!hazard.inBeam && hazard.tether <= 0.02)) continue
     hazard.inBeam = false
     hazard.tether = 0
+    hazard.hold = 0
   }
   for (const enemy of game.enemies.slots) {
     if (!enemy.active || (!enemy.inBeam && enemy.tether <= 0.02)) continue
     enemy.inBeam = false
     enemy.tether = 0
+    enemy.hold = 0
     dropped += 1
   }
   for (const object of game.beamObjects) {
     if (!object.active || (!object.inBeam && object.tether <= 0.02)) continue
     object.inBeam = false
     object.tether = 0
+    object.hold = 0
     object.velocity.x += game.drone.velocity.x * 0.18
     object.velocity.z += game.drone.velocity.z * 0.18
     object.velocity.y = Math.max(2, object.velocity.y)
@@ -507,13 +518,16 @@ function growBy(game: GameRuntime, amount: number) {
   return game.size - before
 }
 
-/** Every shrink runs through here so the fail check lives in exactly one place. */
-function shrink(game: GameRuntime, kind: SizeLossKind) {
+/**
+ * Every point of damage runs through here, so the fail check lives in exactly
+ * one place. Size is not touched - it never falls.
+ */
+function wound(game: GameRuntime, kind: HealthLossKind) {
   // Hull is the one upgrade that reduces rather than increases, so it divides.
-  game.size = clampSize(game.size - SIZE_LOSS[kind] / upgradeMultiplier(game.upgrades, 'hull'))
-  game.sizeProfile = sizeProfile(game.size)
-  game.sizePulse = 1
-  if (isSizeFatal(game.size)) endRun(game, 'CORE COLLAPSED', false)
+  const before = game.health.current
+  damageHealth(game.health, kind)
+  game.health.current = Math.max(0, before - (before - game.health.current) / upgradeMultiplier(game.upgrades, 'hull'))
+  if (isDead(game.health)) endRun(game, 'CRAFT DOWN', false)
 }
 
 /**
@@ -548,9 +562,9 @@ function absorbCrowd(game: GameRuntime, kind: 'cat' | 'pedestrian') {
 function absorbBeamObject(game: GameRuntime, object: BeamObject) {
   const diameter = beamObjectDiameter(object)
   const reward = absorptionScore(object, game.sizeProfile.scoreMultiplier)
-  // Larger meals grow the craft more. This follows the new doubled growth
-  // cadence while staying bounded enough that one tanker cannot skip a run.
-  growBy(game, Math.min(0.16, 0.018 + diameter * 0.016))
+  // Larger meals grow the craft more, as a fraction of current size like every
+  // other gain. Bounded so one tanker cannot skip a run.
+  growBy(game, Math.min(0.14, 0.012 + diameter * 0.012))
   game.absorbedCount += 1
   game.score += reward
   game.pickupPulse = 1
@@ -594,14 +608,14 @@ function syncCrowdThreats(game: GameRuntime) {
   }
 }
 
-function registerImpact(game: GameRuntime, source: 'ENEMY' | 'BUILDING', loss?: SizeLossKind) {
+function registerImpact(game: GameRuntime, source: 'ENEMY' | 'BUILDING', loss?: HealthLossKind) {
   if (game.damageCooldown > 0 || game.phase !== 'playing') return
   game.damageCooldown = 1.05
   game.impactFlash = 1
   // Replaces the old continuous camera shake: a single short freeze reads as a
   // hit without leaving the whole late game permanently vibrating.
   game.hitstop = HITSTOP_TIME
-  shrink(game, source === 'BUILDING' ? 'building' : loss ?? 'contact')
+  wound(game, source === 'BUILDING' ? 'building' : loss ?? 'contact')
   setMessage(game, 'msgImpact', 1.8)
   tone(source === 'BUILDING' ? 'impact' : 'warning')
   if ('vibrate' in navigator) navigator.vibrate?.([35, 20, 35])
@@ -632,6 +646,11 @@ function snapshotOf(game: GameRuntime): GameSnapshot {
     size: game.size,
     sizeRatio: game.sizeProfile.ratio,
     sizeMin: SIZE_MIN,
+    health: game.health.current,
+    healthMax: game.health.max,
+    healthRatio: healthRatio(game.health),
+    regenerating: isRegenerating(game.health),
+    maxAltitude: game.sizeProfile.maxAltitude,
     sizePulse: game.sizePulse,
     absorbedCount: game.absorbedCount,
     ballast: game.ballast,
@@ -812,6 +831,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     game.collisionCooldown = Math.max(0, game.collisionCooldown - d)
     game.laserCooldown = Math.max(0, game.laserCooldown - d)
     game.broadcastTime = Math.max(0, game.broadcastTime - d)
+    stepHealth(game.health, d, upgradeMultiplier(game.upgrades, 'regen'))
     // The city reports the sighting once the player has had a moment to fly.
     if (!game.openingBroadcastDone && game.sessionTime >= BROADCAST_OPENING_AT) {
       game.openingBroadcastDone = true
@@ -846,6 +866,14 @@ export function GameProvider({ children }: { children: ReactNode }) {
     const flightInput: DroneInput = { ...input, special: false }
     // Only ballast slows the craft. Size is deliberately absent: growth is what
     // the player is good at, and taxing it directly punishes them for winning.
+    // Soft ceiling. The climb input fades out as the craft nears the height its
+    // size allows, so it reads as the air thinning rather than as a wall - a
+    // hard clamp would have the craft slamming into an invisible surface.
+    const ceiling = game.sizeProfile.maxAltitude
+    if (flightInput.vertical > 0) {
+      const headroom = Math.max(0, ceiling - game.drone.position.y)
+      flightInput.vertical *= Math.min(1, headroom / 9)
+    }
     const thrust = upgradeMultiplier(game.upgrades, 'thrust')
     const stepped = stepDrone(game.drone, flightInput, d, game.ballast * BALLAST_DRAG + (game.daze > 0 ? DAZE_DRAG : 0), { ...UFO_UPGRADES, speed: UFO_UPGRADES.speed * thrust })
     const nextWorld = updateActiveWorld(game.world, stepped.position)
@@ -893,7 +921,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
       // one unless it spent a card on length.
       radiusScale: game.sizeProfile.beamScale * upgradeMultiplier(game.upgrades, 'beam-radius'),
       reachScale: upgradeMultiplier(game.upgrades, 'beam-reach'),
-      gripScale: upgradeMultiplier(game.upgrades, 'beam-grip'),
+      // Natural grip from size, multiplied by whatever the player spent cards
+      // on. Growing alone makes the beam stronger; cards make it stronger
+      // sooner.
+      gripScale: game.sizeProfile.beamPower * upgradeMultiplier(game.upgrades, 'beam-grip'),
     }
     // No pickup cap: hanging mass is its own limit, and a craft that grabbed
     // too much should feel it rather than be quietly protected from it.
@@ -931,7 +962,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     const detonated = detonateReachedHazard(game.hazards, game.drone.position)
     if (detonated) {
       triggerLaserBurst(game.laserBursts, 'impact', detonated.position, '#ff7a3d')
-      shrink(game, 'explosive')
+      wound(game, 'explosive')
       // Only re-arm from zero: chained dazes would compound into a stun by
       // another name.
       if (game.daze <= 0) game.daze = DAZE_TIME
@@ -1041,6 +1072,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     if (game.phase !== 'upgrade') return
     if (!game.upgrades.offered.includes(id)) return
     applyUpgrade(game.upgrades, id)
+    if (id === 'regen') healHealth(game.health, REGEN_CARD_INSTANT_HEAL)
     game.phase = 'playing'
     tone('pickup')
     publish()

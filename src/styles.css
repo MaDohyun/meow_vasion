@@ -217,6 +217,14 @@ button { font: inherit; }
 .upgrade-card b { margin-top:10px; padding-top:9px; color:var(--yellow); border-top:1px dashed rgba(255,245,199,.4); font-size:9px; letter-spacing:1px; }
 .upgrade-hint { margin-top:18px; color:rgba(255,245,199,.6); font-size:8px; font-weight:1000; letter-spacing:2px; }
 
+/* Health pips. Discrete rather than a bar: five hits is a number the player can
+   hold in their head, and a smooth bar reads as a slow drain instead. */
+.health-bar { display:flex; gap:4px; margin:2px 0 6px; }
+.health-bar i { flex:1; height:9px; background:rgba(255,245,199,.14); border:2px solid rgba(255,245,199,.4); }
+.health-bar i[data-state="full"] { background:var(--green); border-color:var(--cream); }
+.health-bar i[data-state="part"] { background:linear-gradient(90deg,var(--green) 50%,rgba(255,245,199,.14) 50%); border-color:var(--cream); }
+.health-bar[data-regen="true"] i[data-state="empty"], .health-bar[data-regen="true"] i[data-state="part"] { animation:warning-pulse 1s steps(2) infinite; }
+
 @media (pointer: coarse), (max-width: 760px) {
   .mobile-controls { display:block; }
   .time-card { top:8px; left:8px; width:190px; padding:7px 8px; }

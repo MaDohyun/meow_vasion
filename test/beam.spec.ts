@@ -14,7 +14,7 @@ import {
   isInsideBeam,
   stepBeamObjects,
 } from '../src/core/beam'
-import { SIZE_MAX, SIZE_MIN, sizeProfile } from '../src/core/size'
+import { SIZE_MAX, SIZE_MIN, SIZE_START, sizeProfile } from '../src/core/size'
 
 const makeCar = (id = 'car-1', x = 0, y = 0.65, z = 0): BeamObject => ({
   id,
@@ -128,16 +128,30 @@ describe('tractor beam physics', () => {
     expect(heavy.position.y).toBeGreaterThan(0.7)
   })
 
-  it('drops an object as soon as it leaves the cone', () => {
+  it('keeps hold of what it caught until the beam is cut', () => {
+    // It used to let go the moment an object left the cone, which made the
+    // beam a geometric test rather than a tractor beam. At cruising speed a
+    // body is inside the cone for about a third of a second while the haul
+    // takes a couple, so dropping on exit meant nothing could be picked up
+    // while flying - only while hovering, which is not this game.
     const car = makeCar('escape', 0, 4, 0)
     stepBeamObjects([car], field(true), 1 / 60)
     expect(car.inBeam).toBe(true)
-    const previousVerticalVelocity = car.velocity.y
-    const missedField = field(true)
-    missedField.position.x = 50
-    stepBeamObjects([car], missedField, 1 / 60)
+
+    // Flown past: out of the cone, still held.
+    const swungAway = field(true)
+    swungAway.position.x = 50
+    stepBeamObjects([car], swungAway, 1 / 60)
+    expect(car.inBeam).toBe(true)
+
+    // Beam off: released, and it ends up back on the street. Asserted on where
+    // it finished rather than on its velocity, because it bounces on landing.
+    const cut = field(true)
+    cut.position.x = 50
+    cut.active = false
+    for (let tick = 0; tick < 60; tick += 1) stepBeamObjects([car], cut, 1 / 60)
     expect(car.inBeam).toBe(false)
-    expect(car.velocity.y).toBeLessThan(previousVerticalVelocity)
+    expect(car.position.y).toBeLessThan(1.5)
   })
 
   it('applies gravity when the beam is off', () => {
@@ -281,5 +295,104 @@ describe('how long a load rides the beam', () => {
     // Grip falls off with drop, so hauling from altitude is the expensive way
     // to do it. Hovering low is the skill the beam rewards.
     expect(riseSeconds(CAR_MASS, 20)).toBeGreaterThan(riseSeconds(CAR_MASS, 10))
+  })
+})
+
+describe('the lifting ladder', () => {
+  /** Seconds to haul a mass five metres up, for a craft of a given size. */
+  function riseAt(mass: number, size: number, gripUpgrade = 1, craftY = 10) {
+    const object: BeamObject = {
+      id: 'load', kind: 'car', mass, color: '#fff',
+      position: { x: 0, y: 0.65, z: 0 }, velocity: { x: 0, y: 0, z: 0 },
+      rotation: { x: 0, y: 0, z: 0 }, angularVelocity: { x: 0, y: 0, z: 0 },
+      active: true, inBeam: false, tether: 0, playerTouched: false,
+      destroying: false, destroyTimer: 0, explosionPending: false,
+      absorbing: false, absorbTimer: 0,
+    }
+    const profile = sizeProfile(size)
+    const field: BeamField = {
+      active: true, boosting: false,
+      position: { x: 0, y: craftY, z: 0 }, velocity: { x: 0, y: 0, z: 0 },
+      radiusScale: profile.beamScale,
+      gripScale: profile.beamPower * gripUpgrade,
+    }
+    // Time to be hauled up under the craft, which is the number that decides
+    // whether something can be fed on. Not a fixed climb distance: a craft
+    // hovering at seven metres has less than five to give.
+    //
+    // The threshold sits just outside the deepest slot a load parks in, and
+    // scales with the craft the way those slots do - a big craft holds its
+    // load further out, so a fixed gap would report the whole top of the
+    // ladder as unliftable.
+    const settle = (1.8 + 2 * 0.48) * Math.max(0.45, profile.beamScale) + 0.7
+    for (let tick = 0; tick < 60 * 40; tick += 1) {
+      stepBeamObjects([object], field, 1 / 60, false)
+      if (craftY - object.position.y <= settle) return tick / 60
+    }
+    return Infinity
+  }
+
+  /** Smallest size that hauls this mass in under three seconds. */
+  function unlockSize(mass: number, gripUpgrade = 1) {
+    for (let size = SIZE_START; size <= SIZE_MAX; size += 0.05) {
+      if (riseAt(mass, size, gripUpgrade) <= 3) return size
+    }
+    return Infinity
+  }
+
+  // Approximate masses for the rungs the game does and will contain. The
+  // building figures are the targets the ladder is tuned against.
+  const LOW_RISE = 60
+  const TOWER = 600
+
+  it('opens with a craft that can only just drag one person up', () => {
+    // The whole first minute is this: a saucer barely wider than the people
+    // under it, hauling one of them up the beam while you watch.
+    //
+    // Measured at the altitude it actually starts at. Grip falls off with how
+    // far below the craft the load is, so quoting a single number for "can it
+    // lift a person" is meaningless - the first tuning pass produced a craft
+    // that could not lift anybody from any height it was able to fly at, and
+    // fed nothing at all in a minute of play.
+    const hovering = riseAt(PEDESTRIAN_MASS, SIZE_START, 1, 7)
+    expect(hovering).toBeGreaterThan(1)
+    expect(hovering).toBeLessThan(4)
+    expect(riseAt(CAT_MASS, SIZE_START, 1, 7)).toBeLessThan(hovering)
+    expect(riseAt(CAR_MASS, SIZE_START, 1, 7)).toBeGreaterThan(hovering * 2)
+  })
+
+  it('makes the opening craft come down to street level to feed', () => {
+    // Which is the point of the low ceiling too: a small saucer belongs among
+    // the buildings. Reaching from above is for craft that have grown into it.
+    expect(riseAt(PEDESTRIAN_MASS, SIZE_START, 1, 18))
+      .toBeGreaterThan(riseAt(PEDESTRIAN_MASS, SIZE_START, 1, 7) * 2.5)
+  })
+
+  it('spreads the rungs across the whole size range', () => {
+    // The failure this guards against is a ladder that is over early: at a
+    // steeper curve everything in the game was liftable by size four, leaving
+    // the top two thirds of the range with nothing new to reach for.
+    const rungs = [PEDESTRIAN_MASS, CAR_MASS, HAZARD_MASS, LOW_RISE, TOWER].map((mass) => unlockSize(mass))
+    for (let index = 1; index < rungs.length; index += 1) {
+      expect(rungs[index]!, `rung ${index}`).toBeGreaterThan(rungs[index - 1]!)
+    }
+    // The heaviest thing in the game stays out of reach until well up the
+    // range. The building masses above are provisional targets - buildings are
+    // not absorbable yet - so this guards the shape of the ladder rather than
+    // the exact placement of its top rung, which gets set properly when they
+    // are given real masses.
+    expect(rungs[rungs.length - 1]!).toBeGreaterThan(SIZE_MAX * 0.5)
+    expect(rungs[rungs.length - 1]!).toBeLessThanOrEqual(SIZE_MAX)
+  })
+
+  it('lets growing alone strengthen the beam, with cards buying it sooner', () => {
+    // Natural grip means a player who never spends a card on pull still gets
+    // stronger by being bigger; the card moves them about a rung and a half up
+    // the ladder rather than skipping it.
+    expect(sizeProfile(4).beamPower).toBeGreaterThan(sizeProfile(1).beamPower)
+    const stock = unlockSize(LOW_RISE)
+    const upgraded = unlockSize(LOW_RISE, 1.8)
+    expect(upgraded).toBeLessThan(stock)
+    expect(upgraded).toBeGreaterThan(stock * 0.4)
   })
 })

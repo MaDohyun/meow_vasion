@@ -22,6 +22,7 @@ export type UpgradeId =
   | 'thrust'
   | 'turbo'
   | 'hull'
+  | 'regen'
 
 export type UpgradeDefinition = {
   id: UpgradeId
@@ -45,7 +46,17 @@ export const UPGRADE_DEFINITIONS: Record<UpgradeId, UpgradeDefinition> = {
   thrust: { id: 'thrust', step: 0.1, maxLevel: 4 },
   turbo: { id: 'turbo', step: 0.2, maxLevel: 4 },
   hull: { id: 'hull', step: 0.16, maxLevel: 4 },
+  regen: { id: 'regen', step: 0.35, maxLevel: 4 },
 }
+
+/**
+ * Pips the regeneration card restores the moment it is taken.
+ *
+ * The card carries a permanent effect as well, and it has to: an instant heal
+ * alone is worthless at full health, so nobody would ever pick it when they
+ * were doing well - which is exactly when the card screen tends to appear.
+ */
+export const REGEN_CARD_INSTANT_HEAL = 1.5
 
 export const UPGRADE_IDS = Object.keys(UPGRADE_DEFINITIONS) as UpgradeId[]
 

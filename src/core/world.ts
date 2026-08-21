@@ -4,10 +4,12 @@ export const WORLD_SEED = 1
 export const WORLD_CELL_SIZE = 34
 export const WORLD_SPAWN_RADIUS = 250
 export const WORLD_REMOVE_RADIUS = 300
-export const WORLD_LOD_RADIUS = 600
+/** Far enough that a grown craft, whose fog reaches further, still has city
+ *  out there to reveal rather than an empty ring. */
+export const WORLD_LOD_RADIUS = 820
 export const WORLD_REFRESH_DISTANCE = 10
 export const WORLD_MAX_BUILDINGS = 168
-export const WORLD_MAX_DISTANT_BUILDINGS = 540
+export const WORLD_MAX_DISTANT_BUILDINGS = 880
 export const WORLD_MAX_CARS = 48
 export const WORLD_GROUND_RADIUS_CELLS = 9
 

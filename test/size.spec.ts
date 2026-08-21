@@ -7,18 +7,50 @@ import {
   SIZE_START,
   clampSize,
   growSize,
-  isSizeFatal,
-  shrinkSize,
+  growSizeBy,
+  maxAltitude,
   sizeProfile,
   ufoDiameter,
 } from '../src/core/size'
 
-describe('craft size as the only resource', () => {
-  it('starts close enough to collapse that the first minute has tension', () => {
-    expect(SIZE_START).toBeGreaterThan(SIZE_MIN)
-    expect(SIZE_START - SIZE_MIN).toBeLessThan(0.45)
-    expect(isSizeFatal(SIZE_START)).toBe(false)
-    expect(isSizeFatal(SIZE_MIN - 0.001)).toBe(true)
+describe('craft size as growth, not as health', () => {
+  it('starts small enough that one person is a real meal', () => {
+    // About three people wide. The old start was five metres across, which is
+    // a car - swallowing a pedestrian at that size is housekeeping, not a meal.
+    expect(ufoDiameter(SIZE_START)).toBeLessThan(3)
+    expect(ufoDiameter(SIZE_START)).toBeGreaterThan(1.5)
+    // And there is a whole run's worth of room above it.
+    expect(SIZE_MAX / SIZE_START).toBeGreaterThan(20)
+  })
+
+  it('never falls, whatever happens', () => {
+    // Size stopped being health. A hit that shrank the craft was rewinding the
+    // best part of the game, and once shots could actually land it turned
+    // growing into a spiral: bigger target, more hits, smaller craft.
+    expect(clampSize(SIZE_START - 5)).toBe(SIZE_MIN)
+    expect(growSize(SIZE_START, 'cat')).toBeGreaterThan(SIZE_START)
+    expect(growSizeBy(SIZE_START, 0)).toBe(SIZE_START)
+  })
+
+  it('opens the world up as it grows', () => {
+    // Height, view and camera all widen with size. A grown craft would not fit
+    // between the towers anyway, so the sky opening up is less a reward than a
+    // change of scenery - and it needs to see further because it is up there
+    // covering ground faster.
+    const start = sizeProfile(SIZE_START)
+    const big = sizeProfile(SIZE_MAX)
+    expect(big.maxAltitude).toBeGreaterThan(start.maxAltitude)
+    expect(big.viewDistance).toBeGreaterThan(start.viewDistance)
+    // Even the smallest craft has to clear the low-rise band, or it cannot
+    // move through the city at all.
+    expect(start.maxAltitude).toBeGreaterThan(20)
+    // Altitude rises with size at every step, never dips.
+    let previous = 0
+    for (let size = SIZE_START; size <= SIZE_MAX; size += 0.2) {
+      const altitude = maxAltitude(size)
+      expect(altitude).toBeGreaterThanOrEqual(previous)
+      previous = altitude
+    }
   })
 
   it('trades reach for agility as it grows', () => {
@@ -54,31 +86,15 @@ describe('craft size as the only resource', () => {
     // what puts more saucer on screen the bigger it gets.
     expect(sizeProfile(SIZE_MAX).cameraDistance).toBeGreaterThan(sizeProfile(SIZE_START).cameraDistance)
     expect(CAMERA_GROWTH_PULL_BACK).toBeLessThan(2)
-    // The opening composition is unchanged: at the starting size the rig sits
-    // exactly where it always did.
-    expect(sizeProfile(SIZE_START).cameraDistance).toBeCloseTo(CAMERA_REST_DISTANCE)
+    // The rest distance is the rig at size 1; the opening saucer is smaller
+    // than that, so the camera starts in closer - which is the whole point of
+    // starting small.
+    expect(sizeProfile(1).cameraDistance).toBeCloseTo(CAMERA_REST_DISTANCE)
+    expect(sizeProfile(SIZE_START).cameraDistance).toBeLessThan(CAMERA_REST_DISTANCE)
     expect(ufoDiameter(SIZE_MAX) / 3).toBeGreaterThan(5)
   })
 
-  it('grows on absorption and shrinks on hits, clamped at the top', () => {
-    expect(growSize(SIZE_START, 'cat')).toBeGreaterThan(growSize(SIZE_START, 'pedestrian'))
-    expect(growSize(SIZE_MAX, 'cat')).toBe(SIZE_MAX)
-    expect(shrinkSize(SIZE_START, 'missile')).toBeLessThan(shrinkSize(SIZE_START, 'rifle'))
-    // The explosive pickup is the single most expensive mistake available.
-    expect(shrinkSize(SIZE_START, 'explosive')).toBeLessThan(shrinkSize(SIZE_START, 'missile'))
-    expect(clampSize(-5)).toBe(0)
-  })
 
-  it('uses the doubled feeding pace without making one person erase a missile', () => {
-    let size = shrinkSize(SIZE_START, 'missile')
-    let absorbed = 0
-    while (size < SIZE_START) {
-      size = growSize(size, 'pedestrian')
-      absorbed += 1
-    }
-    expect(absorbed).toBeGreaterThanOrEqual(2)
-    expect(absorbed).toBeLessThanOrEqual(4)
-  })
 
   it('reports ratio from the death threshold, not from zero', () => {
     expect(sizeProfile(SIZE_MIN).ratio).toBe(0)
