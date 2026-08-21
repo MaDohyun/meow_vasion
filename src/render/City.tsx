@@ -15,6 +15,7 @@ import {
 import {
   BUILDING_SIGN_LABELS,
   BUILDING_SIGN_COLORS,
+  ENTRANCE_VARIANTS,
   groundCellsAround,
   WORLD_CELL_SIZE,
   WORLD_GROUND_RADIUS_CELLS,
@@ -55,27 +56,129 @@ function pixelTexture(draw: (context: CanvasRenderingContext2D) => void, width =
   return texture
 }
 
-// Four facade variants in a 2x2 atlas. A per-instance slot picks one, so the
-// skyline does not read as the same building repeated - see facadeSlot below.
-const FACADE_TILES = 2
+// Sixteen facade variants in a 4x4 atlas. A per-instance slot picks one, so a
+// street does not read as one building copied along the block - see facadeSlot
+// below.
+//
+// The sixteen are deliberately different window *types*, not sixteen phase
+// shifts of one grid. Four variants that differed only in which panes were lit
+// still gave every building the same window size, the same bay spacing and the
+// same rhythm, and the eye reads those before it reads which lights are on.
+const FACADE_TILES = 4
 const FACADE_TILE = 64
 const FACADE_SIZE = FACADE_TILE * FACADE_TILES
 
-// Window rows/columns are laid out once and reused by both the colour map and
-// the emissive map, so the glow lands exactly on the lit panes.
-function forEachWindow(callback: (x: number, y: number, lit: boolean, cool: boolean, variant: number) => void) {
-  for (let tile = 0; tile < FACADE_TILES * FACADE_TILES; tile += 1) {
-    const originX = (tile % FACADE_TILES) * FACADE_TILE
-    const originY = Math.floor(tile / FACADE_TILES) * FACADE_TILE
-    for (let row = 0; row < 6; row += 1) {
-      for (let column = 0; column < 5; column += 1) {
-        // A different stride per variant keeps the four patterns from lining up.
-        const stride = [6, 4, 5, 3][tile]!
-        const offset = [0, 2, 1, 3][tile]!
-        const lit = (row * 7 + column * 5 + offset) % stride === 0
-        const cool = lit && (row + column + tile) % 4 === 0
-        callback(originX + 5 + column * 12, originY + 6 + row * 9, lit, cool, tile)
+/** One tile is three storeys. Buildings tile it vertically by height, so a
+ *  tower gets many floors and a shop gets one - see ProceduralBuilding.floors. */
+const FACADE_TILE_ROWS = 3
+
+type FacadeKind = 'grid' | 'ribbon' | 'vertical' | 'paired' | 'stagger'
+
+type FacadeStyle = {
+  kind: FacadeKind
+  /** Window bays across the tile. */
+  columns: number
+  /** How often a pane is lit, and where the pattern starts. */
+  litStride: number
+  litOffset: number
+  /** Blank one bay as a service riser, which breaks the mirror symmetry a
+   *  regular grid otherwise has. */
+  riser: boolean
+}
+
+const FACADE_STYLES: FacadeStyle[] = [
+  { kind: 'grid', columns: 5, litStride: 3, litOffset: 0, riser: false },
+  { kind: 'grid', columns: 4, litStride: 4, litOffset: 1, riser: true },
+  { kind: 'grid', columns: 6, litStride: 5, litOffset: 2, riser: false },
+  { kind: 'grid', columns: 3, litStride: 2, litOffset: 0, riser: false },
+  { kind: 'ribbon', columns: 5, litStride: 2, litOffset: 0, riser: false },
+  { kind: 'ribbon', columns: 7, litStride: 3, litOffset: 1, riser: false },
+  { kind: 'ribbon', columns: 6, litStride: 4, litOffset: 2, riser: true },
+  { kind: 'vertical', columns: 5, litStride: 3, litOffset: 1, riser: false },
+  { kind: 'vertical', columns: 7, litStride: 4, litOffset: 0, riser: false },
+  { kind: 'vertical', columns: 4, litStride: 2, litOffset: 1, riser: true },
+  { kind: 'paired', columns: 6, litStride: 3, litOffset: 0, riser: false },
+  { kind: 'paired', columns: 4, litStride: 5, litOffset: 2, riser: false },
+  { kind: 'paired', columns: 8, litStride: 4, litOffset: 1, riser: true },
+  { kind: 'stagger', columns: 5, litStride: 3, litOffset: 2, riser: false },
+  { kind: 'stagger', columns: 4, litStride: 2, litOffset: 0, riser: false },
+  { kind: 'stagger', columns: 6, litStride: 5, litOffset: 1, riser: true },
+]
+
+type Pane = { x: number; y: number; w: number; h: number; lit: boolean; cool: boolean }
+
+/**
+ * Window panes for one tile, laid out once and walked by both the colour map
+ * and the emissive map so the glow lands exactly on the lit panes.
+ */
+function facadePanes(tile: number, emit: (pane: Pane) => void) {
+  const style = FACADE_STYLES[tile]!
+  const originX = (tile % FACADE_TILES) * FACADE_TILE
+  const originY = Math.floor(tile / FACADE_TILES) * FACADE_TILE
+  // Every tile keeps a slab line at the bottom of each storey, so tiling the
+  // texture up a tower reads as floors stacking rather than as a pattern
+  // repeating.
+  const storey = FACADE_TILE / FACADE_TILE_ROWS
+  const bay = FACADE_TILE / style.columns
+  const riserBay = style.riser ? (tile * 3) % style.columns : -1
+
+  const litAt = (row: number, column: number) =>
+    (row * 7 + column * 5 + style.litOffset) % style.litStride === 0
+  const coolAt = (row: number, column: number) => (row + column + tile) % 4 === 0
+
+  for (let row = 0; row < FACADE_TILE_ROWS; row += 1) {
+    const top = originY + row * storey + 2
+    const usable = storey - 5
+    if (style.kind === 'ribbon') {
+      // One horizontal band per storey, cut by thin mullions. Reads as a
+      // post-war office block rather than as punched windows.
+      const h = Math.max(5, Math.round(usable * 0.58))
+      const y = Math.round(top + (usable - h) * 0.5)
+      for (let column = 0; column < style.columns; column += 1) {
+        if (column === riserBay) continue
+        const x = Math.round(originX + column * bay + 1.5)
+        const w = Math.max(3, Math.round(bay - 3))
+        emit({ x, y, w, h, lit: litAt(row, column), cool: coolAt(row, column) })
       }
+      continue
+    }
+    if (style.kind === 'vertical') {
+      // Tall narrow slots running most of the storey height.
+      const h = Math.max(5, Math.round(usable * 0.82))
+      const y = Math.round(top + (usable - h) * 0.5)
+      for (let column = 0; column < style.columns; column += 1) {
+        if (column === riserBay) continue
+        const w = Math.max(2, Math.round(bay * 0.4))
+        const x = Math.round(originX + column * bay + (bay - w) * 0.5)
+        emit({ x, y, w, h, lit: litAt(row, column), cool: coolAt(row, column) })
+      }
+      continue
+    }
+    if (style.kind === 'paired') {
+      // Two narrow panes sharing a mullion, repeated across the bay.
+      const h = Math.max(4, Math.round(usable * 0.62))
+      const y = Math.round(top + (usable - h) * 0.5)
+      for (let column = 0; column < style.columns; column += 1) {
+        if (column === riserBay) continue
+        const w = Math.max(2, Math.round(bay * 0.34))
+        const left = originX + column * bay + bay * 0.12
+        const lit = litAt(row, column)
+        emit({ x: Math.round(left), y, w, h, lit, cool: coolAt(row, column) })
+        emit({ x: Math.round(left + w + 2), y, w, h, lit, cool: coolAt(row, column + 1) })
+      }
+      continue
+    }
+    // grid and stagger share a pane shape; stagger offsets alternate storeys by
+    // half a bay so the vertical lines never run the height of the building.
+    const h = Math.max(4, Math.round(usable * 0.66))
+    const y = Math.round(top + (usable - h) * 0.5)
+    const shift = style.kind === 'stagger' && row % 2 === 1 ? bay * 0.5 : 0
+    for (let column = 0; column < style.columns; column += 1) {
+      if (column === riserBay) continue
+      const w = Math.max(3, Math.round(bay * 0.62))
+      const x = Math.round(originX + column * bay + (bay - w) * 0.5 + shift)
+      if (x + w > originX + FACADE_TILE) continue
+      emit({ x, y, w, h, lit: litAt(row, column), cool: coolAt(row, column) })
     }
   }
 }
@@ -83,18 +186,22 @@ function forEachWindow(callback: (x: number, y: number, lit: boolean, cool: bool
 const facadeTexture = pixelTexture((context) => {
   context.fillStyle = BUILDING.FACADE_WALL
   context.fillRect(0, 0, FACADE_SIZE, FACADE_SIZE)
-  context.fillStyle = BUILDING.FACADE_SEAM
-  for (let y = 0; y < FACADE_SIZE; y += 8) context.fillRect(0, y, FACADE_SIZE, 1)
-  forEachWindow((x, y) => {
-    context.fillStyle = BUILDING.WINDOW_DARK
-    context.fillRect(x, y, 7, 5)
-    context.fillStyle = BUILDING.WINDOW_DIM
-    context.fillRect(x + 1, y, 2, 1)
-  })
-  // Street-level band stays dark so the base of every tower grounds into night.
-  for (let tile = 0; tile < FACADE_TILES; tile += 1) {
-    context.fillStyle = BUILDING.FACADE_BASE
-    context.fillRect(0, tile * FACADE_TILE + 59, FACADE_SIZE, 5)
+  const storey = FACADE_TILE / FACADE_TILE_ROWS
+  for (let tile = 0; tile < FACADE_TILES * FACADE_TILES; tile += 1) {
+    const originX = (tile % FACADE_TILES) * FACADE_TILE
+    const originY = Math.floor(tile / FACADE_TILES) * FACADE_TILE
+    // Slab line under each storey. This is what survives tiling: the seam a
+    // repeating texture always has is drawn on purpose as a floor edge.
+    context.fillStyle = BUILDING.FACADE_SEAM
+    for (let row = 0; row <= FACADE_TILE_ROWS; row += 1) {
+      context.fillRect(originX, originY + Math.round(row * storey) - 1, FACADE_TILE, 1)
+    }
+    facadePanes(tile, ({ x, y, w, h }) => {
+      context.fillStyle = BUILDING.WINDOW_DARK
+      context.fillRect(x, y, w, h)
+      context.fillStyle = BUILDING.WINDOW_DIM
+      context.fillRect(x + 1, y, Math.max(1, Math.round(w * 0.3)), 1)
+    })
   }
 }, FACADE_SIZE, FACADE_SIZE)
 
@@ -103,13 +210,15 @@ const facadeTexture = pixelTexture((context) => {
 const facadeEmissiveTexture = pixelTexture((context) => {
   context.fillStyle = '#000000'
   context.fillRect(0, 0, FACADE_SIZE, FACADE_SIZE)
-  forEachWindow((x, y, lit, cool) => {
-    if (!lit) return
-    context.fillStyle = cool ? BUILDING.WINDOW_COOL : BUILDING.WINDOW_LIT
-    context.fillRect(x, y, 7, 5)
-    context.fillStyle = BUILDING.WINDOW_LIT_HOT
-    context.fillRect(x + 1, y, 2, 1)
-  })
+  for (let tile = 0; tile < FACADE_TILES * FACADE_TILES; tile += 1) {
+    facadePanes(tile, ({ x, y, w, h, lit, cool }) => {
+      if (!lit) return
+      context.fillStyle = cool ? BUILDING.WINDOW_COOL : BUILDING.WINDOW_LIT
+      context.fillRect(x, y, w, h)
+      context.fillStyle = BUILDING.WINDOW_LIT_HOT
+      context.fillRect(x + 1, y, Math.max(1, Math.round(w * 0.3)), 1)
+    })
+  }
 }, FACADE_SIZE, FACADE_SIZE)
 
 const roofTexture = pixelTexture((context) => {
@@ -457,6 +566,213 @@ function GroundPool() {
   )
 }
 
+/**
+ * Ground-floor fronts.
+ *
+ * No building had a way of meeting the street: the facade ran to the pavement
+ * and stopped, so a tower looked less like a tower than like a box someone had
+ * cut off at the bottom. Six fronts in a 3x2 atlas, one per building, on the
+ * same face as its sign - the shop's door belongs under the shop's sign.
+ *
+ * Drawn unlit on purpose. A shopfront at night is the one thing on the street
+ * that should be brighter than what is around it.
+ */
+const ENTRANCE_COLUMNS = 3
+const ENTRANCE_ROWS = 2
+const ENTRANCE_TILE = 128
+
+const entranceAtlas = pixelTexture((context) => {
+  const w = ENTRANCE_TILE
+  const h = ENTRANCE_TILE
+  for (let variant = 0; variant < ENTRANCE_VARIANTS; variant += 1) {
+    const ox = (variant % ENTRANCE_COLUMNS) * w
+    const oy = Math.floor(variant / ENTRANCE_COLUMNS) * h
+    context.fillStyle = '#cfc4bd'
+    context.fillRect(ox, oy, w, h)
+    context.fillStyle = 'rgba(60,52,66,.18)'
+    context.fillRect(ox, oy + h - 6, w, 6)
+
+    if (variant === 0) {
+      // Glass lobby: a wide bright opening with a revolving door in the middle.
+      context.fillStyle = '#f3e6b6'
+      context.fillRect(ox + 12, oy + 22, w - 24, h - 34)
+      context.fillStyle = '#6d6478'
+      context.fillRect(ox + w / 2 - 4, oy + 22, 8, h - 34)
+      context.fillRect(ox + 12, oy + 22, w - 24, 4)
+    } else if (variant === 1) {
+      // Shutter down. Slats, and a dark strip of pavement under them.
+      context.fillStyle = '#8e93a1'
+      context.fillRect(ox + 10, oy + 26, w - 20, h - 38)
+      context.fillStyle = 'rgba(45,42,58,.35)'
+      for (let y = oy + 30; y < oy + h - 14; y += 7) context.fillRect(ox + 10, y, w - 20, 3)
+    } else if (variant === 2) {
+      // Awning over a shopfront.
+      context.fillStyle = '#f6dfa8'
+      context.fillRect(ox + 16, oy + 42, w - 32, h - 52)
+      context.fillStyle = '#4a4358'
+      context.fillRect(ox + w / 2 - 13, oy + 62, 26, h - 72)
+      context.fillStyle = '#e0705f'
+      context.fillRect(ox + 8, oy + 26, w - 16, 16)
+      context.fillStyle = '#f6efdd'
+      for (let x = ox + 8; x < ox + w - 8; x += 20) context.fillRect(x, oy + 26, 10, 16)
+    } else if (variant === 3) {
+      // Double doors in a stone surround.
+      context.fillStyle = '#b3a99f'
+      context.fillRect(ox + 22, oy + 20, w - 44, h - 26)
+      context.fillStyle = '#5d5570'
+      context.fillRect(ox + 32, oy + 34, w - 64, h - 44)
+      context.fillStyle = '#f0d9a4'
+      context.fillRect(ox + w / 2 - 1, oy + 34, 2, h - 44)
+      context.fillRect(ox + 22, oy + 20, w - 44, 5)
+    } else if (variant === 4) {
+      // Arcade: a colonnade you can see the dark through.
+      context.fillStyle = '#2f2b3f'
+      context.fillRect(ox + 8, oy + 30, w - 16, h - 40)
+      context.fillStyle = '#cfc4bd'
+      for (let x = ox + 8; x < ox + w - 12; x += 24) context.fillRect(x, oy + 30, 9, h - 40)
+      context.fillStyle = '#cfc4bd'
+      context.fillRect(ox + 8, oy + 30, w - 16, 6)
+    } else {
+      // Vehicle entrance, with the hazard chevrons that always mark one.
+      context.fillStyle = '#3a3547'
+      context.fillRect(ox + 18, oy + 34, w - 36, h - 44)
+      context.fillStyle = '#e8c65c'
+      for (let x = ox + 18; x < ox + w - 18; x += 16) context.fillRect(x, oy + 34, 7, 6)
+      context.fillStyle = '#8e93a1'
+      context.fillRect(ox + 18, oy + 28, w - 36, 6)
+    }
+  }
+}, ENTRANCE_TILE * ENTRANCE_COLUMNS, ENTRANCE_TILE * ENTRANCE_ROWS)
+
+const ENTRANCE_HEIGHT = 4.6
+
+/** How far a podium stands proud of its tower, and how tall it is. Declared
+ *  here because the ground-floor front has to sit on the podium's face when
+ *  there is one. */
+const PODIUM_SPREAD = 1.14
+const PODIUM_HEIGHT = 5.4
+
+function EntrancePool() {
+  const { runtime } = useGame()
+  const ref = useRef<THREE.InstancedMesh>(null)
+  const lastKey = useRef('')
+  const matrix = useMemo(() => new THREE.Matrix4(), [])
+  const position = useMemo(() => new THREE.Vector3(), [])
+  const scale = useMemo(() => new THREE.Vector3(), [])
+  const rotation = useMemo(() => new THREE.Quaternion(), [])
+  const sideRotation = useMemo(() => new THREE.Quaternion().setFromEuler(new THREE.Euler(0, Math.PI / 2, 0)), [])
+  const slots = useMemo(() => new Float32Array(WORLD_MAX_BUILDINGS), [])
+  const geometry = useMemo(() => {
+    const plane = new THREE.PlaneGeometry(1, 1)
+    plane.setAttribute('entranceSlot', new THREE.InstancedBufferAttribute(slots, 1))
+    return plane
+  }, [slots])
+  const material = useMemo(() => new THREE.ShaderMaterial({
+    uniforms: { map: { value: entranceAtlas } },
+    vertexShader: `
+      attribute float entranceSlot;
+      varying vec2 vAtlasUv;
+      void main() {
+        float column = mod(entranceSlot, ${ENTRANCE_COLUMNS.toFixed(1)});
+        float row = floor(entranceSlot / ${ENTRANCE_COLUMNS.toFixed(1)});
+        vAtlasUv = vec2((uv.x + column) / ${ENTRANCE_COLUMNS.toFixed(1)}, (uv.y + (${(ENTRANCE_ROWS - 1).toFixed(1)} - row)) / ${ENTRANCE_ROWS.toFixed(1)});
+        gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform sampler2D map;
+      varying vec2 vAtlasUv;
+      void main() { gl_FragColor = texture2D(map, vAtlasUv); }
+    `,
+    side: THREE.DoubleSide,
+  }), [])
+
+  useFrame(() => {
+    const mesh = ref.current
+    if (!mesh) return
+    const world = runtime.current.world
+    if (world.key === lastKey.current) return
+    lastKey.current = world.key
+    world.buildings.forEach((building, index) => {
+      const onX = building.sign.side === 'x'
+      // A podium stands proud of the tower, so the front has to sit on its
+      // face rather than on the tower's or it ends up buried.
+      const bulge = building.form === 'podium' ? PODIUM_SPREAD : 1
+      const width = Math.min(13, (onX ? building.size.z : building.size.x) * bulge * 0.72)
+      position.set(
+        building.position.x + (onX ? (building.size.x * bulge) / 2 + 0.16 : 0),
+        ENTRANCE_HEIGHT / 2,
+        building.position.z + (!onX ? (building.size.z * bulge) / 2 + 0.16 : 0),
+      )
+      scale.set(width, ENTRANCE_HEIGHT, 1)
+      matrix.compose(position, onX ? sideRotation : rotation, scale)
+      mesh.setMatrixAt(index, matrix)
+      slots[index] = building.entrance
+    })
+    mesh.count = world.buildings.length
+    mesh.instanceMatrix.needsUpdate = true
+    geometry.getAttribute('entranceSlot').needsUpdate = true
+  })
+
+  return <instancedMesh ref={ref} args={[geometry, material, WORLD_MAX_BUILDINGS]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }} />
+}
+
+/**
+ * Podiums and setbacks: the two places a silhouette actually varies.
+ *
+ * Kept as plain solids rather than as more facade, which is also how they
+ * usually are - a retail base is stone and a crown is plant. That means one
+ * simple material and one draw call each, instead of dragging the atlas
+ * attributes onto two more geometries.
+ */
+// Not registered for daylight modulation: these are unlit solids like the roof
+// slabs, and their read comes from the sun, not from windows.
+const massingMaterial = new THREE.MeshToonMaterial({ color: '#ffffff', map: roofTexture, gradientMap: toonGradient })
+
+function MassingPool({ form }: { form: 'podium' | 'setback' }) {
+  const { runtime } = useGame()
+  const ref = useRef<THREE.InstancedMesh>(null)
+  const lastKey = useRef('')
+  const matrix = useMemo(() => new THREE.Matrix4(), [])
+  const position = useMemo(() => new THREE.Vector3(), [])
+  const scale = useMemo(() => new THREE.Vector3(), [])
+  const rotation = useMemo(() => new THREE.Quaternion(), [])
+  const color = useMemo(() => new THREE.Color(), [])
+  const pastelRoof = useMemo(() => new THREE.Color(BUILDING.ROOF), [])
+
+  useFrame(() => {
+    const mesh = ref.current
+    if (!mesh) return
+    const world = runtime.current.world
+    if (world.key === lastKey.current) return
+    lastKey.current = world.key
+    let slot = 0
+    for (const building of world.buildings) {
+      if (building.form !== form) continue
+      // News towers already carry a crown of their own; a second step on top
+      // would fight it.
+      if (form === 'setback' && isNewsTower(building)) continue
+      if (form === 'podium') {
+        position.set(building.position.x, PODIUM_HEIGHT / 2, building.position.z)
+        scale.set(building.size.x * PODIUM_SPREAD, PODIUM_HEIGHT, building.size.z * PODIUM_SPREAD)
+      } else {
+        const height = Math.min(9, Math.max(3.4, building.size.y * 0.13))
+        position.set(building.position.x, building.size.y + building.roofThickness + height / 2, building.position.z)
+        scale.set(building.size.x * 0.62, height, building.size.z * 0.62)
+      }
+      matrix.compose(position, rotation, scale)
+      mesh.setMatrixAt(slot, matrix)
+      mesh.setColorAt(slot, color.set(building.roof).lerp(pastelRoof, 0.42))
+      slot += 1
+    }
+    mesh.count = slot
+    mesh.instanceMatrix.needsUpdate = true
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
+  })
+
+  return <instancedMesh ref={ref} args={[roundedRoofGeometry, massingMaterial, WORLD_MAX_BUILDINGS]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }} />
+}
+
 const roofMaterial = (() => {
   const material = new THREE.MeshToonMaterial({ color: '#ffffff', map: roofTexture, gradientMap: toonGradient })
   cityDaylightMaterials.roof = material
@@ -480,11 +796,13 @@ function BuildingPool() {
   const pastelWall = useMemo(() => new THREE.Color(BUILDING.FACADE_WALL), [])
   const pastelRoof = useMemo(() => new THREE.Color(BUILDING.ROOF), [])
   const facadeSlots = useMemo(() => new Float32Array(WORLD_MAX_BUILDINGS), [])
+  const facadeFloors = useMemo(() => new Float32Array(WORLD_MAX_BUILDINGS), [])
   const bodyGeometry = useMemo(() => {
     const geometry = roundedBuildingGeometry.clone()
     geometry.setAttribute('facadeSlot', new THREE.InstancedBufferAttribute(facadeSlots, 1))
+    geometry.setAttribute('facadeFloors', new THREE.InstancedBufferAttribute(facadeFloors, 1))
     return geometry
-  }, [facadeSlots])
+  }, [facadeFloors, facadeSlots])
   // Windows glow through emissiveMap while the walls stay unlit. The atlas slot
   // is patched in rather than baked into UVs so all buildings keep sharing one
   // geometry and one draw call.
@@ -499,16 +817,22 @@ function BuildingPool() {
     })
     material.onBeforeCompile = (shader) => {
       shader.vertexShader = shader.vertexShader
-        .replace('#include <common>', '#include <common>\nattribute float facadeSlot;\nvarying float vFacadeSlot;')
-        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvFacadeSlot = facadeSlot;')
+        .replace('#include <common>', '#include <common>\nattribute float facadeSlot;\nattribute float facadeFloors;\nvarying float vFacadeSlot;\nvarying float vFacadeFloors;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvFacadeSlot = facadeSlot;\nvFacadeFloors = facadeFloors;')
       shader.fragmentShader = shader.fragmentShader
         .replace('#include <common>', `#include <common>
           varying float vFacadeSlot;
+          varying float vFacadeFloors;
           vec2 facadeAtlasUv(vec2 uv) {
             float tiles = ${FACADE_TILES.toFixed(1)};
             float column = mod(vFacadeSlot, tiles);
             float row = floor(vFacadeSlot / tiles);
-            return (fract(uv) + vec2(column, row)) / tiles;
+            // Tiling vertically by the instance's floor count is what gives the
+            // city a consistent storey height: without it one tile is stretched
+            // over the whole face and a tower shows the same number of window
+            // rows as a shop.
+            vec2 tiled = vec2(uv.x, uv.y * vFacadeFloors);
+            return (fract(tiled) + vec2(column, row)) / tiles;
           }`)
         .replace('#include <map_fragment>', `
           #ifdef USE_MAP
@@ -565,10 +889,14 @@ function BuildingPool() {
       // tint is lifted toward a shared warm neutral, keeping that variation
       // without the saturated red/teal walls dominating the playfield.
       bodies.current!.setColorAt(index, color.set(building.color).lerp(pastelWall, 0.42))
-      facadeSlots[index] = seedForWorldCell(building.cellX, building.cellZ, 0xfacade) % (FACADE_TILES * FACADE_TILES)
+      facadeSlots[index] = building.facade
+      facadeFloors[index] = building.floors
 
-      position.set(building.position.x, building.size.y + 0.38, building.position.z)
-      scale.set(building.size.x * 0.94, 0.76, building.size.z * 0.94)
+      // Cornice proportions vary per building. Free variation: an identical
+      // roof lip on every box is one more thing that made them read as copies.
+      const slab = building.roofThickness
+      position.set(building.position.x, building.size.y + slab / 2, building.position.z)
+      scale.set(building.size.x * building.roofOverhang, slab, building.size.z * building.roofOverhang)
       matrix.compose(position, rotation, scale)
       roofs.current!.setMatrixAt(index, matrix)
       roofs.current!.setColorAt(index, color.set(building.roof).lerp(pastelRoof, 0.42))
@@ -600,6 +928,7 @@ function BuildingPool() {
     }
     signGeometry.getAttribute('signSlot').needsUpdate = true
     bodyGeometry.getAttribute('facadeSlot').needsUpdate = true
+    bodyGeometry.getAttribute('facadeFloors').needsUpdate = true
     if (bodies.current.instanceColor) bodies.current.instanceColor.needsUpdate = true
     if (roofs.current.instanceColor) roofs.current.instanceColor.needsUpdate = true
   })
@@ -794,7 +1123,7 @@ function RoofBeaconPool() {
       phases.current.length = 0
       for (const building of world.buildings) {
         if (building.size.y < BEACON_MIN_HEIGHT) continue
-        position.set(building.position.x, building.size.y + 1.1, building.position.z)
+        position.set(building.position.x, building.size.y + building.roofThickness + 0.7, building.position.z)
         matrix.compose(position, rotation, scale)
         mesh.setMatrixAt(slot, matrix)
         phases.current.push(seedForWorldCell(building.cellX, building.cellZ, 0xbeac04) % 100 / 100 * Math.PI * 2)
@@ -883,7 +1212,8 @@ function RoofStructurePool({ variant }: { variant: number }) {
       if (building.size.y < ROOF_STRUCTURE_MIN_HEIGHT) continue
       const seed = seedForWorldCell(building.cellX, building.cellZ, 0x700f7)
       if (seed % ROOF_STRUCTURE_VARIANTS !== variant) continue
-      position.set(building.position.x, building.size.y + 0.7, building.position.z)
+      // Sits on the slab, whose thickness now varies per building.
+      position.set(building.position.x, building.size.y + building.roofThickness + 0.32, building.position.z)
       euler.set(0, (seed >>> 5) % 4 * Math.PI / 2, 0)
       rotation.setFromEuler(euler)
       // Keep the clutter inside the roof footprint on narrow buildings.
@@ -915,6 +1245,9 @@ export const City = memo(function City() {
     <group>
       <GroundPool />
       <BuildingPool />
+      <MassingPool form="podium" />
+      <MassingPool form="setback" />
+      <EntrancePool />
       <CityLandmarks />
       {Array.from({ length: ROOF_STRUCTURE_VARIANTS }, (_, variant) => (
         <RoofStructurePool key={variant} variant={variant} />

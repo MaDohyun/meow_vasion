@@ -83,17 +83,23 @@ function drawUfoNewsFrame(
   headline: string | null = null,
   flag = '',
 ) {
-  // Studio backdrop.
+  // Studio backdrop, lit rather than dark. A screen on the side of a building
+  // has to be brighter than the building for the eye to read it as a screen;
+  // the old navy set went the same value as the night city around it and read
+  // as a hole punched in the wall.
   const backdrop = context.createLinearGradient(0, 0, 0, height)
-  backdrop.addColorStop(0, '#1b2450')
-  backdrop.addColorStop(1, '#0d1230')
+  backdrop.addColorStop(0, '#f7f4ea')
+  backdrop.addColorStop(1, '#dfdccf')
   context.fillStyle = backdrop
   context.fillRect(0, 0, width, height)
-  context.strokeStyle = 'rgba(116,219,228,.10)'
+  context.strokeStyle = 'rgba(96,110,140,.10)'
   context.lineWidth = 2
   for (let x = 0; x < width; x += 54) {
     context.beginPath(); context.moveTo(x, 0); context.lineTo(x, height); context.stroke()
   }
+  // A desk band across the lower half, so the anchor is sitting at something.
+  context.fillStyle = '#c9c4b4'
+  context.fillRect(0, height * 0.66, width, height * 0.09)
 
   // Over-shoulder inset, upper right. The sighting footage lives here.
   const insetX = width * 0.5
@@ -108,7 +114,7 @@ function drawUfoNewsFrame(
   context.clip()
   drawUfoFootage(context, insetX, insetY, insetW, insetH, time)
   context.restore()
-  context.strokeStyle = '#f2e2a8'
+  context.strokeStyle = '#3b4463'
   context.lineWidth = 5
   context.strokeRect(insetX, insetY, insetW, insetH)
 
@@ -140,15 +146,17 @@ function drawUfoNewsFrame(
     context.fillStyle = 'rgba(255,241,189,.85)'
     context.fillRect(width * 0.05, height * 0.775, width * 0.44, height * 0.035)
   }
-  context.fillStyle = '#101634'
+  // Ticker in light grey with dark ticks. A dark bar would put the one heavy
+  // block on the screen at the very bottom and tip the whole panel forward.
+  context.fillStyle = '#e6e2d6'
   context.fillRect(0, height * 0.85, width, height * 0.15)
-  context.fillStyle = 'rgba(255,241,189,.55)'
+  context.fillStyle = 'rgba(58,66,92,.5)'
   for (let x = width * 0.04; x < width * 0.92; x += width * 0.13) {
     context.fillRect(x, height * 0.895, width * 0.09, height * 0.028)
   }
 
   // Live dot, the one thing allowed to pulse - it is a lamp, not information.
-  context.fillStyle = `rgba(255,120,120,${0.55 + Math.sin(time * 4) * 0.35})`
+  context.fillStyle = `rgba(219,54,68,${0.55 + Math.sin(time * 4) * 0.35})`
   context.beginPath(); context.arc(width * 0.06, height * 0.07, 12, 0, Math.PI * 2); context.fill()
 }
 
@@ -210,8 +218,9 @@ function drawAnchor(context: CanvasRenderingContext2D, width: number, height: nu
   const shoulderY = height * 0.72
   context.save()
 
-  // Shoulders, cut off by the caption bar.
-  context.fillStyle = '#2f3a63'
+  // Shoulders, cut off by the caption bar. Dark against the light set - on the
+  // old navy backdrop the suit was nearly the backdrop's own value.
+  context.fillStyle = '#2b3357'
   context.beginPath()
   context.ellipse(cx, shoulderY, width * 0.235, height * 0.2, 0, Math.PI, Math.PI * 2)
   context.fill()
@@ -337,7 +346,10 @@ function displayMaterial(map: THREE.Texture, night: number, day = 0.05) {
 }
 
 const storeSignMaterial = displayMaterial(convenienceStoreTexture, 0.9)
-const warningScreenMaterial = displayMaterial(ufoWarningTexture, 1.35, 0.58)
+// Dimmer than the old dark set needed. The texture is now mostly light, so the
+// same emissive multiplier that used to lift a navy studio to "lit screen"
+// blows a white one out to a flat white panel.
+const warningScreenMaterial = displayMaterial(ufoWarningTexture, 0.52, 0.2)
 
 /**
  * A crown for the news towers: two setbacks and a spire, sitting on the host
@@ -482,7 +494,7 @@ function BuildingFeaturePool() {
         // Crown scales with the host footprint so a wide tower does not get a
         // toy hat and a narrow one does not get a slab.
         const span = Math.max(building.size.x, building.size.z)
-        position.set(building.position.x, building.size.y, building.position.z)
+        position.set(building.position.x, building.size.y + building.roofThickness, building.position.z)
         scale.set(span, span, span)
         matrix.compose(position, rotation, scale)
         towerCrowns.current.setMatrixAt(warningCount, matrix)
