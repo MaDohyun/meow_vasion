@@ -1,5 +1,6 @@
 import type { Vec3 } from './drone'
 import {
+  buildingBulk,
   PARKED_CAR_COLORS,
   WORLD_CELL_SIZE,
   groundCellsAround,
@@ -51,6 +52,30 @@ export const NEWS_TOWER_MIN_HEIGHT = 44
 export function isNewsTower(building: ProceduralBuilding) {
   if (building.size.y < NEWS_TOWER_MIN_HEIGHT) return false
   return seedForWorldCell(building.cellX, building.cellZ, 0x0f0a11) % 100 < 26
+}
+
+/**
+ * How much bigger than a building the craft has to be to take it.
+ *
+ * Two and a half, so a low-rise comes within reach a good way up the size
+ * range and the tallest tower waits until the ceiling. This is the last rung
+ * of the ladder and the reason the back half of a run has anything left to
+ * reach for.
+ */
+export const BUILDING_ABSORB_RATIO = 2.5
+
+/**
+ * Whether a craft of this size can tear this building out of the ground.
+ *
+ * Lives here rather than in the game loop so the rule has one home: the
+ * news-tower exclusion is part of the rule, not a special case bolted on at
+ * the call site.
+ */
+export function canAbsorbBuilding(building: ProceduralBuilding, ufoDiameter: number) {
+  // News towers stay standing. A city you can strip to nothing is a duller
+  // one, and the broadcast screens are this game's voice.
+  if (isNewsTower(building)) return false
+  return buildingBulk(building) <= ufoDiameter / BUILDING_ABSORB_RATIO
 }
 
 /** Screen height, in world units. */

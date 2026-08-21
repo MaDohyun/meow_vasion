@@ -1,7 +1,7 @@
 import type { Vec3 } from './drone'
 
 export type BeamObjectKind =
-  | 'car' | 'pedestrian' | 'cat' | 'explosive'
+  | 'car' | 'pedestrian' | 'cat' | 'explosive' | 'building'
   | 'drone' | 'police' | 'police-car' | 'helicopter' | 'soldier'
   | 'fighter' | 'anti-air' | 'tank' | 'boss'
 
@@ -36,6 +36,8 @@ export const BEAM_HOLD_TIME = 0.35
 export const CAR_MASS = 7.2
 
 const DEFAULT_DIAMETER: Record<BeamObjectKind, number> = {
+  // Buildings always carry their own measured bulk; this is only a fallback.
+  building: 18,
   cat: 0.55,
   pedestrian: 0.78,
   police: 1.35,
@@ -67,6 +69,13 @@ export type BeamObject = {
   velocity: Vec3
   rotation: Vec3
   angularVelocity: Vec3
+  /** World-space size, for objects that are not a fixed model - a building
+   *  keeps the footprint it had when it was torn out of the ground. */
+  scale?: Vec3
+  /** Facade variant and storey count, so a building being carried off still
+   *  looks like the building it was. */
+  facade?: number
+  floors?: number
   active: boolean
   /**
    * Seconds of grip left after leaving the cone.
