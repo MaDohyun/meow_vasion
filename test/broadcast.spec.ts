@@ -83,8 +83,11 @@ describe('wave bulletins', () => {
   })
 
   it('names the fighters when they scramble', () => {
-    expect(bulletinFor(STRINGS.ko, broadcastStageForTime(90)).line).toContain('전투기')
-    expect(bulletinFor(STRINGS.en, broadcastStageForTime(90)).line.toLowerCase()).toContain('fighter')
+    // Read off the wave table: the bulletin has to name whatever wave four
+    // actually is, whenever it happens to arrive.
+    const at = ENEMY_WAVE_STAGES[4]!.at
+    expect(bulletinFor(STRINGS.ko, broadcastStageForTime(at)).line).toContain('전투기')
+    expect(bulletinFor(STRINGS.en, broadcastStageForTime(at)).line.toLowerCase()).toContain('fighter')
   })
 
   it('gets the opening card on and off air before the first wave', () => {

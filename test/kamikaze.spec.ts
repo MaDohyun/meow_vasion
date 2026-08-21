@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   DRONE_MINE_SHARE,
   ENEMY_CONTACT_DAMAGE,
+  ENEMY_WAVE_STAGES,
   createEnemyState,
   isDroneMine,
   resolveEnemyContacts,
@@ -12,7 +13,10 @@ import {
 function droneWave() {
   const state = createEnemyState(0x51de)
   const player = { x: 0, y: 12, z: 0 }
-  for (let tick = 0; tick < 400; tick += 1) syncEnemyTiers(state, 60, player, 0, 0.05)
+  // A wave deep enough to have a real drone population, named off the table
+  // rather than pinned to a second so respacing the run carries it along.
+  const at = ENEMY_WAVE_STAGES[3]!.at
+  for (let tick = 0; tick < 400; tick += 1) syncEnemyTiers(state, at, player, 0, 0.05)
   return { state, player, drones: state.slots.filter((enemy) => enemy.kind === 'drone' && enemy.active) }
 }
 

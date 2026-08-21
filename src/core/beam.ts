@@ -7,6 +7,17 @@ export type BeamObjectKind =
 
 export const BEAM_ABSORB_TIME = 0.24
 
+/**
+ * A car's mass, which is really its stay on the beam.
+ *
+ * Rise speed divides by mass, so this is the dial for how long something hangs
+ * under the craft. At the old value a car was swallowed almost the moment it
+ * was caught, which meant beam ballast - the only speed penalty in the game -
+ * was charged for about a second and never actually felt. Tripled, a car is a
+ * load you fly with and have to decide whether to keep.
+ */
+export const CAR_MASS = 7.2
+
 const DEFAULT_DIAMETER: Record<BeamObjectKind, number> = {
   cat: 0.55,
   pedestrian: 0.78,
@@ -64,8 +75,16 @@ export type BeamField = {
   position: Vec3
   velocity: Vec3
   radiusScale?: number
-  /** Reach multiplier, from craft size. See beamProfile. */
+  /** Reach multiplier. Comes from upgrades only - a bigger craft gets a wider
+   *  beam because its body is wider, not a longer one. See beamProfile. */
   reachScale?: number
+  /**
+   * Grip multiplier on the pull. Scales how hard the beam hauls what it has
+   * hold of, which is the counterweight to object mass: mass decides how long
+   * something hangs there, this decides how much of that time can be bought
+   * back.
+   */
+  gripScale?: number
 }
 
 export type BeamProfile = {
@@ -120,7 +139,10 @@ export function beamObjectDiameter(object: Pick<BeamObject, 'kind' | 'diameter'>
 
 export function absorptionScore(object: Pick<BeamObject, 'kind' | 'diameter' | 'mass' | 'scoreValue'>, scoreMultiplier = 1) {
   const diameter = beamObjectDiameter(object)
-  const base = object.scoreValue ?? 8 + diameter * diameter * 7 + object.mass * 5
+  // The mass coefficient came down when masses went up. That change was a unit
+  // change - how long a thing rides the beam - and a unit change must not
+  // quietly reprice everything in the game.
+  const base = object.scoreValue ?? 8 + diameter * diameter * 7 + object.mass * 1.7
   return Math.max(1, Math.round(base * Math.max(0.1, scoreMultiplier)))
 }
 
@@ -242,7 +264,7 @@ export function stepBeamObjects(objects: BeamObject[], field: BeamField, dt: num
       object.playerTouched = true
       const mass = Math.max(0.08, object.mass)
       const drop = Math.max(0, field.position.y - object.position.y)
-      const grip = beamGrip(drop, profile.maxDrop)
+      const grip = beamGrip(drop, profile.maxDrop) * Math.max(0.1, field.gripScale ?? 1)
       const spring = profile.spring * grip / mass
       const hash = hashId(object.id)
       const slot = hash % 11

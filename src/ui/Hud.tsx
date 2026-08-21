@@ -1,7 +1,8 @@
-import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { useGame } from '../GameContext'
 import { LANGUAGES, LANGUAGE_LABELS, bulletinFor, formatMessage } from '../i18n'
 import { broadcastPhase, broadcastProgress } from '../core/broadcast'
+import { UPGRADE_DEFINITIONS, type UpgradeId } from '../core/upgrades'
 import { Radar } from './Radar'
 import { pilotFrameStyle } from '../render/pilotArt'
 
@@ -214,6 +215,52 @@ function BreakingNews() {
   )
 }
 
+/**
+ * The upgrade card screen.
+ *
+ * The run is stopped behind this - not slowed, stopped. A card that slid past
+ * while drones were converging would be taken by whichever hand was already
+ * moving, and that is not a choice. Three cards, one taken, back to flying.
+ *
+ * Number keys as well as clicks: the whole game is played on the keyboard with
+ * the mouse aiming, so reaching for a button mid-run is the awkward option and
+ * has to be the alternative rather than the only way.
+ */
+function UpgradeCards() {
+  const { snapshot, chooseUpgrade, t } = useGame()
+  const choices = snapshot.upgradeChoices
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const index = Number(event.key) - 1
+      if (index >= 0 && index < choices.length) chooseUpgrade(choices[index]!)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [choices, chooseUpgrade])
+  return (
+    <div className="overlay upgrade-overlay">
+      <span className="eyebrow">{t.upgradeTitle}</span>
+      <p className="upgrade-lead">{t.upgradeLead}</p>
+      <div className="upgrade-cards">
+        {choices.map((id, index) => {
+          const level = snapshot.upgradeLevels[id] ?? 0
+          const max = UPGRADE_DEFINITIONS[id].maxLevel
+          const copy = t.upgrades[id]
+          return (
+            <button key={id} className="upgrade-card" type="button" onClick={() => chooseUpgrade(id)}>
+              <i>{index + 1}</i>
+              <strong>{copy.name}</strong>
+              <small>{copy.detail}</small>
+              <b>{level + 1 >= max ? t.upgradeMaxed : `${t.upgradeLevel}.${level} → ${t.upgradeLevel}.${level + 1}`}</b>
+            </button>
+          )
+        })}
+      </div>
+      <span className="upgrade-hint">{t.upgradeHint}</span>
+    </div>
+  )
+}
+
 export function Hud() {
   const { snapshot, t } = useGame()
   if (snapshot.phase === 'intro') return <Intro />
@@ -295,6 +342,7 @@ export function Hud() {
         ><i /><i /></div>
       </div>
       <MobileControls />
+      {snapshot.phase === 'upgrade' && <UpgradeCards />}
       {snapshot.phase === 'results' && <Results />}
     </>
   )

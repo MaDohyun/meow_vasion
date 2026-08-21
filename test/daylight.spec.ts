@@ -1,3 +1,4 @@
+import { ENEMY_WAVE_STAGES } from '../src/core/enemies'
 import { describe, expect, it } from 'vitest'
 import {
   DAYLIGHT_KEYFRAMES,
@@ -58,20 +59,22 @@ describe('evening to noon cycle', () => {
   })
 
   it('holds the middle third of the run at full night', () => {
-    // Waves three, four and five arrive at 70s, 90s and 110s, and all of them
-    // are meant to land in the dark.
-    for (const elapsed of [70, 90, 110]) {
-      expect(sampleDaylight(elapsed).nightFactor, `${elapsed}s`).toBeGreaterThan(0.95)
+    // Waves three, four and five are all meant to land in the dark. Read off
+    // the wave table rather than pinned to seconds, so respacing the run keeps
+    // the sky and the difficulty curve in step automatically.
+    for (const stage of [3, 4, 5]) {
+      const elapsed = ENEMY_WAVE_STAGES[stage]!.at
+      expect(sampleDaylight(elapsed).nightFactor, `wave ${stage}`).toBeGreaterThan(0.95)
     }
   })
 
   it('brings the sun up as the final wave arrives', () => {
-    // Wave 7 (COUNTER-UFO) is at 150s. The last assault and the sunrise are
-    // supposed to be the same moment.
-    const finalWave = sampleDaylight(150)
+    // The last assault and the sunrise are supposed to be the same moment.
+    const at = ENEMY_WAVE_STAGES[ENEMY_WAVE_STAGES.length - 1]!.at
+    const finalWave = sampleDaylight(at)
     expect(finalWave.phase).toBe('dawn')
     expect(finalWave.nightFactor).toBeLessThan(0.95)
-    expect(finalWave.sunAltitude).toBeGreaterThan(sampleDaylight(120).sunAltitude)
+    expect(finalWave.sunAltitude).toBeGreaterThan(sampleDaylight(at * 0.8).sunAltitude)
   })
 
   it('holds at noon rather than looping back round to evening', () => {
@@ -143,7 +146,10 @@ describe('evening to noon cycle', () => {
   it('matches the cycle to the run length so noon lands as the clock runs out', () => {
     // RUN_SECONDS in GameContext. Kept as a literal here rather than importing
     // a React module into a data test.
-    expect(DAY_CYCLE_SECONDS).toBe(180)
+    expect(DAY_CYCLE_SECONDS).toBe(300)
+    // And the last wave has to fall inside the cycle, or the sunrise it is
+    // supposed to arrive with would already be over.
+    expect(ENEMY_WAVE_STAGES[ENEMY_WAVE_STAGES.length - 1]!.at).toBeLessThan(DAY_CYCLE_SECONDS)
   })
 
   it('reuses a caller-supplied sample so the frame loop does not allocate', () => {

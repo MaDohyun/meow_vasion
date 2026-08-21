@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
+import { upgradeMultiplier } from '../core/upgrades'
 import { useGame } from '../GameContext'
 import { BUILDING, ENTITY, FX, LIGHT, SKY } from '../constants/palette'
 import {
@@ -190,6 +191,9 @@ declare global {
       size: number
       activeEnemyProjectiles: number
       laserShotsFired: number
+      /** Upgrade levels, so a card's effect can be verified from outside. */
+      upgradeLevels: Record<string, number>
+      beamReachScale: number
       height: number
       visibleMeshPools: number
     }
@@ -400,7 +404,7 @@ function TractorBeam() {
   // volume did - the visible beam and the beam that actually catches things
   // were two different shapes.
   const size = runtime.current.sizeProfile
-  const profile = beamProfile(snapshot.boostActive, size.beamScale, size.beamReach)
+  const profile = beamProfile(snapshot.boostActive, size.beamScale * snapshot.beamRadiusScale, snapshot.beamReachScale)
   const length = Math.max(0.8, beamVisualLength(runtime.current.drone.position.y, profile.maxDrop))
   const radius = profile.baseRadius + length * profile.coneSpread
   useFrame(() => {
@@ -526,7 +530,9 @@ function Ufo() {
     if (smoothedCameraPull.current === null) smoothedCameraPull.current = game.sizeProfile.cameraDistance
     const pullBlend = 1 - Math.exp(-1.35 * dt)
     smoothedCameraPull.current += (game.sizeProfile.cameraDistance - smoothedCameraPull.current) * pullBlend
-    const distance = 9.4 + speedRatio * 3.3 + altitudeView + smoothedCameraPull.current
+    // The size term already carries the whole resting distance; speed and
+    // altitude are the only things added on top of it here.
+    const distance = smoothedCameraPull.current + speedRatio * 3.3 + altitudeView
     cameraPosition.set(
       game.drone.position.x - forwardX * distance,
       Math.max(1, game.drone.position.y + 3.6 + speedRatio * 1.1 + altitudeView - forwardY * distance * 0.72),
@@ -1154,6 +1160,8 @@ function PerformanceProbe() {
       size: runtime.current.size,
       activeEnemyProjectiles: runtime.current.enemies.projectiles.filter((projectile) => projectile.active).length,
       laserShotsFired: runtime.current.laserShotsFired,
+      upgradeLevels: { ...runtime.current.upgrades.levels },
+      beamReachScale: upgradeMultiplier(runtime.current.upgrades, 'beam-reach'),
       height: runtime.current.drone.position.y,
       visibleMeshPools,
     }

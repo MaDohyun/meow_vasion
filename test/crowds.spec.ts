@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { beginCarDestruction, stepBeamObjects, type BeamObject } from '../src/core/beam'
+import { type BeamObject, CAR_MASS, beginCarDestruction, stepBeamObjects } from '../src/core/beam'
 import {
   CAT_MAX,
   CROWD_ABSORB_TIME,
@@ -21,7 +21,7 @@ const inactiveBeam = {
 
 function car(): BeamObject {
   return {
-    id: 'car:test', kind: 'car', mass: 2.4, color: '#fff',
+    id: 'car:test', kind: 'car', mass: CAR_MASS, color: '#fff',
     position: { x: 0, y: 0.65, z: 0 }, velocity: { x: 0, y: 0, z: 0 },
     rotation: { x: 0, y: 0, z: 0 }, angularVelocity: { x: 0, y: 0, z: 0 },
     active: true, inBeam: false, tether: 0, playerTouched: false,
@@ -148,11 +148,15 @@ describe('pooled city crowds and destructible cars', () => {
   })
 
   it('gives cats and pedestrians much less beam mass than cars', () => {
+    // Every mass went up so objects ride the beam long enough to be felt, but
+    // inert ones went up further. The gap is the point, not the numbers: it is
+    // what makes hauling the wrong thing feel different from hauling the right
+    // one, so this is asserted as a ratio.
     const state = createCrowdState()
     const pedestrian = state.objects.find((object) => object.kind === 'pedestrian')!
     const cat = state.objects.find((object) => object.kind === 'cat')!
-    expect(pedestrian.mass).toBeLessThan(0.5)
     expect(cat.mass).toBeLessThan(pedestrian.mass)
+    expect(pedestrian.mass).toBeLessThan(car().mass / 5)
     expect(cat.mass).toBeLessThan(car().mass / 10)
   })
 
