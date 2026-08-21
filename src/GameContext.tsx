@@ -45,7 +45,7 @@ import { activeWorldColliders, createActiveWorld, updateActiveWorld, WORLD_MAX_C
 import { captureTrafficCar, createTrafficState, releaseTrafficSlot, stepTraffic, TRAFFIC_MAX_CARS, type TrafficCar, type TrafficState } from './core/traffic'
 import { BROADCAST_OPENING_AT, BROADCAST_SECONDS } from './core/broadcast'
 import { REGEN_CARD_INSTANT_HEAL, applyUpgrade, createUpgradeState, isUpgradeDue, rollUpgradeChoices, upgradeMultiplier, type UpgradeId, type UpgradeState } from './core/upgrades'
-import { setBgmWave, startBgm, stopBgm, tone } from './audio'
+import { tone, unlockAudio } from './audio'
 
 export type GamePhase = 'intro' | 'playing' | 'upgrade' | 'results'
 
@@ -722,7 +722,6 @@ function setMessage(game: GameRuntime, key: MessageKey, seconds: number, arg = 0
 }
 
 function endRun(game: GameRuntime, title: string, victory: boolean) {
-  stopBgm()
   game.phase = 'results'
   game.resultTitle = title
   game.victory = victory
@@ -776,7 +775,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerdown', move)
       document.documentElement.removeEventListener('mouseleave', leave)
-      stopBgm()
     }
   }, [])
 
@@ -890,7 +888,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
     sampleDaylight(game.sessionTime, game.daylight)
     game.waveStage = waveStageForTime(game.sessionTime)
     if (game.waveStage !== game.pilotPreviousThreat) {
-      setBgmWave(game.waveStage)
       game.message = waveLabelForTime(game.sessionTime)
       game.messageKey = null
       game.messageTime = 2.2
@@ -1045,7 +1042,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   }, [publish, readInput])
 
   const start = useCallback(() => {
-    startBgm()
+    unlockAudio()
     pointer.current = { x: 0, y: 0 }
     const game = runtime.current
     game.phase = 'playing'
@@ -1079,7 +1076,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   }, [publish])
 
   const restart = useCallback(() => {
-    startBgm()
+    unlockAudio()
     pointer.current = { x: 0, y: 0 }
     runtime.current = makeRuntime()
     runtime.current.phase = 'playing'
