@@ -41,14 +41,16 @@ const ENEMY_GLOW: Record<EnemyKind, string> = {
 
 export const crowdMaterial: Record<CrowdKind, THREE.Material> = {
   pedestrian: applyRimLight(
-    withGlowRamp(new THREE.MeshToonMaterial({ vertexColors: true, emissive: new THREE.Color(ENTITY.PEDESTRIAN_GLOW) }), 0.1, 0.52),
+    withGlowRamp(new THREE.MeshToonMaterial({ vertexColors: true, emissive: new THREE.Color(ENTITY.PEDESTRIAN_GLOW) }), 0.04, 0.82),
     ENTITY.PEDESTRIAN_GLOW,
-    0.75,
+    0.34,
+    2.8,
   ),
   cat: applyRimLight(
-    withGlowRamp(new THREE.MeshToonMaterial({ vertexColors: true, emissive: new THREE.Color(ENTITY.CAT_GLOW) }), 0.12, 0.6),
+    withGlowRamp(new THREE.MeshToonMaterial({ vertexColors: true, emissive: new THREE.Color(ENTITY.CAT_GLOW) }), 0.05, 0.92),
     ENTITY.CAT_GLOW,
-    0.85,
+    0.38,
+    2.8,
   ),
 }
 
@@ -58,11 +60,12 @@ export const enemyMaterial = Object.fromEntries(
     applyRimLight(
       withGlowRamp(
         new THREE.MeshToonMaterial({ vertexColors: true, emissive: new THREE.Color(ENEMY_GLOW[kind]) }),
-        kind === 'boss' ? 0.16 : 0.09,
-        kind === 'boss' ? 0.7 : 0.44,
+        kind === 'boss' ? 0.09 : 0.04,
+        kind === 'boss' ? 1.2 : 0.74,
       ),
       ENEMY_GLOW[kind],
-      kind === 'boss' ? 1 : 0.7,
+      kind === 'boss' ? 0.48 : 0.3,
+      2.8,
     ),
   ]),
 ) as Record<EnemyKind, THREE.Material>
@@ -70,15 +73,15 @@ export const enemyMaterial = Object.fromEntries(
 // Cars are the bulkiest beam target on the street, and with no emissive at all
 // they were the first thing to disappear once the lights came down.
 export const carBodyMaterial = withGlowRamp(
-  new THREE.MeshToonMaterial({ emissive: new THREE.Color('#ffffff') }),
-  0.02,
-  0.2,
+  new THREE.MeshToonMaterial({ emissive: new THREE.Color('#d7d2ca') }),
+  0.01,
+  0.3,
 )
 
 export const carCabinMaterial = withGlowRamp(
-  new THREE.MeshToonMaterial({ color: '#b7dfe0', emissive: new THREE.Color('#5f9fb8') }),
-  0.04,
-  0.34,
+  new THREE.MeshToonMaterial({ color: '#a9c4c5', emissive: new THREE.Color('#779da5') }),
+  0.02,
+  0.44,
 )
 
 /** Headlights. Dim rather than off in daylight, so the shape still reads. */
@@ -94,9 +97,9 @@ export const carLampMaterial = new THREE.MeshBasicMaterial({
  * blob on a dark street reads as a stain, not a shadow.
  */
 export const carShadowMaterial = new THREE.MeshBasicMaterial({
-  color: '#28313d',
+  color: '#5f5a68',
   transparent: true,
-  opacity: 0.32,
+  opacity: 0.18,
   depthWrite: false,
 })
 
@@ -104,6 +107,6 @@ export function applyEntityDaylight(nightFactor: number) {
   for (const ramp of glowRamps) {
     ramp.material.emissiveIntensity = ramp.day + (ramp.night - ramp.day) * nightFactor
   }
-  carLampMaterial.opacity = 0.3 + nightFactor * 0.7
-  carShadowMaterial.opacity = 0.32 - nightFactor * 0.22
+  carLampMaterial.opacity = 0.2 + nightFactor * 0.72
+  carShadowMaterial.opacity = 0.18 - nightFactor * 0.05
 }

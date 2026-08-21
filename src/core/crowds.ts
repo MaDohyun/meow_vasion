@@ -1,4 +1,5 @@
-import type { BeamObject } from './beam'
+import { BEAM_ABSORB_TIME, beginNearbyBeamObjectAbsorption, type BeamObject } from './beam'
+import type { CrowdSpawnZone } from './cityLandmarks'
 import type { Aabb, Vec3 } from './drone'
 
 export type CrowdKind = 'pedestrian' | 'cat'
@@ -13,7 +14,7 @@ export const INITIAL_CATS = 9
 // it. Kept just outside the respawn ring so bodies are not culled on arrival.
 export const CROWD_REMOVE_DISTANCE = 185
 export const CROWD_ABSORB_DISTANCE = 3.35
-export const CROWD_ABSORB_TIME = 0.24
+export const CROWD_ABSORB_TIME = BEAM_ABSORB_TIME
 
 // Flee thresholds are split so the state cannot flip on a single frame. A calm
 // crowd member only starts running inside FLEE_ENTER, and a running one only
@@ -84,6 +85,7 @@ export type CrowdView = {
   colliders?: readonly Aabb[]
   threats?: readonly Vec3[]
   crowdThreatStart?: number
+  spawnZones?: readonly CrowdSpawnZone[]
 }
 
 function makeCrowdObject(kind: CrowdKind, slot: number): CrowdObject {
@@ -107,6 +109,8 @@ function makeCrowdObject(kind: CrowdKind, slot: number): CrowdObject {
     explosionPending: false,
     absorbing: false,
     absorbTimer: 0,
+    diameter: kind === 'cat' ? 0.55 : 0.78,
+    scoreValue: kind === 'cat' ? 40 : 15,
     heading: 0,
     wanderTimer: 0,
     pauseTimer: 0,
@@ -150,7 +154,7 @@ function blockedAt(view: CrowdView, x: number, z: number, margin: number) {
   return false
 }
 
-type CrowdPlacement = { angle: number; distance: number }
+type CrowdPlacement = { angle: number; distance: number } | { x: number; z: number; radius: number }
 
 // The run-start seed and the steady-state respawn want different placements:
 // seeding scatters the whole ring around the player so the city looks alive in
@@ -168,7 +172,10 @@ function spawnCrowdObject(state: CrowdState, view: CrowdView, kind: CrowdKind, p
     // Widen the search on each retry so a dense block of buildings cannot make
     // a seed slot fail outright.
     const spread = 0.35 + attempt * 0.55
-    if (placement) {
+    if (placement && 'x' in placement) {
+      x = placement.x + (random(state) - 0.5) * placement.radius * (0.7 + attempt * 0.2)
+      z = placement.z + (random(state) - 0.5) * placement.radius * (0.7 + attempt * 0.2)
+    } else if (placement) {
       const angle = placement.angle + (random(state) - 0.5) * spread
       const distance = placement.distance * (0.85 + random(state) * (0.3 + attempt * 0.15))
       x = view.position.x + Math.sin(angle) * distance
@@ -176,11 +183,25 @@ function spawnCrowdObject(state: CrowdState, view: CrowdView, kind: CrowdKind, p
     } else {
       // Open a fresh knot once the current one is used up.
       if (state.clusterLeft <= 0) {
-        const angle = view.heading + (random(state) - 0.5) * RESPAWN_ARC
-        const distance = RESPAWN_MIN_DISTANCE + random(state) * RESPAWN_RANGE
-        state.clusterX = view.position.x + Math.sin(angle) * distance
-        state.clusterZ = view.position.z + Math.cos(angle) * distance
-        state.clusterLeft = CLUSTER_SIZE
+        const zoneRoll = random(state)
+        const zones = view.spawnZones
+        const wantedKind = zoneRoll < 0.68 ? 'park' : zoneRoll < 0.82 ? 'parking-lot' : null
+        let zone: CrowdSpawnZone | undefined
+        if (wantedKind && zones?.length) {
+          const matches = zones.filter((candidate) => candidate.kind === wantedKind)
+          zone = matches[Math.floor(random(state) * matches.length)]
+        }
+        if (zone) {
+          state.clusterX = zone.x
+          state.clusterZ = zone.z
+          state.clusterLeft = zone.kind === 'park' ? 8 : 3
+        } else {
+          const angle = view.heading + (random(state) - 0.5) * RESPAWN_ARC
+          const distance = RESPAWN_MIN_DISTANCE + random(state) * RESPAWN_RANGE
+          state.clusterX = view.position.x + Math.sin(angle) * distance
+          state.clusterZ = view.position.z + Math.cos(angle) * distance
+          state.clusterLeft = CLUSTER_SIZE
+        }
       }
       const jitter = CLUSTER_SPREAD * (0.4 + attempt * 0.5)
       x = state.clusterX + (random(state) - 0.5) * jitter
@@ -228,11 +249,23 @@ function spawnCrowdObject(state: CrowdState, view: CrowdView, kind: CrowdKind, p
 // random angles clump badly at these counts.
 function seedInitialCrowd(state: CrowdState, view: CrowdView) {
   const total = INITIAL_PEDESTRIANS + INITIAL_CATS
+  const parks = view.spawnZones?.filter((zone) => zone.kind === 'park') ?? []
+  const parkingLots = view.spawnZones?.filter((zone) => zone.kind === 'parking-lot') ?? []
+  let seededPeople = 0
   for (let index = 0; index < total; index += 1) {
     const kind: CrowdKind = index % 3 === 2 && index / 3 < INITIAL_CATS ? 'cat' : 'pedestrian'
     state.seedAngle += GOLDEN_ANGLE
     const distance = 20 + (index / Math.max(1, total - 1)) * 70
-    if (!spawnCrowdObject(state, view, kind, { angle: state.seedAngle, distance })) {
+    const facility = kind === 'pedestrian' && parks.length > 0 && seededPeople < 16
+      ? parks[seededPeople % parks.length]
+      : kind === 'pedestrian' && parkingLots.length > 0 && seededPeople < 20
+        ? parkingLots[seededPeople % parkingLots.length]
+        : null
+    if (kind === 'pedestrian') seededPeople += 1
+    const placement = facility
+      ? { x: facility.x, z: facility.z, radius: facility.kind === 'park' ? 12 : 7 }
+      : { angle: state.seedAngle, distance }
+    if (!spawnCrowdObject(state, view, kind, placement)) {
       spawnCrowdObject(state, view, kind === 'cat' ? 'pedestrian' : 'cat', { angle: state.seedAngle, distance })
     }
   }
@@ -384,26 +417,7 @@ export function stepCrowds(state: CrowdState, view: CrowdView, dt: number) {
 }
 
 export function beginNearbyCrowdAbsorption(state: CrowdState, ufoPosition: Vec3, reach = CROWD_ABSORB_DISTANCE) {
-  for (const object of state.objects) {
-    if (!object.active || object.absorbing || !object.inBeam) continue
-    const distance = Math.hypot(
-      object.position.x - ufoPosition.x,
-      object.position.y - ufoPosition.y,
-      object.position.z - ufoPosition.z,
-    )
-    if (distance > reach) continue
-    object.absorbing = true
-    object.absorbTimer = CROWD_ABSORB_TIME
-    object.inBeam = false
-    object.velocity.x = 0
-    object.velocity.y = 0
-    object.velocity.z = 0
-    object.angularVelocity.x = 0
-    object.angularVelocity.y = 0
-    object.angularVelocity.z = 0
-    return object
-  }
-  return null
+  return beginNearbyBeamObjectAbsorption(state.objects, ufoPosition, Number.POSITIVE_INFINITY, reach) as CrowdObject | null
 }
 
 export function activeCrowdCount(state: CrowdState, kind?: CrowdKind) {

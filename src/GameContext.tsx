@@ -1,7 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { collideDrone, createDroneState, stepDrone, type Aabb, type DroneInput, type DroneState, type Vec3 } from './core/drone'
-import { beamProfile, beginCarDestruction, isInsideBeam, stepBeamObjects, type BeamField, type BeamObject } from './core/beam'
-import { beginNearbyCrowdAbsorption, createCrowdState, stepCrowds, type CrowdState } from './core/crowds'
+import { absorptionScore, beamObjectDiameter, beamProfile, beginCarDestruction, beginNearbyBeamObjectAbsorption, isInsideBeam, stepBeamObjects, type BeamField, type BeamObject } from './core/beam'
+import { createCrowdState, stepCrowds, type CrowdState } from './core/crowds'
+import { crowdSpawnZonesAround, parkingCarsAround, type CrowdSpawnZone } from './core/cityLandmarks'
 import { STRINGS, readStoredLanguage, storeLanguage, type Language, type MessageKey } from './i18n'
 import { createDaylightSample, sampleDaylight, type DaylightSample } from './core/daylight'
 import {
@@ -13,10 +14,12 @@ import {
 import {
   SIZE_MIN,
   SIZE_START,
+  growSizeBy,
   growSize,
   isSizeFatal,
   shrinkSize,
   sizeProfile,
+  ufoDiameter,
   type SizeGainKind,
   type SizeLossKind,
   type SizeProfile,
@@ -90,6 +93,7 @@ export type GameRuntime = {
   traffic: TrafficState
   destroyedCars: Set<string>
   crowdThreats: Vec3[]
+  crowdSpawnZones: CrowdSpawnZone[]
   phase: GamePhase
   message: string
   messageKey: MessageKey | null
@@ -237,6 +241,8 @@ function makeBeamObject(car: ProceduralCar): BeamObject {
     explosionPending: false,
     absorbing: false,
     absorbTimer: 0,
+    diameter: 2.9,
+    scoreValue: 70,
   }
 }
 
@@ -251,11 +257,14 @@ function makeTrafficBeamObject(car: TrafficCar): BeamObject {
 
 function makeRuntime(initialWeapon: WeaponId = 'homing-missile'): GameRuntime {
   const drone = createDroneState()
-  drone.position = { x: 0, y: 2.8, z: 54.5 }
+  // Start around the city's mid-rise band instead of at street level. The
+  // opening view immediately reads as flying between buildings.
+  drone.position = { x: 0, y: 18, z: 54.5 }
   drone.heading = Math.PI
   const world = createActiveWorld(drone.position)
+  const crowdSpawnZones = crowdSpawnZonesAround(drone.position)
   const crowds = createCrowdState((Math.random() * 0xffffffff) >>> 0)
-  stepCrowds(crowds, { position: drone.position, heading: drone.heading, colliders: activeWorldColliders(world) }, 0)
+  stepCrowds(crowds, { position: drone.position, heading: drone.heading, colliders: activeWorldColliders(world), spawnZones: crowdSpawnZones }, 0)
   const traffic = createTrafficState((Math.random() * 0xffffffff) >>> 0)
   const enemies = createEnemyState()
   const crowdThreats = [{ ...drone.position }, ...traffic.cars.map((car) => ({ ...car.position })), ...enemies.slots.map((enemy) => ({ ...enemy.position })), ...crowds.objects.map((object) => ({ ...object.position }))]
@@ -297,11 +306,12 @@ function makeRuntime(initialWeapon: WeaponId = 'homing-missile'): GameRuntime {
     weaponHitHandler: (targetId, damage) => registerEnemyHit(runtime, targetId, damage, 'AUTO'),
     enemies,
     enemiesDown: 0,
-    beamObjects: world.cars.map(makeBeamObject),
+    beamObjects: [...parkingCarsAround(drone.position), ...world.cars].slice(0, WORLD_MAX_CARS).map(makeBeamObject),
     crowds,
     traffic,
     destroyedCars: new Set<string>(),
     crowdThreats,
+    crowdSpawnZones,
     phase: 'intro',
     message: '',
     messageKey: 'msgRunStart',
@@ -335,7 +345,11 @@ function syncBeamObjects(game: GameRuntime) {
   const existing = new Map(game.beamObjects.map((object) => [object.id, object]))
   const retained = game.beamObjects.filter((object) => object.active && (object.inBeam || object.tether > 0.02 || object.playerTouched) && Math.hypot(object.position.x - game.drone.position.x, object.position.z - game.drone.position.z) <= WORLD_REMOVE_RADIUS)
   const retainedIds = new Set(retained.map((object) => object.id))
-  const nearby = game.world.cars.filter((car) => !retainedIds.has(car.id) && !game.destroyedCars.has(car.id)).map((car) => existing.get(car.id) ?? makeBeamObject(car))
+  const sourceCars = [...parkingCarsAround(game.drone.position), ...game.world.cars]
+  const nearby = sourceCars.filter((car) => !retainedIds.has(car.id) && !game.destroyedCars.has(car.id)).map((car) => {
+    const previous = existing.get(car.id)
+    return previous?.active ? previous : makeBeamObject(car)
+  })
   const capturedTraffic = retained.filter((object) => object.id.startsWith('traffic:'))
   const parked = [...retained.filter((object) => !object.id.startsWith('traffic:')), ...nearby].slice(0, WORLD_MAX_CARS)
   game.beamObjects = [...capturedTraffic.slice(0, TRAFFIC_MAX_CARS), ...parked]
@@ -346,7 +360,7 @@ function syncBeamObjects(game: GameRuntime) {
 function writeLaserSphereTarget(targets: LaserSphereTarget[], slot: number, id: string, center: Vec3, radius: number) {
   const target = targets[slot] ?? { id, kind: 'fighter' as const, center: { x: 0, y: 0, z: 0 }, radius }
   target.id = id
-  target.kind = id.startsWith('car:') || id.startsWith('traffic:') ? 'car' : 'fighter'
+  target.kind = id.startsWith('car:') || id.startsWith('traffic:') || id.startsWith('parking-car:') ? 'car' : 'fighter'
   target.center.x = center.x
   target.center.y = center.y
   target.center.z = center.z
@@ -369,7 +383,7 @@ function writeWeaponTarget(targets: WeaponTarget[], slot: number, id: string, ce
 function syncWeaponTargets(game: GameRuntime) {
   let slot = 0
   for (const enemy of game.enemies.slots) {
-    if (!enemy.active) continue
+    if (!enemy.active || enemy.absorbing) continue
     slot = writeWeaponTarget(game.weaponTargets, slot, enemy.id, enemy.position, enemy.kind === 'boss' ? 7 : enemy.hitRadius)
   }
   game.weaponTargets.length = slot
@@ -378,8 +392,8 @@ function syncWeaponTargets(game: GameRuntime) {
 
 function laserSphereTargets(game: GameRuntime) {
   let slot = 0
-  for (const enemy of game.enemies.slots) if (enemy.active) slot = writeLaserSphereTarget(game.laserTargets, slot, enemy.id, enemy.position, enemy.kind === 'boss' ? 7 : enemy.hitRadius)
-  for (const object of game.beamObjects) if (object.active && !object.destroying) slot = writeLaserSphereTarget(game.laserTargets, slot, object.id, object.position, 1.7)
+  for (const enemy of game.enemies.slots) if (enemy.active && !enemy.absorbing) slot = writeLaserSphereTarget(game.laserTargets, slot, enemy.id, enemy.position, enemy.kind === 'boss' ? 7 : enemy.hitRadius)
+  for (const object of game.beamObjects) if (object.active && !object.destroying && !object.absorbing) slot = writeLaserSphereTarget(game.laserTargets, slot, object.id, object.position, 1.7)
   for (const car of game.traffic.cars) if (car.active) slot = writeLaserSphereTarget(game.laserTargets, slot, car.id, car.position, 1.7)
   game.laserTargets.length = slot
   return game.laserTargets
@@ -388,13 +402,13 @@ function laserSphereTargets(game: GameRuntime) {
 /**
  * Total mass hanging off the beam.
  *
- * Inanimate objects cannot be absorbed, so once the beam grabs one it stays
- * there, and its mass is what slows the craft. Mass rather than a count: a car
- * and a fire extinguisher should not cost the same.
+ * Oversized objects stay as ballast until the growing craft crosses their
+ * diameter gate. Mass rather than a count makes a tanker meaningfully heavier
+ * than a person while it is still too large to swallow.
  *
  * This is where the entire speed penalty comes from. A wider beam - which is
- * what growing buys - sweeps up people faster but also fouls more easily, so
- * the tax lands on sloppy beam work rather than on being large.
+ * what growing buys - sweeps up more targets but also fouls more easily, so the
+ * temporary tax lands on sloppy beam work rather than on being large.
  */
 function beamBallast(game: GameRuntime) {
   let mass = 0
@@ -406,12 +420,19 @@ function beamBallast(game: GameRuntime) {
     if (!hazard.active || (!hazard.inBeam && hazard.tether <= 0.02)) continue
     mass += hazard.mass
   }
+  for (const enemy of game.enemies.slots) {
+    if (!enemy.active || (!enemy.inBeam && enemy.tether <= 0.02)) continue
+    mass += enemy.mass
+  }
   return mass
 }
 
 function loadedCarCount(game: GameRuntime) {
   let count = 0
   for (const object of game.beamObjects) if (object.active && (object.inBeam || object.tether > 0.02)) count += 1
+  for (const object of game.crowds.objects) if (object.active && (object.inBeam || object.tether > 0.02)) count += 1
+  for (const object of game.hazards.objects) if (object.active && (object.inBeam || object.tether > 0.02)) count += 1
+  for (const object of game.enemies.slots) if (object.active && (object.inBeam || object.tether > 0.02)) count += 1
   return count
 }
 
@@ -423,6 +444,12 @@ function dropCars(game: GameRuntime) {
     if (!hazard.active || (!hazard.inBeam && hazard.tether <= 0.02)) continue
     hazard.inBeam = false
     hazard.tether = 0
+  }
+  for (const enemy of game.enemies.slots) {
+    if (!enemy.active || (!enemy.inBeam && enemy.tether <= 0.02)) continue
+    enemy.inBeam = false
+    enemy.tether = 0
+    dropped += 1
   }
   for (const object of game.beamObjects) {
     if (!object.active || (!object.inBeam && object.tether <= 0.02)) continue
@@ -476,6 +503,14 @@ function grow(game: GameRuntime, kind: SizeGainKind) {
   return game.size - before
 }
 
+function growBy(game: GameRuntime, amount: number) {
+  const before = game.size
+  game.size = growSizeBy(game.size, amount)
+  game.sizeProfile = sizeProfile(game.size)
+  game.sizePulse = 1
+  return game.size - before
+}
+
 /** Every shrink runs through here so the fail check lives in exactly one place. */
 function shrink(game: GameRuntime, kind: SizeLossKind) {
   game.size = shrinkSize(game.size, kind)
@@ -493,6 +528,27 @@ function absorbCrowd(game: GameRuntime, kind: 'cat' | 'pedestrian') {
   game.score += reward
   game.pickupPulse = 1
   setMessage(game, kind === 'cat' ? 'msgAbsorbedCat' : 'msgAbsorbedPerson', 1.25, reward)
+  tone('pickup')
+}
+
+function absorbBeamObject(game: GameRuntime, object: BeamObject) {
+  const diameter = beamObjectDiameter(object)
+  const reward = absorptionScore(object, game.sizeProfile.scoreMultiplier)
+  // Larger meals grow the craft more. This follows the new doubled growth
+  // cadence while staying bounded enough that one tanker cannot skip a run.
+  growBy(game, Math.min(0.16, 0.018 + diameter * 0.016))
+  game.absorbedCount += 1
+  game.score += reward
+  game.pickupPulse = 1
+  if (object.kind === 'car') game.destroyedCars.add(object.id)
+  if (object.id.startsWith('enemy:')) {
+    const enemy = game.enemies.slots.find((candidate) => candidate.id === object.id)
+    if (enemy) {
+      enemy.respawn = enemy.kind === 'boss' ? 999 : 4.5
+      game.enemiesDown += 1
+    }
+  }
+  setMessage(game, 'msgAbsorbedObject', 1.25, reward)
   tone('pickup')
 }
 
@@ -758,6 +814,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     if (nextWorld !== game.world) {
       game.world = nextWorld
       game.worldColliders = activeWorldColliders(nextWorld)
+      game.crowdSpawnZones = crowdSpawnZonesAround(game.drone.position)
       syncBeamObjects(game)
     }
     const collision = collideDrone(stepped, game.worldColliders)
@@ -787,7 +844,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     game.beamActive = input.beam
     stepTraffic(game.traffic, { position: game.drone.position, heading: game.drone.heading }, d)
     syncCrowdThreats(game)
-    stepCrowds(game.crowds, { position: game.drone.position, heading: game.drone.heading, colliders: game.worldColliders, threats: game.crowdThreats, crowdThreatStart: 1 + game.traffic.cars.length + game.enemies.slots.length }, d)
+    stepCrowds(game.crowds, { position: game.drone.position, heading: game.drone.heading, colliders: game.worldColliders, threats: game.crowdThreats, crowdThreatStart: 1 + game.traffic.cars.length + game.enemies.slots.length, spawnZones: game.crowdSpawnZones }, d)
     const beamField: BeamField = { active: game.beamActive, boosting: turboActive, position: game.drone.position, velocity: game.drone.velocity, radiusScale: game.sizeProfile.beamScale }
     // No pickup cap: hanging mass is its own limit, and a craft that grabbed
     // too much should feel it rather than be quietly protected from it.
@@ -803,8 +860,25 @@ export function GameProvider({ children }: { children: ReactNode }) {
     // simply picked straight back up.
     const pullField: BeamField = game.dumpLockout > 0 ? { ...beamField, active: false } : beamField
     stepBeamObjects(game.beamObjects, pullField, d)
-    stepBeamObjects(game.crowds.objects, pullField, d)
+    // Crowd movement owns its absorption timer; beam physics only handles the
+    // pull so the shrink animation is not advanced twice per frame.
+    stepBeamObjects(game.crowds.objects, pullField, d, false)
     stepBeamObjects(game.hazards.objects, pullField, d)
+    stepBeamObjects(game.enemies.slots, pullField, d)
+    const maxAbsorbDiameter = ufoDiameter(game.size) / 3
+    const absorbFrom = (objects: BeamObject[]) => {
+      let object = beginNearbyBeamObjectAbsorption(objects, game.drone.position, maxAbsorbDiameter, game.sizeProfile.absorbDistance)
+      while (object) {
+        triggerLaserBurst(game.laserBursts, 'impact', object.position, object.kind === 'cat' || object.kind === 'pedestrian' ? '#fff06d' : '#6deeff')
+        if (object.kind === 'cat' || object.kind === 'pedestrian') absorbCrowd(game, object.kind)
+        else absorbBeamObject(game, object)
+        object = beginNearbyBeamObjectAbsorption(objects, game.drone.position, maxAbsorbDiameter, game.sizeProfile.absorbDistance)
+      }
+    }
+    absorbFrom(game.crowds.objects)
+    absorbFrom(game.beamObjects)
+    absorbFrom(game.hazards.objects)
+    absorbFrom(game.enemies.slots)
     const detonated = detonateReachedHazard(game.hazards, game.drone.position)
     if (detonated) {
       triggerLaserBurst(game.laserBursts, 'impact', detonated.position, '#ff7a3d')
@@ -816,21 +890,17 @@ export function GameProvider({ children }: { children: ReactNode }) {
       setMessage(game, 'msgDetonated', 1.6)
       tone('warning')
     }
-    let absorbedCrowd = beginNearbyCrowdAbsorption(game.crowds, game.drone.position, game.sizeProfile.absorbDistance)
-    while (absorbedCrowd) {
-      triggerLaserBurst(game.laserBursts, 'impact', absorbedCrowd.position, '#fff06d')
-      absorbCrowd(game, absorbedCrowd.kind)
-      absorbedCrowd = beginNearbyCrowdAbsorption(game.crowds, game.drone.position, game.sizeProfile.absorbDistance)
-    }
     game.loadedCars = loadedCarCount(game)
     game.ballast = beamBallast(game)
     for (let index = game.beamObjects.length - 1; index >= 0; index -= 1) {
       const object = game.beamObjects[index]!
-      if (!object.active && object.explosionPending) {
+      if (object.active) continue
+      if (object.explosionPending) {
         object.explosionPending = false
         triggerLaserBurst(game.laserBursts, 'impact', object.position, '#ff8a45')
-        if (object.id.startsWith('traffic:')) { releaseTrafficSlot(game.traffic, object.id); game.beamObjects.splice(index, 1) }
       }
+      if (object.id.startsWith('traffic:')) releaseTrafficSlot(game.traffic, object.id)
+      game.beamObjects.splice(index, 1)
     }
 
     game.beamTargetId = null
@@ -842,6 +912,16 @@ export function GameProvider({ children }: { children: ReactNode }) {
         if (distance < nearest) { nearest = distance; game.beamTargetId = object.id }
       }
       for (const object of game.crowds.objects) {
+        if (!object.active || !object.inBeam) continue
+        const distance = Math.hypot(object.position.x - game.drone.position.x, object.position.y - game.drone.position.y, object.position.z - game.drone.position.z)
+        if (distance < nearest) { nearest = distance; game.beamTargetId = object.id }
+      }
+      for (const object of game.hazards.objects) {
+        if (!object.active || !object.inBeam) continue
+        const distance = Math.hypot(object.position.x - game.drone.position.x, object.position.y - game.drone.position.y, object.position.z - game.drone.position.z)
+        if (distance < nearest) { nearest = distance; game.beamTargetId = object.id }
+      }
+      for (const object of game.enemies.slots) {
         if (!object.active || !object.inBeam) continue
         const distance = Math.hypot(object.position.x - game.drone.position.x, object.position.y - game.drone.position.y, object.position.z - game.drone.position.z)
         if (distance < nearest) { nearest = distance; game.beamTargetId = object.id }

@@ -79,14 +79,14 @@ export default function App() {
           aria-label="UFO 어택 서바이벌 game view"
           dpr={1}
           camera={{ fov: 65, near: 0.1, far: 700, position: [0, 6.5, 62] }}
-          gl={{ antialias: false, powerPreference: 'high-performance', alpha: false }}
+          gl={{ antialias: true, powerPreference: 'high-performance', alpha: false }}
           onCreated={({ gl }) => {
             gl.outputColorSpace = 'srgb'
             // Scene lighting sums well above 1.0. Without tone mapping the
             // default NoToneMapping clips it flat and the pastel palette washes
             // out to white. ACES rolls the highlights off instead.
             gl.toneMapping = THREE.ACESFilmicToneMapping
-            gl.toneMappingExposure = 1.05
+          gl.toneMappingExposure = 1.12
           }}
         >
           <Suspense fallback={null}>

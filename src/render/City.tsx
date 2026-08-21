@@ -6,6 +6,12 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { useGame } from '../GameContext'
 import { BUILDING, FX, GROUND } from '../constants/palette'
 import { radialGlowTexture } from './textures'
+import { CityLandmarks, applyLandmarkDaylight } from './CityLandmarks'
+import {
+  groundLandmarkForCell,
+  hasUfoWarningScreen,
+  isConvenienceStore,
+} from '../core/cityLandmarks'
 import {
   BUILDING_SIGN_LABELS,
   BUILDING_SIGN_COLORS,
@@ -21,7 +27,10 @@ import {
 } from '../core/world'
 
 const toonGradient = (() => {
-  const data = new Uint8Array([96, 158, 218, 255])
+  // A narrow, bright ramp keeps shaded faces pastel instead of turning them
+  // into heavy colour blocks. Geometry and lighting behaviour stay unchanged;
+  // this is the soft, low-contrast toy-diorama finish.
+  const data = new Uint8Array([204, 222, 240, 255])
   const texture = new THREE.DataTexture(data, 4, 1, THREE.RedFormat)
   texture.needsUpdate = true
   texture.magFilter = THREE.NearestFilter
@@ -40,9 +49,9 @@ function pixelTexture(draw: (context: CanvasRenderingContext2D) => void, width =
   draw(context)
   const texture = new THREE.CanvasTexture(canvas)
   texture.colorSpace = THREE.SRGBColorSpace
-  texture.magFilter = THREE.NearestFilter
-  texture.minFilter = THREE.NearestFilter
-  texture.generateMipmaps = false
+  texture.magFilter = THREE.LinearFilter
+  texture.minFilter = THREE.LinearMipmapLinearFilter
+  texture.generateMipmaps = true
   return texture
 }
 
@@ -125,7 +134,7 @@ const lotTexture = pixelTexture((context) => {
   for (let index = 0; index < 96; index += 1) {
     const x = index * 29 % 64
     const y = index * 47 % 64
-    context.fillStyle = index % 3 === 0 ? 'rgba(255,255,255,.22)' : 'rgba(0,0,0,.16)'
+    context.fillStyle = index % 3 === 0 ? 'rgba(255,255,255,.14)' : 'rgba(0,0,0,.07)'
     context.fillRect(x, y, 1, 1)
   }
 })
@@ -139,7 +148,7 @@ const asphaltTexture = pixelTexture((context) => {
   for (let index = 0; index < 220; index += 1) {
     const x = index * 37 % 64
     const y = index * 23 % 64
-    context.fillStyle = index % 5 === 0 ? 'rgba(180,205,255,.10)' : 'rgba(0,0,0,.22)'
+    context.fillStyle = index % 5 === 0 ? 'rgba(255,255,255,.08)' : 'rgba(0,0,0,.07)'
     context.fillRect(x, y, 1, 1)
   }
 })
@@ -150,7 +159,7 @@ const roadTexture = pixelTexture((context) => {
   for (let index = 0; index < 180; index += 1) {
     const x = index * 37 % 128
     const y = index * 19 % 32
-    context.fillStyle = index % 4 === 0 ? 'rgba(190,215,255,.14)' : 'rgba(0,0,0,.22)'
+    context.fillStyle = index % 4 === 0 ? 'rgba(255,255,255,.09)' : 'rgba(0,0,0,.07)'
     context.fillRect(x, y, index % 5 === 0 ? 2 : 1, 1)
   }
   // Centre line only. At night this is what makes the road shape readable.
@@ -202,12 +211,15 @@ const cityDaylightMaterials = {
  */
 export function applyCityDaylight(nightFactor: number) {
   const materials = cityDaylightMaterials
-  if (materials.road) materials.road.color.setScalar(1 - nightFactor * 0.62)
-  if (materials.facade) materials.facade.emissiveIntensity = 1.5 * nightFactor
-  if (materials.distant) materials.distant.emissiveIntensity = 0.85 * nightFactor
-  if (materials.streetlight) materials.streetlight.opacity = nightFactor
-  if (materials.streetPool) materials.streetPool.opacity = 0.34 * nightFactor
-  if (materials.beacon) materials.beacon.opacity = nightFactor
+  // Keep the diorama readable throughout the cycle. Night is a soft storybook
+  // twilight rather than a black stage covered in isolated neon points.
+  if (materials.road) materials.road.color.setScalar(1 - nightFactor * 0.16)
+  if (materials.facade) materials.facade.emissiveIntensity = 0.02 + 1.12 * nightFactor
+  if (materials.distant) materials.distant.emissiveIntensity = 0.01 + 0.78 * nightFactor
+  if (materials.streetlight) materials.streetlight.opacity = 0.18 + nightFactor * 0.74
+  if (materials.streetPool) materials.streetPool.opacity = 0.025 + 0.26 * nightFactor
+  if (materials.beacon) materials.beacon.opacity = 0.2 + nightFactor * 0.78
+  applyLandmarkDaylight(nightFactor)
 }
 
 const distantWindowTexture = pixelTexture((context) => {
@@ -249,7 +261,7 @@ const distantBuildingMaterial = (() => {
     gradientMap: toonGradient,
     emissive: new THREE.Color('#ffffff'),
     emissiveMap: distantWindowTexture,
-    emissiveIntensity: 0.85,
+    emissiveIntensity: 0.18,
   })
   cityDaylightMaterials.distant = material
   return material
@@ -380,18 +392,33 @@ function GroundPool() {
     cells.forEach((cell) => {
       const centerX = (cell.cellX + 0.5) * WORLD_CELL_SIZE
       const centerZ = (cell.cellZ + 0.5) * WORLD_CELL_SIZE
-      const definedLot = cell.ground === 'parking' || cell.ground === 'plaza' || cell.ground === 'pond'
-      // Lowered from 68%: at night the tile grid was the most obvious thing on
-      // the ground, which is the opposite of what should draw the eye.
-      if (definedLot && cell.seed % 100 < 45 && lotSlot < GROUND_CELL_COUNT) {
-        const lotSize = WORLD_CELL_SIZE - 5 - (cell.seed >>> 9) % 5
-        const jitterX = ((cell.seed >>> 17) % 5) - 2
-        const jitterZ = ((cell.seed >>> 22) % 5) - 2
+      const landmark = groundLandmarkForCell(cell)
+      const ordinaryLot = cell.ground === 'parking' || cell.ground === 'plaza' || cell.ground === 'pond'
+      const hasLot = Boolean(cell.building || landmark || (ordinaryLot && cell.seed % 100 < 45))
+      if (hasLot && lotSlot < GROUND_CELL_COUNT) {
+        // Every building gets the same paved interior tile. The procedural
+        // ground choice still exists for open cells, but grass or pond no
+        // longer peeks out from underneath a tower footprint.
+        const colorValue = cell.building
+          ? GROUND.BUILDING_PAD
+          : landmark === 'park'
+            ? GROUND.PARK_GRASS
+            : landmark === 'parking-lot'
+              ? GROUND.PARKING_LOT
+              : landmark === 'power-pylon'
+                ? GROUND.UTILITY_PAD
+                : landmark === 'subway' || landmark === 'bus-stop'
+                  ? GROUND.TRANSIT_PAD
+                  : GROUND_COLORS[cell.ground]
+        const authoredLot = Boolean(cell.building || landmark)
+        const lotSize = authoredLot ? WORLD_CELL_SIZE - 8.2 : WORLD_CELL_SIZE - 5 - (cell.seed >>> 9) % 5
+        const jitterX = authoredLot ? 0 : ((cell.seed >>> 17) % 5) - 2
+        const jitterZ = authoredLot ? 0 : ((cell.seed >>> 22) % 5) - 2
         position.set(centerX + jitterX, 0, centerZ + jitterZ)
         scale.set(lotSize, lotSize, 1)
         matrix.compose(position, planeRotation, scale)
         lots.current!.setMatrixAt(lotSlot, matrix)
-        lots.current!.setColorAt(lotSlot, color.set(GROUND_COLORS[cell.ground]))
+        lots.current!.setColorAt(lotSlot, color.set(colorValue))
         lotSlot += 1
       }
 
@@ -448,6 +475,8 @@ function BuildingPool() {
   const planeRotation = useMemo(() => new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0)), [])
   const sideRotation = useMemo(() => new THREE.Quaternion().setFromEuler(new THREE.Euler(0, Math.PI / 2, 0)), [])
   const color = useMemo(() => new THREE.Color(), [])
+  const pastelWall = useMemo(() => new THREE.Color(BUILDING.FACADE_WALL), [])
+  const pastelRoof = useMemo(() => new THREE.Color(BUILDING.ROOF), [])
   const facadeSlots = useMemo(() => new Float32Array(WORLD_MAX_BUILDINGS), [])
   const bodyGeometry = useMemo(() => {
     const geometry = roundedBuildingGeometry.clone()
@@ -464,7 +493,7 @@ function BuildingPool() {
       gradientMap: toonGradient,
       emissive: new THREE.Color('#ffffff'),
       emissiveMap: facadeEmissiveTexture,
-      emissiveIntensity: 1.35,
+      emissiveIntensity: 0.42,
     })
     material.onBeforeCompile = (shader) => {
       shader.vertexShader = shader.vertexShader
@@ -530,22 +559,30 @@ function BuildingPool() {
       scale.set(building.size.x, building.size.y, building.size.z)
       matrix.compose(position, rotation, scale)
       bodies.current!.setMatrixAt(index, matrix)
-      bodies.current!.setColorAt(index, color.set(building.color))
+      // World generation still chooses the building family. Only the displayed
+      // tint is lifted toward a shared warm neutral, keeping that variation
+      // without the saturated red/teal walls dominating the playfield.
+      bodies.current!.setColorAt(index, color.set(building.color).lerp(pastelWall, 0.42))
       facadeSlots[index] = seedForWorldCell(building.cellX, building.cellZ, 0xfacade) % (FACADE_TILES * FACADE_TILES)
 
       position.set(building.position.x, building.size.y + 0.38, building.position.z)
       scale.set(building.size.x * 0.94, 0.76, building.size.z * 0.94)
       matrix.compose(position, rotation, scale)
       roofs.current!.setMatrixAt(index, matrix)
-      roofs.current!.setColorAt(index, color.set(building.roof))
+      roofs.current!.setColorAt(index, color.set(building.roof).lerp(pastelRoof, 0.42))
 
       const signOnX = building.sign.side === 'x'
+      const hasFeatureSign = isConvenienceStore(building) || hasUfoWarningScreen(building)
       position.set(
         building.position.x + (signOnX ? building.size.x / 2 + 0.22 : 0),
         Math.min(building.size.y - 2.5, Math.max(4.2, building.size.y * 0.46)),
         building.position.z + (!signOnX ? building.size.z / 2 + 0.22 : 0),
       )
-      scale.set(Math.min(13, (signOnX ? building.size.z : building.size.x) * 0.62), 3.8, 0.32)
+      scale.set(
+        hasFeatureSign ? 0 : Math.min(13, (signOnX ? building.size.z : building.size.x) * 0.62),
+        hasFeatureSign ? 0 : 3.8,
+        hasFeatureSign ? 0 : 0.32,
+      )
       matrix.compose(position, signOnX ? sideRotation : rotation, scale)
       signs.current!.setMatrixAt(index, matrix)
       signSlots[index] = Math.max(0, BUILDING_SIGN_LABELS.indexOf(building.sign.text as typeof BUILDING_SIGN_LABELS[number]))
@@ -571,7 +608,7 @@ function BuildingPool() {
         <planeGeometry args={[1, 1]} />
         {/* Barely there at night. A daytime-strength blob reads as a brown
             puddle once the ground goes dark. */}
-        <meshBasicMaterial color="#05070f" transparent opacity={0.30} depthWrite={false} />
+        <meshBasicMaterial color="#5f5a68" transparent opacity={0.16} depthWrite={false} />
       </instancedMesh>
       <instancedMesh ref={bodies} args={[bodyGeometry, bodyMaterial, WORLD_MAX_BUILDINGS]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }} />
       <instancedMesh ref={roofs} args={[roundedRoofGeometry, roofMaterial, WORLD_MAX_BUILDINGS]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }} />
@@ -599,7 +636,7 @@ const streetLightPoolMaterial = (() => {
     color: FX.STREETLIGHT_CONE,
     map: radialGlowTexture,
     transparent: true,
-    opacity: 0.34,
+    opacity: 0.16,
     depthWrite: false,
     blending: THREE.AdditiveBlending,
     toneMapped: false,
@@ -876,6 +913,7 @@ export const City = memo(function City() {
     <group>
       <GroundPool />
       <BuildingPool />
+      <CityLandmarks />
       {Array.from({ length: ROOF_STRUCTURE_VARIANTS }, (_, variant) => (
         <RoofStructurePool key={variant} variant={variant} />
       ))}

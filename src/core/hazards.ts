@@ -2,7 +2,7 @@ import type { BeamObject } from './beam'
 import { seedForWorldCell, WORLD_CELL_SIZE } from './world'
 
 /**
- * Ground explosives - fuel drums and gas canisters.
+ * Ground explosives - oversized oil tankers.
  *
  * These exist to give the widening beam something to punish. A grown craft
  * sweeps a wider cone, so it snags these more easily, and that is the cost of
@@ -17,7 +17,7 @@ import { seedForWorldCell, WORLD_CELL_SIZE } from './world'
  */
 
 export const HAZARD_MAX = 26
-export const HAZARD_MASS = 1.35
+export const HAZARD_MASS = 6.2
 /** Detonates once it is drawn this close to the craft. */
 export const HAZARD_TRIGGER_DISTANCE = 3.4
 export const HAZARD_HP = 1
@@ -62,7 +62,7 @@ function makeHazard(slot: number): Hazard {
     cellZ: 0,
     mass: HAZARD_MASS,
     color: '#ff4a3d',
-    position: { x: 0, y: 0.8, z: 0 },
+    position: { x: 0, y: 1.25, z: 0 },
     velocity: { x: 0, y: 0, z: 0 },
     rotation: { x: 0, y: 0, z: 0 },
     angularVelocity: { x: 0, y: 0, z: 0 },
@@ -75,6 +75,8 @@ function makeHazard(slot: number): Hazard {
     explosionPending: false,
     absorbing: false,
     absorbTimer: 0,
+    diameter: 5.1,
+    scoreValue: 240,
     alarm: 0,
     detonated: false,
   }
@@ -117,7 +119,7 @@ function spawnHazard(state: HazardState, view: HazardView) {
   hazard.generation += 1
   hazard.id = `hazard:${hazard.slot}:${hazard.generation}`
   hazard.position.x = x
-  hazard.position.y = 0.8
+  hazard.position.y = 1.25
   hazard.position.z = z
   hazard.rotation.x = 0
   hazard.rotation.y = seedForWorldCell(hazard.cellX, hazard.cellZ, 0x4a2d) % 360 / 180 * Math.PI
@@ -172,7 +174,7 @@ export function stepHazards(state: HazardState, view: HazardView, dt: number) {
  */
 export function detonateReachedHazard(state: HazardState, craftPosition: { x: number; y: number; z: number }) {
   for (const hazard of state.objects) {
-    if (!hazard.active || hazard.detonated) continue
+    if (!hazard.active || hazard.detonated || hazard.absorbing) continue
     if (!hazard.inBeam && hazard.tether <= 0.02) continue
     const distance = Math.hypot(
       hazard.position.x - craftPosition.x,

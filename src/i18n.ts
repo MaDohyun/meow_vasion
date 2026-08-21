@@ -86,6 +86,7 @@ type Strings = {
   msgRunStart: string
   msgAbsorbedPerson: (reward: number) => string
   msgAbsorbedCat: (reward: number) => string
+  msgAbsorbedObject: (reward: number) => string
   msgEnemyDown: (reward: number) => string
   msgImpact: string
   msgDetonated: string
@@ -166,6 +167,7 @@ export const STRINGS: Record<Language, Strings> = {
     msgRunStart: '사람을 흡수해 몸집을 키우세요',
     msgAbsorbedPerson: (reward) => `사람 흡수 · +${reward}`,
     msgAbsorbedCat: (reward) => `고양이 흡수 · +${reward}`,
+    msgAbsorbedObject: (reward) => `대형 오브젝트 흡수 · +${reward}`,
     msgEnemyDown: (reward) => `적 격추 · +${reward}`,
     msgImpact: '피격 · 질량 감소',
     msgDetonated: '폭발물 기폭 · 질량 감소',
@@ -234,6 +236,7 @@ export const STRINGS: Record<Language, Strings> = {
     msgRunStart: '人を吸収して巨大化しよう',
     msgAbsorbedPerson: (reward) => `人を吸収 · +${reward}`,
     msgAbsorbedCat: (reward) => `猫を吸収 · +${reward}`,
+    msgAbsorbedObject: (reward) => `大型オブジェクト吸収 · +${reward}`,
     msgEnemyDown: (reward) => `敵を撃破 · +${reward}`,
     msgImpact: '被弾 · 質量減少',
     msgDetonated: '爆発物が起爆 · 質量減少',
@@ -302,6 +305,7 @@ export const STRINGS: Record<Language, Strings> = {
     msgRunStart: 'ABSORB PEOPLE TO GROW',
     msgAbsorbedPerson: (reward) => `PERSON ABSORBED · +${reward}`,
     msgAbsorbedCat: (reward) => `CAT ABSORBED · +${reward}`,
+    msgAbsorbedObject: (reward) => `LARGE OBJECT ABSORBED · +${reward}`,
     msgEnemyDown: (reward) => `ENEMY DOWN · +${reward}`,
     msgImpact: 'IMPACT · SIZE DOWN',
     msgDetonated: 'EXPLOSIVE DETONATED · SIZE DOWN',

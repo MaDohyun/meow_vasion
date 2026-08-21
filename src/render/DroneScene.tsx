@@ -17,7 +17,7 @@ import {
 } from './entityMaterials'
 import { setRimNightFactor } from './rimLight'
 import { radialGlowTexture } from './textures'
-import { beamProfile, beamVisualLength } from '../core/beam'
+import { BEAM_ABSORB_TIME, beamProfile, beamVisualLength } from '../core/beam'
 import { CAT_MAX, CROWD_ABSORB_TIME, PEDESTRIAN_MAX, type CrowdKind } from '../core/crowds'
 import { HAZARD_MAX } from '../core/hazards'
 import { type DaylightKeyframe, type DaylightSample } from '../core/daylight'
@@ -48,6 +48,13 @@ function coloredPart(geometry: THREE.BufferGeometry, color: string) {
     colors[index + 2] = tint.b
   }
   result.setAttribute('color', new THREE.BufferAttribute(colors, 3))
+  return result
+}
+
+function unindexedPart(geometry: THREE.BufferGeometry) {
+  if (!geometry.index) return geometry
+  const result = geometry.toNonIndexed()
+  geometry.dispose()
   return result
 }
 
@@ -230,6 +237,8 @@ function PullableCars() {
 
       euler.set(object.rotation.x, object.rotation.y, object.rotation.z)
       quaternion.setFromEuler(euler)
+      const absorbScale = object.absorbing ? Math.max(0.04, object.absorbTimer / BEAM_ABSORB_TIME) : 1
+      scale.setScalar(0.8 * absorbScale)
       base.compose(position, quaternion, scale)
       body.current.setMatrixAt(visibleCount, base)
       body.current.setColorAt(visibleCount, color.set(object.color))
@@ -461,7 +470,7 @@ function UfoGroundPool() {
         color={ENTITY.UFO_POOL}
         map={radialGlowTexture}
         transparent
-        opacity={0.35}
+        opacity={0.18}
         depthWrite={false}
         blending={THREE.AdditiveBlending}
         toneMapped={false}
@@ -476,6 +485,7 @@ function Ufo() {
   const rim = useRef<THREE.Group>(null)
   const hullMaterial = useRef<THREE.MeshToonMaterial>(null)
   const domeMaterial = useRef<THREE.MeshToonMaterial>(null)
+  const smoothedCameraPull = useRef<number | null>(null)
   const cameraTarget = useMemo(() => new THREE.Vector3(), [])
   const cameraPosition = useMemo(() => new THREE.Vector3(), [])
   const { camera } = useThree()
@@ -494,11 +504,10 @@ function Ufo() {
     }
     if (rim.current) rim.current.rotation.y += dt * (snapshot.beamActive ? 7 : 2.8)
 
-    // The craft's self-lighting is a night affordance. Left at full strength it
-    // blows out to a white disc under a midday sun.
-    const nightFactor = game.daylight.nightFactor
-    if (hullMaterial.current) hullMaterial.current.emissiveIntensity = 0.08 + nightFactor * 0.5
-    if (domeMaterial.current) domeMaterial.current.emissiveIntensity = 0.3 + nightFactor * 0.6
+    // The player should be readable without becoming a glowing white disc.
+    // Keep a small, stable self-light in both daytime and nighttime.
+    if (hullMaterial.current) hullMaterial.current.emissiveIntensity = 0.1
+    if (domeMaterial.current) domeMaterial.current.emissiveIntensity = 0.18
 
     const heading = game.drone.heading
     const pitch = game.drone.pitch
@@ -510,13 +519,19 @@ function Ufo() {
     const altitudeView = Math.max(0, game.drone.position.y - 6) * 0.12
     // Pull back with size, or a grown craft fills the screen and hides the
     // bodies it is trying to reach.
-    const distance = 9.4 + speedRatio * 3.3 + altitudeView + game.sizeProfile.cameraDistance
+    // Size changes are discrete gameplay events. Smooth the derived pull-back
+    // separately before smoothing the camera position, otherwise a big meal or
+    // hit makes the chase rig surge even though position.lerp is enabled.
+    if (smoothedCameraPull.current === null) smoothedCameraPull.current = game.sizeProfile.cameraDistance
+    const pullBlend = 1 - Math.exp(-1.35 * dt)
+    smoothedCameraPull.current += (game.sizeProfile.cameraDistance - smoothedCameraPull.current) * pullBlend
+    const distance = 9.4 + speedRatio * 3.3 + altitudeView + smoothedCameraPull.current
     cameraPosition.set(
       game.drone.position.x - forwardX * distance,
       Math.max(1, game.drone.position.y + 3.6 + speedRatio * 1.1 + altitudeView - forwardY * distance * 0.72),
       game.drone.position.z - forwardZ * distance,
     )
-    camera.position.lerp(cameraPosition, 1 - Math.exp(-5.5 * dt))
+    camera.position.lerp(cameraPosition, 1 - Math.exp(-3.2 * dt))
     cameraTarget.set(
       game.drone.position.x + forwardX * (5.5 + speedRatio * 3),
       game.drone.position.y + forwardY * (5.5 + speedRatio * 3),
@@ -538,17 +553,17 @@ function Ufo() {
             night city. Finding yourself instantly is the whole readability bar. */}
         <mesh scale={[1, 0.32, 1]}>
           <sphereGeometry args={[1.72, 20, 10]} />
-          <meshToonMaterial ref={hullMaterial} color={ENTITY.UFO_HULL} emissive={ENTITY.UFO_HULL} emissiveIntensity={0.55} />
+          <meshToonMaterial ref={hullMaterial} color={ENTITY.UFO_HULL} emissive={ENTITY.UFO_HULL} emissiveIntensity={0.2} />
           <Edges threshold={15} color="#5a5170" />
         </mesh>
         <mesh position-y={0.25} scale={[1, 0.55, 1]}>
           <sphereGeometry args={[0.82, 18, 10, 0, Math.PI * 2, 0, Math.PI / 2]} />
-          <meshToonMaterial ref={domeMaterial} color={ENTITY.UFO_DOME} emissive={ENTITY.UFO_DOME} emissiveIntensity={0.9} transparent opacity={0.9} />
+          <meshToonMaterial ref={domeMaterial} color={ENTITY.UFO_DOME} emissive={ENTITY.UFO_DOME} emissiveIntensity={0.36} transparent opacity={0.9} />
           <Edges threshold={15} color="#432f6b" />
         </mesh>
         <mesh position-y={-0.2}>
           <cylinderGeometry args={[1.35, 1.03, 0.32, 18]} />
-          <meshToonMaterial color="#5d4a83" emissive="#38215d" emissiveIntensity={0.45} />
+          <meshToonMaterial color="#5d4a83" emissive="#38215d" emissiveIntensity={0.12} />
           <Edges color="#2b243f" />
         </mesh>
         <mesh position-y={-0.39} rotation-x={Math.PI / 2}>
@@ -637,23 +652,55 @@ function CrowdPool({ kind }: { kind: CrowdKind }) {
   )
 }
 
-// Explosives have to be legible before they are swallowed, not after. The body
-// is a hot red drum, it carries a floating warning ring, and both brighten as
-// the alarm rises while it hangs from the beam - so the window to hit release
-// is signposted the whole way in.
-const hazardBodyGeometry = mergeModel([
-  coloredPart(new THREE.CylinderGeometry(0.62, 0.62, 1.5, 10), '#d8342a'),
-  coloredPart(new THREE.CylinderGeometry(0.66, 0.66, 0.16, 10).translate(0, 0.45, 0), '#ffd44d'),
-  coloredPart(new THREE.CylinderGeometry(0.66, 0.66, 0.16, 10).translate(0, -0.45, 0), '#ffd44d'),
-  coloredPart(new THREE.CylinderGeometry(0.2, 0.2, 0.3, 6).translate(0, 0.88, 0), '#8c2f28'),
+// The old bomb/drum silhouette is now a tanker about 2.5 times the footprint
+// of a normal car. Both the ambient hazard and the dropped weapon share this
+// fixed pooled geometry.
+const tankerGeometry = mergeModel([
+  unindexedPart(new RoundedBoxGeometry(2.65, 1.65, 2.15, 2, 0.18).translate(0, 0.05, -2.45)),
+  unindexedPart(new THREE.CylinderGeometry(1.25, 1.25, 4.8, 14).rotateX(Math.PI / 2).translate(0, 0.28, 0.85)),
+  unindexedPart(new THREE.BoxGeometry(2.55, 0.28, 5.3).translate(0, -0.72, 0.45)),
+  ...[-1.05, 1.05].flatMap((x) => [-2.15, 1.85].map((z) =>
+    unindexedPart(new THREE.CylinderGeometry(0.53, 0.53, 0.32, 10).rotateZ(Math.PI / 2).translate(x, -0.78, z)),
+  )),
 ])
 
-const hazardBodyMaterial = new THREE.MeshToonMaterial({
-  vertexColors: true,
-  emissive: new THREE.Color('#ff3b23'),
-  emissiveIntensity: 0.5,
-  toneMapped: false,
+const hazardTankerMaterial = new THREE.ShaderMaterial({
+  uniforms: { uTime: { value: 0 } },
+  vertexShader: `
+    varying vec3 vLocal;
+    varying vec3 vWorldNormal;
+    varying vec3 vWorldPosition;
+    void main() {
+      vLocal = position;
+      vec4 localPosition = vec4(position, 1.0);
+      vec3 localNormal = normal;
+      #ifdef USE_INSTANCING
+        localPosition = instanceMatrix * localPosition;
+        localNormal = mat3(instanceMatrix) * localNormal;
+      #endif
+      vec4 worldPosition = modelMatrix * localPosition;
+      vWorldPosition = worldPosition.xyz;
+      vWorldNormal = normalize(mat3(modelMatrix) * localNormal);
+      gl_Position = projectionMatrix * viewMatrix * worldPosition;
+    }
+  `,
+  fragmentShader: `
+    uniform float uTime;
+    varying vec3 vLocal;
+    varying vec3 vWorldNormal;
+    varying vec3 vWorldPosition;
+    void main() {
+      float stripe = step(0.5, fract((vLocal.z + vLocal.x * 0.45) * 1.15));
+      float pulse = 0.72 + 0.28 * sin(uTime * 7.0);
+      vec3 danger = mix(vec3(0.34, 0.035, 0.045), vec3(1.0, 0.62, 0.08), stripe);
+      vec3 viewDirection = normalize(cameraPosition - vWorldPosition);
+      float rim = pow(1.0 - max(0.0, dot(normalize(vWorldNormal), viewDirection)), 2.5);
+      vec3 color = danger * (0.72 + pulse * 0.42) + vec3(1.0, 0.08, 0.035) * rim * (0.8 + pulse * 0.5);
+      gl_FragColor = vec4(color, 1.0);
+    }
+  `,
 })
+hazardTankerMaterial.toneMapped = false
 
 function HazardPool() {
   const { runtime } = useGame()
@@ -673,18 +720,20 @@ function HazardPool() {
     if (!body || !ring) return
     let count = 0
     const blink = 0.55 + 0.45 * Math.sin(clock.elapsedTime * 7)
+    hazardTankerMaterial.uniforms.uTime!.value = clock.elapsedTime
     for (const hazard of runtime.current.hazards.objects) {
       if (!hazard.active) continue
       position.set(hazard.position.x, hazard.position.y, hazard.position.z)
       euler.set(hazard.rotation.x, hazard.rotation.y, hazard.rotation.z)
       quaternion.setFromEuler(euler)
-      scale.setScalar(1)
+      const absorbScale = hazard.absorbing ? Math.max(0.04, hazard.absorbTimer / BEAM_ABSORB_TIME) : 1
+      scale.setScalar(absorbScale)
       matrix.compose(position, quaternion, scale)
       body.setMatrixAt(count, matrix)
       // The ring pulses faster and brighter the closer this is to going off.
       const urgency = blink * (0.5 + hazard.alarm * 0.5) + hazard.alarm * 0.4
-      position.y += 1.5 + hazard.alarm * 0.6
-      scale.setScalar(1.5 + hazard.alarm * 1.4)
+      position.y += 2.4 + hazard.alarm * 0.6
+      scale.setScalar((3.1 + hazard.alarm * 1.4) * absorbScale)
       matrix.compose(position, flatRotation, scale)
       ring.setMatrixAt(count, matrix)
       ring.setColorAt(count, color.setRGB(1, 0.28 - hazard.alarm * 0.2, 0.2).multiplyScalar(0.6 + urgency))
@@ -699,7 +748,7 @@ function HazardPool() {
 
   return (
     <group>
-      <instancedMesh ref={bodies} args={[hazardBodyGeometry, hazardBodyMaterial, HAZARD_MAX]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }} />
+      <instancedMesh ref={bodies} args={[tankerGeometry, hazardTankerMaterial, HAZARD_MAX]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }} />
       <instancedMesh ref={rings} args={[undefined, undefined, HAZARD_MAX]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }} renderOrder={4}>
         <ringGeometry args={[0.7, 1, 16]} />
         <meshBasicMaterial vertexColors transparent opacity={0.95} depthWrite={false} side={THREE.DoubleSide} toneMapped={false} />
@@ -746,10 +795,12 @@ function EnemyPool({ kind }: { kind: EnemyKind }) {
       const groundUnit = kind === 'police' || kind === 'police-car' || kind === 'soldier' || kind === 'tank'
       const lookUp = groundUnit && player.y > 5.5 && horizontalDistance < 60
       const pitch = lookUp ? -Math.atan2(Math.max(0, player.y - enemy.position.y), Math.max(0.1, horizontalDistance)) : 0
-      rotation.set(pitch, yaw, kind === 'fighter' ? Math.sin(enemy.phase) * 0.22 : 0)
+      if (enemy.inBeam || enemy.tether > 0.02 || enemy.absorbing) rotation.set(enemy.rotation.x, enemy.rotation.y, enemy.rotation.z)
+      else rotation.set(pitch, yaw, kind === 'fighter' ? Math.sin(enemy.phase) * 0.22 : 0)
       quaternion.setFromEuler(rotation)
       const size = kind === 'drone' ? 0.45 : kind === 'police' ? 0.82 : kind === 'police-car' ? 1.05 : kind === 'soldier' ? 1.08 : kind === 'helicopter' ? 0.82 : kind === 'fighter' ? 1.18 : kind === 'tank' ? 1.45 : kind === 'anti-air' ? 2.35 : 1.8
-      scale.setScalar(size)
+      const absorbScale = enemy.absorbing ? Math.max(0.04, enemy.absorbTimer / BEAM_ABSORB_TIME) : 1
+      scale.setScalar(size * absorbScale)
       matrix.compose(position, quaternion, scale)
       mesh.setMatrixAt(count, matrix)
       if (enemy.aiming) color.set('#ff6573')
@@ -958,9 +1009,9 @@ function WeaponProjectilePool({ kind }: { kind: WeaponProjectileKind }) {
     if (kind === 'missile') return new THREE.ConeGeometry(0.34, 1.7, 6)
     if (kind === 'scatter') return new THREE.IcosahedronGeometry(0.42, 0)
     if (kind === 'satellite') return new THREE.TorusGeometry(0.72, 0.16, 6, 10)
-    return new THREE.SphereGeometry(0.52, 8, 6)
+    return tankerGeometry
   }, [kind])
-  const material = useMemo(() => new THREE.MeshBasicMaterial({
+  const material = useMemo(() => kind === 'bomb' ? hazardTankerMaterial : new THREE.MeshBasicMaterial({
     color: weaponProjectileColor(kind),
     vertexColors: true,
     transparent: true,
@@ -971,9 +1022,11 @@ function WeaponProjectilePool({ kind }: { kind: WeaponProjectileKind }) {
   }), [kind])
   const color = useMemo(() => new THREE.Color(weaponProjectileColor(kind)), [kind])
   useEffect(() => () => {
-    geometry.dispose()
-    material.dispose()
-  }, [geometry, material])
+    if (kind !== 'bomb') {
+      geometry.dispose()
+      material.dispose()
+    }
+  }, [geometry, kind, material])
   useFrame(({ clock }) => {
     const mesh = ref.current
     if (!mesh) return
@@ -984,19 +1037,21 @@ function WeaponProjectilePool({ kind }: { kind: WeaponProjectileKind }) {
       direction.set(projectile.direction.x, projectile.direction.y, projectile.direction.z)
       if (kind === 'missile') quaternion.setFromUnitVectors(axis, direction.normalize())
       else if (kind === 'satellite') quaternion.setFromAxisAngle(direction.set(0, 1, 0), clock.elapsedTime * 3 + projectile.slot)
+      else if (kind === 'bomb') quaternion.setFromAxisAngle(axis, clock.elapsedTime * 0.8 + projectile.slot)
       else quaternion.identity()
       if (kind === 'missile') scale.set(1, 1, 1)
       else if (kind === 'scatter') scale.setScalar(1 + Math.sin(clock.elapsedTime * 18 + projectile.slot) * 0.16)
       else if (kind === 'satellite') scale.setScalar(1 + Math.sin(clock.elapsedTime * 10 + projectile.slot) * 0.12)
-      else scale.setScalar(1 + Math.sin(clock.elapsedTime * 12 + projectile.slot) * 0.1)
+      else scale.setScalar(1 + Math.sin(clock.elapsedTime * 6 + projectile.slot) * 0.035)
       matrix.compose(position, quaternion, scale)
       mesh.setMatrixAt(count, matrix)
-      mesh.setColorAt(count, color)
+      if (kind !== 'bomb') mesh.setColorAt(count, color)
       count += 1
     }
     mesh.count = count
     mesh.instanceMatrix.needsUpdate = true
-    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
+    if (kind !== 'bomb' && mesh.instanceColor) mesh.instanceColor.needsUpdate = true
+    if (kind === 'bomb') hazardTankerMaterial.uniforms.uTime!.value = clock.elapsedTime
   })
   return <instancedMesh ref={ref} args={[geometry, material, WEAPON_POOL_CAPS[kind]]} frustumCulled={false} renderOrder={5} />
 }
@@ -1103,8 +1158,8 @@ function FixedEffectLights() {
     const drone = runtime.current.drone
     if (ufoLight.current) {
       ufoLight.current.position.set(drone.position.x, drone.position.y - 1.1, drone.position.z)
-      ufoLight.current.intensity = snapshot.beamActive ? 8 : 1.6
-      ufoLight.current.color.set(snapshot.boostActive ? '#69f7ff' : '#a8ffdf')
+      ufoLight.current.intensity = snapshot.beamActive ? 1.35 : 0.32
+      ufoLight.current.color.set(ENTITY.UFO_RIM)
     }
     if (boostLight.current) {
       boostLight.current.position.set(
@@ -1112,19 +1167,19 @@ function FixedEffectLights() {
         drone.position.y,
         drone.position.z - Math.cos(drone.heading) * 2.4,
       )
-      boostLight.current.intensity = snapshot.boostActive ? 9 : 0
+      boostLight.current.intensity = snapshot.boostActive ? 4.6 : 0
     }
     if (targetLight.current) {
       targetLight.current.position.set(drone.position.x, drone.position.y - 2.2, drone.position.z)
-      targetLight.current.intensity = snapshot.beamActive ? 5.5 : 0
-      targetLight.current.color.set(snapshot.boostActive ? '#69f7ff' : '#fff5bd')
+      targetLight.current.intensity = snapshot.beamActive ? 3.2 : 0
+      targetLight.current.color.set(ENTITY.UFO_POOL)
     }
   })
   return (
     <group>
-      <pointLight ref={ufoLight} color="#a8ffdf" intensity={1.6} distance={10} />
-      <pointLight ref={boostLight} color="#64efff" intensity={0} distance={8} />
-      <pointLight ref={targetLight} color="#c9ff67" intensity={2.5} distance={10} />
+      <pointLight ref={ufoLight} color={ENTITY.UFO_RIM} intensity={0.32} distance={8} />
+      <pointLight ref={boostLight} color={ENTITY.UFO_DOME} intensity={0} distance={8} />
+      <pointLight ref={targetLight} color={ENTITY.UFO_POOL} intensity={0} distance={10} />
     </group>
   )
 }
@@ -1270,12 +1325,32 @@ function cachedColor(hex: string) {
   return color
 }
 
+// Render-only comfort targets. The day-cycle timing remains untouched; its
+// darkest phase is simply graded toward a bright pastel twilight so the scene
+// never turns into black silhouettes and isolated neon dots.
+const comfortNightTarget: Record<keyof DaylightKeyframe['colors'], string> = {
+  background: SKY.BACKGROUND,
+  horizon: SKY.HORIZON,
+  middle: SKY.MIDDLE,
+  top: SKY.TOP,
+  fog: SKY.FOG,
+  ambient: LIGHT.AMBIENT,
+  hemiSky: LIGHT.HEMI_SKY,
+  hemiGround: LIGHT.HEMI_GROUND,
+  sun: LIGHT.MOON,
+  cloud: SKY.CLOUD,
+}
+
 function mixDaylight(
   out: THREE.Color,
   sample: DaylightSample,
   channel: keyof DaylightKeyframe['colors'],
 ) {
-  return out.lerpColors(cachedColor(sample.from.colors[channel]), cachedColor(sample.to.colors[channel]), sample.blend)
+  out.lerpColors(cachedColor(sample.from.colors[channel]), cachedColor(sample.to.colors[channel]), sample.blend)
+  // Preserve the cycle and its phase cues, but keep every phase inside the same
+  // gentle storybook grade. The visual blend has no effect on the cycle clock
+  // or any gameplay system that reads it.
+  return out.lerp(cachedColor(comfortNightTarget[channel]), 0.18 + sample.nightFactor * 0.82)
 }
 
 const SUN_DISTANCE = 330
@@ -1308,25 +1383,25 @@ function Sky() {
     mixDaylight(skyUniforms.uHorizon.value, sample, 'horizon')
     mixDaylight(skyUniforms.uMiddle.value, sample, 'middle')
     mixDaylight(skyUniforms.uTop.value, sample, 'top')
-    skyUniforms.uStarIntensity.value = sample.starIntensity
+    skyUniforms.uStarIntensity.value = sample.starIntensity * 0.32
 
     if (scene.background instanceof THREE.Color) {
       scene.background.copy(mixDaylight(daylightScratch.background, sample, 'background'))
     }
     if (scene.fog instanceof THREE.Fog) {
       scene.fog.color.copy(mixDaylight(daylightScratch.fog, sample, 'fog'))
-      scene.fog.near = sample.fogNear
-      scene.fog.far = sample.fogFar
+      scene.fog.near = Math.max(210, sample.fogNear)
+      scene.fog.far = Math.max(650, sample.fogFar)
     }
 
     if (ambient.current) {
       ambient.current.color.copy(mixDaylight(daylightScratch.ambient, sample, 'ambient'))
-      ambient.current.intensity = sample.ambientIntensity
+      ambient.current.intensity = Math.max(0.54, sample.ambientIntensity)
     }
     if (hemisphere.current) {
       hemisphere.current.color.copy(mixDaylight(daylightScratch.hemiSky, sample, 'hemiSky'))
       hemisphere.current.groundColor.copy(mixDaylight(daylightScratch.hemiGround, sample, 'hemiGround'))
-      hemisphere.current.intensity = sample.hemiIntensity
+      hemisphere.current.intensity = Math.max(0.68, sample.hemiIntensity)
     }
 
     // One directional light for the whole cycle: it is the sun while the sun is
@@ -1335,7 +1410,7 @@ function Sky() {
     const bodyAltitude = sample.sunOpacity >= sample.moonOpacity ? sample.sunAltitude : sample.moonAltitude
     if (keyLight.current) {
       keyLight.current.color.copy(mixDaylight(daylightScratch.sun, sample, 'sun'))
-      keyLight.current.intensity = sample.sunIntensity
+      keyLight.current.intensity = Math.max(0.68, sample.sunIntensity)
       keyLight.current.position.set(
         camera.position.x - Math.cos(bodyAltitude) * 90,
         Math.max(12, Math.sin(bodyAltitude) * 120 + 40),
@@ -1376,7 +1451,7 @@ function Sky() {
         if (!mesh.isMesh) return
         const material = mesh.material as THREE.MeshBasicMaterial
         material.color.copy(daylightScratch.cloud)
-        material.opacity = 0.72 - sample.nightFactor * 0.2
+        material.opacity = 0.72 - sample.nightFactor * 0.08
       })
     }
   })

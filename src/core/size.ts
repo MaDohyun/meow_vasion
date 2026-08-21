@@ -28,17 +28,20 @@ export const SIZE_START = 1
  *  minute already carries tension. */
 export const SIZE_MIN = 0.62
 export const SIZE_MAX = 3.1
+/** Approximate visible width of the starting saucer, including its rim lamps. */
+export const UFO_BASE_DIAMETER = 5.4
 
 /**
  * Growth per absorbed body. Cats are worth more than people, which is what makes
  * chasing the fast, evasive target worthwhile.
  *
- * Only living things are here. Inanimate objects cannot be absorbed at all -
- * they hang off the beam as ballast, which is the whole cost structure.
+ * Living targets keep their authored gains. Larger non-building objects use a
+ * diameter-scaled gain in GameContext once the craft is large enough to eat
+ * them.
  */
 export const SIZE_GAIN = {
-  pedestrian: 0.036,
-  cat: 0.058,
+  pedestrian: 0.072,
+  cat: 0.116,
 } as const
 
 export type SizeGainKind = keyof typeof SIZE_GAIN
@@ -97,13 +100,23 @@ export function sizeProfile(size: number): SizeProfile {
     beamPower: 0.45 + clamped * 0.62,
     absorbDistance: 2.1 + clamped * 1.5,
     hitRadius: 1.05 * clamped,
-    cameraDistance: clamped * 2.6,
+    // Keep the opening composition familiar, then pull back aggressively as
+    // the saucer grows so its larger body never consumes the useful view.
+    cameraDistance: 2.6 + Math.max(0, clamped - SIZE_START) * 15,
     scoreMultiplier: clamped,
   }
 }
 
 export function growSize(size: number, kind: SizeGainKind) {
   return clampSize(size + SIZE_GAIN[kind])
+}
+
+export function growSizeBy(size: number, amount: number) {
+  return clampSize(size + Math.max(0, amount))
+}
+
+export function ufoDiameter(size: number) {
+  return UFO_BASE_DIAMETER * clampSize(size)
 }
 
 export function shrinkSize(size: number, kind: SizeLossKind) {
