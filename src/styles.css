@@ -225,6 +225,14 @@ button { font: inherit; }
 .health-bar i[data-state="part"] { background:linear-gradient(90deg,var(--green) 50%,rgba(255,245,199,.14) 50%); border-color:var(--cream); }
 .health-bar[data-regen="true"] i[data-state="empty"], .health-bar[data-regen="true"] i[data-state="part"] { animation:warning-pulse 1s steps(2) infinite; }
 
+/* Load is fatal now, so the readout carries a fill bar and two alarm states. */
+.cargo-readout { position:relative; }
+.cargo-readout i { position:absolute; left:0; bottom:-3px; height:2px; background:var(--yellow); transition:width .1s linear; }
+.cargo-readout[data-error="true"] i { background:var(--coral); }
+.cargo-readout[data-critical="true"] { animation:warning-pulse .35s steps(2) infinite; }
+.cargo-readout[data-critical="true"] b { color:var(--coral); }
+.overload-alarm { position:absolute; left:50%; top:24%; padding:9px 18px; color:var(--cream); background:rgba(196,44,64,.94); border:3px solid var(--cream); box-shadow:5px 5px 0 rgba(22,17,40,.6); font-size:11px; font-weight:1000; letter-spacing:1.6px; white-space:nowrap; transform:translateX(-50%); animation:warning-pulse .35s steps(2) infinite; }
+
 @media (pointer: coarse), (max-width: 760px) {
   .mobile-controls { display:block; }
   .time-card { top:8px; left:8px; width:190px; padding:7px 8px; }

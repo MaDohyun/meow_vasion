@@ -80,6 +80,10 @@ export type GameRuntime = {
    *  whatever language the player set. */
   broadcastStage: number
   broadcastTime: number
+  /** 0 until the load starts to matter, 1 at the point the craft cannot hold
+   *  altitude. Drives the HUD and the beeping. */
+  overloadWarn: number
+  overloadBeep: number
   upgrades: UpgradeState
   /** The opening sighting report is time-triggered rather than raised by a
    *  wave boundary, so it needs its own one-shot latch. */
@@ -169,6 +173,8 @@ export type GameSnapshot = {
   size: number
   sizeRatio: number
   sizeMin: number
+  overloadWarn: number
+  ballastLimit: number
   health: number
   healthMax: number
   healthRatio: number
@@ -250,6 +256,21 @@ const HITSTOP_TIME = 0.05
  * is what grew.
  */
 const BALLAST_DRAG = 0.31
+
+/**
+ * Hanging mass the craft can still hold altitude against.
+ *
+ * Past it the beam is carrying more than the engines can lift: climb dies, the
+ * craft starts sinking, and touching down while still overloaded ends the run.
+ * Weight only slowed you down before, which meant there was no ceiling on greed
+ * - a decision needs a limit to be a decision.
+ *
+ * It is a countdown, not a dead end. Dropping the load with R or finishing the
+ * meal both clear it, so the answer is always in the player's hands.
+ */
+const BALLAST_CRUSH = 34
+/** Where the warnings start. Dying has to be something you watched coming. */
+const BALLAST_WARN = BALLAST_CRUSH * 0.6
 /**
  * A detonation makes the craft sluggish; it never takes the controls away.
  * Input keeps registering, it just responds badly, so the player is still
@@ -321,6 +342,8 @@ function makeRuntime(): GameRuntime {
     waveStage: 0,
     broadcastStage: 0,
     broadcastTime: 0,
+    overloadWarn: 0,
+    overloadBeep: 1,
     upgrades: createUpgradeState((Math.random() * 0xffffffff) >>> 0),
     openingBroadcastDone: false,
     loadedCars: 0,
@@ -721,6 +744,8 @@ function snapshotOf(game: GameRuntime): GameSnapshot {
     size: game.size,
     sizeRatio: game.sizeProfile.ratio,
     sizeMin: SIZE_MIN,
+    overloadWarn: game.overloadWarn,
+    ballastLimit: BALLAST_CRUSH,
     health: game.health.current,
     healthMax: game.health.max,
     healthRatio: healthRatio(game.health),
@@ -947,6 +972,30 @@ export function GameProvider({ children }: { children: ReactNode }) {
       const headroom = Math.max(0, ceiling - game.drone.position.y)
       flightInput.vertical *= Math.min(1, headroom / 9)
     }
+    // Overloaded: the engines lose the argument with the load and the craft
+    // starts down. Climb is cut rather than reversed - the sinking comes from
+    // the flight model's own gravity, so it eases in instead of snapping.
+    const overload = Math.max(0, game.ballast - BALLAST_CRUSH)
+    if (overload > 0) {
+      flightInput.vertical = Math.min(flightInput.vertical, 0) - Math.min(1, overload / 12)
+      if (game.drone.position.y <= 1.6) {
+        endRun(game, 'CRUSHED BY THE LOAD', false)
+        updatePilotStatus(game)
+        publish()
+        return
+      }
+    }
+    game.overloadWarn = game.ballast <= BALLAST_WARN
+      ? 0
+      : Math.min(1, (game.ballast - BALLAST_WARN) / Math.max(1, BALLAST_CRUSH - BALLAST_WARN))
+    if (game.overloadWarn > 0) {
+      // Faster as it gets worse, so the sound itself carries the urgency.
+      game.overloadBeep -= d * (0.9 + game.overloadWarn * 3.4)
+      if (game.overloadBeep <= 0) {
+        game.overloadBeep = 1
+        tone('warning')
+      }
+    } else game.overloadBeep = 1
     const thrust = upgradeMultiplier(game.upgrades, 'thrust')
     const stepped = stepDrone(game.drone, flightInput, d, game.ballast * BALLAST_DRAG + (game.daze > 0 ? DAZE_DRAG : 0), { ...UFO_UPGRADES, speed: UFO_UPGRADES.speed * thrust })
     const nextWorld = updateActiveWorld(game.world, stepped.position, false, game.destroyedBuildings)
@@ -997,6 +1046,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
       // on. Growing alone makes the beam stronger; cards make it stronger
       // sooner.
       gripScale: game.sizeProfile.beamPower * upgradeMultiplier(game.upgrades, 'beam-grip'),
+      // So a dropped load lands on the roof it was dropped over rather than
+      // falling through it into the street.
+      colliders: game.worldColliders,
     }
     // No pickup cap: hanging mass is its own limit, and a craft that grabbed
     // too much should feel it rather than be quietly protected from it.

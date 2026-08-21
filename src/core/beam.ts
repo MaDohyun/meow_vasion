@@ -1,4 +1,4 @@
-import type { Vec3 } from './drone'
+import type { Aabb, Vec3 } from './drone'
 
 export type BeamObjectKind =
   | 'car' | 'pedestrian' | 'cat' | 'explosive' | 'building'
@@ -123,6 +123,27 @@ export type BeamField = {
    * back.
    */
   gripScale?: number
+  /**
+   * Building boxes to land on.
+   *
+   * Without them a dropped object falls straight through whatever is under it
+   * and lies down in the street - drop a car on a roof and it turns up on the
+   * pavement. Only the top face is resolved, because a load landing on a roof
+   * is the whole of what is visible; a full box sweep would be a lot of work
+   * for the side of a wall nobody drops anything against.
+   */
+  colliders?: readonly Aabb[]
+}
+
+/** Height of the surface directly under a point - a roof if there is one. */
+export function surfaceHeightAt(x: number, z: number, colliders?: readonly Aabb[]) {
+  let height = GROUND_HEIGHT
+  if (!colliders) return height
+  for (const box of colliders) {
+    if (x < box.minX || x > box.maxX || z < box.minZ || z > box.maxZ) continue
+    if (box.maxY > height) height = box.maxY
+  }
+  return height
 }
 
 export type BeamProfile = {
@@ -366,8 +387,9 @@ export function stepBeamObjects(objects: BeamObject[], field: BeamField, dt: num
     object.rotation.y += object.angularVelocity.y * d
     object.rotation.z += object.angularVelocity.z * d
 
-    if (object.position.y < GROUND_HEIGHT) {
-      object.position.y = GROUND_HEIGHT
+    const floor = captured ? GROUND_HEIGHT : surfaceHeightAt(object.position.x, object.position.z, field.colliders)
+    if (object.position.y < floor) {
+      object.position.y = floor
       object.velocity.y = Math.abs(object.velocity.y) * 0.18
       const groundFriction = Math.pow(0.72, d * 60)
       object.velocity.x *= groundFriction

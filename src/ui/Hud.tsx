@@ -321,9 +321,13 @@ export function Hud() {
           {/* Hanging mass is the only thing slowing the craft, so it has to be
               visible - otherwise the player just feels sluggish for no stated
               reason and has no cue to hit R. */}
-          <div className="cargo-readout" data-error={snapshot.ballast > 4}>
-            <span>{t.drag} · {snapshot.ballast.toFixed(1)}t{snapshot.loadedCars > 0 ? ` · ${t.dumpHint}` : ''}</span>
-            <b>{Math.round(snapshot.cargoSlowdown * 100)}% {t.slowdown}</b>
+          {/* Weight is now fatal, not just slow, so the readout has to show how
+              close to fatal it is. Dying under a load must be something the
+              player watched arrive. */}
+          <div className="cargo-readout" data-error={snapshot.overloadWarn > 0} data-critical={snapshot.overloadWarn >= 1}>
+            <span>{t.drag} · {snapshot.ballast.toFixed(1)}/{snapshot.ballastLimit}t{snapshot.loadedCars > 0 ? ` · ${t.dumpHint}` : ''}</span>
+            <b>{snapshot.overloadWarn >= 1 ? t.overloaded : `${Math.round(snapshot.cargoSlowdown * 100)}% ${t.slowdown}`}</b>
+            <i style={{ width: `${Math.min(100, (snapshot.ballast / snapshot.ballastLimit) * 100)}%` }} />
           </div>
           <div className="altitude-alert" data-active={snapshot.height >= 28}>
             <span>{snapshot.height >= 28 ? t.bandAa : snapshot.height > 5.5 ? t.bandArmor : t.bandGround}</span>
@@ -342,6 +346,7 @@ export function Hud() {
           <div className="pilot-portrait" style={pilotFrameStyle(snapshot.pilotExpression)} />
           <div><span className="eyebrow">{t.pilotCam}</span><b>{snapshot.pilotExpression.toUpperCase()}</b></div>
         </section>
+        {snapshot.overloadWarn >= 1 && <div className="overload-alarm">{t.overloadAlarm}</div>}
         <BreakingNews />
         {snapshot.timeBonusPulse > 0 && <div className="time-bonus">+{snapshot.timeBonusAmount}s</div>}
         <div

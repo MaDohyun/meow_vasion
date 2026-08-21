@@ -78,6 +78,16 @@ function pedestrianGeometry() {
   ])
 }
 
+/**
+ * A cat, and it has to read as much smaller than a person.
+ *
+ * It was drawn at very nearly pedestrian size, which threw away the thing that
+ * makes it worth chasing: small, quick and awkward to catch, and paid better
+ * for exactly that. If the two are the same size on screen the difference is
+ * just a colour.
+ */
+const CAT_SCALE = 0.52
+
 function catGeometry() {
   return mergeModel([
     coloredPart(new THREE.BoxGeometry(0.76, 0.5, 1.16), '#d98b45'),
@@ -88,7 +98,7 @@ function catGeometry() {
     ...[-0.25, 0.25].flatMap((x) => [-0.32, 0.32].map((z) =>
       coloredPart(new THREE.BoxGeometry(0.13, 0.42, 0.14).translate(x, -0.4, z), '#d98b45'),
     )),
-  ])
+  ]).scale(CAT_SCALE, CAT_SCALE, CAT_SCALE).translate(0, -0.34 * (1 - CAT_SCALE), 0)
 }
 
 function soldierGeometry() {
@@ -693,40 +703,27 @@ const hazardTankerMaterial = new THREE.MeshToonMaterial({
 })
 
 /**
- * The floating warning above a tanker: a red exclamation mark that bobs.
+/**
+ * Tankers. No floating marker above them any more.
  *
- * Movement carries the alarm, never transparency. Blinking a small marker reads
- * as it vanishing rather than as it warning you - the radar made exactly that
- * mistake and had to be undone. This one is always solid; it just rises and
- * falls, faster and further once the beam has hold of the tanker.
+ * There used to be a bobbing red exclamation mark. The tanker already reads as
+ * a tanker from its silhouette, and the moment the beam takes hold its weight
+ * announces itself far more clearly than a symbol could - a piece of UI
+ * hovering in the world matched nothing else in this game.
  */
-const hazardMarkGeometry = mergeModel([
-  coloredPart(new THREE.BoxGeometry(0.62, 1.5, 0.16).translate(0, 0.52, 0), '#ff3b34'),
-  coloredPart(new THREE.BoxGeometry(0.62, 0.55, 0.16).translate(0, -0.62, 0), '#ff3b34'),
-])
-
-const hazardMarkMaterial = new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false })
-
 function HazardPool() {
   const { runtime } = useGame()
   const bodies = useRef<THREE.InstancedMesh>(null)
-  const rings = useRef<THREE.InstancedMesh>(null)
   const matrix = useMemo(() => new THREE.Matrix4(), [])
   const position = useMemo(() => new THREE.Vector3(), [])
   const scale = useMemo(() => new THREE.Vector3(), [])
   const quaternion = useMemo(() => new THREE.Quaternion(), [])
   const euler = useMemo(() => new THREE.Euler(), [])
-  // The mark faces the camera so it is readable from any approach angle.
-  const billboard = useMemo(() => new THREE.Quaternion(), [])
-  const color = useMemo(() => new THREE.Color(), [])
 
-  useFrame(({ clock, camera }) => {
+  useFrame(() => {
     const body = bodies.current
-    const mark = rings.current
-    if (!body || !mark) return
-    billboard.copy(camera.quaternion)
+    if (!body) return
     let count = 0
-    const time = clock.elapsedTime
     for (const hazard of runtime.current.hazards.objects) {
       if (!hazard.active) continue
       position.set(hazard.position.x, hazard.position.y, hazard.position.z)
@@ -736,27 +733,15 @@ function HazardPool() {
       scale.setScalar(absorbScale)
       matrix.compose(position, quaternion, scale)
       body.setMatrixAt(count, matrix)
-      // Bob speed and travel both rise with the alarm, so a tanker being drawn
-      // in visibly gets more urgent without ever dimming.
-      const speed = 2.2 + hazard.alarm * 5.5
-      const travel = 0.28 + hazard.alarm * 0.6
-      const phase = hazard.slot * 1.7
-      position.y += 2.9 + Math.sin(time * speed + phase) * travel
-      scale.setScalar((1 + hazard.alarm * 0.45) * absorbScale)
-      matrix.compose(position, billboard, scale)
-      mark.setMatrixAt(count, matrix)
       count += 1
     }
     body.count = count
-    mark.count = count
     body.instanceMatrix.needsUpdate = true
-    mark.instanceMatrix.needsUpdate = true
   })
 
   return (
     <group>
       <instancedMesh ref={bodies} args={[tankerGeometry, hazardTankerMaterial, HAZARD_MAX]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }} />
-      <instancedMesh ref={rings} args={[hazardMarkGeometry, hazardMarkMaterial, HAZARD_MAX]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }} renderOrder={4} />
     </group>
   )
 }

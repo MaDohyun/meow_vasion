@@ -53,6 +53,16 @@ const SPAWN_ATTEMPTS = 6
 // toward them beats flying straight, and far enough out that arrivals are
 // masked by the city rather than popping in.
 const RESPAWN_MIN_DISTANCE = 92
+/**
+ * How far a park or car park has to be before it may be used as a respawn.
+ *
+ * Just inside the forward arc's own minimum, so the two branches agree about
+ * what "not on top of the player" means.
+ */
+const ZONE_MIN_DISTANCE = 86
+/** How far round toward the front a zone has to sit. Zero would be the whole
+ *  half-plane ahead; this trims it to a generous cone. */
+const ZONE_FORWARD_BIAS = 0.25
 const RESPAWN_RANGE = 62
 const RESPAWN_ARC = 1.75
 /**
@@ -199,7 +209,26 @@ function spawnCrowdObject(state: CrowdState, view: CrowdView, kind: CrowdKind, p
         const wantedKind = zoneRoll < 0.68 ? 'park' : zoneRoll < 0.82 ? 'parking-lot' : null
         let zone: CrowdSpawnZone | undefined
         if (wantedKind && zones?.length) {
-          const matches = zones.filter((candidate) => candidate.kind === wantedKind)
+          // Only zones far enough away, and preferably ahead.
+          //
+          // The zone branch used to take any park within range, including the
+          // one directly underneath - so hovering over a park respawned food
+          // at the player's feet for as long as they cared to hold the beam,
+          // and standing still was the strongest play in the game. The forward
+          // arc below always had a minimum distance; this branch simply never
+          // got one.
+          //
+          // Distance alone would only mean flying back and forth. Weighting
+          // the choice forward is what turns "keep moving" from a rule into
+          // the shape of the map: go forward and there is food, stop and it
+          // dries up.
+          const matches = zones.filter((candidate) => {
+            const dx = candidate.x - view.position.x
+            const dz = candidate.z - view.position.z
+            if (Math.hypot(dx, dz) < ZONE_MIN_DISTANCE) return false
+            const forward = (dx * Math.sin(view.heading) + dz * Math.cos(view.heading)) / Math.max(0.001, Math.hypot(dx, dz))
+            return forward > ZONE_FORWARD_BIAS
+          })
           zone = matches[Math.floor(random(state) * matches.length)]
         }
         if (zone) {
