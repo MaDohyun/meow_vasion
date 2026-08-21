@@ -10,6 +10,8 @@ import {
   hasBusStop,
   isNewsTower,
   isConvenienceStore,
+  newsScreenMount,
+  NEWS_SCREEN_HEIGHT,
 } from '../core/cityLandmarks'
 import {
   groundCellsAround,
@@ -345,6 +347,19 @@ function displayMaterial(map: THREE.Texture, night: number, day = 0.05) {
   }), day, night)
 }
 
+/**
+ * Blank cladding for the storey the news screen is mounted on.
+ *
+ * A screen stuck straight onto a window grid reads as a poster taped over
+ * glass, not as part of the building - and it got worse once the facade
+ * started tiling by height and the windows got denser. Real facade screens are
+ * mounted on solid wall; the wall is made solid here.
+ *
+ * Not registered for the night glow: this is wall. A band that lit up would be
+ * competing with the screen bolted to it.
+ */
+const screenMountMaterial = new THREE.MeshToonMaterial({ color: '#ffffff' })
+
 const storeSignMaterial = displayMaterial(convenienceStoreTexture, 0.9)
 // Dimmer than the old dark set needed. The texture is now mostly light, so the
 // same emissive multiplier that used to lift a navy studio to "lit screen"
@@ -424,6 +439,7 @@ function BuildingFeaturePool() {
   const storeBands = useRef<THREE.InstancedMesh>(null)
   const storeSigns = useRef<THREE.InstancedMesh>(null)
   const warningScreens = useRef<THREE.InstancedMesh>(null)
+  const screenMounts = useRef<THREE.InstancedMesh>(null)
   const towerCrowns = useRef<THREE.InstancedMesh>(null)
   const lastKey = useRef('')
   const lastNewsFrame = useRef(-1)
@@ -431,10 +447,13 @@ function BuildingFeaturePool() {
   const position = useMemo(() => new THREE.Vector3(), [])
   const scale = useMemo(() => new THREE.Vector3(), [])
   const rotation = useMemo(() => new THREE.Quaternion(), [])
+  const color = useMemo(() => new THREE.Color(), [])
+  const mountNeutral = useMemo(() => new THREE.Color(BUILDING.FACADE_WALL), [])
   const sideRotation = useMemo(() => new THREE.Quaternion().setFromEuler(new THREE.Euler(0, Math.PI / 2, 0)), [])
 
   useFrame(({ clock }) => {
     if (!storeBands.current || !storeSigns.current || !warningScreens.current || !towerCrowns.current) return
+    if (!screenMounts.current) return
     const newsFrame = Math.floor(clock.elapsedTime * 12)
     if (newsFrame !== lastNewsFrame.current) {
       lastNewsFrame.current = newsFrame
@@ -483,12 +502,22 @@ function BuildingFeaturePool() {
       }
 
       if (isNewsTower(building)) {
+        const mount = newsScreenMount(building)
+        // Wraps all four faces. Blanking only the face the screen is on would
+        // just move the problem to wherever the player happens to fly.
+        position.set(building.position.x, mount.centre, building.position.z)
+        scale.set(building.size.x * 1.02, mount.height, building.size.z * 1.02)
+        matrix.compose(position, rotation, scale)
+        screenMounts.current.setMatrixAt(warningCount, matrix)
+        screenMounts.current.setColorAt(warningCount, color.set(building.color).lerp(mountNeutral, 0.5).multiplyScalar(0.92))
+
+        // The screen sits proud of the band, which is itself proud of the wall.
         position.set(
           building.position.x + (signOnX ? building.size.x / 2 + 0.42 : 0),
-          Math.max(12, building.size.y * 0.62),
+          mount.centre,
           building.position.z + (!signOnX ? building.size.z / 2 + 0.42 : 0),
         )
-        scale.set(Math.min(15, (signOnX ? building.size.z : building.size.x) * 0.78), 15, 0.34)
+        scale.set(Math.min(15, (signOnX ? building.size.z : building.size.x) * 0.78), NEWS_SCREEN_HEIGHT, 0.34)
         matrix.compose(position, signOnX ? sideRotation : rotation, scale)
         warningScreens.current.setMatrixAt(warningCount, matrix)
         // Crown scales with the host footprint so a wide tower does not get a
@@ -504,6 +533,7 @@ function BuildingFeaturePool() {
     setPoolCount(storeBands.current, storeCount)
     setPoolCount(storeSigns.current, storeCount)
     setPoolCount(warningScreens.current, warningCount)
+    setPoolCount(screenMounts.current, warningCount, true)
     setPoolCount(towerCrowns.current, warningCount)
   })
 
@@ -513,6 +543,9 @@ function BuildingFeaturePool() {
         <boxGeometry args={[1, 1, 1]} />
       </instancedMesh>
       <instancedMesh ref={storeSigns} args={[undefined, storeSignMaterial, WORLD_MAX_BUILDINGS]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }}>
+        <boxGeometry args={[1, 1, 1]} />
+      </instancedMesh>
+      <instancedMesh ref={screenMounts} args={[undefined, screenMountMaterial, WORLD_MAX_BUILDINGS]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }}>
         <boxGeometry args={[1, 1, 1]} />
       </instancedMesh>
       <instancedMesh ref={warningScreens} args={[undefined, warningScreenMaterial, WORLD_MAX_BUILDINGS]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }}>

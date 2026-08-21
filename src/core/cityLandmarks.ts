@@ -53,6 +53,32 @@ export function isNewsTower(building: ProceduralBuilding) {
   return seedForWorldCell(building.cellX, building.cellZ, 0x0f0a11) % 100 < 26
 }
 
+/** Screen height, in world units. */
+export const NEWS_SCREEN_HEIGHT = 15
+
+/**
+ * How far the blank cladding runs past the screen, top and bottom.
+ *
+ * The screen is mounted on a band of solid wall rather than straight onto the
+ * window grid - a screen over glass reads as a poster taped to a window, and
+ * got worse once the facade started tiling by height. With no margin the screen
+ * covers the band exactly and all the player sees is that the windows vanished;
+ * the margin is what makes it read as a mounting.
+ */
+export const NEWS_SCREEN_MOUNT_MARGIN = 2.4
+
+/**
+ * Where the screen and its cladding sit on a tower, as a centre height and the
+ * cladding's full height. Both have to stay inside the building: a band poking
+ * through the roof or into the pavement is worse than the windows were.
+ */
+export function newsScreenMount(building: ProceduralBuilding) {
+  return {
+    centre: Math.max(12, building.size.y * 0.62),
+    height: NEWS_SCREEN_HEIGHT + NEWS_SCREEN_MOUNT_MARGIN * 2,
+  }
+}
+
 /** Bus stops are street furniture on an occupied building lot, never a lone
  * landmark in an otherwise empty cell. */
 export function hasBusStop(building: ProceduralBuilding) {
