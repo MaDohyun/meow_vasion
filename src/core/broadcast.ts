@@ -15,6 +15,18 @@ import { ENEMY_WAVE_STAGES, waveStageForTime } from './enemies'
  * they stay on air together.
  */
 
+/**
+ * When the opening bulletin goes on air.
+ *
+ * Not at zero. For the first few seconds the player is still working out
+ * which way the craft is pointing, and a band that slides up while they are
+ * doing that is text nobody reads. Ten seconds in they are already flying,
+ * and the sighting report lands as the world noticing them rather than as a
+ * title card - which is also the right order for a news programme: the event
+ * first, the response after.
+ */
+export const BROADCAST_OPENING_AT = 10
+
 /** How long one bulletin stays on air. Long enough to read two lines at a
  *  glance while flying, short enough that it is gone before the wave it
  *  announces has finished arriving. */

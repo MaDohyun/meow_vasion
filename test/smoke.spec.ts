@@ -15,11 +15,9 @@ test('loads first frame and validates combat and high-altitude flight', async ({
   await expect(page.locator('canvas').first()).toBeVisible()
   expect(Date.now() - started).toBeLessThan(3000)
 
-  // The opening bulletin goes on air with the run and names what is already in
-  // the sky, then leaves on its own.
-  const band = page.locator('.breaking-band')
-  await expect(band).toBeVisible()
-  await expect(band).toContainText('드론')
+  // Nothing is broadcast yet: the sighting report waits until the player has
+  // had ten seconds in the air, which is longer than this run stays alive.
+  await expect(page.locator('.breaking-band')).toHaveCount(0)
 
   await page.keyboard.down('q')
   await page.waitForTimeout(700)

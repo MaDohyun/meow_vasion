@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   BROADCAST_CLOSE_SECONDS,
   BROADCAST_COUNT,
+  BROADCAST_OPENING_AT,
   BROADCAST_OPEN_SECONDS,
   BROADCAST_SECONDS,
   broadcastPhase,
@@ -52,12 +53,29 @@ describe('wave bulletins', () => {
     }
   })
 
-  it('names the drones at the start and the fighters when they scramble', () => {
-    // The two moments the design leans on: the drones already hanging in the
-    // sky when the run opens, and the scramble at 90 seconds.
-    expect(bulletinFor(STRINGS.ko, broadcastStageForTime(0)).line).toContain('자폭 드론')
+  it('opens on the sighting itself, not on the response to it', () => {
+    // The first card is a news programme's first item: the event happened.
+    // The drones are explained in the same breath because they are already in
+    // the sky by then and would otherwise arrive unexplained.
+    const opening = STRINGS.ko.broadcast[0]
+    expect(opening.line).toContain('출현')
+    expect(opening.line).toContain('자폭 드론')
+    expect(STRINGS.ja.broadcast[0].line).toContain('出現')
+    expect(STRINGS.en.broadcast[0].line.toLowerCase()).toContain('appeared')
+  })
+
+  it('names the fighters when they scramble', () => {
     expect(bulletinFor(STRINGS.ko, broadcastStageForTime(90)).line).toContain('전투기')
     expect(bulletinFor(STRINGS.en, broadcastStageForTime(90)).line.toLowerCase()).toContain('fighter')
+  })
+
+  it('gets the opening card on and off air before the first wave', () => {
+    // The opening report is time-triggered, not raised by a wave boundary, so
+    // nothing stops it colliding with wave 1 except this margin.
+    expect(BROADCAST_OPENING_AT).toBeGreaterThan(0)
+    expect(BROADCAST_OPENING_AT + BROADCAST_SECONDS).toBeLessThan(ENEMY_WAVE_STAGES[1]!.at)
+    // And it must still land inside the stage it reports on.
+    expect(broadcastStageForTime(BROADCAST_OPENING_AT)).toBe(0)
   })
 
   it('slides in, holds, then slides out', () => {
