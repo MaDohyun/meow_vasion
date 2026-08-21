@@ -230,7 +230,9 @@ function PullableCars() {
     let visibleCount = 0
     let glowCount = 0
     for (const object of runtime.current.beamObjects) {
-      if (!object.active) continue
+      // Buildings ride the same pipeline but are drawn by the city, which owns
+      // the facade material they have to keep looking like.
+      if (!object.active || object.kind === 'building') continue
       position.set(object.position.x, object.position.y, object.position.z)
       if (camera.position.distanceToSquared(position) > 180 * 180) continue
       sphere.center.copy(position)

@@ -13,7 +13,7 @@ import {
   stepBeamObjects,
 } from './core/beam'
 import { createCrowdState, stepCrowds, type CrowdState } from './core/crowds'
-import { crowdSpawnZonesAround, parkingCarsAround, type CrowdSpawnZone } from './core/cityLandmarks'
+import { type CrowdSpawnZone, canAbsorbBuilding, crowdSpawnZonesAround, parkingCarsAround } from './core/cityLandmarks'
 import { STRINGS, readStoredLanguage, storeLanguage, type Language, type MessageKey } from './i18n'
 import { createDaylightSample, daylightClock, sampleDaylight, type DaylightSample } from './core/daylight'
 import {
@@ -41,7 +41,17 @@ import {
   type LaserSphereTarget,
 } from './core/laser'
 import { requestedPilotExpression, updatePilotExpression, type PilotExpression } from './core/pilot'
-import { activeWorldColliders, createActiveWorld, updateActiveWorld, WORLD_MAX_CARS, WORLD_REMOVE_RADIUS, type ActiveWorld, type ProceduralCar } from './core/world'
+import {
+  type ActiveWorld,
+  type ProceduralCar,
+  WORLD_MAX_CARS,
+  WORLD_REMOVE_RADIUS,
+  activeWorldColliders,
+  buildingBulk,
+  buildingMass,
+  createActiveWorld,
+  updateActiveWorld,
+} from './core/world'
 import { captureTrafficCar, createTrafficState, releaseTrafficSlot, stepTraffic, TRAFFIC_MAX_CARS, type TrafficCar, type TrafficState } from './core/traffic'
 import { BROADCAST_OPENING_AT, BROADCAST_SECONDS } from './core/broadcast'
 import { REGEN_CARD_INSTANT_HEAL, applyUpgrade, createUpgradeState, isUpgradeDue, rollUpgradeChoices, upgradeMultiplier, type UpgradeId, type UpgradeState } from './core/upgrades'
@@ -99,6 +109,9 @@ export type GameRuntime = {
   crowds: CrowdState
   traffic: TrafficState
   destroyedCars: Set<string>
+  /** Buildings the player has eaten. Consulted whenever the city streams, so a
+   *  swallowed block does not reappear on the way back. */
+  destroyedBuildings: Set<string>
   crowdThreats: Vec3[]
   crowdSpawnZones: CrowdSpawnZone[]
   phase: GamePhase
@@ -225,6 +238,7 @@ type GameContextValue = {
 
 const GameContext = createContext<GameContextValue | null>(null)
 const UFO_UPGRADES = { speed: 0.45, stability: 0, rack: 0, special: 'none' as const }
+
 const HITSTOP_TIME = 0.05
 /**
  * Converts hanging mass into flight load.
@@ -334,6 +348,7 @@ function makeRuntime(): GameRuntime {
     crowds,
     traffic,
     destroyedCars: new Set<string>(),
+    destroyedBuildings: new Set<string>(),
     crowdThreats,
     crowdSpawnZones,
     phase: 'intro',
@@ -366,18 +381,78 @@ function makeRuntime(): GameRuntime {
   return runtime
 }
 
+/**
+ * Tears a building out of the ground if the craft is big enough to take it.
+ *
+ * The moment it is caught it leaves the world - out of the render pool, out of
+ * the colliders - and becomes an ordinary beam object, so lifting, hanging
+ * weight and swallowing all run on the machinery that already exists. Leaving
+ * the colliders is also why a building being eaten cannot hurt you: there is
+ * nothing left there to fly into.
+ */
+function grabBuildings(game: GameRuntime, field: BeamField) {
+  if (!game.beamActive || game.dumpLockout > 0) return
+  const reach = ufoDiameter(game.size)
+  let taken = false
+  for (const building of game.world.buildings) {
+    if (game.destroyedBuildings.has(building.id)) continue
+    if (!canAbsorbBuilding(building, reach)) continue
+    const footprint = {
+      position: { x: building.position.x, y: building.position.y, z: building.position.z },
+    }
+    if (!isInsideBeam(footprint, field)) continue
+    game.destroyedBuildings.add(building.id)
+    game.beamObjects.unshift({
+      id: `building:${building.id}`,
+      kind: 'building',
+      mass: buildingMass(building),
+      diameter: buildingBulk(building),
+      color: building.color,
+      position: { x: building.position.x, y: building.position.y, z: building.position.z },
+      velocity: { x: 0, y: 0, z: 0 },
+      rotation: { x: 0, y: 0, z: 0 },
+      angularVelocity: { x: 0, y: 0.6, z: 0 },
+      scale: { x: building.size.x, y: building.size.y, z: building.size.z },
+      facade: building.facade,
+      floors: building.floors,
+      active: true,
+      inBeam: true,
+      hold: 1,
+      tether: 1,
+      playerTouched: true,
+      destroying: false,
+      destroyTimer: 0,
+      explosionPending: false,
+      absorbing: false,
+      absorbTimer: 0,
+      scoreValue: Math.round(240 + buildingMass(building) * 14),
+    })
+    triggerLaserBurst(game.laserBursts, 'impact', building.position, '#ffd27a')
+    tone('impact')
+    taken = true
+  }
+  if (!taken) return
+  // Force the city to rebuild without the block that just left it; the normal
+  // refresh only fires once the player has moved far enough.
+  game.world = updateActiveWorld(game.world, game.drone.position, true, game.destroyedBuildings)
+  game.worldColliders = activeWorldColliders(game.world)
+}
+
 function syncBeamObjects(game: GameRuntime) {
   const existing = new Map(game.beamObjects.map((object) => [object.id, object]))
   const retained = game.beamObjects.filter((object) => object.active && (object.inBeam || object.tether > 0.02 || object.playerTouched) && Math.hypot(object.position.x - game.drone.position.x, object.position.z - game.drone.position.z) <= WORLD_REMOVE_RADIUS)
   const retainedIds = new Set(retained.map((object) => object.id))
   const sourceCars = [...parkingCarsAround(game.drone.position), ...game.world.cars]
+  // Buildings in flight are not sourced from anywhere - they were torn out of
+  // the world - so they are retained on their own rather than rebuilt.
+  const lifted = retained.filter((object) => object.kind === 'building')
   const nearby = sourceCars.filter((car) => !retainedIds.has(car.id) && !game.destroyedCars.has(car.id)).map((car) => {
     const previous = existing.get(car.id)
     return previous?.active ? previous : makeBeamObject(car)
   })
   const capturedTraffic = retained.filter((object) => object.id.startsWith('traffic:'))
-  const parked = [...retained.filter((object) => !object.id.startsWith('traffic:')), ...nearby].slice(0, WORLD_MAX_CARS)
-  game.beamObjects = [...capturedTraffic.slice(0, TRAFFIC_MAX_CARS), ...parked]
+  const parked = [...retained.filter((object) => !object.id.startsWith('traffic:') && object.kind !== 'building'), ...nearby].slice(0, WORLD_MAX_CARS)
+  game.beamObjects = [...lifted, ...capturedTraffic.slice(0, TRAFFIC_MAX_CARS), ...parked]
   const retainedTrafficIds = new Set(capturedTraffic.map((object) => object.id))
   for (const car of game.traffic.cars) if (car.captured && !retainedTrafficIds.has(car.id)) releaseTrafficSlot(game.traffic, car.id)
 }
@@ -563,8 +638,8 @@ function absorbBeamObject(game: GameRuntime, object: BeamObject) {
   const diameter = beamObjectDiameter(object)
   const reward = absorptionScore(object, game.sizeProfile.scoreMultiplier)
   // Larger meals grow the craft more, as a fraction of current size like every
-  // other gain. Bounded so one tanker cannot skip a run.
-  growBy(game, Math.min(0.14, 0.012 + diameter * 0.012))
+  // other gain. Bounded so no single meal - not even a tower - skips a run.
+  growBy(game, Math.min(0.2, 0.012 + diameter * 0.012))
   game.absorbedCount += 1
   game.score += reward
   game.pickupPulse = 1
@@ -874,7 +949,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     }
     const thrust = upgradeMultiplier(game.upgrades, 'thrust')
     const stepped = stepDrone(game.drone, flightInput, d, game.ballast * BALLAST_DRAG + (game.daze > 0 ? DAZE_DRAG : 0), { ...UFO_UPGRADES, speed: UFO_UPGRADES.speed * thrust })
-    const nextWorld = updateActiveWorld(game.world, stepped.position)
+    const nextWorld = updateActiveWorld(game.world, stepped.position, false, game.destroyedBuildings)
     if (nextWorld !== game.world) {
       game.world = nextWorld
       game.worldColliders = activeWorldColliders(nextWorld)
@@ -936,6 +1011,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     // Suppress the whole field during the lockout, otherwise the dumped load is
     // simply picked straight back up.
     const pullField: BeamField = game.dumpLockout > 0 ? { ...beamField, active: false } : beamField
+    grabBuildings(game, pullField)
     stepBeamObjects(game.beamObjects, pullField, d)
     // Crowd movement owns its absorption timer; beam physics only handles the
     // pull so the shrink animation is not advanced twice per frame.

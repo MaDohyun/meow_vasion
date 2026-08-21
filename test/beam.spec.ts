@@ -1,3 +1,4 @@
+import { buildingMass, getProceduralCell, type ProceduralBuilding } from '../src/core/world'
 import { HAZARD_MASS } from '../src/core/hazards'
 import { CAT_MASS, PEDESTRIAN_MASS } from '../src/core/crowds'
 import { describe, expect, it } from 'vitest'
@@ -340,10 +341,21 @@ describe('the lifting ladder', () => {
     return Infinity
   }
 
-  // Approximate masses for the rungs the game does and will contain. The
-  // building figures are the targets the ladder is tuned against.
-  const LOW_RISE = 60
-  const TOWER = 600
+  // Real masses now, taken from the smallest and largest buildings the city
+  // actually generates. These were provisional guesses while buildings were
+  // not yet absorbable.
+  const cityBuildings = (() => {
+    const found: ProceduralBuilding[] = []
+    for (let cellX = -10; cellX <= 10; cellX += 1) {
+      for (let cellZ = -10; cellZ <= 10; cellZ += 1) {
+        const cell = getProceduralCell(cellX, cellZ)
+        if (cell.building) found.push(cell.building)
+      }
+    }
+    return found
+  })()
+  const LOW_RISE = buildingMass(cityBuildings.reduce((a, b) => (a.size.y < b.size.y ? a : b)))
+  const TOWER = buildingMass(cityBuildings.reduce((a, b) => (a.size.y > b.size.y ? a : b)))
 
   it('opens with a craft that can only just drag one person up', () => {
     // The whole first minute is this: a saucer barely wider than the people
@@ -376,11 +388,9 @@ describe('the lifting ladder', () => {
     for (let index = 1; index < rungs.length; index += 1) {
       expect(rungs[index]!, `rung ${index}`).toBeGreaterThan(rungs[index - 1]!)
     }
-    // The heaviest thing in the game stays out of reach until well up the
-    // range. The building masses above are provisional targets - buildings are
-    // not absorbable yet - so this guards the shape of the ladder rather than
-    // the exact placement of its top rung, which gets set properly when they
-    // are given real masses.
+    // The heaviest thing in the city stays out of reach until well up the
+    // range - that last stretch is what the back half of a run is climbing
+    // toward.
     expect(rungs[rungs.length - 1]!).toBeGreaterThan(SIZE_MAX * 0.5)
     expect(rungs[rungs.length - 1]!).toBeLessThanOrEqual(SIZE_MAX)
   })

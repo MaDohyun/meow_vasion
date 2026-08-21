@@ -286,6 +286,8 @@ export function updateActiveWorld(
   previous: ActiveWorld | null,
   position: Pick<Vec3, 'x' | 'z'>,
   force = false,
+  /** Buildings the player has eaten. Streaming must not bring them back. */
+  removed?: ReadonlySet<string>,
 ): ActiveWorld {
   if (previous && !force && horizontalDistance(previous.center, position) < WORLD_REFRESH_DISTANCE) return previous
 
@@ -318,6 +320,9 @@ export function updateActiveWorld(
     if (cell.car) carPool.set(cell.car.id, cell.car)
   }
 
+  // An eaten building is gone for good, near and far alike - seeing one you
+  // swallowed still standing on the skyline would undo the whole act.
+  if (removed && removed.size > 0) for (const id of removed) buildingPool.delete(id)
   const buildings = nearestLimited(buildingPool.values(), position, WORLD_MAX_BUILDINGS)
   const cars = nearestLimited(carPool.values(), position, WORLD_MAX_CARS)
   const nearBuildingIds = new Set(buildings.map((building) => building.id))
@@ -326,6 +331,7 @@ export function updateActiveWorld(
       .flatMap((cell) => cell.building ? [cell.building] : [])
       .filter((building) => {
         const distance = horizontalDistance(position, building.position)
+        if (removed?.has(building.id)) return false
         return distance > WORLD_SPAWN_RADIUS && distance <= WORLD_LOD_RADIUS && !nearBuildingIds.has(building.id)
       }),
     position,
@@ -342,6 +348,36 @@ export function updateActiveWorld(
     cars,
     key: activationKey(buildings, distantBuildings, cars, cellX, cellZ),
   }
+}
+
+/**
+ * A building's mass, and the "diameter" the absorb gate measures it by.
+ *
+ * Mass comes off volume, but through a root rather than straight: buildings run
+ * from a seven-metre shop to a ninety-metre tower, and raw volume makes the
+ * tower tens of thousands of times the shop, which snaps the ladder rather than
+ * extending it. Flattened, the two sit a few rungs apart, and those rungs are
+ * what the second half of a run is reaching for.
+ *
+ * The gate measures footprint plus a discounted height. Height counts, because
+ * a tower should be harder than a shop of the same plan - but at half weight,
+ * because a tower is tall and thin rather than genuinely bulky.
+ */
+export function buildingMass(building: ProceduralBuilding) {
+  const volume = building.size.x * building.size.y * building.size.z
+  return Math.pow(volume, 0.75) * 0.16
+}
+
+/**
+ * Height counts at about a third. A tower has to be harder than a shop on the
+ * same plan, but it is tall rather than genuinely bulky, and weighting height
+ * any harder puts the tallest building in the city out of reach even at the
+ * size ceiling - which would leave the last rung of the ladder unclimbable.
+ */
+export const BUILDING_HEIGHT_BULK = 0.35
+
+export function buildingBulk(building: ProceduralBuilding) {
+  return Math.max(building.size.x, building.size.z, building.size.y * BUILDING_HEIGHT_BULK)
 }
 
 export function activeWorldColliders(world: ActiveWorld): Aabb[] {

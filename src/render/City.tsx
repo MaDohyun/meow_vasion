@@ -1,3 +1,4 @@
+import { BEAM_ABSORB_TIME } from '../core/beam'
 import { useFrame } from '@react-three/fiber'
 import { memo, useMemo, useRef } from 'react'
 import * as THREE from 'three'
@@ -779,6 +780,69 @@ const roofMaterial = (() => {
   return material
 })()
 
+/**
+ * The facade material, shared out so a building being carried off in the beam
+ * is still drawn as the building it was rather than as a grey box.
+ */
+const sharedFacade: { material: THREE.MeshToonMaterial | null; geometry: THREE.BufferGeometry | null } = {
+  material: null,
+  geometry: null,
+}
+
+/** At most a handful are ever in the air at once. */
+const LIFTED_BUILDING_CAPACITY = 8
+
+function LiftedBuildingPool() {
+  const { runtime } = useGame()
+  const ref = useRef<THREE.InstancedMesh>(null)
+  const matrix = useMemo(() => new THREE.Matrix4(), [])
+  const position = useMemo(() => new THREE.Vector3(), [])
+  const scale = useMemo(() => new THREE.Vector3(), [])
+  const rotation = useMemo(() => new THREE.Quaternion(), [])
+  const euler = useMemo(() => new THREE.Euler(), [])
+  const color = useMemo(() => new THREE.Color(), [])
+  const pastelWall = useMemo(() => new THREE.Color(BUILDING.FACADE_WALL), [])
+  const slots = useMemo(() => new Float32Array(LIFTED_BUILDING_CAPACITY), [])
+  const floors = useMemo(() => new Float32Array(LIFTED_BUILDING_CAPACITY), [])
+  const geometry = useMemo(() => {
+    const clone = roundedBuildingGeometry.clone()
+    clone.setAttribute('facadeSlot', new THREE.InstancedBufferAttribute(slots, 1))
+    clone.setAttribute('facadeFloors', new THREE.InstancedBufferAttribute(floors, 1))
+    return clone
+  }, [floors, slots])
+
+  useFrame(() => {
+    const mesh = ref.current
+    if (!mesh) return
+    let count = 0
+    for (const object of runtime.current.beamObjects) {
+      if (!object.active || object.kind !== 'building' || !object.scale) continue
+      if (count >= LIFTED_BUILDING_CAPACITY) break
+      // Shrinks into the craft as it is swallowed, the same as everything else.
+      const swallow = object.absorbing ? Math.max(0.05, object.absorbTimer / BEAM_ABSORB_TIME) : 1
+      position.set(object.position.x, object.position.y, object.position.z)
+      euler.set(object.rotation.x, object.rotation.y, object.rotation.z)
+      rotation.setFromEuler(euler)
+      scale.set(object.scale.x * swallow, object.scale.y * swallow, object.scale.z * swallow)
+      matrix.compose(position, rotation, scale)
+      mesh.setMatrixAt(count, matrix)
+      mesh.setColorAt(count, color.set(object.color).lerp(pastelWall, 0.42))
+      slots[count] = object.facade ?? 0
+      floors[count] = object.floors ?? 1
+      count += 1
+    }
+    mesh.count = count
+    mesh.instanceMatrix.needsUpdate = true
+    geometry.getAttribute('facadeSlot').needsUpdate = true
+    geometry.getAttribute('facadeFloors').needsUpdate = true
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
+  })
+
+  return sharedFacade.material
+    ? <instancedMesh ref={ref} args={[geometry, sharedFacade.material, LIFTED_BUILDING_CAPACITY]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }} />
+    : null
+}
+
 function BuildingPool() {
   const { runtime } = useGame()
   const bodies = useRef<THREE.InstancedMesh>(null)
@@ -848,6 +912,8 @@ function BuildingPool() {
     // Distinguishes this program from any other toon material in the scene.
     material.customProgramCacheKey = () => 'facade-atlas'
     cityDaylightMaterials.facade = material
+    sharedFacade.material = material
+    sharedFacade.geometry = roundedBuildingGeometry
     return material
   }, [])
   const signSlots = useMemo(() => new Float32Array(WORLD_MAX_BUILDINGS), [])
@@ -1245,6 +1311,7 @@ export const City = memo(function City() {
     <group>
       <GroundPool />
       <BuildingPool />
+      <LiftedBuildingPool />
       <MassingPool form="podium" />
       <MassingPool form="setback" />
       <EntrancePool />
