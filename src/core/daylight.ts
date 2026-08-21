@@ -1,22 +1,28 @@
 /**
- * Day-to-night cycle for a run.
+ * Evening-to-night cycle for a run.
  *
  * The run escalates on a clock - wave stages arrive at fixed elapsed times - so
- * the sky is put on the same clock. Starting in morning light and ending in full
- * night gives the difficulty curve a visual reading the HUD cannot: you can see
- * how deep into the run you are without looking at a number.
+ * the sky is put on the same clock. You can see how deep into the run you are
+ * without looking at a number.
  *
- * The cycle finishes before the run does, on purpose. The last waves are the
- * ones that need the night: a lit craft against a dark city is far easier to
- * track than one lost in a bright skyline, and additive beams and explosions
- * only read properly once the background stops competing with them.
+ * It starts at six in the evening, not at dawn. This game is at its best in the
+ * dark: lit windows, streetlights, and additive beams and explosions all need a
+ * background that has stopped competing with them. A cycle that opened in
+ * morning light spent the whole first half of the run - the half where a player
+ * forms their impression of the game - under a bright blue sky, and only
+ * reached the good picture once they were too busy being shot at to look at it.
+ * So the sun is already low when the run begins, and the arc is sunset to
+ * night rather than dawn to night.
+ *
+ * The cycle still finishes before the run does. The last waves are the ones
+ * that need full night, not a sky mid-transition.
  *
  * Pure data and scalars only - no Three.js. The render layer turns the hex
  * strings into colours and does the interpolation in linear space, so this file
  * stays testable.
  */
 
-export type DaylightPhase = 'morning' | 'day' | 'golden' | 'dusk' | 'night'
+export type DaylightPhase = 'golden' | 'dusk' | 'night'
 
 export type DaylightColors = {
   background: string
@@ -53,76 +59,67 @@ export type DaylightKeyframe = {
   nightFactor: number
   starIntensity: number
   /** Fog start/end. Night pulls the far plane in; the horizon is not visible
-   *  at the distance a clear morning is. */
+   *  at the distance it is while the sun is still up. */
   fogNear: number
   fogFar: number
 }
 
 /**
- * Seconds for a full morning-to-night sweep. Shorter than the 180s run so the
+ * Seconds for a full evening-to-night sweep. Shorter than the 180s run so the
  * final waves play out under a settled night sky instead of mid-transition.
  */
 export const DAY_CYCLE_SECONDS = 140
 
+/** The hour the run opens on. */
+export const DAYLIGHT_START_HOUR = 18
+
+/** One real second is one minute of city time. Chosen so the numbers land
+ *  where the design does: the sky settles into night at 20:20, which is the
+ *  end of the cycle, and the run runs out at 21:00. */
+export const DAYLIGHT_MINUTES_PER_SECOND = 1
+
+/** Wall-clock time in the city, as `HH:MM`. Runs off elapsed seconds rather
+ *  than off cycle progress so it keeps ticking after the sky has settled. */
+export function daylightClock(elapsed: number) {
+  const minutes = DAYLIGHT_START_HOUR * 60 + Math.max(0, elapsed) * DAYLIGHT_MINUTES_PER_SECOND
+  const hour = Math.floor(minutes / 60) % 24
+  const minute = Math.floor(minutes % 60)
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
+}
+
 export const DAYLIGHT_KEYFRAMES: DaylightKeyframe[] = [
   {
     at: 0,
-    phase: 'morning',
-    label: 'MORNING',
+    phase: 'golden',
+    label: 'EVENING',
     colors: {
-      background: '#a8d9d5',
-      horizon: '#ffd0ac',
-      middle: '#9ccbd4',
-      top: '#5f8ec0',
-      fog: '#a8c9c7',
-      ambient: '#f2fff4',
-      hemiSky: '#e2f7ef',
-      hemiGround: '#c99598',
-      sun: '#ffe7bd',
-      cloud: '#fff1da',
+      background: '#c9a385',
+      horizon: '#ffcf9c',
+      middle: '#b79ba7',
+      top: '#5c6aa6',
+      fog: '#c3a396',
+      ambient: '#ffeed6',
+      hemiSky: '#ffe3c2',
+      hemiGround: '#8f6a6a',
+      sun: '#ffd79a',
+      cloud: '#ffe4c6',
     },
-    ambientIntensity: 0.58,
-    hemiIntensity: 0.85,
-    sunIntensity: 1.45,
-    sunAltitude: 0.22,
-    moonAltitude: -1,
+    ambientIntensity: 0.5,
+    hemiIntensity: 0.72,
+    sunIntensity: 1.3,
+    sunAltitude: 0.2,
+    moonAltitude: -0.55,
     sunOpacity: 1,
     moonOpacity: 0,
-    nightFactor: 0,
+    // The city is already switching its lights on at six. Starting at a flat
+    // zero would make the first minute the only one with no warmth in it.
+    nightFactor: 0.09,
     starIntensity: 0,
     fogNear: 200,
     fogFar: 700,
   },
   {
-    at: 0.32,
-    phase: 'day',
-    label: 'MIDDAY',
-    colors: {
-      background: '#8fcbdc',
-      horizon: '#cfe9e2',
-      middle: '#89bfda',
-      top: '#4f7fbe',
-      fog: '#9dc4cd',
-      ambient: '#f6fffb',
-      hemiSky: '#dff4ff',
-      hemiGround: '#b3a08f',
-      sun: '#fff6d8',
-      cloud: '#ffffff',
-    },
-    ambientIntensity: 0.66,
-    hemiIntensity: 0.95,
-    sunIntensity: 1.7,
-    sunAltitude: 0.85,
-    moonAltitude: -0.9,
-    sunOpacity: 1,
-    moonOpacity: 0,
-    nightFactor: 0,
-    starIntensity: 0,
-    fogNear: 220,
-    fogFar: 760,
-  },
-  {
-    at: 0.58,
+    at: 0.26,
     phase: 'golden',
     label: 'SUNSET',
     colors: {
@@ -144,38 +141,66 @@ export const DAYLIGHT_KEYFRAMES: DaylightKeyframe[] = [
     moonAltitude: -0.18,
     sunOpacity: 1,
     moonOpacity: 0.25,
-    nightFactor: 0.22,
+    nightFactor: 0.26,
     starIntensity: 0.05,
     fogNear: 190,
     fogFar: 660,
   },
   {
-    at: 0.8,
+    at: 0.55,
     phase: 'dusk',
     label: 'DUSK',
     colors: {
-      background: '#2c2f5e',
-      horizon: '#6b4a7d',
-      middle: '#2f3566',
-      top: '#141a3c',
-      fog: '#3a3a68',
-      ambient: '#9a9ad0',
-      hemiSky: '#7b7cbb',
-      hemiGround: '#2a2438',
+      background: '#3d3a6a',
+      horizon: '#8a5570',
+      middle: '#37396d',
+      top: '#1a1f45',
+      fog: '#45406f',
+      ambient: '#a9a6d8',
+      hemiSky: '#8a86c4',
+      hemiGround: '#2f2740',
       sun: '#ff7a5c',
-      cloud: '#5b4d78',
+      cloud: '#6a5885',
     },
-    ambientIntensity: 0.24,
-    hemiIntensity: 0.34,
-    sunIntensity: 0.55,
-    sunAltitude: -0.16,
-    moonAltitude: 0.2,
-    sunOpacity: 0.35,
-    moonOpacity: 0.8,
-    nightFactor: 0.68,
-    starIntensity: 0.55,
-    fogNear: 170,
-    fogFar: 600,
+    ambientIntensity: 0.28,
+    hemiIntensity: 0.4,
+    sunIntensity: 0.65,
+    sunAltitude: -0.1,
+    moonAltitude: 0.1,
+    sunOpacity: 0.5,
+    moonOpacity: 0.7,
+    nightFactor: 0.6,
+    starIntensity: 0.42,
+    fogNear: 175,
+    fogFar: 620,
+  },
+  {
+    at: 0.8,
+    phase: 'night',
+    label: 'NIGHTFALL',
+    colors: {
+      background: '#16193c',
+      horizon: '#3b4a78',
+      middle: '#1b2350',
+      top: '#0b0f26',
+      fog: '#222f56',
+      ambient: '#7686bd',
+      hemiSky: '#59709f',
+      hemiGround: '#1d2134',
+      sun: '#d99a86',
+      cloud: '#3a4468',
+    },
+    ambientIntensity: 0.18,
+    hemiIntensity: 0.27,
+    sunIntensity: 0.42,
+    sunAltitude: -0.4,
+    moonAltitude: 0.45,
+    sunOpacity: 0.1,
+    moonOpacity: 0.95,
+    nightFactor: 0.87,
+    starIntensity: 0.8,
+    fogNear: 160,
+    fogFar: 585,
   },
   {
     at: 1,

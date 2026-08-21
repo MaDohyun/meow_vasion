@@ -203,7 +203,7 @@ const cityDaylightMaterials = {
 /**
  * Surfaces are authored at daylight brightness and darkened by the lights, so
  * the cycle only has to handle the emissive side here: lit windows, streetlights
- * and beacons are wrong under a midday sky and ramp in with nightFactor rather
+ * and beacons are wrong while there is still light in the sky, and ramp in with nightFactor rather
  * than switching on at a threshold.
  *
  * Roads are the exception. Their material is unlit, so the cycle dims it by hand

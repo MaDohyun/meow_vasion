@@ -1,17 +1,21 @@
 import { describe, expect, it } from 'vitest'
 import {
   DAYLIGHT_KEYFRAMES,
+  DAYLIGHT_START_HOUR,
   DAY_CYCLE_SECONDS,
   createDaylightSample,
+  daylightClock,
   daylightProgress,
   sampleDaylight,
 } from '../src/core/daylight'
 
-describe('day to night cycle', () => {
-  it('starts in morning light and ends in full night', () => {
+describe('evening to night cycle', () => {
+  it('opens with the sun already low and ends in full night', () => {
     const start = sampleDaylight(0)
-    expect(start.phase).toBe('morning')
-    expect(start.nightFactor).toBe(0)
+    expect(start.phase).toBe('golden')
+    // Low, but still up: this is six in the evening, not dusk.
+    expect(start.sunAltitude).toBeGreaterThan(0)
+    expect(start.sunAltitude).toBeLessThan(0.4)
     expect(start.starIntensity).toBe(0)
     expect(start.sunOpacity).toBe(1)
     expect(start.moonOpacity).toBe(0)
@@ -29,7 +33,7 @@ describe('day to night cycle', () => {
     expect(sampleDaylight(150).nightFactor).toBe(1)
   })
 
-  it('holds at night rather than looping back to morning', () => {
+  it('holds at night rather than looping back round to evening', () => {
     expect(daylightProgress(DAY_CYCLE_SECONDS * 4)).toBe(1)
     expect(sampleDaylight(600).phase).toBe('night')
   })
@@ -48,15 +52,45 @@ describe('day to night cycle', () => {
     }
   })
 
-  it('arcs the sun up before it sets', () => {
-    // A real morning climbs to noon first; going straight down would read as
-    // the run starting at afternoon.
-    const morning = sampleDaylight(0)
-    const noon = sampleDaylight(DAY_CYCLE_SECONDS * 0.32)
+  it('only ever lowers the sun, because the run starts after noon', () => {
+    // The cycle used to climb to a midday peak first. Starting at six means
+    // the sun has nowhere to go but down, and a rise anywhere in the sweep
+    // would read as the clock running backwards.
+    let previous = Number.POSITIVE_INFINITY
+    for (let elapsed = 0; elapsed <= DAY_CYCLE_SECONDS; elapsed += 2) {
+      const altitude = sampleDaylight(elapsed).sunAltitude
+      expect(altitude).toBeLessThanOrEqual(previous + 1e-9)
+      previous = altitude
+    }
     const night = sampleDaylight(DAY_CYCLE_SECONDS)
-    expect(noon.sunAltitude).toBeGreaterThan(morning.sunAltitude)
     expect(night.sunAltitude).toBeLessThan(0)
     expect(night.moonAltitude).toBeGreaterThan(0)
+  })
+
+  it('never shows a daylight sky', () => {
+    // The whole point of moving the start: no frame of the run is a bright
+    // blue afternoon. The sun is dimming from the first second.
+    expect(sampleDaylight(0).sunIntensity).toBeLessThan(1.4)
+    for (const keyframe of DAYLIGHT_KEYFRAMES) {
+      expect(keyframe.phase).not.toBe('day')
+    }
+  })
+
+  it('lights some windows from the start and only ever adds more', () => {
+    // A city at six already has lights on. Opening at a flat zero made the
+    // first minute the one stretch of the run with no warmth anywhere in it.
+    expect(sampleDaylight(0).nightFactor).toBeGreaterThan(0)
+    expect(sampleDaylight(0).nightFactor).toBeLessThan(0.2)
+  })
+
+  it('runs a city clock from six in the evening', () => {
+    expect(DAYLIGHT_START_HOUR).toBe(18)
+    expect(daylightClock(0)).toBe('18:00')
+    expect(daylightClock(20)).toBe('18:20')
+    // The sky settles at the end of the cycle; the clock keeps going to the
+    // end of the run so it does not visibly freeze.
+    expect(daylightClock(DAY_CYCLE_SECONDS)).toBe('20:20')
+    expect(daylightClock(180)).toBe('21:00')
   })
 
   it('reuses a caller-supplied sample so the frame loop does not allocate', () => {
