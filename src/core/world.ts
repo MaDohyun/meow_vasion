@@ -32,6 +32,35 @@ export const BUILDING_SIGN_LABELS = [
 export const BUILDING_SIGN_COLORS = ['#ffe66b', '#ff7bbf', '#78ffcf', '#ffdb5d', '#81ffd1'] as const
 export const PARKED_CAR_COLORS = ['#f38ca0', '#83cde3', '#f2cf7d', '#b6a0e1'] as const
 
+/**
+ * How a building meets the ground and the sky.
+ *
+ * Every building used to be the same extruded box, which is most of why a
+ * street of them read as one building copied along the block. A base that is
+ * wider than the tower, or a top that steps in, changes the silhouette without
+ * changing the body - the shape variation the eye picks up at a distance is
+ * almost entirely in those two places.
+ */
+export type BuildingForm = 'plain' | 'podium' | 'setback'
+
+/** Facade variants in the atlas. A 4x4 sheet: sixteen window layouts, not
+ *  sixteen phase shifts of one grid. */
+export const FACADE_VARIANTS = 16
+
+/** Ground-floor fronts. */
+export const ENTRANCE_VARIANTS = 6
+
+/**
+ * Roughly how much building one tile of the facade covers, in metres.
+ *
+ * The facade used to be stretched once over the whole face, so a seven-metre
+ * shop and a ninety-metre tower both showed six rows of windows and the tower
+ * read as a large shop rather than as a tower. Tiling by a fixed height instead
+ * gives every building in the city the same storey height, which is what makes
+ * one of them read as taller than another.
+ */
+export const FACADE_TILE_METRES = 10.5
+
 export type WorldCellKind = 'building' | 'parked-car' | 'empty' | 'intersection'
 export type GroundVariant = 'grass' | 'parking' | 'sand' | 'plaza' | 'pond' | 'vacant'
 
@@ -48,6 +77,17 @@ export type ProceduralBuilding = {
     color: string
     side: 'x' | 'z'
   }
+  /** Which facade variant this building wears, 0..FACADE_VARIANTS-1. */
+  facade: number
+  /** How many times the facade tiles up the face. Always a whole number: a
+   *  fraction would slice the top storey in half. */
+  floors: number
+  /** Which ground-floor front, 0..ENTRANCE_VARIANTS-1. */
+  entrance: number
+  form: BuildingForm
+  /** Roof slab proportions, so the cornice line is not identical everywhere. */
+  roofOverhang: number
+  roofThickness: number
 }
 
 export type ProceduralCar = {
@@ -152,6 +192,14 @@ export function getProceduralCell(cellX: number, cellZ: number, worldSeed = WORL
     const maxZ = (cellZ + 1) * WORLD_CELL_SIZE - roadInset - sizeZ / 2
     const desiredX = centerX + (saltedUnit(seed, 5) - 0.5) * 9
     const desiredZ = centerZ + (saltedUnit(seed, 6) - 0.5) * 9
+    // A podium needs a building tall enough to have something above it, and a
+    // setback needs enough height for the step to be visible rather than a lip.
+    const formRoll = saltedUnit(seed, 31)
+    const form: BuildingForm = sizeY >= 34 && formRoll < 0.3
+      ? 'setback'
+      : sizeY >= 16 && formRoll < 0.58
+        ? 'podium'
+        : 'plain'
     const building: ProceduralBuilding = {
       id: `building:${id}`,
       cellX,
@@ -169,6 +217,12 @@ export function getProceduralCell(cellX: number, cellZ: number, worldSeed = WORL
         color: BUILDING_SIGN_COLORS[(seed >>> 23) % BUILDING_SIGN_COLORS.length]!,
         side: (seed & 0x40000000) === 0 ? 'z' : 'x',
       },
+      facade: Math.floor(saltedUnit(seed, 27) * FACADE_VARIANTS) % FACADE_VARIANTS,
+      floors: Math.max(1, Math.round(sizeY / FACADE_TILE_METRES)),
+      entrance: Math.floor(saltedUnit(seed, 29) * ENTRANCE_VARIANTS) % ENTRANCE_VARIANTS,
+      form,
+      roofOverhang: 0.87 + saltedUnit(seed, 33) * 0.17,
+      roofThickness: 0.5 + saltedUnit(seed, 35) * 0.75,
     }
     return { id, cellX, cellZ, seed, kind, ground, building }
   }

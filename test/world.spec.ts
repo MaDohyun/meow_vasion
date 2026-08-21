@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest'
 import {
   activeWorldColliders,
   createActiveWorld,
+  ENTRANCE_VARIANTS,
+  FACADE_TILE_METRES,
+  FACADE_VARIANTS,
   getProceduralCell,
+  type ProceduralBuilding,
   seedForWorldCell,
   updateActiveWorld,
   WORLD_MAX_BUILDINGS,
@@ -140,4 +144,77 @@ describe('deterministic infinite city', () => {
     expect(shifted.buildings.some((building) => retained.some((item) => item.id === building.id))).toBe(true)
   })
 
+})
+
+describe('building variety', () => {
+  const sample = () => {
+    const buildings: ProceduralBuilding[] = []
+    for (let cellX = -14; cellX <= 14; cellX += 1) {
+      for (let cellZ = -14; cellZ <= 14; cellZ += 1) {
+        const cell = getProceduralCell(cellX, cellZ)
+        if (cell.building) buildings.push(cell.building)
+      }
+    }
+    return buildings
+  }
+
+  it('gives every building a facade, an entrance and a form in range', () => {
+    for (const building of sample()) {
+      expect(building.facade).toBeGreaterThanOrEqual(0)
+      expect(building.facade).toBeLessThan(FACADE_VARIANTS)
+      expect(Number.isInteger(building.facade)).toBe(true)
+      expect(building.entrance).toBeGreaterThanOrEqual(0)
+      expect(building.entrance).toBeLessThan(ENTRANCE_VARIANTS)
+      expect(Number.isInteger(building.entrance)).toBe(true)
+      expect(['plain', 'podium', 'setback']).toContain(building.form)
+    }
+  })
+
+  it('counts floors as whole numbers that track height', () => {
+    // A fraction would slice the top storey in half, and a floor count that
+    // did not track height is the thing that made a tower read as a big shop.
+    const buildings = sample()
+    for (const building of buildings) {
+      expect(Number.isInteger(building.floors)).toBe(true)
+      expect(building.floors).toBeGreaterThanOrEqual(1)
+      // Storey height stays within a believable band across the whole city.
+      const metresPerTile = building.size.y / building.floors
+      expect(metresPerTile).toBeGreaterThan(4)
+      expect(metresPerTile).toBeLessThan(FACADE_TILE_METRES * 1.6)
+    }
+    const tallest = buildings.reduce((a, b) => (a.size.y > b.size.y ? a : b))
+    const shortest = buildings.reduce((a, b) => (a.size.y < b.size.y ? a : b))
+    expect(tallest.floors).toBeGreaterThan(shortest.floors)
+  })
+
+  it('actually spreads across the variants rather than favouring one', () => {
+    // The point of sixteen facades is sixteen facades. A hash that clumped
+    // would leave the street looking copied even with the atlas widened.
+    const buildings = sample()
+    expect(buildings.length).toBeGreaterThan(200)
+    const facades = new Set(buildings.map((building) => building.facade))
+    const entrances = new Set(buildings.map((building) => building.entrance))
+    const forms = new Set(buildings.map((building) => building.form))
+    expect(facades.size).toBe(FACADE_VARIANTS)
+    expect(entrances.size).toBe(ENTRANCE_VARIANTS)
+    expect(forms.size).toBe(3)
+    for (let variant = 0; variant < FACADE_VARIANTS; variant += 1) {
+      const share = buildings.filter((building) => building.facade === variant).length / buildings.length
+      expect(share, `facade ${variant}`).toBeGreaterThan(0.02)
+    }
+  })
+
+  it('keeps a building look fixed as the city streams', () => {
+    // Re-deriving a cell must give the same building. If it did not, a tower
+    // would change its windows and its shape as the player flew past it.
+    for (const cell of [[3, -7], [-11, 2], [0, 0], [9, 9]] as const) {
+      const first = getProceduralCell(cell[0], cell[1]).building
+      const second = getProceduralCell(cell[0], cell[1]).building
+      expect(second?.facade).toBe(first?.facade)
+      expect(second?.floors).toBe(first?.floors)
+      expect(second?.entrance).toBe(first?.entrance)
+      expect(second?.form).toBe(first?.form)
+      expect(second?.roofOverhang).toBe(first?.roofOverhang)
+    }
+  })
 })
