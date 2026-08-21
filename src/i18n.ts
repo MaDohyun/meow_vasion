@@ -102,7 +102,13 @@ type Strings = {
 /**
  * One wave bulletin: a short headline for the caption bar on the city's news
  * screens, and the sentence the anchor reads, which is what the player
- * actually gets to read on the HUD band.
+ * actually gets to read on the HUD card.
+ *
+ * The line carries its own newline. Where a broadcast caption breaks is a
+ * writing decision, not a layout one - Korean, Japanese and English put their
+ * clauses in different places, so leaving it to the browser would break one
+ * language mid-phrase to suit another's width. Every line here is split by
+ * hand at a clause boundary, and the card renders it with `pre-line`.
  */
 export type Bulletin = {
   headline: string
@@ -196,14 +202,14 @@ export const STRINGS: Record<Language, Strings> = {
     msgTurbo: '터보 가동',
     breakingFlag: '속보',
     broadcast: [
-      { headline: '미확인 비행물체 도심 출현', line: '속보입니다. 미확인 비행물체가 도심 상공에 출현했습니다. 정부는 요격을 위해 자폭 드론을 배치했습니다.' },
-      { headline: '경찰 총력 대응', line: '속보입니다. 경찰이 전 병력에 비상을 걸고 도심으로 향하고 있습니다.' },
-      { headline: '경찰 헬기 투입', line: '속보입니다. 경찰 헬기가 상공에 투입됐습니다. 시민 여러분은 실내로 대피하십시오.' },
-      { headline: '군 병력 도심 전개', line: '속보입니다. 군 병력이 도심 전역에 전개됐습니다.' },
-      { headline: '전투기 긴급 발진', line: '속보입니다. 공군이 UFO 격추를 위해 전투기를 긴급 발진시켰습니다.' },
-      { headline: '대공 방어망 가동', line: '속보입니다. 도심 전역에 대공 방어망이 가동됐습니다. 저공 비행체를 요격합니다.' },
-      { headline: '기갑 부대 진입', line: '속보입니다. 기갑 부대가 시내로 진입했습니다.' },
-      { headline: '최종 요격 작전', line: '속보입니다. 정부가 최종 요격 작전을 승인했습니다. 모든 전력이 UFO를 향합니다.' },
+      { headline: '미확인 비행물체 도심 출현', line: '속보입니다. 미확인 비행물체가 도심 상공에 출현했습니다.\n정부는 요격을 위해 자폭 드론을 배치했습니다.' },
+      { headline: '경찰 총력 대응', line: '속보입니다. 경찰이 전 병력에 비상을 걸고\n도심으로 향하고 있습니다.' },
+      { headline: '경찰 헬기 투입', line: '속보입니다. 경찰 헬기가 상공에 투입됐습니다.\n시민 여러분은 실내로 대피하십시오.' },
+      { headline: '군 병력 도심 전개', line: '속보입니다. 군 병력이\n도심 전역에 전개됐습니다.' },
+      { headline: '전투기 긴급 발진', line: '속보입니다. 공군이 UFO 격추를 위해\n전투기를 긴급 발진시켰습니다.' },
+      { headline: '대공 방어망 가동', line: '속보입니다. 도심 전역에 대공 방어망이 가동됐습니다.\n저공 비행체를 요격합니다.' },
+      { headline: '기갑 부대 진입', line: '속보입니다. 기갑 부대가\n시내로 진입했습니다.' },
+      { headline: '최종 요격 작전', line: '속보입니다. 정부가 최종 요격 작전을 승인했습니다.\n모든 전력이 UFO를 향합니다.' },
     ],
   },
   ja: {
@@ -274,14 +280,14 @@ export const STRINGS: Record<Language, Strings> = {
     msgTurbo: 'ターボ作動',
     breakingFlag: '速報',
     broadcast: [
-      { headline: '未確認飛行物体が都心に出現', line: '速報です。未確認飛行物体が都心の上空に出現しました。政府は迎撃のため自爆ドローンを配備しました。' },
-      { headline: '警察が総力対応', line: '速報です。警察が全部隊に非常態勢を敷き、都心へ向かっています。' },
-      { headline: '警察ヘリを投入', line: '速報です。警察ヘリが上空に投入されました。市民の皆さまは屋内に避難してください。' },
-      { headline: '軍部隊が都心に展開', line: '速報です。軍の部隊が都心全域に展開しました。' },
-      { headline: '戦闘機が緊急発進', line: '速報です。空軍がUFO撃墜のため、戦闘機を緊急発進させました。' },
-      { headline: '対空防衛網が稼働', line: '速報です。都心全域で対空防衛網が稼働しました。低空の飛行体を迎撃します。' },
-      { headline: '機甲部隊が市内に進入', line: '速報です。機甲部隊が市内に進入しました。' },
-      { headline: '最終迎撃作戦', line: '速報です。政府が最終迎撃作戦を承認しました。全戦力がUFOへ向かいます。' },
+      { headline: '未確認飛行物体が都心に出現', line: '速報です。未確認飛行物体が都心の上空に出現しました。\n政府は迎撃のため自爆ドローンを配備しました。' },
+      { headline: '警察が総力対応', line: '速報です。警察が全部隊に非常態勢を敷き、\n都心へ向かっています。' },
+      { headline: '警察ヘリを投入', line: '速報です。警察ヘリが上空に投入されました。\n市民の皆さまは屋内に避難してください。' },
+      { headline: '軍部隊が都心に展開', line: '速報です。軍の部隊が\n都心全域に展開しました。' },
+      { headline: '戦闘機が緊急発進', line: '速報です。空軍がUFO撃墜のため、\n戦闘機を緊急発進させました。' },
+      { headline: '対空防衛網が稼働', line: '速報です。都心全域で対空防衛網が稼働しました。\n低空の飛行体を迎撃します。' },
+      { headline: '機甲部隊が市内に進入', line: '速報です。機甲部隊が\n市内に進入しました。' },
+      { headline: '最終迎撃作戦', line: '速報です。政府が最終迎撃作戦を承認しました。\n全戦力がUFOへ向かいます。' },
     ],
   },
   en: {
@@ -352,14 +358,14 @@ export const STRINGS: Record<Language, Strings> = {
     msgTurbo: 'TURBO ENGAGED',
     breakingFlag: 'BREAKING',
     broadcast: [
-      { headline: 'UFO SIGHTED OVER THE CITY', line: 'Breaking news. An unidentified craft has appeared over the city centre. The government has deployed suicide drones to intercept it.' },
-      { headline: 'POLICE ON FULL ALERT', line: 'Breaking news. Police have called up every available unit and are moving into the city centre.' },
-      { headline: 'POLICE HELICOPTERS UP', line: 'Breaking news. Police helicopters are now airborne. Residents are urged to stay indoors.' },
-      { headline: 'ARMY DEPLOYS DOWNTOWN', line: 'Breaking news. Army units have deployed across the downtown districts.' },
-      { headline: 'FIGHTERS SCRAMBLED', line: 'Breaking news. The air force has scrambled fighters to shoot the UFO down.' },
-      { headline: 'AIR DEFENCE ONLINE', line: 'Breaking news. The city-wide air defence network is online and engaging low-flying craft.' },
-      { headline: 'ARMOUR ROLLS IN', line: 'Breaking news. Armoured units have entered the city.' },
-      { headline: 'FINAL INTERCEPT ORDERED', line: 'Breaking news. The government has authorised a final intercept. Every asset is now converging on the UFO.' },
+      { headline: 'UFO SIGHTED OVER THE CITY', line: 'Breaking news. An unidentified craft has appeared over the city.\nThe government has deployed suicide drones to intercept it.' },
+      { headline: 'POLICE ON FULL ALERT', line: 'Breaking news. Police have called up every available unit\nand are moving into the city centre.' },
+      { headline: 'POLICE HELICOPTERS UP', line: 'Breaking news. Police helicopters are now airborne.\nResidents are urged to stay indoors.' },
+      { headline: 'ARMY DEPLOYS DOWNTOWN', line: 'Breaking news. Army units have deployed\nacross the downtown districts.' },
+      { headline: 'FIGHTERS SCRAMBLED', line: 'Breaking news. The air force has scrambled fighters\nto shoot the UFO down.' },
+      { headline: 'AIR DEFENCE ONLINE', line: 'Breaking news. The city-wide air defence network is online\nand engaging low-flying craft.' },
+      { headline: 'ARMOUR ROLLS IN', line: 'Breaking news. Armoured units\nhave entered the city.' },
+      { headline: 'FINAL INTERCEPT ORDERED', line: 'Breaking news. The government has authorised a final intercept.\nEvery asset is now converging on the UFO.' },
     ],
   },
 }
