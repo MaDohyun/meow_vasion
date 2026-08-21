@@ -1,7 +1,7 @@
 import type { Aabb, Vec3 } from './drone'
 
 export type BeamObjectKind =
-  | 'car' | 'pedestrian' | 'cat' | 'explosive' | 'building'
+  | 'car' | 'truck' | 'pedestrian' | 'cat' | 'explosive' | 'building'
   | 'drone' | 'police' | 'police-car' | 'helicopter' | 'soldier'
   | 'fighter' | 'anti-air' | 'tank' | 'boss'
 
@@ -45,6 +45,7 @@ const DEFAULT_DIAMETER: Record<BeamObjectKind, number> = {
   drone: 1.6,
   car: 2.9,
   'police-car': 3.2,
+  truck: 4.2,
   fighter: 4.4,
   helicopter: 4.6,
   tank: 4.8,

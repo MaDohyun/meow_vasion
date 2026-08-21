@@ -91,7 +91,11 @@ export function Radar() {
       }
       for (const hazard of game.hazards.objects) {
         if (!hazard.active) continue
-        dot(hazard.position.x, hazard.position.z, COLORS.explosive, 2.5)
+        // Trucks share the pool but not the warning colour - they are freight,
+        // and painting them orange would undo the point of thinning the tankers
+        // out in the first place.
+        const truck = hazard.kind === 'truck'
+        dot(hazard.position.x, hazard.position.z, truck ? COLORS.inert : COLORS.explosive, truck ? 2 : 2.5)
       }
       for (const enemy of game.enemies.slots) {
         if (!enemy.active) continue

@@ -21,7 +21,11 @@ export type CrowdSpawnZone = { x: number; z: number; radius: number; kind: 'park
 export function groundLandmarkForCell(cell: ProceduralCell): GroundLandmark {
   const roll = seedForWorldCell(cell.cellX, cell.cellZ, 0x1a4d6a7) % 1000
 
-  if (cell.kind === 'parked-car') return roll < 45 ? 'parking-lot' : null
+  // Car parks were 45 in a thousand of the cells that already hold a parked
+  // car, which worked out at well under one percent of the map - rare enough
+  // that a whole run could pass without flying over one, and they are the
+  // densest food in the city. Raised until they read as a district feature.
+  if (cell.kind === 'parked-car') return roll < 180 ? 'parking-lot' : null
   if (cell.kind !== 'empty') return null
 
   if (roll < 28) return 'power-pylon'
@@ -131,6 +135,19 @@ export function crowdSpawnZonesAround(position: Pick<Vec3, 'x' | 'z'>, radius = 
  * lot contributes three deterministic extra cars in addition to the cell's
  * original parked car, so all of them can later be pulled and absorbed.
  */
+/**
+ * Gas stations near a point, so tankers can be spawned where one plausibly
+ * came from rather than materialising in the middle of a residential block.
+ */
+export function gasStationsAround(position: Pick<Vec3, 'x' | 'z'>, radius = 6) {
+  const stations: { x: number; z: number }[] = []
+  for (const cell of groundCellsAround(position, radius)) {
+    if (groundLandmarkForCell(cell) !== 'gas-station') continue
+    stations.push({ x: (cell.cellX + 0.5) * WORLD_CELL_SIZE, z: (cell.cellZ + 0.5) * WORLD_CELL_SIZE })
+  }
+  return stations
+}
+
 export function parkingCarsAround(position: Pick<Vec3, 'x' | 'z'>, radius = 6): ProceduralCar[] {
   const cars: ProceduralCar[] = []
   const offsets = [[-6, -5], [0, -5], [6, -5]] as const

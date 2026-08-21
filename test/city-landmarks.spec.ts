@@ -26,7 +26,7 @@ describe('render-only city landmarks', () => {
     }
   })
 
-  it('keeps parking lots and power pylons rare while retaining every landmark type', () => {
+  it('keeps landmarks scarce while retaining every type, car parks aside', () => {
     const counts = new Map<string, number>()
     let cells = 0
     for (let z = -70; z <= 70; z += 1) {
@@ -39,7 +39,11 @@ describe('render-only city landmarks', () => {
     for (const kind of ['park', 'subway', 'parking-lot', 'power-pylon']) {
       expect(counts.get(kind) ?? 0).toBeGreaterThan(20)
     }
-    expect((counts.get('parking-lot') ?? 0) / cells).toBeLessThan(0.008)
+    // Car parks are the exception, and deliberately so: they are the densest
+    // food in the city and at the old rate a whole run could pass without one
+    // coming into view. They are still under one cell in forty.
+    expect((counts.get('parking-lot') ?? 0) / cells).toBeGreaterThan(0.012)
+    expect((counts.get('parking-lot') ?? 0) / cells).toBeLessThan(0.025)
     expect((counts.get('power-pylon') ?? 0) / cells).toBeLessThan(0.008)
   })
 

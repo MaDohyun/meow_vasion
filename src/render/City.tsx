@@ -263,12 +263,29 @@ const asphaltTexture = pixelTexture((context) => {
   }
 })
 
+/**
+ * The road tile, pavements included.
+ *
+ * The strip is nine metres across the carriageway plus a footpath each side,
+ * which is exactly the gap the generator leaves between cell boundary and
+ * building edge - so a pavement meets the wall instead of stopping short or
+ * disappearing under it. Painting the footpath into this texture rather than
+ * instancing it separately keeps the whole street at the two draw calls the
+ * road pool already spends.
+ *
+ * The 32-pixel axis runs across the street: rows 0-5 and 26-31 are pavement,
+ * the kerb sits on rows 6 and 25, and the carriageway fills the middle.
+ */
+/** Carriageway plus a footpath each side - the full gap between the cell
+ *  boundary and the building setback, so nothing shows through between them. */
+const ROAD_STRIP_WIDTH = 9
+
 const roadTexture = pixelTexture((context) => {
   context.fillStyle = GROUND.ROAD
   context.fillRect(0, 0, 128, 32)
   for (let index = 0; index < 180; index += 1) {
     const x = index * 37 % 128
-    const y = index * 19 % 32
+    const y = 7 + index * 19 % 18
     context.fillStyle = index % 4 === 0 ? 'rgba(255,255,255,.09)' : 'rgba(0,0,0,.07)'
     context.fillRect(x, y, index % 5 === 0 ? 2 : 1, 1)
   }
@@ -280,13 +297,27 @@ const roadTexture = pixelTexture((context) => {
   // so they moved out to their own sparse pool below.
   context.fillStyle = GROUND.ROAD_MARKING
   for (let x = 18; x < 112; x += 22) context.fillRect(x, 15, 12, 2)
-  // Kerb lines, dimmed right down: they used to be brighter than the lane
-  // markings and landed on every tile seam.
-  context.fillStyle = 'rgba(232,237,245,.26)'
-  for (let y = 4; y < 30; y += 9) {
-    context.fillRect(4, y, 8, 1)
-    context.fillRect(116, y, 8, 1)
+  // The footpath stops short of both ends of the tile. A tile spans exactly
+  // one cell, so its ends sit on the junctions - run the pavement the whole
+  // length and every crossing street gets a grey band painted straight across
+  // its carriageway, cutting the lane markings in half. JUNCTION is half the
+  // width of the crossing strip, in texels along the tile.
+  const JUNCTION = 17
+  const PATH_START = JUNCTION
+  const PATH_LENGTH = 128 - JUNCTION * 2
+  context.fillStyle = GROUND.PAVEMENT
+  context.fillRect(PATH_START, 0, PATH_LENGTH, 6)
+  context.fillRect(PATH_START, 26, PATH_LENGTH, 6)
+  // Paving slabs. Faint, and only across the footpath, so the seams read as
+  // texture at flying height rather than as a second set of lane markings.
+  context.fillStyle = 'rgba(0,0,0,.06)'
+  for (let x = PATH_START; x < PATH_START + PATH_LENGTH; x += 8) {
+    context.fillRect(x, 0, 1, 6)
+    context.fillRect(x, 26, 1, 6)
   }
+  context.fillStyle = GROUND.KERB
+  context.fillRect(PATH_START, 6, PATH_LENGTH, 1)
+  context.fillRect(PATH_START, 25, PATH_LENGTH, 1)
 }, 128, 32)
 
 const crosswalkTexture = pixelTexture((context) => {
@@ -471,6 +502,14 @@ const lotMaterial = (() => {
   return material
 })()
 
+/** Few enough segments that the edge has facets rather than reading as a
+ *  perfect circle, which would look just as authored as the square did. */
+const PARK_SEGMENTS = 11
+
+// Scene-lit like the other ground tiles, so it needs no entry in the daylight
+// table - the lights carry it through the cycle.
+const parkMaterial = new THREE.MeshToonMaterial({ color: GROUND.PARK_GRASS, map: lotTexture, gradientMap: toonGradient })
+
 const roadMaterial = (() => {
   const material = new THREE.MeshBasicMaterial({ color: '#ffffff', map: roadTexture })
   cityDaylightMaterials.road = material
@@ -481,6 +520,9 @@ function GroundPool() {
   const { runtime } = useGame()
   const lots = useRef<THREE.InstancedMesh>(null)
   const roads = useRef<THREE.InstancedMesh>(null)
+  const parks = useRef<THREE.InstancedMesh>(null)
+  const parkEuler = useMemo(() => new THREE.Euler(), [])
+  const parkQuaternion = useMemo(() => new THREE.Quaternion(), [])
   const lastKey = useRef('')
   const matrix = useMemo(() => new THREE.Matrix4(), [])
   const position = useMemo(() => new THREE.Vector3(), [])
@@ -490,7 +532,7 @@ function GroundPool() {
   const color = useMemo(() => new THREE.Color(), [])
 
   useFrame(() => {
-    if (!lots.current || !roads.current) return
+    if (!lots.current || !roads.current || !parks.current) return
     const drone = runtime.current.drone.position
     const world = runtime.current.world
     const key = `${world.cellX}:${world.cellZ}`
@@ -499,12 +541,16 @@ function GroundPool() {
     const cells = groundCellsAround(drone)
     let lotSlot = 0
     let roadSlot = 0
+    let parkSlot = 0
     cells.forEach((cell) => {
       const centerX = (cell.cellX + 0.5) * WORLD_CELL_SIZE
       const centerZ = (cell.cellZ + 0.5) * WORLD_CELL_SIZE
       const landmark = groundLandmarkForCell(cell)
       const ordinaryLot = cell.ground === 'parking' || cell.ground === 'plaza' || cell.ground === 'pond'
-      const hasLot = Boolean(cell.building || landmark || (ordinaryLot && cell.seed % 100 < 45))
+      // Parks moved out to their own rounded pool: a lawn is the one ground
+      // tile whose edge is not a property line, and squaring it off was what
+      // made the whole city read as graph paper.
+      const hasLot = Boolean(cell.building || (landmark && landmark !== 'park') || (ordinaryLot && cell.seed % 100 < 45))
       if (hasLot && lotSlot < GROUND_CELL_COUNT) {
         // Every building gets the same paved interior tile. The procedural
         // ground choice still exists for open cells, but grass or pond no
@@ -534,21 +580,37 @@ function GroundPool() {
         lotSlot += 1
       }
 
+      if (landmark === 'park' && parkSlot < GROUND_CELL_COUNT) {
+        // Rotated per cell so no two lawns present the same flat side to the
+        // street, and squashed a little on one axis so the outline is a
+        // rounded plot rather than a drawn circle.
+        const spin = ((cell.seed >>> 11) % 360) / 180 * Math.PI
+        const squash = 0.82 + ((cell.seed >>> 19) % 30) / 100
+        parkQuaternion.setFromEuler(parkEuler.set(-Math.PI / 2, 0, spin))
+        position.set(centerX, 0.004, centerZ)
+        scale.set(WORLD_CELL_SIZE - 5.4, (WORLD_CELL_SIZE - 5.4) * squash, 1)
+        matrix.compose(position, parkQuaternion, scale)
+        parks.current!.setMatrixAt(parkSlot, matrix)
+        parkSlot += 1
+      }
+
       position.set(centerX, 0.018, cell.cellZ * WORLD_CELL_SIZE)
-      scale.set(WORLD_CELL_SIZE + 0.2, 7.5, 1)
+      scale.set(WORLD_CELL_SIZE + 0.2, ROAD_STRIP_WIDTH, 1)
       matrix.compose(position, planeRotation, scale)
       roads.current!.setMatrixAt(roadSlot, matrix)
       roadSlot += 1
       position.set(cell.cellX * WORLD_CELL_SIZE, 0.02, centerZ)
-      scale.set(WORLD_CELL_SIZE + 0.2, 7.5, 1)
+      scale.set(WORLD_CELL_SIZE + 0.2, ROAD_STRIP_WIDTH, 1)
       matrix.compose(position, verticalRoadRotation, scale)
       roads.current!.setMatrixAt(roadSlot, matrix)
       roadSlot += 1
     })
     lots.current.count = lotSlot
     roads.current.count = roadSlot
+    parks.current!.count = parkSlot
     lots.current.instanceMatrix.needsUpdate = true
     roads.current.instanceMatrix.needsUpdate = true
+    parks.current!.instanceMatrix.needsUpdate = true
     if (lots.current.instanceColor) lots.current.instanceColor.needsUpdate = true
   })
 
@@ -562,6 +624,10 @@ function GroundPool() {
       <instancedMesh ref={roads} args={[undefined, undefined, GROUND_CELL_COUNT * 2]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }}>
         <planeGeometry args={[1, 1]} />
         <primitive object={roadMaterial} attach="material" />
+      </instancedMesh>
+      <instancedMesh ref={parks} args={[undefined, undefined, GROUND_CELL_COUNT]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }}>
+        <circleGeometry args={[0.5, PARK_SEGMENTS]} />
+        <primitive object={parkMaterial} attach="material" />
       </instancedMesh>
     </group>
   )
@@ -1146,7 +1212,9 @@ function CrosswalkPool() {
           0.03,
           cellZ * WORLD_CELL_SIZE + (acrossX ? 0 : 7),
         )
-        scale.set(7.2, 6.4, 1)
+        // Kerb to kerb. The road tile carries pavements now, so a crossing
+        // sized to the old full-width strip would paint stripes over them.
+        scale.set(7.2, 5.6, 1)
         matrix.compose(position, acrossX ? flatTurned : flat, scale)
         mesh.setMatrixAt(slot, matrix)
         slot += 1

@@ -76,6 +76,53 @@ describe('pooled city crowds and destructible cars', () => {
     }
   })
 
+  it('walks most pedestrians to a destination instead of pacing on the spot', () => {
+    // A random walk has an expected displacement near zero, so a park seeded
+    // with sixteen people keeps sixteen people no matter how long the run goes
+    // and the streets around it stay empty. Errands are what spread a crowd
+    // over the city without touching a single spawn weight.
+    const state = createCrowdState(4242)
+    const view = { position: { x: 0, y: 7, z: 0 }, heading: 0 }
+    stepCrowds(state, view, 0)
+    const start = new Map(state.objects.filter((object) => object.active).map((object) => [object.id, { ...object.position }]))
+    for (let frame = 0; frame < 45 * 60; frame += 1) stepCrowds(state, view, 1 / 60)
+    const walked: number[] = []
+    const loitered: number[] = []
+    for (const object of state.objects) {
+      if (object.kind !== 'pedestrian') continue
+      const from = start.get(object.id)
+      // Recycled slots got a fresh position, so only bodies alive the whole
+      // stretch say anything about how far a walk actually goes.
+      if (!from || !object.active) continue
+      const travelled = Math.hypot(object.position.x - from.x, object.position.z - from.z)
+      if (object.roams) loitered.push(travelled)
+      else walked.push(travelled)
+    }
+    expect(walked.length).toBeGreaterThan(loitered.length)
+    const mean = (values: number[]) => values.reduce((sum, value) => sum + value, 0) / Math.max(1, values.length)
+    expect(mean(walked)).toBeGreaterThan(mean(loitered) * 1.5)
+    // And the errand runners really are covering blocks, not drifting a few
+    // metres - a cell is 34m across.
+    expect(mean(walked)).toBeGreaterThan(34)
+  })
+
+  it('sends pedestrians down streets rather than through the middle of blocks', () => {
+    // Destinations snap to the road grid, so a walker's target sits just off a
+    // carriageway. If it did not, people would file diagonally across building
+    // footprints and get stuck on the first wall.
+    const state = createCrowdState(9137)
+    stepCrowds(state, { position: { x: 0, y: 7, z: 0 }, heading: 0 }, 0)
+    for (const object of state.objects) {
+      if (object.kind !== 'pedestrian' || !object.active || object.roams) continue
+      const offRoadX = Math.abs(object.targetX - Math.round(object.targetX / 34) * 34)
+      const offRoadZ = Math.abs(object.targetZ - Math.round(object.targetZ / 34) * 34)
+      // The free axis can land near a road by chance, so the test asks only
+      // that one axis is pinned to a lane, not that the other is not.
+      const onLane = Math.abs(offRoadX - 3.65) < 1e-6 || Math.abs(offRoadZ - 3.65) < 1e-6
+      expect(onLane).toBe(true)
+    }
+  })
+
   it('makes pedestrians flee a low approaching UFO and caches nearby density', () => {
     const state = createCrowdState(7)
     state.initialSpawnDone = true
