@@ -9,7 +9,7 @@ import { applyRimLight } from './rimLight'
  *
  * They live together because they answer one question - can this be picked out
  * of the background right now? - and the answer changes across the run. A body
- * that reads fine against a morning street is a silhouette against a night one,
+ * that reads fine against a sunlit street is a silhouette against a night one,
  * so each of these carries a small self-glow that rises as the sky darkens.
  *
  * The glow is deliberately small at noon. It exists to stop things vanishing,

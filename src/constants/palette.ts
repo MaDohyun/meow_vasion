@@ -73,7 +73,7 @@ export const BUILDING = {
   WINDOW_LIT_HOT: '#f5e8c7',
   WINDOW_COOL: '#a9cbd0',
   /** Unlit glass in the colour map. Windows only look lit through the emissive
-   *  map, so they read as plain glass under a midday sky. */
+   *  map, so they read as plain glass while the sun is still up. */
   WINDOW_DARK: '#9caaab',
   WINDOW_DIM: '#c8cec7',
   /** Blinking obstruction light on tall roofs. */

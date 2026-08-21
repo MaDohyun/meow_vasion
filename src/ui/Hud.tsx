@@ -241,7 +241,9 @@ export function Hud() {
         <section className="score-card panel">
           <span className="eyebrow">{t.score}</span>
           <strong>{Math.floor(snapshot.score).toLocaleString()}</strong>
-          <div><b>{t.wave} {snapshot.waveStage}</b> · {snapshot.daylightLabel}</div>
+          {/* The city clock, so "the run starts at six" is something the
+              player can read rather than something the sky merely implies. */}
+          <div><b>{t.wave} {snapshot.waveStage}</b> · {snapshot.daylightClock} {snapshot.daylightLabel}</div>
           <time>{t.run} {formatTime(snapshot.survivalTime)}</time>
         </section>
 

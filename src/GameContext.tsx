@@ -4,7 +4,7 @@ import { absorptionScore, beamObjectDiameter, beamProfile, beginCarDestruction, 
 import { createCrowdState, stepCrowds, type CrowdState } from './core/crowds'
 import { crowdSpawnZonesAround, parkingCarsAround, type CrowdSpawnZone } from './core/cityLandmarks'
 import { STRINGS, readStoredLanguage, storeLanguage, type Language, type MessageKey } from './i18n'
-import { createDaylightSample, sampleDaylight, type DaylightSample } from './core/daylight'
+import { createDaylightSample, daylightClock, sampleDaylight, type DaylightSample } from './core/daylight'
 import {
   createHazardState,
   detonateReachedHazard,
@@ -138,6 +138,7 @@ export type GameSnapshot = {
   broadcastStage: number | null
   broadcastRemaining: number
   daylightLabel: string
+  daylightClock: string
   nightFactor: number
   size: number
   sizeRatio: number
@@ -582,6 +583,7 @@ function snapshotOf(game: GameRuntime): GameSnapshot {
     broadcastStage: game.broadcastTime > 0 ? game.broadcastStage : null,
     broadcastRemaining: game.broadcastTime,
     daylightLabel: game.daylight.label,
+    daylightClock: daylightClock(game.sessionTime),
     nightFactor: game.daylight.nightFactor,
     size: game.size,
     sizeRatio: game.sizeProfile.ratio,
