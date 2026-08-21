@@ -9,7 +9,7 @@ import {
   type ProceduralCell,
 } from './world'
 
-export type GroundLandmark = 'park' | 'subway' | 'parking-lot' | 'power-pylon' | null
+export type GroundLandmark = 'park' | 'subway' | 'parking-lot' | 'power-pylon' | 'gas-station' | null
 export type CrowdSpawnZone = { x: number; z: number; radius: number; kind: 'park' | 'parking-lot' }
 
 /**
@@ -24,8 +24,11 @@ export function groundLandmarkForCell(cell: ProceduralCell): GroundLandmark {
   if (cell.kind !== 'empty') return null
 
   if (roll < 28) return 'power-pylon'
-  if (roll < 76) return 'subway'
-  if (roll < 245) return 'park'
+  // Gas stations give the tankers somewhere to have come from. Rare enough to
+  // stay a landmark, common enough that the connection is legible.
+  if (roll < 62) return 'gas-station'
+  if (roll < 110) return 'subway'
+  if (roll < 279) return 'park'
   return null
 }
 
@@ -34,9 +37,20 @@ export function isConvenienceStore(building: ProceduralBuilding) {
   return seedForWorldCell(building.cellX, building.cellZ, 0xc071e) % 100 < 42
 }
 
-export function hasUfoWarningScreen(building: ProceduralBuilding) {
-  if (building.size.y < 40) return false
-  return seedForWorldCell(building.cellX, building.cellZ, 0x0f0a11) % 100 < 55
+/**
+ * News towers: the only buildings that carry a broadcast screen.
+ *
+ * Deliberately rare. The screen was previously offered to more than half of
+ * every building over forty units, which put eight of them in a single district
+ * - at that rate it is street furniture, not a landmark. Tuned by counting
+ * rather than guessing: this yields roughly three across the active world, so
+ * about one falls inside the view at a time.
+ */
+export const NEWS_TOWER_MIN_HEIGHT = 44
+
+export function isNewsTower(building: ProceduralBuilding) {
+  if (building.size.y < NEWS_TOWER_MIN_HEIGHT) return false
+  return seedForWorldCell(building.cellX, building.cellZ, 0x0f0a11) % 100 < 26
 }
 
 /** Bus stops are street furniture on an occupied building lot, never a lone

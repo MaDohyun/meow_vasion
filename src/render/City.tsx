@@ -9,7 +9,7 @@ import { radialGlowTexture } from './textures'
 import { CityLandmarks, applyLandmarkDaylight } from './CityLandmarks'
 import {
   groundLandmarkForCell,
-  hasUfoWarningScreen,
+  isNewsTower,
   isConvenienceStore,
 } from '../core/cityLandmarks'
 import {
@@ -407,9 +407,11 @@ function GroundPool() {
               ? GROUND.PARKING_LOT
               : landmark === 'power-pylon'
                 ? GROUND.UTILITY_PAD
-                : landmark === 'subway' || landmark === 'bus-stop'
-                  ? GROUND.TRANSIT_PAD
-                  : GROUND_COLORS[cell.ground]
+                : landmark === 'gas-station'
+                  ? GROUND.FORECOURT
+                  : landmark === 'subway'
+                    ? GROUND.TRANSIT_PAD
+                    : GROUND_COLORS[cell.ground]
         const authoredLot = Boolean(cell.building || landmark)
         const lotSize = authoredLot ? WORLD_CELL_SIZE - 8.2 : WORLD_CELL_SIZE - 5 - (cell.seed >>> 9) % 5
         const jitterX = authoredLot ? 0 : ((cell.seed >>> 17) % 5) - 2
@@ -572,7 +574,7 @@ function BuildingPool() {
       roofs.current!.setColorAt(index, color.set(building.roof).lerp(pastelRoof, 0.42))
 
       const signOnX = building.sign.side === 'x'
-      const hasFeatureSign = isConvenienceStore(building) || hasUfoWarningScreen(building)
+      const hasFeatureSign = isConvenienceStore(building) || isNewsTower(building)
       position.set(
         building.position.x + (signOnX ? building.size.x / 2 + 0.22 : 0),
         Math.min(building.size.y - 2.5, Math.max(4.2, building.size.y * 0.46)),

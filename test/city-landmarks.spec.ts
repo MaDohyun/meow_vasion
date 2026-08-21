@@ -3,7 +3,8 @@ import { getProceduralCell } from '../src/core/world'
 import {
   groundLandmarkForCell,
   hasBusStop,
-  hasUfoWarningScreen,
+  NEWS_TOWER_MIN_HEIGHT,
+  isNewsTower,
   isConvenienceStore,
   parkingCarsAround,
 } from '../src/core/cityLandmarks'
@@ -16,7 +17,7 @@ describe('render-only city landmarks', () => {
       expect(groundLandmarkForCell(first)).toBe(groundLandmarkForCell(second))
       if (first.building && second.building) {
         expect(isConvenienceStore(first.building)).toBe(isConvenienceStore(second.building))
-        expect(hasUfoWarningScreen(first.building)).toBe(hasUfoWarningScreen(second.building))
+        expect(isNewsTower(first.building)).toBe(isNewsTower(second.building))
         expect(hasBusStop(first.building)).toBe(hasBusStop(second.building))
       }
     }
@@ -54,6 +55,7 @@ describe('render-only city landmarks', () => {
 
   it('uses only genuinely low and high buildings for the two facade features', () => {
     let stores = 0
+    let tall = 0
     let warningScreens = 0
     for (let z = -70; z <= 70; z += 1) {
       for (let x = -70; x <= 70; x += 1) {
@@ -63,14 +65,19 @@ describe('render-only city landmarks', () => {
           stores += 1
           expect(building.size.y).toBeLessThanOrEqual(11.5)
         }
-        if (hasUfoWarningScreen(building)) {
+        if (isNewsTower(building)) {
           warningScreens += 1
-          expect(building.size.y).toBeGreaterThanOrEqual(40)
+          expect(building.size.y).toBeGreaterThanOrEqual(NEWS_TOWER_MIN_HEIGHT)
         }
+        tall += 1
       }
     }
     expect(stores).toBeGreaterThan(100)
-    expect(warningScreens).toBeGreaterThan(100)
+    // News towers are landmarks, so rarity is the property worth pinning. The
+    // screen used to go on more than half of every tall building, which put
+    // about eight in a single district - at that rate it is street furniture.
+    expect(warningScreens).toBeGreaterThan(0)
+    expect(warningScreens / tall).toBeLessThan(0.05)
   })
 
   it('keeps at least three interactive cars in every generated parking lot', () => {
