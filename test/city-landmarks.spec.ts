@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { getProceduralCell } from '../src/core/world'
+import { getProceduralCell, type ProceduralBuilding } from '../src/core/world'
 import {
   groundLandmarkForCell,
   hasBusStop,
+  NEWS_SCREEN_HEIGHT,
+  NEWS_SCREEN_MOUNT_MARGIN,
   NEWS_TOWER_MIN_HEIGHT,
   isNewsTower,
   isConvenienceStore,
+  newsScreenMount,
   parkingCarsAround,
 } from '../src/core/cityLandmarks'
 
@@ -90,5 +93,35 @@ describe('render-only city landmarks', () => {
     }
     expect(lots.size).toBeGreaterThan(0)
     for (const count of lots.values()) expect(count).toBeGreaterThanOrEqual(3)
+  })
+})
+
+describe('news screen mounting', () => {
+  const tower = (height: number): ProceduralBuilding => ({
+    id: 'b', cellX: 0, cellZ: 0,
+    position: { x: 0, y: height / 2, z: 0 },
+    size: { x: 20, y: height, z: 20 },
+    color: '#ffffff', roof: '#ffffff',
+    sign: { text: 'SKY', color: '#ffffff', side: 'z' },
+    facade: 0, floors: 1, entrance: 0, form: 'plain',
+    roofOverhang: 1, roofThickness: 0.8,
+  })
+
+  it('keeps the blank cladding inside the building at every tower height', () => {
+    // A band poking through the roof or down into the pavement is a worse
+    // artefact than the windows it was added to hide.
+    for (let height = NEWS_TOWER_MIN_HEIGHT; height <= 120; height += 1) {
+      const mount = newsScreenMount(tower(height))
+      expect(mount.centre - mount.height / 2, `${height}m bottom`).toBeGreaterThan(0)
+      expect(mount.centre + mount.height / 2, `${height}m top`).toBeLessThan(height)
+    }
+  })
+
+  it('runs the cladding past the screen so it reads as a mounting', () => {
+    // Flush with the screen, the band is invisible and all that shows is that
+    // the windows disappeared.
+    const mount = newsScreenMount(tower(NEWS_TOWER_MIN_HEIGHT))
+    expect(NEWS_SCREEN_MOUNT_MARGIN).toBeGreaterThan(1)
+    expect(mount.height).toBe(NEWS_SCREEN_HEIGHT + NEWS_SCREEN_MOUNT_MARGIN * 2)
   })
 })
