@@ -3,6 +3,7 @@ import { memo, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { useGame } from '../GameContext'
+import { bulletinFor } from '../i18n'
 import { BUILDING, GROUND } from '../constants/palette'
 import {
   groundLandmarkForCell,
@@ -67,8 +68,21 @@ const convenienceStoreTexture = canvasTexture((context, width, height) => {
  * The anchor moves a little - a slow sway, an occasional blink. Perfectly still
  * would read as a photograph on a wall; more than this would pull the eye away
  * from the city.
+ *
+ * The caption bar is normally blank. Standing text on a screen that is always
+ * there stops being read within a minute, so the only time words appear is
+ * while a wave bulletin is on air: for those few seconds the headline goes in
+ * the bar, a BREAKING flag goes beside it, and the anchor's mouth opens and
+ * closes. Then it empties again.
  */
-function drawUfoNewsFrame(context: CanvasRenderingContext2D, width: number, height: number, time: number) {
+function drawUfoNewsFrame(
+  context: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  time: number,
+  headline: string | null = null,
+  flag = '',
+) {
   // Studio backdrop.
   const backdrop = context.createLinearGradient(0, 0, 0, height)
   backdrop.addColorStop(0, '#1b2450')
@@ -98,13 +112,34 @@ function drawUfoNewsFrame(context: CanvasRenderingContext2D, width: number, heig
   context.lineWidth = 5
   context.strokeRect(insetX, insetY, insetW, insetH)
 
-  drawAnchor(context, width, height, time)
+  drawAnchor(context, width, height, time, headline !== null)
 
-  // Lower third: a caption bar with no caption, plus a blank ticker beneath.
+  // Lower third: the caption bar, plus a blank ticker beneath. The bar grows a
+  // little while a bulletin runs so the screen visibly switches to breaking
+  // coverage even at the distance these towers are usually seen from.
+  const barY = headline ? height * 0.715 : height * 0.74
+  const barH = headline ? height * 0.135 : height * 0.11
   context.fillStyle = '#ef5265'
-  context.fillRect(0, height * 0.74, width, height * 0.11)
-  context.fillStyle = 'rgba(255,241,189,.85)'
-  context.fillRect(width * 0.05, height * 0.775, width * 0.44, height * 0.035)
+  context.fillRect(0, barY, width, barH)
+  if (headline) {
+    // BREAKING flag, then the headline. Sized off the canvas so the 512px
+    // texture and any future resolution lay out the same.
+    const pad = width * 0.035
+    context.font = `900 ${Math.round(height * 0.045)}px system-ui, sans-serif`
+    const flagW = context.measureText(flag).width + pad
+    context.fillStyle = '#141a34'
+    context.fillRect(pad, barY + barH * 0.22, flagW, barH * 0.56)
+    context.fillStyle = '#ffe05f'
+    context.textBaseline = 'middle'
+    context.fillText(flag, pad + pad * 0.5, barY + barH * 0.5)
+    context.fillStyle = '#fff5c7'
+    context.font = `900 ${Math.round(height * 0.052)}px system-ui, sans-serif`
+    context.fillText(headline, pad * 1.6 + flagW, barY + barH * 0.5, width - pad * 2.6 - flagW)
+    context.textBaseline = 'alphabetic'
+  } else {
+    context.fillStyle = 'rgba(255,241,189,.85)'
+    context.fillRect(width * 0.05, height * 0.775, width * 0.44, height * 0.035)
+  }
   context.fillStyle = '#101634'
   context.fillRect(0, height * 0.85, width, height * 0.15)
   context.fillStyle = 'rgba(255,241,189,.55)'
@@ -164,12 +199,14 @@ function drawUfoFootage(
 
 /** Head and shoulders, lower left. Silhouette only - features would fight the
  *  pixel scale this is seen at. */
-function drawAnchor(context: CanvasRenderingContext2D, width: number, height: number, time: number) {
+function drawAnchor(context: CanvasRenderingContext2D, width: number, height: number, time: number, talking = false) {
   const sway = Math.sin(time * 0.9) * width * 0.006
-  const nod = Math.sin(time * 1.4) * height * 0.004
+  // Reading the news is more animated than sitting through a quiet segment.
+  const nod = Math.sin(time * (talking ? 3.4 : 1.4)) * height * (talking ? 0.008 : 0.004)
   const cx = width * 0.3 + sway
-  // Shoulders have to clear the caption bar at 0.74, or only a floating head
-  // shows above it and the figure stops reading as a person at a desk.
+  // Shoulders have to clear the caption bar - 0.74 normally, 0.715 while a
+  // bulletin is on air - or only a floating head shows above it and the figure
+  // stops reading as a person at a desk.
   const shoulderY = height * 0.72
   context.save()
 
@@ -206,6 +243,16 @@ function drawAnchor(context: CanvasRenderingContext2D, width: number, height: nu
   for (const side of [-1, 1]) {
     context.beginPath()
     context.ellipse(cx + side * width * 0.031, headY + height * 0.005, width * 0.011, height * 0.014 * blink, 0, 0, Math.PI * 2)
+    context.fill()
+  }
+  // A mouth only while reading a bulletin. The rest of the time the face is a
+  // silhouette, and a permanently drawn mouth at this pixel scale reads as a
+  // smudge rather than as a feature.
+  if (talking) {
+    const open = 0.35 + (0.5 + Math.sin(time * 13) * 0.5) * 0.65
+    context.fillStyle = '#7a3f45'
+    context.beginPath()
+    context.ellipse(cx, headY + height * 0.05, width * 0.019, height * 0.016 * open, 0, 0, Math.PI * 2)
     context.fill()
   }
   context.restore()
@@ -361,7 +408,7 @@ function setPoolCount(mesh: THREE.InstancedMesh | null, count: number, colors = 
 }
 
 function BuildingFeaturePool() {
-  const { runtime } = useGame()
+  const { runtime, t } = useGame()
   const storeBands = useRef<THREE.InstancedMesh>(null)
   const storeSigns = useRef<THREE.InstancedMesh>(null)
   const warningScreens = useRef<THREE.InstancedMesh>(null)
@@ -382,7 +429,20 @@ function BuildingFeaturePool() {
       const canvas = ufoWarningTexture.image as HTMLCanvasElement
       const context = canvas.getContext('2d')
       if (context) {
-        drawUfoNewsFrame(context, canvas.width, canvas.height, clock.elapsedTime)
+        // One 512px texture serves every news tower, so the bulletin is read
+        // straight off the runtime here rather than pushed in per building.
+        // Localised at draw time, which is why switching language in the
+        // options changes the city's screens within a frame.
+        const game = runtime.current
+        const onAir = game.broadcastTime > 0
+        drawUfoNewsFrame(
+          context,
+          canvas.width,
+          canvas.height,
+          clock.elapsedTime,
+          onAir ? bulletinFor(t, game.broadcastStage).headline : null,
+          t.breakingFlag,
+        )
         ufoWarningTexture.needsUpdate = true
       }
     }

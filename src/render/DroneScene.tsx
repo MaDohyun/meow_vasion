@@ -26,7 +26,6 @@ import {
   LASER_MAX_PROJECTILES,
   LASER_MAX_BURSTS,
 } from '../core/laser'
-import { WEAPON_POOL_CAPS, type WeaponProjectileKind } from '../core/weapons'
 import { TRAFFIC_MAX_CARS } from '../core/traffic'
 import { WORLD_MAX_CARS } from '../core/world'
 import { City, applyCityDaylight } from './City'
@@ -191,9 +190,6 @@ declare global {
       size: number
       activeEnemyProjectiles: number
       laserShotsFired: number
-      weaponShotsFired: number
-      activeWeaponProjectiles: number
-      selectedWeapon: string
       height: number
       visibleMeshPools: number
     }
@@ -657,8 +653,8 @@ function CrowdPool({ kind }: { kind: CrowdKind }) {
   )
 }
 
-// A tanker about 2.5 times the footprint of a normal car. Both the ambient
-// hazard and the dropped weapon share this fixed pooled geometry.
+// A tanker about 2.5 times the footprint of a normal car, on a fixed pooled
+// geometry shared by every ambient hazard.
 //
 // Painted like a vehicle rather than like a hazard. It previously wore a
 // pulsing red-and-orange striped shader, which read as a glowing bomb on
@@ -986,78 +982,6 @@ function LaserProjectiles() {
   )
 }
 
-const WEAPON_PROJECTILE_KINDS: WeaponProjectileKind[] = ['missile', 'scatter', 'satellite', 'bomb']
-
-function weaponProjectileColor(kind: WeaponProjectileKind) {
-  if (kind === 'missile') return '#ffe05f'
-  if (kind === 'scatter') return '#ff76c4'
-  if (kind === 'satellite') return '#69f7ff'
-  return '#ff9d58'
-}
-
-function WeaponProjectilePool({ kind }: { kind: WeaponProjectileKind }) {
-  const { runtime } = useGame()
-  const ref = useRef<THREE.InstancedMesh>(null)
-  const matrix = useMemo(() => new THREE.Matrix4(), [])
-  const position = useMemo(() => new THREE.Vector3(), [])
-  const direction = useMemo(() => new THREE.Vector3(), [])
-  const scale = useMemo(() => new THREE.Vector3(), [])
-  const quaternion = useMemo(() => new THREE.Quaternion(), [])
-  const axis = useMemo(() => new THREE.Vector3(0, 1, 0), [])
-  const geometry = useMemo(() => {
-    if (kind === 'missile') return new THREE.ConeGeometry(0.34, 1.7, 6)
-    if (kind === 'scatter') return new THREE.IcosahedronGeometry(0.42, 0)
-    if (kind === 'satellite') return new THREE.TorusGeometry(0.72, 0.16, 6, 10)
-    return tankerGeometry
-  }, [kind])
-  const material = useMemo(() => kind === 'bomb' ? hazardTankerMaterial : new THREE.MeshBasicMaterial({
-    color: weaponProjectileColor(kind),
-    vertexColors: true,
-    transparent: true,
-    opacity: 0.95,
-    depthWrite: false,
-    blending: THREE.AdditiveBlending,
-    toneMapped: false,
-  }), [kind])
-  const color = useMemo(() => new THREE.Color(weaponProjectileColor(kind)), [kind])
-  useEffect(() => () => {
-    if (kind !== 'bomb') {
-      geometry.dispose()
-      material.dispose()
-    }
-  }, [geometry, kind, material])
-  useFrame(({ clock }) => {
-    const mesh = ref.current
-    if (!mesh) return
-    let count = 0
-    for (const projectile of runtime.current.weapons.projectiles) {
-      if (!projectile.active || projectile.kind !== kind) continue
-      position.set(projectile.position.x, projectile.position.y, projectile.position.z)
-      direction.set(projectile.direction.x, projectile.direction.y, projectile.direction.z)
-      if (kind === 'missile') quaternion.setFromUnitVectors(axis, direction.normalize())
-      else if (kind === 'satellite') quaternion.setFromAxisAngle(direction.set(0, 1, 0), clock.elapsedTime * 3 + projectile.slot)
-      else if (kind === 'bomb') quaternion.setFromAxisAngle(axis, clock.elapsedTime * 0.8 + projectile.slot)
-      else quaternion.identity()
-      if (kind === 'missile') scale.set(1, 1, 1)
-      else if (kind === 'scatter') scale.setScalar(1 + Math.sin(clock.elapsedTime * 18 + projectile.slot) * 0.16)
-      else if (kind === 'satellite') scale.setScalar(1 + Math.sin(clock.elapsedTime * 10 + projectile.slot) * 0.12)
-      else scale.setScalar(1 + Math.sin(clock.elapsedTime * 6 + projectile.slot) * 0.035)
-      matrix.compose(position, quaternion, scale)
-      mesh.setMatrixAt(count, matrix)
-      if (kind !== 'bomb') mesh.setColorAt(count, color)
-      count += 1
-    }
-    mesh.count = count
-    mesh.instanceMatrix.needsUpdate = true
-    if (kind !== 'bomb' && mesh.instanceColor) mesh.instanceColor.needsUpdate = true
-  })
-  return <instancedMesh ref={ref} args={[geometry, material, WEAPON_POOL_CAPS[kind]]} frustumCulled={false} renderOrder={5} />
-}
-
-function WeaponProjectiles() {
-  return <group>{WEAPON_PROJECTILE_KINDS.map((kind) => <WeaponProjectilePool key={kind} kind={kind} />)}</group>
-}
-
 function LaserBursts() {
   const { runtime } = useGame()
   const rings = useRef<THREE.InstancedMesh>(null)
@@ -1230,9 +1154,6 @@ function PerformanceProbe() {
       size: runtime.current.size,
       activeEnemyProjectiles: runtime.current.enemies.projectiles.filter((projectile) => projectile.active).length,
       laserShotsFired: runtime.current.laserShotsFired,
-      weaponShotsFired: runtime.current.weapons.shotsFired,
-      activeWeaponProjectiles: runtime.current.weapons.projectiles.filter((projectile) => projectile.active).length,
-      selectedWeapon: runtime.current.selectedWeapon,
       height: runtime.current.drone.position.y,
       visibleMeshPools,
     }
@@ -1533,7 +1454,6 @@ export function DroneScene() {
       <EnemyPools />
       <EnemyWarnings />
       <EnemyProjectiles />
-      <WeaponProjectiles />
       <LaserProjectiles />
       <LaserBursts />
       <TractorBeam />
