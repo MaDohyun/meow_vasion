@@ -11,12 +11,16 @@
  * morning light spent the whole first half of the run - the half where a player
  * forms their impression of the game - under a bright blue sky.
  *
- * But it does not stop at night. Night falls, holds through the middle third
- * of the run, and then the sun comes back up: dawn lands at about 144 seconds,
- * which is where the final wave arrives, so the last assault and the sunrise
- * happen together. Noon lands exactly as the run runs out. Surviving the night
- * and watching it get light is a better ending than a sky that darkens and then
- * sits still for the last forty seconds.
+ * And it does not stop. The cycle runs evening, night, dawn, morning, noon,
+ * afternoon and back to evening, and then goes round again - a five minute run
+ * sees two nights. It used to take the whole run to get round once, which made
+ * the sky change too slowly to notice; at half the length the light is always
+ * visibly on the move.
+ *
+ * The loop closes, which is the part that matters. A cycle that ends at noon
+ * has to either stop there - a sky sitting still for half the run - or snap
+ * back to evening. Carrying it through the afternoon means the last keyframe
+ * hands off to the first and progress can simply wrap.
  *
  * Pure data and scalars only - no Three.js. The render layer turns the hex
  * strings into colours and does the interpolation in linear space, so this file
@@ -75,10 +79,10 @@ export type DaylightKeyframe = {
 }
 
 /**
- * Seconds for one evening-to-noon sweep. Matched to the run length so noon
- * lands exactly as the clock runs out.
+ * Seconds for one full turn of the sky. Half the run length, so a five minute
+ * run sees two nights.
  */
-export const DAY_CYCLE_SECONDS = 300
+export const DAY_CYCLE_SECONDS = 150
 
 /** The hour the run opens on. */
 export const DAYLIGHT_START_HOUR = 18
@@ -116,7 +120,7 @@ export const DAYLIGHT_KEYFRAMES: DaylightKeyframe[] = [
     fogFar: 700,
   },
   {
-    at: 0.09,
+    at: 0.07,
     phase: 'golden',
     label: 'SUNSET',
     hour: 1,
@@ -145,7 +149,7 @@ export const DAYLIGHT_KEYFRAMES: DaylightKeyframe[] = [
     fogFar: 660,
   },
   {
-    at: 0.19,
+    at: 0.15,
     phase: 'dusk',
     label: 'DUSK',
     hour: 2,
@@ -174,7 +178,7 @@ export const DAYLIGHT_KEYFRAMES: DaylightKeyframe[] = [
     fogFar: 620,
   },
   {
-    at: 0.3,
+    at: 0.24,
     phase: 'night',
     label: 'NIGHT',
     hour: 3.5,
@@ -207,7 +211,7 @@ export const DAYLIGHT_KEYFRAMES: DaylightKeyframe[] = [
   {
     // The deepest point, and the longest stretch on screen. Waves three, four
     // and five all arrive between here and the keyframe before it.
-    at: 0.66,
+    at: 0.53,
     phase: 'night',
     label: 'LATE NIGHT',
     hour: 9.5,
@@ -238,7 +242,7 @@ export const DAYLIGHT_KEYFRAMES: DaylightKeyframe[] = [
   {
     // Around 144 seconds, which is where the final wave is coming from. The
     // last assault and the sunrise are meant to land together.
-    at: 0.8,
+    at: 0.64,
     phase: 'dawn',
     label: 'DAWN',
     hour: 11.5,
@@ -267,7 +271,7 @@ export const DAYLIGHT_KEYFRAMES: DaylightKeyframe[] = [
     fogFar: 615,
   },
   {
-    at: 0.91,
+    at: 0.73,
     phase: 'morning',
     label: 'MORNING',
     hour: 14,
@@ -296,7 +300,7 @@ export const DAYLIGHT_KEYFRAMES: DaylightKeyframe[] = [
     fogFar: 700,
   },
   {
-    at: 1,
+    at: 0.8,
     phase: 'day',
     label: 'MIDDAY',
     hour: 18,
@@ -323,6 +327,66 @@ export const DAYLIGHT_KEYFRAMES: DaylightKeyframe[] = [
     starIntensity: 0,
     fogNear: 220,
     fogFar: 760,
+  },
+  {
+    at: 0.9,
+    phase: 'day',
+    label: 'AFTERNOON',
+    hour: 21,
+    colors: {
+      background: '#a7c9d2',
+      horizon: '#f0dcbd',
+      middle: '#9db9cf',
+      top: '#5a7fb4',
+      fog: '#adbfc4',
+      ambient: '#fff8e8',
+      hemiSky: '#e8f2fa',
+      hemiGround: '#bfa38d',
+      sun: '#ffeec2',
+      cloud: '#fff4e3',
+    },
+    ambientIntensity: 0.6,
+    hemiIntensity: 0.88,
+    sunIntensity: 1.55,
+    sunAltitude: 0.6,
+    moonAltitude: -0.95,
+    sunOpacity: 1,
+    moonOpacity: 0,
+    nightFactor: 0.02,
+    starIntensity: 0,
+    fogNear: 210,
+    fogFar: 730,
+  },
+  {
+    // Closes the ring. Identical to the opening keyframe so the last handoff
+    // is seamless and the cycle can simply wrap round to it.
+    at: 1,
+    phase: 'golden',
+    label: 'EVENING',
+    hour: 24,
+    colors: {
+      background: '#c9a385',
+      horizon: '#ffcf9c',
+      middle: '#b79ba7',
+      top: '#5c6aa6',
+      fog: '#c3a396',
+      ambient: '#ffeed6',
+      hemiSky: '#ffe3c2',
+      hemiGround: '#8f6a6a',
+      sun: '#ffd79a',
+      cloud: '#ffe4c6',
+    },
+    ambientIntensity: 0.5,
+    hemiIntensity: 0.72,
+    sunIntensity: 1.3,
+    sunAltitude: 0.2,
+    moonAltitude: -0.55,
+    sunOpacity: 1,
+    moonOpacity: 0,
+    nightFactor: 0.09,
+    starIntensity: 0,
+    fogNear: 200,
+    fogFar: 700,
   },
 ]
 
@@ -358,8 +422,23 @@ function ease(t: number) {
   return t * t * (3 - 2 * t)
 }
 
+/**
+ * Position in the cycle, wrapping rather than clamping.
+ *
+ * It used to stop at 1 and hold the last keyframe forever. Now that the
+ * keyframes carry on through the afternoon and back to evening, the sky can
+ * just keep turning, and the same point in two different laps is the same sky.
+ */
 export function daylightProgress(elapsed: number) {
-  return Math.min(1, Math.max(0, elapsed / DAY_CYCLE_SECONDS))
+  if (!Number.isFinite(elapsed) || elapsed <= 0) return 0
+  const laps = elapsed / DAY_CYCLE_SECONDS
+  return laps - Math.floor(laps)
+}
+
+/** Whole turns of the sky completed. */
+export function daylightLap(elapsed: number) {
+  if (!Number.isFinite(elapsed) || elapsed <= 0) return 0
+  return Math.floor(elapsed / DAY_CYCLE_SECONDS)
 }
 
 /** Allocation-free sample holder for callers that tick every frame. */

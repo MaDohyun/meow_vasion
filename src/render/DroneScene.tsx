@@ -1,3 +1,4 @@
+import { ufoDiameter } from '../core/size'
 import { Edges } from '@react-three/drei'
 import { useFrame, useThree } from '@react-three/fiber'
 import { useEffect, useMemo, useRef } from 'react'
@@ -1404,8 +1405,11 @@ function Sky() {
     }
     if (scene.fog instanceof THREE.Fog) {
       scene.fog.color.copy(mixDaylight(daylightScratch.fog, sample, 'fog'))
-      scene.fog.near = Math.max(210, sample.fogNear)
-      scene.fog.far = Math.max(650, sample.fogFar)
+      // The horizon opens up with the craft. Free at the shader level, and the
+      // extra skyline it uncovers is one instanced draw.
+      const reach = runtime.current.sizeProfile.viewDistance
+      scene.fog.near = Math.max(210, sample.fogNear) * reach
+      scene.fog.far = Math.max(650, sample.fogFar) * reach
     }
 
     if (ambient.current) {

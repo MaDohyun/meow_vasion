@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { stepBeamObjects, type BeamField } from '../src/core/beam'
 import { beginNearbyCrowdAbsorption, createCrowdState, stepCrowds } from '../src/core/crowds'
 import { createDroneState, stepDrone, type DroneInput } from '../src/core/drone'
-import { SIZE_GAIN, SIZE_LOSS, growSize, sizeProfile, SIZE_START } from '../src/core/size'
+import { SIZE_GAIN, SIZE_MAX, growSize, sizeProfile, SIZE_START } from '../src/core/size'
 
 const UPGRADES = { speed: 0.45, stability: 0, rack: 0, special: 'none' as const }
 
@@ -13,9 +13,9 @@ const UPGRADES = { speed: 0.45, stability: 0, rack: 0, special: 'none' as const 
  * bodies, the player shrinks no matter how well they fly, so this guards the
  * core loop rather than any one function.
  */
-function flyAndFeed(seconds: number, startSize = SIZE_START, seed = 4242, steer = false) {
+function flyAndFeed(seconds: number, startSize = SIZE_START, seed = 4242, steer = false, altitude = 7) {
   const drone = createDroneState()
-  drone.position = { x: 0, y: 3.2, z: 0 }
+  drone.position = { x: 0, y: altitude, z: 0 }
   const crowds = createCrowdState(seed)
   stepCrowds(crowds, { position: drone.position, heading: 0 }, 0)
   let size = startSize
@@ -46,13 +46,18 @@ function flyAndFeed(seconds: number, startSize = SIZE_START, seed = 4242, steer 
     const profile = sizeProfile(size)
     if (steer) input.steer = aimAtNearest(state.position, state.heading)
     state = stepDrone(state, input, dt, 0, UPGRADES)
-    state.position.y = 3.2
+    state.position.y = altitude
     const threats = [{ ...state.position }]
     stepCrowds(crowds, { position: state.position, heading: state.heading, threats, crowdThreatStart: 1 }, dt)
     const field: BeamField = {
       active: true, boosting: false,
       position: state.position, velocity: state.velocity,
       radiusScale: profile.beamScale,
+      // The craft's natural grip, which the game passes and this harness used
+      // to leave out - so it silently measured a beam at full strength and
+      // reported the core loop healthy while the real opening craft could not
+      // pick anybody up at all.
+      gripScale: profile.beamPower,
     }
     stepBeamObjects(crowds.objects, field, dt)
     let eaten = beginNearbyCrowdAbsorption(crowds, state.position, profile.absorbDistance)
@@ -88,20 +93,29 @@ describe('feeding is the core loop', () => {
   })
 
   it('keeps even a blind pass above starvation', () => {
-    // The floor matters: a player who is busy dodging must not starve outright.
-    expect(averageFeed(25)).toBeGreaterThanOrEqual(4)
+    // The floor matters: a player busy dodging must not starve outright. Growth
+    // is proportional now, so the meaningful figure is what a run does to the
+    // craft rather than how many bodies it counted - a blind pass has to at
+    // least double the saucer over a run.
+    const blindOverRun = averageFeed(25) * (300 / 25)
+    expect(Math.pow(1 + SIZE_GAIN.pedestrian, blindOverRun)).toBeGreaterThan(2)
   })
 
-  it('feeding outpaces a steady trickle of chip damage', () => {
-    // If a run cannot out-feed routine hits, size only ever goes down and the
-    // growth loop is decorative.
-    const gained = averageFeed(25, SIZE_START, true) * SIZE_GAIN.pedestrian
-    expect(gained / SIZE_LOSS.rifle).toBeGreaterThan(4)
+  it('leaves room to keep growing for the whole run', () => {
+    // Size no longer falls, so the question is not whether feeding out-paces
+    // damage - it is whether the ceiling is far enough away that the last
+    // minute still has something to reach for. Raising the growth rate without
+    // raising the ceiling just means capping out early and flying a fixed-size
+    // craft for four minutes.
+    const perTwentyFive = averageFeed(25, SIZE_START, true)
+    const overFiveMinutes = perTwentyFive * (300 / 25) * SIZE_GAIN.pedestrian
+    expect(overFiveMinutes).toBeGreaterThan(SIZE_MAX * 0.25)
+    expect(SIZE_MAX - SIZE_START).toBeGreaterThan(overFiveMinutes * 0.3)
   })
 
   it('a bigger craft feeds faster, because the beam widened', () => {
     const small = averageFeed(18, SIZE_START, true)
-    const big = averageFeed(18, 2.4, true)
+    const big = averageFeed(18, SIZE_START * 6, true)
     expect(big).toBeGreaterThan(small)
   })
 })

@@ -1,4 +1,4 @@
-import { ENEMY_WAVE_STAGES } from '../src/core/enemies'
+const RUN_SECONDS = 300
 import { describe, expect, it } from 'vitest'
 import {
   DAYLIGHT_KEYFRAMES,
@@ -7,6 +7,7 @@ import {
   createDaylightSample,
   daylightClock,
   daylightHour,
+  daylightLap,
   daylightProgress,
   sampleDaylight,
 } from '../src/core/daylight'
@@ -14,7 +15,9 @@ import {
 /** Where a series turns, so a shape can be asserted rather than a direction. */
 function turningPoints(read: (elapsed: number) => number) {
   const values: number[] = []
-  for (let elapsed = 0; elapsed <= DAY_CYCLE_SECONDS; elapsed += 1) values.push(read(elapsed))
+  // Exclusive of the wrap point: sampling both ends of a closed ring counts
+  // the seam as a turn.
+  for (let elapsed = 0; elapsed < DAY_CYCLE_SECONDS; elapsed += 1) values.push(read(elapsed))
   let turns = 0
   let direction = 0
   for (let index = 1; index < values.length; index += 1) {
@@ -27,8 +30,8 @@ function turningPoints(read: (elapsed: number) => number) {
   return turns
 }
 
-describe('evening to noon cycle', () => {
-  it('opens with the sun already low and ends in full night', () => {
+describe('the turning sky', () => {
+  it('opens with the sun already low and closes back on the same evening', () => {
     const start = sampleDaylight(0)
     expect(start.phase).toBe('golden')
     // Low, but still up: this is six in the evening, not dusk.
@@ -38,14 +41,18 @@ describe('evening to noon cycle', () => {
     expect(start.sunOpacity).toBe(1)
     expect(start.moonOpacity).toBe(0)
 
-    const end = sampleDaylight(DAY_CYCLE_SECONDS)
-    expect(end.phase).toBe('day')
-    expect(end.nightFactor).toBe(0)
-    expect(end.sunOpacity).toBe(1)
-    expect(end.moonOpacity).toBe(0)
+    // The ring closes on the keyframe it opened with, which is what lets the
+    // cycle wrap instead of stopping.
+    const first = DAYLIGHT_KEYFRAMES[0]!
+    const last = DAYLIGHT_KEYFRAMES[DAYLIGHT_KEYFRAMES.length - 1]!
+    expect(last.phase).toBe(first.phase)
+    expect(last.label).toBe(first.label)
+    expect(last.nightFactor).toBeCloseTo(first.nightFactor, 6)
+    expect(last.sunAltitude).toBeCloseTo(first.sunAltitude, 6)
+    expect(last.colors).toEqual(first.colors)
   })
 
-  it('runs the whole way round: evening, night, dawn, morning, noon', () => {
+  it('runs the whole way round: evening, night, dawn, morning, noon, afternoon', () => {
     // Moving the start to evening was about reaching the dark sooner, not
     // about cutting the day in half. A sky that darkens and then sits still
     // for the last stretch has stopped telling the time.
@@ -53,55 +60,57 @@ describe('evening to noon cycle', () => {
     for (let elapsed = 0; elapsed <= DAY_CYCLE_SECONDS; elapsed += 1) {
       labels.add(sampleDaylight(elapsed).label)
     }
-    for (const label of ['EVENING', 'SUNSET', 'DUSK', 'NIGHT', 'LATE NIGHT', 'DAWN', 'MORNING', 'MIDDAY']) {
+    for (const label of ['EVENING', 'SUNSET', 'DUSK', 'NIGHT', 'LATE NIGHT', 'DAWN', 'MORNING', 'MIDDAY', 'AFTERNOON']) {
       expect(labels, label).toContain(label)
     }
   })
 
-  it('holds the middle third of the run at full night', () => {
-    // Waves three, four and five are all meant to land in the dark. Read off
-    // the wave table rather than pinned to seconds, so respacing the run keeps
-    // the sky and the difficulty curve in step automatically.
-    for (const stage of [3, 4, 5]) {
-      const elapsed = ENEMY_WAVE_STAGES[stage]!.at
-      expect(sampleDaylight(elapsed).nightFactor, `wave ${stage}`).toBeGreaterThan(0.95)
+  it('gives a run two nights instead of one slow half-day', () => {
+    // Halved so the light is always visibly on the move. Over a five-minute
+    // run the sky goes fully dark twice.
+    const nights: number[] = []
+    let wasDark = false
+    for (let elapsed = 0; elapsed <= RUN_SECONDS; elapsed += 1) {
+      const dark = sampleDaylight(elapsed).nightFactor > 0.9
+      if (dark && !wasDark) nights.push(elapsed)
+      wasDark = dark
+    }
+    expect(nights.length).toBe(2)
+    expect(DAY_CYCLE_SECONDS * 2).toBe(RUN_SECONDS)
+  })
+
+  it('wraps instead of stopping, and shows the same sky each lap', () => {
+    // A cycle that ended at noon had to either sit still for the rest of the
+    // run or snap back. Carrying it through the afternoon closes the ring.
+    expect(daylightProgress(DAY_CYCLE_SECONDS)).toBe(0)
+    expect(daylightProgress(DAY_CYCLE_SECONDS * 4)).toBe(0)
+    for (const offset of [0, 17, 61, 133]) {
+      const first = sampleDaylight(offset)
+      const second = sampleDaylight(offset + DAY_CYCLE_SECONDS * 3)
+      expect(second.label, `${offset}s`).toBe(first.label)
+      expect(second.nightFactor).toBeCloseTo(first.nightFactor, 6)
     }
   })
 
-  it('brings the sun up as the final wave arrives', () => {
-    // The last assault and the sunrise are supposed to be the same moment.
-    const at = ENEMY_WAVE_STAGES[ENEMY_WAVE_STAGES.length - 1]!.at
-    const finalWave = sampleDaylight(at)
-    expect(finalWave.phase).toBe('dawn')
-    expect(finalWave.nightFactor).toBeLessThan(0.95)
-    expect(finalWave.sunAltitude).toBeGreaterThan(sampleDaylight(at * 0.8).sunAltitude)
-  })
-
-  it('holds at noon rather than looping back round to evening', () => {
-    expect(daylightProgress(DAY_CYCLE_SECONDS * 4)).toBe(1)
-    expect(sampleDaylight(600).phase).toBe('day')
-  })
-
-  it('darkens once and lightens once, and never lights both bodies at once', () => {
-    // One peak, not several. The cycle turns exactly where the sun does, so
-    // more than one turn means the sky is flickering between states.
-    expect(turningPoints((elapsed) => sampleDaylight(elapsed).nightFactor)).toBe(1)
-    expect(turningPoints((elapsed) => sampleDaylight(elapsed).moonAltitude)).toBe(1)
-    expect(turningPoints((elapsed) => sampleDaylight(elapsed).starIntensity)).toBe(1)
-    // The sun and moon trade places twice now - at dusk and again at dawn - so
-    // this gets checked on both handovers.
+  it('darkens once per lap and never lights both bodies at once', () => {
+    // One night per turn, not several. A full day now falls to dark and comes
+    // back to light, so the series turns exactly twice - the trough at night
+    // and the peak at noon. Anything more is the sky flickering between states
+    // rather than turning.
+    expect(turningPoints((elapsed) => sampleDaylight(elapsed).nightFactor)).toBe(2)
+    expect(turningPoints((elapsed) => sampleDaylight(elapsed).starIntensity)).toBeLessThanOrEqual(2)
     for (let elapsed = 0; elapsed <= DAY_CYCLE_SECONDS; elapsed += 1) {
       const sample = sampleDaylight(elapsed)
       expect(Math.min(sample.sunOpacity, sample.moonOpacity), `${elapsed}s`).toBeLessThan(0.9)
     }
   })
 
-  it('sets the sun once and raises it once', () => {
-    // It used to climb to a midday peak and set. Starting at six inverts that:
-    // one trough, no second dip.
-    expect(turningPoints((elapsed) => sampleDaylight(elapsed).sunAltitude)).toBe(1)
-    expect(sampleDaylight(DAY_CYCLE_SECONDS * 0.5).sunAltitude).toBeLessThan(0)
-    expect(sampleDaylight(DAY_CYCLE_SECONDS).sunAltitude).toBeGreaterThan(0)
+  it('sets the sun once and raises it once per lap', () => {
+    // Down through the night, up over the day, and starting down again as the
+    // ring closes: two turns for one whole day.
+    expect(turningPoints((elapsed) => sampleDaylight(elapsed).sunAltitude)).toBe(2)
+    expect(sampleDaylight(DAY_CYCLE_SECONDS * 0.4).sunAltitude).toBeLessThan(0)
+    expect(sampleDaylight(DAY_CYCLE_SECONDS * 0.8).sunAltitude).toBeGreaterThan(0)
   })
 
   it('opens on evening rather than on daylight', () => {
@@ -119,44 +128,52 @@ describe('evening to noon cycle', () => {
     expect(sampleDaylight(0).nightFactor).toBeLessThan(0.2)
   })
 
-  it('runs a city clock from six in the evening round to noon', () => {
+  it('runs a city clock from six in the evening round the whole day', () => {
     expect(DAYLIGHT_START_HOUR).toBe(18)
     expect(daylightClock(0)).toBe('18:00')
-    expect(daylightClock(DAY_CYCLE_SECONDS)).toBe('12:00')
+    // A full lap is a full day, so the clock comes back to where it started.
+    expect(daylightClock(DAY_CYCLE_SECONDS - 0.001)).toBe('17:59')
+    expect(daylightClock(DAY_CYCLE_SECONDS)).toBe('18:00')
   })
 
   it('reads the clock off the sky rather than off a fixed rate', () => {
     // The cycle is not evenly paced - night takes a third of the run on its
     // own - so a clock ticking at a constant rate would put a morning time on
     // a screen that is plainly still dark.
-    for (const keyframe of DAYLIGHT_KEYFRAMES) {
+    // The closing keyframe is the opening one seen from the far side of the
+    // ring, so its hour reads as zero rather than twenty-four.
+    for (const keyframe of DAYLIGHT_KEYFRAMES.slice(0, -1)) {
       const elapsed = keyframe.at * DAY_CYCLE_SECONDS
       expect(daylightHour(elapsed), keyframe.label).toBeCloseTo(keyframe.hour, 5)
     }
-    // Midnight is the one place it may appear to go backwards, and only
-    // because the display wraps at 24.
+    const closing = DAYLIGHT_KEYFRAMES[DAYLIGHT_KEYFRAMES.length - 1]!
+    expect(closing.hour).toBe(24)
+    expect(daylightHour(DAY_CYCLE_SECONDS)).toBe(0)
+    // Time only moves forward inside a lap. Across laps it starts over, which
+    // is a new day rather than the clock running backwards.
     let previous = -1
-    for (let elapsed = 0; elapsed <= DAY_CYCLE_SECONDS; elapsed += 1) {
+    for (let elapsed = 0; elapsed < DAY_CYCLE_SECONDS; elapsed += 1) {
       const hour = daylightHour(elapsed)
       expect(hour).toBeGreaterThanOrEqual(previous - 1e-9)
       previous = hour
     }
+    expect(daylightLap(0)).toBe(0)
+    expect(daylightLap(DAY_CYCLE_SECONDS * 1.5)).toBe(1)
   })
 
-  it('matches the cycle to the run length so noon lands as the clock runs out', () => {
-    // RUN_SECONDS in GameContext. Kept as a literal here rather than importing
-    // a React module into a data test.
-    expect(DAY_CYCLE_SECONDS).toBe(300)
-    // And the last wave has to fall inside the cycle, or the sunrise it is
-    // supposed to arrive with would already be over.
-    expect(ENEMY_WAVE_STAGES[ENEMY_WAVE_STAGES.length - 1]!.at).toBeLessThan(DAY_CYCLE_SECONDS)
+  it('fits two whole laps into a run', () => {
+    // RUN_SECONDS in GameContext, kept as a literal rather than importing a
+    // React module into a data test. Whole laps matter: a partial one would
+    // end the run mid-transition.
+    expect(RUN_SECONDS).toBe(300)
+    expect(RUN_SECONDS % DAY_CYCLE_SECONDS).toBe(0)
   })
 
   it('reuses a caller-supplied sample so the frame loop does not allocate', () => {
     const held = createDaylightSample()
     const returned = sampleDaylight(70, held)
     expect(returned).toBe(held)
-    sampleDaylight(DAY_CYCLE_SECONDS, held)
+    sampleDaylight(DAY_CYCLE_SECONDS * 0.8, held)
     expect(held.phase).toBe('day')
   })
 

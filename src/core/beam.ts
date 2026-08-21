@@ -8,6 +8,23 @@ export type BeamObjectKind =
 export const BEAM_ABSORB_TIME = 0.24
 
 /**
+ * Seconds of grip left after the beam is cut.
+ *
+ * Short: cutting the beam is how you drop a load, and it has to work at once.
+ * While the beam is on, though, the grip does not lapse at all - what it
+ * catches it keeps. That is the rule that makes a weak beam usable at speed:
+ * a pedestrian is inside the opening saucer's cone for about a third of a
+ * second at cruise, while the haul takes a couple, so a grip that expired
+ * would mean nothing could ever be picked up while flying - only while
+ * hovering, which is not this game. Snag them in passing and drag them up as
+ * you go.
+ *
+ * The cost of keeping hold is the point: everything you catch hangs off you
+ * and slows you down until you eat it or dump it.
+ */
+export const BEAM_HOLD_TIME = 0.35
+
+/**
  * A car's mass, which is really its stay on the beam.
  *
  * Rise speed divides by mass, so this is the dial for how long something hangs
@@ -51,6 +68,18 @@ export type BeamObject = {
   rotation: Vec3
   angularVelocity: Vec3
   active: boolean
+  /**
+   * Seconds of grip left after leaving the cone.
+   *
+   * A beam that dropped whatever fell outside its cone on the very next frame
+   * was a geometric test, not a tractor beam - and once beam strength was tied
+   * to craft size it stopped working entirely. At cruising speed a pedestrian
+   * is inside the opening saucer's cone for about a third of a second, while
+   * the haul takes a couple: nothing could ever be lifted while flying, only
+   * while hovering, which is not the game. Catching something now means
+   * holding it, and you drag it up as you go.
+   */
+  hold?: number
   inBeam: boolean
   tether: number
   playerTouched: boolean
@@ -166,6 +195,7 @@ export function beginNearbyBeamObjectAbsorption(
     object.absorbTimer = BEAM_ABSORB_TIME
     object.inBeam = false
     object.tether = 0
+    object.hold = 0
     object.velocity.x = 0
     object.velocity.y = 0
     object.velocity.z = 0
@@ -207,6 +237,7 @@ export function beginCarDestruction(object: BeamObject, direction: Vec3, inherit
   object.explosionPending = true
   object.inBeam = false
   object.tether = 0
+  object.hold = 0
   object.playerTouched = true
   object.velocity.x = direction.x * 31 + inheritedVelocity.x * 0.22
   object.velocity.y = direction.y * 31 + inheritedVelocity.y * 0.08 + 10
@@ -232,6 +263,7 @@ export function stepBeamObjects(objects: BeamObject[], field: BeamField, dt: num
         object.absorbing = false
         object.inBeam = false
         object.tether = 0
+        object.hold = 0
       }
       continue
     }
@@ -249,15 +281,25 @@ export function stepBeamObjects(objects: BeamObject[], field: BeamField, dt: num
         object.active = false
         object.inBeam = false
         object.tether = 0
+        object.hold = 0
       }
       continue
     }
     if (object.beamImmune) {
       object.inBeam = false
       object.tether = 0
+      object.hold = 0
       continue
     }
-    const captured = isInsideBeam(object, field)
+    const inside = isInsideBeam(object, field)
+    // Grip only lapses once the beam is off. While it is on, a load stays
+    // caught even after the craft has flown past it.
+    object.hold = inside && field.active
+      ? BEAM_HOLD_TIME
+      : field.active
+        ? (object.hold ?? 0)
+        : Math.max(0, (object.hold ?? 0) - d)
+    const captured = field.active && (inside || (object.hold ?? 0) > 0)
     object.inBeam = captured
 
     if (captured) {
@@ -269,11 +311,18 @@ export function stepBeamObjects(objects: BeamObject[], field: BeamField, dt: num
       const hash = hashId(object.id)
       const slot = hash % 11
       const angle = (hash % 360) * Math.PI / 180
-      const orbit = 0.6 + (slot % 4) * 0.28
+      // The slots a load is parked in scale with the craft. They used to be
+      // fixed distances, which is fine for a saucer five metres across and
+      // absurd for one two metres across - the load hung further below the
+      // craft than the craft could reach to swallow it, so a small craft
+      // could catch a person, drag them along indefinitely, and never eat
+      // them.
+      const rig = Math.max(0.45, field.radiusScale ?? 1)
+      const orbit = (0.6 + (slot % 4) * 0.28) * rig
       const layer = slot % 3
       const anchor = {
         x: field.position.x + Math.cos(angle) * orbit,
-        y: Math.max(GROUND_HEIGHT + 0.8, field.position.y - 1.8 - layer * 0.48),
+        y: Math.max(GROUND_HEIGHT + 0.8, field.position.y - (1.8 + layer * 0.48) * rig),
         z: field.position.z + Math.sin(angle) * orbit,
       }
       const verticalLimit = profile.maxDrop * 0.34

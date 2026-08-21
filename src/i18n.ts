@@ -49,6 +49,9 @@ type Strings = {
   mass: string
   massHint: string
   collapseAt: string
+  hull: string
+  repairing: string
+  ceiling: string
   clock: string
   score: string
   wave: string
@@ -163,6 +166,9 @@ export const STRINGS: Record<Language, Strings> = {
     mass: '질량',
     massHint: '사람과 고양이를 흡수해 커지세요',
     collapseAt: '붕괴',
+    hull: '선체',
+    repairing: '수리 중',
+    ceiling: '상승 한계',
     clock: '남은 시간',
     score: '점수',
     wave: '웨이브',
@@ -233,7 +239,8 @@ export const STRINGS: Record<Language, Strings> = {
       'laser-power': { name: '레이저 위력', detail: 'Q 레이저의 피해량이 늘어납니다.' },
       thrust: { name: '추진력', detail: '최고 속도와 가속이 올라갑니다.' },
       turbo: { name: '터보', detail: '터보가 더 오래 가고 더 빨리 회복됩니다.' },
-      hull: { name: '장갑', detail: '맞았을 때 줄어드는 크기가 적어집니다.' },
+      hull: { name: '장갑', detail: '피격 시 받는 피해가 줄어듭니다.' },
+      regen: { name: '재생', detail: '체력을 즉시 회복하고, 이후 회복 속도가 영구히 빨라집니다.' },
     },
   },
   ja: {
@@ -255,6 +262,9 @@ export const STRINGS: Record<Language, Strings> = {
     mass: '質量',
     massHint: '人と猫を吸収して大きくなろう',
     collapseAt: '崩壊',
+    hull: '船体',
+    repairing: '修理中',
+    ceiling: '上昇限界',
     clock: '残り時間',
     score: 'スコア',
     wave: 'ウェーブ',
@@ -325,7 +335,8 @@ export const STRINGS: Record<Language, Strings> = {
       'laser-power': { name: 'レーザー威力', detail: 'Qレーザーの与ダメージが増えます。' },
       thrust: { name: '推進力', detail: '最高速度と加速が上がります。' },
       turbo: { name: 'ターボ', detail: 'ターボが長持ちし、回復も早くなります。' },
-      hull: { name: '装甲', detail: '被弾時に減るサイズが小さくなります。' },
+      hull: { name: '装甲', detail: '被弾時に受けるダメージが減ります。' },
+      regen: { name: '再生', detail: '体力を即座に回復し、以後の回復速度が永続的に上がります。' },
     },
   },
   en: {
@@ -347,6 +358,9 @@ export const STRINGS: Record<Language, Strings> = {
     mass: 'MASS',
     massHint: 'ABSORB PEOPLE AND CATS TO GROW',
     collapseAt: 'COLLAPSE',
+    hull: 'HULL',
+    repairing: 'REPAIRING',
+    ceiling: 'CEILING',
     clock: 'CLOCK',
     score: 'SCORE',
     wave: 'WAVE',
@@ -417,7 +431,8 @@ export const STRINGS: Record<Language, Strings> = {
       'laser-power': { name: 'LASER POWER', detail: 'The Q laser hits harder.' },
       thrust: { name: 'THRUST', detail: 'Higher top speed and sharper acceleration.' },
       turbo: { name: 'TURBO', detail: 'Turbo lasts longer and refills faster.' },
-      hull: { name: 'HULL', detail: 'You lose less size when you are hit.' },
+      hull: { name: 'HULL', detail: 'You take less damage when you are hit.' },
+      regen: { name: 'REGENERATION', detail: 'Patches you up now, and permanently speeds up how fast you recover after.' },
     },
   },
 }

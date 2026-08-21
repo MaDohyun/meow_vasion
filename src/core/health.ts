@@ -1,0 +1,97 @@
+/**
+ * Health - the run's survival resource.
+ *
+ * Size used to be health: absorbing grew it, hits shrank it, and dropping
+ * below a floor ended the run. That put one resource in charge of two jobs and
+ * broke all three of the things it touched.
+ *
+ * It undid the best part of the game. Growing is the fun; a hit that shrinks
+ * you is not punishing a mistake, it is rewinding progress.
+ *
+ * It made a small craft impossible. Start was 1.0 and death was 0.62, so there
+ * was no room underneath - "start as a saucer that can barely swallow one
+ * person" could not be expressed.
+ *
+ * And once shots could actually land (see lead aiming), it turned growth into
+ * a trap: a bigger craft is a bigger target, a bigger target takes more hits,
+ * more hits meant getting smaller, which is a spiral that punishes playing well.
+ *
+ * So health is its own thing now. Size only ever goes up; health goes down and
+ * comes back.
+ */
+
+export const MAX_HEALTH = 5
+
+/**
+ * Damage per source, in pips.
+ *
+ * The ordering is inherited from the size losses this replaced, and the rule
+ * behind it is unchanged: **the things you can see coming cost the most**.
+ * Being surprised should never be the expensive mistake, because there is no
+ * skill that answers it.
+ */
+export const HEALTH_LOSS = {
+  rifle: 0.5,
+  rocket: 0.5,
+  building: 0.5,
+  contact: 1,
+  shell: 1,
+  'boss-beam': 1.5,
+  missile: 2,
+  explosive: 2.5,
+} as const
+
+export type HealthLossKind = keyof typeof HEALTH_LOSS
+
+/** Quiet seconds before the craft starts patching itself up. */
+export const REGEN_DELAY = 6
+/** Pips per second once it does. A full bar takes a while: disengaging has to
+ *  be a decision with a cost, not a pause button. */
+export const REGEN_RATE = 0.22
+
+export type HealthState = {
+  current: number
+  max: number
+  /** Seconds since the last hit. Regeneration waits on this. */
+  sinceHit: number
+}
+
+export function createHealthState(): HealthState {
+  return { current: MAX_HEALTH, max: MAX_HEALTH, sinceHit: REGEN_DELAY }
+}
+
+export function damageHealth(state: HealthState, kind: HealthLossKind) {
+  state.current = Math.max(0, state.current - HEALTH_LOSS[kind])
+  state.sinceHit = 0
+  return state.current
+}
+
+/**
+ * @param regenScale multiplier from the regeneration upgrade.
+ */
+export function stepHealth(state: HealthState, dt: number, regenScale = 1) {
+  const d = Math.max(0, dt)
+  state.sinceHit += d
+  if (state.sinceHit < REGEN_DELAY) return state.current
+  state.current = Math.min(state.max, state.current + REGEN_RATE * regenScale * d)
+  return state.current
+}
+
+export function healHealth(state: HealthState, pips: number) {
+  state.current = Math.min(state.max, state.current + Math.max(0, pips))
+  return state.current
+}
+
+export function isDead(state: HealthState) {
+  return state.current <= 0
+}
+
+/** 0..1, for the bar. */
+export function healthRatio(state: HealthState) {
+  return state.max <= 0 ? 0 : Math.max(0, Math.min(1, state.current / state.max))
+}
+
+/** True while the craft is patching itself up, so the HUD can say so. */
+export function isRegenerating(state: HealthState) {
+  return state.sinceHit >= REGEN_DELAY && state.current < state.max
+}
