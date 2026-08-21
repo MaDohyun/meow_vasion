@@ -37,6 +37,24 @@ describe('wave bulletins', () => {
     }
   })
 
+  it('breaks every bulletin into exactly two authored lines', () => {
+    // The card is sized for two lines. Where the break falls is a writing
+    // decision made per language, so it lives in the string rather than being
+    // left to the browser - and a bulletin that loses its break would silently
+    // reflow into one long line or spill out of the card.
+    for (const language of LANGUAGES) {
+      for (const [stage, bulletin] of STRINGS[language].broadcast.entries()) {
+        const lines = bulletin.line.split('\n')
+        expect(lines, `${language}.${stage}`).toHaveLength(2)
+        for (const line of lines) {
+          expect(line.trim(), `${language}.${stage}`).toBeTruthy()
+          // Headlines stay on one line, so they must not carry a break.
+          expect(bulletin.headline).not.toContain('\n')
+        }
+      }
+    }
+  })
+
   it('translates rather than copying English through', () => {
     expect(STRINGS.ko.breakingFlag).not.toBe(STRINGS.en.breakingFlag)
     expect(STRINGS.ja.breakingFlag).not.toBe(STRINGS.en.breakingFlag)
