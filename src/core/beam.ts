@@ -64,6 +64,8 @@ export type BeamField = {
   position: Vec3
   velocity: Vec3
   radiusScale?: number
+  /** Reach multiplier, from craft size. See beamProfile. */
+  reachScale?: number
 }
 
 export type BeamProfile = {
@@ -78,15 +80,31 @@ const GROUND_HEIGHT = 0.65
 export const BEAM_MIN_GRIP = 0.11
 export const BEAM_GRIP_EXPONENT = 2.8
 
-export function beamProfile(boosting: boolean, radiusScale = 1): BeamProfile {
+/**
+ * `maxDrop` is how far the beam reaches, and it scales with the craft the same
+ * way radius and grip do.
+ *
+ * It used to be a constant, which meant a shrunken craft with a feeble beam
+ * reached exactly as far as a huge one - and from any real altitude the beam
+ * punched all the way to the street regardless of whether it could actually
+ * lift anything down there. Size drives every other property of the beam; reach
+ * was the one that ignored it.
+ *
+ * This is only about where the beam STOPS. The falloff within reach is
+ * untouched: the far end still grips weakly, which is what produces "it's
+ * caught but it barely moves".
+ */
+export function beamProfile(boosting: boolean, radiusScale = 1, reachScale = 1): BeamProfile {
   const scale = Math.max(0.1, radiusScale)
+  const reach = Math.max(0.1, reachScale)
   // Widened for the growth loop: the beam is the only verb, so a pass over a
   // street has to actually sweep it rather than thread a needle.
   const profile = boosting
-    ? { maxDrop: 56, baseRadius: 8.2, coneSpread: 0.34, spring: 25.5, response: 58 }
-    : { maxDrop: 36, baseRadius: 5.8, coneSpread: 0.27, spring: 15.6, response: 32 }
+    ? { maxDrop: 47, baseRadius: 8.2, coneSpread: 0.34, spring: 25.5, response: 58 }
+    : { maxDrop: 30, baseRadius: 5.8, coneSpread: 0.27, spring: 15.6, response: 32 }
   return {
     ...profile,
+    maxDrop: profile.maxDrop * reach,
     baseRadius: profile.baseRadius * scale,
     coneSpread: profile.coneSpread * scale,
   }
@@ -148,7 +166,7 @@ function hashId(id: string) {
 
 export function isInsideBeam(object: Pick<BeamObject, 'position'>, field: BeamField) {
   if (!field.active) return false
-  const profile = beamProfile(field.boosting, field.radiusScale)
+  const profile = beamProfile(field.boosting, field.radiusScale, field.reachScale)
   const drop = field.position.y - object.position.y
   if (drop < -0.5 || drop > profile.maxDrop) return false
   const radius = profile.baseRadius + Math.max(0, drop) * profile.coneSpread
@@ -180,7 +198,7 @@ export function beginCarDestruction(object: BeamObject, direction: Vec3, inherit
 
 export function stepBeamObjects(objects: BeamObject[], field: BeamField, dt: number, stepAbsorption = true) {
   const d = Math.min(Math.max(0, dt), 0.05)
-  const profile = beamProfile(field.boosting, field.radiusScale)
+  const profile = beamProfile(field.boosting, field.radiusScale, field.reachScale)
 
   for (const object of objects) {
     if (!object.active) continue

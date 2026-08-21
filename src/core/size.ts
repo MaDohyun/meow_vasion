@@ -71,6 +71,8 @@ export type SizeProfile = {
   beamPower: number
   /** How close a body must come before it is swallowed. */
   absorbDistance: number
+  /** Beam reach multiplier. A weak beam does not stretch to the ground. */
+  beamReach: number
   /** Body radius for incoming fire and contact damage. */
   hitRadius: number
   /** Chase camera pull-back. */
@@ -99,6 +101,9 @@ export function sizeProfile(size: number): SizeProfile {
     beamScale,
     beamPower: 0.45 + clamped * 0.62,
     absorbDistance: 2.1 + clamped * 1.5,
+    // Sub-linear like the radius: reach grows, but a huge craft should not be
+    // able to hoover a street from outside every threat band.
+    beamReach: 0.52 + Math.pow(clamped, 0.8) * 0.5,
     hitRadius: 1.05 * clamped,
     // Keep the opening composition familiar, then pull back aggressively as
     // the saucer grows so its larger body never consumes the useful view.
