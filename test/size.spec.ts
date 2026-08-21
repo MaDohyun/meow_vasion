@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
+  CAMERA_GROWTH_PULL_BACK,
+  CAMERA_REST_DISTANCE,
   SIZE_MAX,
   SIZE_MIN,
   SIZE_START,
@@ -39,8 +41,22 @@ describe('craft size as the only resource', () => {
     expect('drag' in sizeProfile(SIZE_MAX)).toBe(false)
   })
 
-  it('pulls the camera back as the craft grows', () => {
-    expect(sizeProfile(SIZE_MAX).cameraDistance).toBeGreaterThan(sizeProfile(SIZE_START).cameraDistance * 4)
+  it('pulls the camera back by half again per doubling, not by double', () => {
+    // The camera used to retreat faster than the craft grew, so growing changed
+    // the picture without ever making the player feel bigger - which is the one
+    // thing the run is about. Asserted as the ratio rather than as distances so
+    // retuning the rest distance cannot quietly undo it.
+    for (const size of [0.7, 1, 1.4]) {
+      expect(sizeProfile(size * 2).cameraDistance / sizeProfile(size).cameraDistance)
+        .toBeCloseTo(CAMERA_GROWTH_PULL_BACK, 6)
+    }
+    // Growing still pulls back - it just loses the race with the hull, which is
+    // what puts more saucer on screen the bigger it gets.
+    expect(sizeProfile(SIZE_MAX).cameraDistance).toBeGreaterThan(sizeProfile(SIZE_START).cameraDistance)
+    expect(CAMERA_GROWTH_PULL_BACK).toBeLessThan(2)
+    // The opening composition is unchanged: at the starting size the rig sits
+    // exactly where it always did.
+    expect(sizeProfile(SIZE_START).cameraDistance).toBeCloseTo(CAMERA_REST_DISTANCE)
     expect(ufoDiameter(SIZE_MAX) / 3).toBeGreaterThan(5)
   })
 

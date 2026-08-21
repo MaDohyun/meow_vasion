@@ -1,5 +1,19 @@
+import { HAZARD_MASS } from '../src/core/hazards'
+import { CAT_MASS, PEDESTRIAN_MASS } from '../src/core/crowds'
 import { describe, expect, it } from 'vitest'
-import { BEAM_MIN_GRIP, absorptionScore, beamGrip, beamProfile, beamVisualLength, beginNearbyBeamObjectAbsorption, isInsideBeam, stepBeamObjects, type BeamField, type BeamObject } from '../src/core/beam'
+import {
+  BEAM_MIN_GRIP,
+  type BeamField,
+  type BeamObject,
+  CAR_MASS,
+  absorptionScore,
+  beamGrip,
+  beamProfile,
+  beamVisualLength,
+  beginNearbyBeamObjectAbsorption,
+  isInsideBeam,
+  stepBeamObjects,
+} from '../src/core/beam'
 import { SIZE_MAX, SIZE_MIN, sizeProfile } from '../src/core/size'
 
 const makeCar = (id = 'car-1', x = 0, y = 0.65, z = 0): BeamObject => ({
@@ -63,18 +77,30 @@ describe('tractor beam physics', () => {
     expect(beamProfile(true).maxDrop).toBeGreaterThan(beamProfile(false).maxDrop)
   })
 
-  it('stops a weak beam short of ground that a strong one reaches', () => {
-    const weak = sizeProfile(SIZE_MIN)
-    const strong = sizeProfile(SIZE_MAX)
-    const weakReach = beamProfile(false, weak.beamScale, weak.beamReach).maxDrop
-    const strongReach = beamProfile(false, strong.beamScale, strong.beamReach).maxDrop
-    expect(weakReach).toBeLessThan(strongReach)
-    // Hovering at a height the strong beam covers and the weak one does not:
-    // the weak beam has to end in mid-air rather than touch the street.
-    const altitude = (weakReach + strongReach) / 2
-    expect(beamVisualLength(altitude, weakReach)).toBe(weakReach)
-    expect(beamVisualLength(altitude, weakReach)).toBeLessThan(altitude - 0.15)
-    expect(beamVisualLength(altitude, strongReach)).toBeCloseTo(altitude - 0.15)
+  it('widens the beam with the craft but does not lengthen it', () => {
+    // Growing widens the cone because the hull is wider - that is the body
+    // getting bigger, not a reward. Reach used to grow too, which paid twice
+    // for the same thing and let a late-run craft hoover a street from outside
+    // every threat band. Length is bought with a card now, not with size.
+    const small = sizeProfile(SIZE_MIN)
+    const large = sizeProfile(SIZE_MAX)
+    expect(large.beamScale).toBeGreaterThan(small.beamScale)
+    expect(beamProfile(false, large.beamScale).baseRadius)
+      .toBeGreaterThan(beamProfile(false, small.beamScale).baseRadius)
+    expect(beamProfile(false, large.beamScale).maxDrop)
+      .toBe(beamProfile(false, small.beamScale).maxDrop)
+  })
+
+  it('stops a short beam above ground that an upgraded one reaches', () => {
+    const stock = beamProfile(false, 1, 1).maxDrop
+    const upgraded = beamProfile(false, 1, 1.9).maxDrop
+    expect(stock).toBeLessThan(upgraded)
+    // Hovering at a height the upgraded beam covers and the stock one does
+    // not: the stock beam has to end in mid-air rather than touch the street.
+    const altitude = (stock + upgraded) / 2
+    expect(beamVisualLength(altitude, stock)).toBe(stock)
+    expect(beamVisualLength(altitude, stock)).toBeLessThan(altitude - 0.15)
+    expect(beamVisualLength(altitude, upgraded)).toBeCloseTo(altitude - 0.15)
   })
 
   it('keeps visual length tied to ground and range rather than a lifted target', () => {
@@ -183,5 +209,77 @@ describe('tractor beam physics', () => {
     tanker.mass = 6.2
     tanker.diameter = 5.1
     expect(absorptionScore(tanker)).toBeGreaterThan(absorptionScore(person) * 4)
+  })
+})
+
+describe('how long a load rides the beam', () => {
+  function held(mass: number): BeamObject {
+    return {
+      id: 'load', kind: 'car', mass, color: '#fff',
+      position: { x: 0, y: 0.65, z: 0 }, velocity: { x: 0, y: 0, z: 0 },
+      rotation: { x: 0, y: 0, z: 0 }, angularVelocity: { x: 0, y: 0, z: 0 },
+      active: true, inBeam: false, tether: 0, playerTouched: false,
+      destroying: false, destroyTimer: 0, explosionPending: false,
+      absorbing: false, absorbTimer: 0,
+    }
+  }
+
+  /**
+   * Seconds to haul a street-level object eight metres up.
+   *
+   * Distance covered rather than distance-to-craft: an object settles into an
+   * orbit slot chosen by hashing its id, so "how close did it get" varies by a
+   * few metres per object and would make this measure depend on a name.
+   */
+  const RISE_TARGET = 5
+  function riseSeconds(mass: number, craftY = 14, gripScale = 1) {
+    const object = held(mass)
+    const start = object.position.y
+    const field: BeamField = {
+      active: true, boosting: false,
+      position: { x: 0, y: craftY, z: 0 }, velocity: { x: 0, y: 0, z: 0 },
+      gripScale,
+    }
+    for (let tick = 0; tick < 6000; tick += 1) {
+      stepBeamObjects([object], field, 1 / 60, false)
+      if (object.position.y - start >= RISE_TARGET) return tick / 60
+    }
+    return Infinity
+  }
+
+  it('keeps a car hanging long enough for its weight to be felt', () => {
+    // Beam ballast is the only speed penalty in the game, and it used to be
+    // charged for about a second because a car was swallowed almost as soon as
+    // it was caught. The penalty has to be something you fly under, not
+    // something that happens to you. Five metres of climb is the measure; the
+    // full haul from street to craft runs about twice this.
+    const car = riseSeconds(CAR_MASS)
+    expect(car).toBeGreaterThan(2)
+    expect(car).toBeLessThan(6)
+  })
+
+  it('brings living bodies up quickly and dead weight up slowly', () => {
+    // The gap is the lesson: sweeping up people is the loop, hauling a car is
+    // a mistake you can feel. Both got heavier, the car far more so.
+    const cat = riseSeconds(CAT_MASS)
+    const pedestrian = riseSeconds(PEDESTRIAN_MASS)
+    const car = riseSeconds(CAR_MASS)
+    const tanker = riseSeconds(HAZARD_MASS)
+    expect(cat).toBeLessThan(pedestrian)
+    expect(pedestrian).toBeLessThan(1)
+    expect(car).toBeGreaterThan(pedestrian * 8)
+    expect(tanker).toBeGreaterThan(car)
+  })
+
+  it('lets the grip upgrade buy that time back', () => {
+    // Which is what makes it worth a card: the upgrade is the answer to the
+    // penalty rather than a flat bonus.
+    expect(riseSeconds(CAR_MASS, 14, 1.8)).toBeLessThan(riseSeconds(CAR_MASS, 14) / 2)
+  })
+
+  it('costs more the higher the craft hovers', () => {
+    // Grip falls off with drop, so hauling from altitude is the expensive way
+    // to do it. Hovering low is the skill the beam rewards.
+    expect(riseSeconds(CAR_MASS, 20)).toBeGreaterThan(riseSeconds(CAR_MASS, 10))
   })
 })

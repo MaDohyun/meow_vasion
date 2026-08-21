@@ -71,15 +71,30 @@ export type SizeProfile = {
   beamPower: number
   /** How close a body must come before it is swallowed. */
   absorbDistance: number
-  /** Beam reach multiplier. A weak beam does not stretch to the ground. */
-  beamReach: number
   /** Body radius for incoming fire and contact damage. */
   hitRadius: number
-  /** Chase camera pull-back. */
+  /** Chase camera distance for a craft at rest. Speed and altitude add to it
+   *  in the render layer; those have nothing to do with size. */
   cameraDistance: number
   /** Points multiplier; being big is worth more than being alive. */
   scoreMultiplier: number
 }
+
+/** Chase distance at the starting size. Held here rather than in the render
+ *  layer so the pull-back rule below is one number applied to one number. */
+export const CAMERA_REST_DISTANCE = 12
+
+/**
+ * Doubling the craft pulls the camera back by half again, not by double.
+ *
+ * The camera used to retreat faster than the craft grew - a twofold craft got
+ * a 2.25-fold pull-back - so growing changed the picture without ever making
+ * the player feel bigger, which is the one thing the whole run is about. Under
+ * this exponent the saucer takes up more of the frame the larger it gets,
+ * which is the point, while still leaving room to see what it is reaching for.
+ */
+export const CAMERA_GROWTH_PULL_BACK = 1.5
+export const CAMERA_SIZE_EXPONENT = Math.log2(CAMERA_GROWTH_PULL_BACK)
 
 export function clampSize(size: number) {
   return Math.min(SIZE_MAX, Math.max(0, size))
@@ -101,13 +116,8 @@ export function sizeProfile(size: number): SizeProfile {
     beamScale,
     beamPower: 0.45 + clamped * 0.62,
     absorbDistance: 2.1 + clamped * 1.5,
-    // Sub-linear like the radius: reach grows, but a huge craft should not be
-    // able to hoover a street from outside every threat band.
-    beamReach: 0.52 + Math.pow(clamped, 0.8) * 0.5,
     hitRadius: 1.05 * clamped,
-    // Keep the opening composition familiar, then pull back aggressively as
-    // the saucer grows so its larger body never consumes the useful view.
-    cameraDistance: 2.6 + Math.max(0, clamped - SIZE_START) * 15,
+    cameraDistance: CAMERA_REST_DISTANCE * Math.pow(clamped, CAMERA_SIZE_EXPONENT),
     scoreMultiplier: clamped,
   }
 }

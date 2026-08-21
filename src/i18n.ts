@@ -1,3 +1,4 @@
+import type { UpgradeId } from './core/upgrades'
 /**
  * UI strings, in one dictionary.
  *
@@ -97,7 +98,16 @@ type Strings = {
   msgTurbo: string
   breakingFlag: string
   broadcast: BulletinSet
+  upgradeTitle: string
+  upgradeLead: string
+  upgradeHint: string
+  upgradeLevel: string
+  upgradeMaxed: string
+  upgrades: Record<UpgradeId, UpgradeCopy>
 }
+
+/** One upgrade card's wording. The card itself is data in core/upgrades. */
+export type UpgradeCopy = { name: string; detail: string }
 
 /**
  * One wave bulletin: a short headline for the caption bar on the city's news
@@ -211,6 +221,20 @@ export const STRINGS: Record<Language, Strings> = {
       { headline: '기갑 부대 진입', line: '속보입니다. 기갑 부대가\n시내로 진입했습니다.' },
       { headline: '최종 요격 작전', line: '속보입니다. 정부가 최종 요격 작전을 승인했습니다.\n모든 전력이 UFO를 향합니다.' },
     ],
+    upgradeTitle: '강화 선택',
+    upgradeLead: '흡수한 만큼 기체가 진화합니다. 하나를 고르세요.',
+    upgradeHint: '클릭 또는 1 / 2 / 3',
+    upgradeLevel: 'Lv',
+    upgradeMaxed: '최대',
+    upgrades: {
+      'beam-reach': { name: '빔 사거리', detail: '빔이 아래로 더 멀리 닿습니다. 높은 곳에서도 지면을 훑을 수 있습니다.' },
+      'beam-radius': { name: '빔 범위', detail: '빔 원뿔이 넓어집니다. 한 번에 더 많이 걸리지만 잘못된 물체도 더 잘 걸립니다.' },
+      'beam-grip': { name: '흡수력', detail: '걸린 물체를 더 세게 끌어올립니다. 무거운 것도 빨리 올라옵니다.' },
+      'laser-power': { name: '레이저 위력', detail: 'Q 레이저의 피해량이 늘어납니다.' },
+      thrust: { name: '추진력', detail: '최고 속도와 가속이 올라갑니다.' },
+      turbo: { name: '터보', detail: '터보가 더 오래 가고 더 빨리 회복됩니다.' },
+      hull: { name: '장갑', detail: '맞았을 때 줄어드는 크기가 적어집니다.' },
+    },
   },
   ja: {
     tagline: 'できるだけ長く生き延びて街を破壊しよう',
@@ -289,6 +313,20 @@ export const STRINGS: Record<Language, Strings> = {
       { headline: '機甲部隊が市内に進入', line: '速報です。機甲部隊が\n市内に進入しました。' },
       { headline: '最終迎撃作戦', line: '速報です。政府が最終迎撃作戦を承認しました。\n全戦力がUFOへ向かいます。' },
     ],
+    upgradeTitle: '強化選択',
+    upgradeLead: '吸収した分だけ機体が進化します。ひとつ選んでください。',
+    upgradeHint: 'クリック または 1 / 2 / 3',
+    upgradeLevel: 'Lv',
+    upgradeMaxed: '最大',
+    upgrades: {
+      'beam-reach': { name: 'ビーム射程', detail: 'ビームが下へより遠くまで届きます。高い位置からでも地上を掃えます。' },
+      'beam-radius': { name: 'ビーム範囲', detail: 'ビームの円錐が広がります。一度に多く掴めますが、余計な物も掴みます。' },
+      'beam-grip': { name: '吸引力', detail: '掴んだ物をより強く引き上げます。重い物も早く上がります。' },
+      'laser-power': { name: 'レーザー威力', detail: 'Qレーザーの与ダメージが増えます。' },
+      thrust: { name: '推進力', detail: '最高速度と加速が上がります。' },
+      turbo: { name: 'ターボ', detail: 'ターボが長持ちし、回復も早くなります。' },
+      hull: { name: '装甲', detail: '被弾時に減るサイズが小さくなります。' },
+    },
   },
   en: {
     tagline: 'Survive as long as you can and tear the city apart',
@@ -367,6 +405,20 @@ export const STRINGS: Record<Language, Strings> = {
       { headline: 'ARMOUR ROLLS IN', line: 'Breaking news. Armoured units\nhave entered the city.' },
       { headline: 'FINAL INTERCEPT ORDERED', line: 'Breaking news. The government has authorised a final intercept.\nEvery asset is now converging on the UFO.' },
     ],
+    upgradeTitle: 'UPGRADE',
+    upgradeLead: 'What you absorbed has changed the craft. Take one.',
+    upgradeHint: 'click or 1 / 2 / 3',
+    upgradeLevel: 'Lv',
+    upgradeMaxed: 'MAX',
+    upgrades: {
+      'beam-reach': { name: 'BEAM RANGE', detail: 'The beam reaches further down. You can sweep the street from higher up.' },
+      'beam-radius': { name: 'BEAM WIDTH', detail: 'A wider cone. It catches more at once, and catches more of the wrong things too.' },
+      'beam-grip': { name: 'PULL STRENGTH', detail: 'Hauls what it has hold of harder. Even heavy loads come up quickly.' },
+      'laser-power': { name: 'LASER POWER', detail: 'The Q laser hits harder.' },
+      thrust: { name: 'THRUST', detail: 'Higher top speed and sharper acceleration.' },
+      turbo: { name: 'TURBO', detail: 'Turbo lasts longer and refills faster.' },
+      hull: { name: 'HULL', detail: 'You lose less size when you are hit.' },
+    },
   },
 }
 

@@ -203,6 +203,20 @@ button { font: inherit; }
 .breaking-body p { margin:10px 0 0; color:var(--cream); font-size:10px; font-weight:700; line-height:1.7; white-space:pre-line; word-break:keep-all; }
 .breaking-timer { position:absolute; left:0; bottom:0; height:3px; background:var(--cyan); }
 
+/* Upgrade cards. The run is frozen behind this, so it is allowed to own the
+   screen the way the results overlay does. */
+.upgrade-overlay { gap:0; background:linear-gradient(150deg,rgba(24,20,44,.93),rgba(14,22,48,.95)); }
+.upgrade-overlay .eyebrow { color:var(--yellow); font-size:11px; letter-spacing:5px; }
+.upgrade-lead { margin:10px 0 22px; color:var(--cream); font-size:10px; font-weight:700; letter-spacing:.6px; }
+.upgrade-cards { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; width:min(92vw,780px); }
+.upgrade-card { position:relative; display:flex; flex-direction:column; min-height:150px; padding:15px 15px 13px; color:var(--cream); text-align:left; background:rgba(41,35,63,.9); border:3px solid rgba(255,245,199,.55); box-shadow:5px 5px 0 rgba(18,14,32,.7); cursor:pointer; transition:transform .08s steps(2),border-color .08s steps(2),background .08s steps(2); }
+.upgrade-card:hover, .upgrade-card:focus-visible { transform:translate(-2px,-2px); background:rgba(56,48,84,.94); border-color:var(--yellow); outline:none; }
+.upgrade-card i { position:absolute; top:-3px; right:-3px; display:flex; align-items:center; justify-content:center; width:24px; height:24px; color:var(--ink); background:var(--yellow); font-size:11px; font-style:normal; font-weight:1000; }
+.upgrade-card strong { display:block; margin-bottom:9px; color:var(--green); font-size:13px; letter-spacing:.8px; }
+.upgrade-card small { flex:1; font-size:9px; font-weight:700; line-height:1.7; }
+.upgrade-card b { margin-top:10px; padding-top:9px; color:var(--yellow); border-top:1px dashed rgba(255,245,199,.4); font-size:9px; letter-spacing:1px; }
+.upgrade-hint { margin-top:18px; color:rgba(255,245,199,.6); font-size:8px; font-weight:1000; letter-spacing:2px; }
+
 @media (pointer: coarse), (max-width: 760px) {
   .mobile-controls { display:block; }
   .time-card { top:8px; left:8px; width:190px; padding:7px 8px; }
@@ -218,6 +232,10 @@ button { font: inherit; }
   .flight-card strong { font-size:15px; }
   .captive-rack { display:none; }
   .planet-radar { display:none; }
+  .upgrade-cards { grid-template-columns:1fr; gap:8px; width:94vw; }
+  .upgrade-card { min-height:0; padding:10px 11px; }
+  .upgrade-card strong { margin-bottom:5px; font-size:11px; }
+  .upgrade-card small { font-size:8px; line-height:1.5; }
   .breaking-band { left:8px; right:8px; bottom:250px; width:auto; min-height:88px; transform:none; }
   .breaking-band[data-phase="opening"] { animation:breaking-in-flat .45s steps(4) both; }
   .breaking-band[data-phase="closing"] { animation:breaking-out-flat .55s steps(4) both; }

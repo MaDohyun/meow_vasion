@@ -12,6 +12,17 @@ export const INITIAL_CATS = 9
 // saturated at 53 bodies while only two or three were ever within reach.
 // Recycling early keeps the supply in front of the player instead of trailing
 // it. Kept just outside the respawn ring so bodies are not culled on arrival.
+/**
+ * Beam mass for living bodies.
+ *
+ * Doubled so a body rides the beam long enough to be watched coming up rather
+ * than blinking out on contact. Inert objects went up by three - see CAR_MASS -
+ * and that gap is what makes hauling the wrong thing feel different from
+ * hauling the right one.
+ */
+export const CAT_MASS = 0.2
+export const PEDESTRIAN_MASS = 0.56
+
 export const CROWD_REMOVE_DISTANCE = 185
 export const CROWD_ABSORB_DISTANCE = 3.35
 export const CROWD_ABSORB_TIME = BEAM_ABSORB_TIME
@@ -94,7 +105,7 @@ function makeCrowdObject(kind: CrowdKind, slot: number): CrowdObject {
     kind,
     slot,
     generation: 0,
-    mass: kind === 'cat' ? 0.1 : 0.28,
+    mass: kind === 'cat' ? CAT_MASS : PEDESTRIAN_MASS,
     color: kind === 'cat' ? '#f3c36d' : '#ff8bb4',
     position: { x: 0, y: 0.65, z: 0 },
     velocity: { x: 0, y: 0, z: 0 },

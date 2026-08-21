@@ -78,7 +78,7 @@ export type DaylightKeyframe = {
  * Seconds for one evening-to-noon sweep. Matched to the run length so noon
  * lands exactly as the clock runs out.
  */
-export const DAY_CYCLE_SECONDS = 180
+export const DAY_CYCLE_SECONDS = 300
 
 /** The hour the run opens on. */
 export const DAYLIGHT_START_HOUR = 18

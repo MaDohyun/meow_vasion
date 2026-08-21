@@ -1,6 +1,17 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { collideDrone, createDroneState, stepDrone, type Aabb, type DroneInput, type DroneState, type Vec3 } from './core/drone'
-import { absorptionScore, beamObjectDiameter, beamProfile, beginCarDestruction, beginNearbyBeamObjectAbsorption, isInsideBeam, stepBeamObjects, type BeamField, type BeamObject } from './core/beam'
+import {
+  type BeamField,
+  type BeamObject,
+  CAR_MASS,
+  absorptionScore,
+  beamObjectDiameter,
+  beamProfile,
+  beginCarDestruction,
+  beginNearbyBeamObjectAbsorption,
+  isInsideBeam,
+  stepBeamObjects,
+} from './core/beam'
 import { createCrowdState, stepCrowds, type CrowdState } from './core/crowds'
 import { crowdSpawnZonesAround, parkingCarsAround, type CrowdSpawnZone } from './core/cityLandmarks'
 import { STRINGS, readStoredLanguage, storeLanguage, type Language, type MessageKey } from './i18n'
@@ -11,19 +22,7 @@ import {
   stepHazards,
   type HazardState,
 } from './core/hazards'
-import {
-  SIZE_MIN,
-  SIZE_START,
-  growSizeBy,
-  growSize,
-  isSizeFatal,
-  shrinkSize,
-  sizeProfile,
-  ufoDiameter,
-  type SizeGainKind,
-  type SizeLossKind,
-  type SizeProfile,
-} from './core/size'
+import { SIZE_LOSS, SIZE_MIN, SIZE_START, type SizeGainKind, type SizeLossKind, type SizeProfile, clampSize, growSize, growSizeBy, isSizeFatal, shrinkSize, sizeProfile, ufoDiameter } from './core/size'
 import { activeEnemyCount, createEnemyState, hitEnemy, resolveEnemyContacts, stepEnemies, stepEnemyProjectiles, syncAntiAirEnemies, syncEnemyTiers, waveLabelForTime, waveStageForTime, type EnemyState } from './core/enemies'
 import {
   createLaserPool,
@@ -44,14 +43,17 @@ import { requestedPilotExpression, updatePilotExpression, type PilotExpression }
 import { activeWorldColliders, createActiveWorld, updateActiveWorld, WORLD_MAX_CARS, WORLD_REMOVE_RADIUS, type ActiveWorld, type ProceduralCar } from './core/world'
 import { captureTrafficCar, createTrafficState, releaseTrafficSlot, stepTraffic, TRAFFIC_MAX_CARS, type TrafficCar, type TrafficState } from './core/traffic'
 import { BROADCAST_OPENING_AT, BROADCAST_SECONDS } from './core/broadcast'
+import { applyUpgrade, createUpgradeState, isUpgradeDue, rollUpgradeChoices, upgradeMultiplier, type UpgradeId, type UpgradeState } from './core/upgrades'
 import { setBgmWave, startBgm, stopBgm, tone } from './audio'
 
-export type GamePhase = 'intro' | 'playing' | 'results'
+export type GamePhase = 'intro' | 'playing' | 'upgrade' | 'results'
 
 // The clock is the round length, not a resource. Absorbing no longer buys time:
 // size is the only thing the player is managing, so there is one number to read
 // and one way to lose.
-export const RUN_SECONDS = 180
+/** Five minutes. It was three, which was a number chosen to fit a judging
+ *  slot rather than to fit the game. */
+export const RUN_SECONDS = 300
 export const SURVIVAL_TARGET_TIME = RUN_SECONDS
 
 export type GameRuntime = {
@@ -67,6 +69,7 @@ export type GameRuntime = {
    *  whatever language the player set. */
   broadcastStage: number
   broadcastTime: number
+  upgrades: UpgradeState
   /** The opening sighting report is time-triggered rather than raised by a
    *  wave boundary, so it needs its own one-shot latch. */
   openingBroadcastDone: boolean
@@ -137,6 +140,14 @@ export type GameSnapshot = {
   /** The wave bulletin currently on air, or null when nothing is. */
   broadcastStage: number | null
   broadcastRemaining: number
+  /** Cards currently on offer. Empty unless the phase is 'upgrade'. */
+  upgradeChoices: UpgradeId[]
+  upgradeLevels: Record<UpgradeId, number>
+  upgradeNextAt: number
+  /** Published so the render layer can size the beam without reaching into
+   *  the runtime for the upgrade state. */
+  beamRadiusScale: number
+  beamReachScale: number
   daylightLabel: string
   daylightClock: string
   nightFactor: number
@@ -196,6 +207,7 @@ type GameContextValue = {
   advance: (dt: number) => void
   start: () => void
   restart: () => void
+  chooseUpgrade: (id: UpgradeId) => void
   quality: RenderQuality
   setQuality: (quality: RenderQuality) => void
   language: Language
@@ -207,9 +219,16 @@ type GameContextValue = {
 const GameContext = createContext<GameContextValue | null>(null)
 const UFO_UPGRADES = { speed: 0.45, stability: 0, rack: 0, special: 'none' as const }
 const HITSTOP_TIME = 0.05
-/** Converts hanging mass into flight load. A single car (mass 2.4) should be
- *  felt immediately; three should be close to crippling. */
-const BALLAST_DRAG = 0.85
+/**
+ * Converts hanging mass into flight load.
+ *
+ * Cut alongside the mass increase, not left alone. Tripling mass without
+ * touching this would have tripled the drag as well, and the point was never
+ * to make one car crippling - it was to make one car something you carry for a
+ * while. Load per object lands near where it was; the time you spend under it
+ * is what grew.
+ */
+const BALLAST_DRAG = 0.31
 /**
  * A detonation makes the craft sluggish; it never takes the controls away.
  * Input keeps registering, it just responds badly, so the player is still
@@ -229,7 +248,7 @@ function makeBeamObject(car: ProceduralCar): BeamObject {
   return {
     id: car.id,
     kind: 'car',
-    mass: 2.4,
+    mass: CAR_MASS,
     color: car.color,
     position: { ...car.position },
     velocity: { x: 0, y: 0, z: 0 },
@@ -281,6 +300,7 @@ function makeRuntime(): GameRuntime {
     waveStage: 0,
     broadcastStage: 0,
     broadcastTime: 0,
+    upgrades: createUpgradeState((Math.random() * 0xffffffff) >>> 0),
     openingBroadcastDone: false,
     loadedCars: 0,
     damageCooldown: 0,
@@ -455,7 +475,7 @@ function registerEnemyHit(game: GameRuntime, id: string, damage: number) {
 }
 
 function registerEnemyLaserHit(game: GameRuntime, id: string) {
-  registerEnemyHit(game, id, 1)
+  registerEnemyHit(game, id, upgradeMultiplier(game.upgrades, 'laser-power'))
 }
 
 function destroyCar(game: GameRuntime, id: string, direction: Vec3) {
@@ -489,10 +509,27 @@ function growBy(game: GameRuntime, amount: number) {
 
 /** Every shrink runs through here so the fail check lives in exactly one place. */
 function shrink(game: GameRuntime, kind: SizeLossKind) {
-  game.size = shrinkSize(game.size, kind)
+  // Hull is the one upgrade that reduces rather than increases, so it divides.
+  game.size = clampSize(game.size - SIZE_LOSS[kind] / upgradeMultiplier(game.upgrades, 'hull'))
   game.sizeProfile = sizeProfile(game.size)
   game.sizePulse = 1
   if (isSizeFatal(game.size)) endRun(game, 'CORE COLLAPSED', false)
+}
+
+/**
+ * Called after every absorption. Stops the run dead when a card is due.
+ *
+ * This fires from the middle of a tick, which is the same shape of bug the
+ * results screen had: the next tick returns early on the phase check before it
+ * publishes, so without the forced publish on a phase change the card screen
+ * would appear or not depending on where the throttle happened to be.
+ */
+function offerUpgradeIfDue(game: GameRuntime) {
+  if (game.phase !== 'playing') return
+  if (!isUpgradeDue(game.upgrades, game.absorbedCount)) return
+  rollUpgradeChoices(game.upgrades)
+  game.phase = 'upgrade'
+  tone('upgrade')
 }
 
 function absorbCrowd(game: GameRuntime, kind: 'cat' | 'pedestrian') {
@@ -505,6 +542,7 @@ function absorbCrowd(game: GameRuntime, kind: 'cat' | 'pedestrian') {
   game.pickupPulse = 1
   setMessage(game, kind === 'cat' ? 'msgAbsorbedCat' : 'msgAbsorbedPerson', 1.25, reward)
   tone('pickup')
+  offerUpgradeIfDue(game)
 }
 
 function absorbBeamObject(game: GameRuntime, object: BeamObject) {
@@ -516,6 +554,7 @@ function absorbBeamObject(game: GameRuntime, object: BeamObject) {
   game.absorbedCount += 1
   game.score += reward
   game.pickupPulse = 1
+  offerUpgradeIfDue(game)
   if (object.kind === 'car') game.destroyedCars.add(object.id)
   if (object.id.startsWith('enemy:')) {
     const enemy = game.enemies.slots.find((candidate) => candidate.id === object.id)
@@ -582,6 +621,11 @@ function snapshotOf(game: GameRuntime): GameSnapshot {
     waveStage: game.waveStage,
     broadcastStage: game.broadcastTime > 0 ? game.broadcastStage : null,
     broadcastRemaining: game.broadcastTime,
+    upgradeChoices: game.upgrades.offered,
+    upgradeLevels: game.upgrades.levels,
+    upgradeNextAt: game.upgrades.nextAt,
+    beamRadiusScale: upgradeMultiplier(game.upgrades, 'beam-radius'),
+    beamReachScale: upgradeMultiplier(game.upgrades, 'beam-reach'),
     daylightLabel: game.daylight.label,
     daylightClock: daylightClock(game.sessionTime),
     nightFactor: game.daylight.nightFactor,
@@ -795,14 +839,15 @@ export function GameProvider({ children }: { children: ReactNode }) {
     const turboActive = input.special && game.turbo > 0.02
     if (turboActive) {
       if (game.drone.boostRemaining <= 0) { setMessage(game, 'msgTurbo', 1.2); tone('upgrade') }
-      game.turbo = Math.max(0, game.turbo - d * 0.31)
+      game.turbo = Math.max(0, game.turbo - d * 0.31 / upgradeMultiplier(game.upgrades, 'turbo'))
       game.drone.boostRemaining = Math.max(game.drone.boostRemaining, 0.12)
-    } else game.turbo = Math.min(1, game.turbo + d * 0.13)
+    } else game.turbo = Math.min(1, game.turbo + d * 0.13 * upgradeMultiplier(game.upgrades, 'turbo'))
 
     const flightInput: DroneInput = { ...input, special: false }
     // Only ballast slows the craft. Size is deliberately absent: growth is what
     // the player is good at, and taxing it directly punishes them for winning.
-    const stepped = stepDrone(game.drone, flightInput, d, game.ballast * BALLAST_DRAG + (game.daze > 0 ? DAZE_DRAG : 0), UFO_UPGRADES)
+    const thrust = upgradeMultiplier(game.upgrades, 'thrust')
+    const stepped = stepDrone(game.drone, flightInput, d, game.ballast * BALLAST_DRAG + (game.daze > 0 ? DAZE_DRAG : 0), { ...UFO_UPGRADES, speed: UFO_UPGRADES.speed * thrust })
     const nextWorld = updateActiveWorld(game.world, stepped.position)
     if (nextWorld !== game.world) {
       game.world = nextWorld
@@ -836,7 +881,18 @@ export function GameProvider({ children }: { children: ReactNode }) {
     stepTraffic(game.traffic, { position: game.drone.position, heading: game.drone.heading }, d)
     syncCrowdThreats(game)
     stepCrowds(game.crowds, { position: game.drone.position, heading: game.drone.heading, colliders: game.worldColliders, threats: game.crowdThreats, crowdThreatStart: 1 + game.traffic.cars.length + game.enemies.slots.length, spawnZones: game.crowdSpawnZones }, d)
-    const beamField: BeamField = { active: game.beamActive, boosting: turboActive, position: game.drone.position, velocity: game.drone.velocity, radiusScale: game.sizeProfile.beamScale, reachScale: game.sizeProfile.beamReach }
+    const beamField: BeamField = {
+      active: game.beamActive,
+      boosting: turboActive,
+      position: game.drone.position,
+      velocity: game.drone.velocity,
+      // Radius follows the hull and the upgrade multiplies it; reach is
+      // upgrade-only now, so a bigger craft gets a wider beam but not a longer
+      // one unless it spent a card on length.
+      radiusScale: game.sizeProfile.beamScale * upgradeMultiplier(game.upgrades, 'beam-radius'),
+      reachScale: upgradeMultiplier(game.upgrades, 'beam-reach'),
+      gripScale: upgradeMultiplier(game.upgrades, 'beam-grip'),
+    }
     // No pickup cap: hanging mass is its own limit, and a craft that grabbed
     // too much should feel it rather than be quietly protected from it.
     if (game.beamActive && game.dumpLockout <= 0) {
@@ -978,6 +1034,16 @@ export function GameProvider({ children }: { children: ReactNode }) {
     storeLanguage(next)
   }, [])
 
+  const chooseUpgrade = useCallback((id: UpgradeId) => {
+    const game = runtime.current
+    if (game.phase !== 'upgrade') return
+    if (!game.upgrades.offered.includes(id)) return
+    applyUpgrade(game.upgrades, id)
+    game.phase = 'playing'
+    tone('pickup')
+    publish()
+  }, [publish])
+
   const restart = useCallback(() => {
     startBgm()
     pointer.current = { x: 0, y: 0 }
@@ -989,7 +1055,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   }, [publish])
 
   const setMobileInput = useCallback((input: Partial<MobileInput>) => { Object.assign(mobile.current, input) }, [])
-  const value = useMemo<GameContextValue>(() => ({ runtime, snapshot, readInput, advance, start, restart, setMobileInput, quality, setQuality, language, setLanguage, t: STRINGS[language] }), [advance, quality, readInput, restart, setMobileInput, setQuality, snapshot, start, language, setLanguage])
+  const value = useMemo<GameContextValue>(() => ({ runtime, snapshot, readInput, advance, start, restart, chooseUpgrade, setMobileInput, quality, setQuality, language, setLanguage, t: STRINGS[language] }), [advance, quality, readInput, restart, chooseUpgrade, setMobileInput, setQuality, snapshot, start, language, setLanguage])
   return <GameContext.Provider value={value}>{children}</GameContext.Provider>
 }
 
