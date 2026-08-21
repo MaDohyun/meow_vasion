@@ -7,7 +7,7 @@ import { BUILDING, GROUND } from '../constants/palette'
 import {
   groundLandmarkForCell,
   hasBusStop,
-  hasUfoWarningScreen,
+  isNewsTower,
   isConvenienceStore,
 } from '../core/cityLandmarks'
 import {
@@ -55,37 +55,95 @@ const convenienceStoreTexture = canvasTexture((context, width, height) => {
   context.fillText('OPEN 24 HOURS', width / 2, height / 2 + 60)
 })
 
+/**
+ * A news broadcast, told entirely through composition - no writing anywhere.
+ *
+ * A studio backdrop, an anchor in the lower third, an over-shoulder inset, and
+ * a blank lower band are enough that anyone reads "news" instantly, in any
+ * language. The UFO footage that used to fill the whole screen now plays inside
+ * the inset, which is what makes the anchor the subject and the sighting the
+ * story rather than the other way round.
+ *
+ * The anchor moves a little - a slow sway, an occasional blink. Perfectly still
+ * would read as a photograph on a wall; more than this would pull the eye away
+ * from the city.
+ */
 function drawUfoNewsFrame(context: CanvasRenderingContext2D, width: number, height: number, time: number) {
-  const ufoX = width * (0.32 + (0.5 + Math.sin(time * 0.82) * 0.5) * 0.28)
-  const ufoY = height * 0.48 + Math.sin(time * 2.8) * 16
-  const pulse = 0.65 + Math.sin(time * 6) * 0.22
-
-  context.fillStyle = '#15182e'
+  // Studio backdrop.
+  const backdrop = context.createLinearGradient(0, 0, 0, height)
+  backdrop.addColorStop(0, '#1b2450')
+  backdrop.addColorStop(1, '#0d1230')
+  context.fillStyle = backdrop
   context.fillRect(0, 0, width, height)
-  context.strokeStyle = 'rgba(116,219,228,.18)'
+  context.strokeStyle = 'rgba(116,219,228,.10)'
   context.lineWidth = 2
-  for (let x = 0; x < width; x += 48) {
+  for (let x = 0; x < width; x += 54) {
     context.beginPath(); context.moveTo(x, 0); context.lineTo(x, height); context.stroke()
   }
-  for (let y = 0; y < height; y += 42) {
-    context.beginPath(); context.moveTo(0, y); context.lineTo(width, y); context.stroke()
+
+  // Over-shoulder inset, upper right. The sighting footage lives here.
+  const insetX = width * 0.5
+  const insetY = height * 0.12
+  const insetW = width * 0.42
+  const insetH = height * 0.38
+  context.fillStyle = '#0a1a2c'
+  context.fillRect(insetX, insetY, insetW, insetH)
+  context.save()
+  context.beginPath()
+  context.rect(insetX, insetY, insetW, insetH)
+  context.clip()
+  drawUfoFootage(context, insetX, insetY, insetW, insetH, time)
+  context.restore()
+  context.strokeStyle = '#f2e2a8'
+  context.lineWidth = 5
+  context.strokeRect(insetX, insetY, insetW, insetH)
+
+  drawAnchor(context, width, height, time)
+
+  // Lower third: a caption bar with no caption, plus a blank ticker beneath.
+  context.fillStyle = '#ef5265'
+  context.fillRect(0, height * 0.74, width, height * 0.11)
+  context.fillStyle = 'rgba(255,241,189,.85)'
+  context.fillRect(width * 0.05, height * 0.775, width * 0.44, height * 0.035)
+  context.fillStyle = '#101634'
+  context.fillRect(0, height * 0.85, width, height * 0.15)
+  context.fillStyle = 'rgba(255,241,189,.55)'
+  for (let x = width * 0.04; x < width * 0.92; x += width * 0.13) {
+    context.fillRect(x, height * 0.895, width * 0.09, height * 0.028)
   }
 
-  // Text-free breaking-news frame: flashing rails, a live indicator and
-  // ticker-like blocks sell the broadcast without any written language.
-  context.fillStyle = '#ef5265'
-  context.fillRect(0, 0, width, 24)
-  context.fillRect(0, height - 35, width, 35)
-  context.fillStyle = '#fff1bd'
-  for (let x = 18; x < width - 70; x += 72) context.fillRect(x, height - 24, 46, 11)
-  context.fillStyle = `rgba(255,238,177,${pulse})`
-  context.beginPath(); context.arc(31, 50, 11, 0, Math.PI * 2); context.fill()
-  context.strokeStyle = '#ef5265'
-  context.lineWidth = 7
-  context.strokeRect(8, 8, width - 16, height - 16)
+  // Live dot, the one thing allowed to pulse - it is a lamp, not information.
+  context.fillStyle = `rgba(255,120,120,${0.55 + Math.sin(time * 4) * 0.35})`
+  context.beginPath(); context.arc(width * 0.06, height * 0.07, 12, 0, Math.PI * 2); context.fill()
+}
 
+/** The sighting footage, drawn into whatever rectangle it is given. */
+function drawUfoFootage(
+  context: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  time: number,
+) {
+  const sky = context.createLinearGradient(0, y, 0, y + h)
+  sky.addColorStop(0, '#16234a')
+  sky.addColorStop(1, '#31406b')
+  context.fillStyle = sky
+  context.fillRect(x, y, w, h)
+  // Rooftops along the bottom, so the footage reads as shot over a city.
+  context.fillStyle = '#0b1024'
+  for (let index = 0; index < 7; index += 1) {
+    const bw = w / 7
+    const bh = h * (0.16 + ((index * 37) % 11) / 40)
+    context.fillRect(x + index * bw, y + h - bh, bw - 3, bh)
+  }
+  const ufoX = x + w * (0.3 + (0.5 + Math.sin(time * 0.82) * 0.5) * 0.4)
+  const ufoY = y + h * 0.42 + Math.sin(time * 2.8) * h * 0.05
+  const scale = w / 420
   context.save()
   context.translate(ufoX, ufoY)
+  context.scale(scale, scale)
   context.rotate(Math.sin(time * 2.2) * 0.08)
   context.fillStyle = 'rgba(100,225,235,.22)'
   context.beginPath(); context.ellipse(0, 16, 92, 30, 0, 0, Math.PI * 2); context.fill()
@@ -102,16 +160,54 @@ function drawUfoNewsFrame(context: CanvasRenderingContext2D, width: number, heig
     context.beginPath(); context.arc(Math.cos(angle) * 53, 7 + Math.sin(angle) * 13, 5, 0, Math.PI * 2); context.fill()
   }
   context.restore()
+}
 
-  // Warning triangle and a geometric exclamation mark (not text).
+/** Head and shoulders, lower left. Silhouette only - features would fight the
+ *  pixel scale this is seen at. */
+function drawAnchor(context: CanvasRenderingContext2D, width: number, height: number, time: number) {
+  const sway = Math.sin(time * 0.9) * width * 0.006
+  const nod = Math.sin(time * 1.4) * height * 0.004
+  const cx = width * 0.3 + sway
+  // Shoulders have to clear the caption bar at 0.74, or only a floating head
+  // shows above it and the figure stops reading as a person at a desk.
+  const shoulderY = height * 0.72
   context.save()
-  context.translate(width - 83, 82)
-  context.fillStyle = '#f7c95f'
-  context.beginPath(); context.moveTo(0, -52); context.lineTo(54, 43); context.lineTo(-54, 43); context.closePath(); context.fill()
-  context.strokeStyle = '#ef5265'; context.lineWidth = 8; context.stroke()
-  context.fillStyle = '#3b314b'
-  context.fillRect(-7, -24, 14, 38)
-  context.beginPath(); context.arc(0, 29, 8, 0, Math.PI * 2); context.fill()
+
+  // Shoulders, cut off by the caption bar.
+  context.fillStyle = '#2f3a63'
+  context.beginPath()
+  context.ellipse(cx, shoulderY, width * 0.235, height * 0.2, 0, Math.PI, Math.PI * 2)
+  context.fill()
+  // Collar and tie, which is most of what says "presenter".
+  context.fillStyle = '#e7ecf7'
+  context.beginPath()
+  context.moveTo(cx - width * 0.062, shoulderY - height * 0.115)
+  context.lineTo(cx, shoulderY - height * 0.01)
+  context.lineTo(cx + width * 0.062, shoulderY - height * 0.115)
+  context.closePath()
+  context.fill()
+  context.fillStyle = '#ef5265'
+  context.fillRect(cx - width * 0.013, shoulderY - height * 0.1, width * 0.026, height * 0.1)
+
+  // Head.
+  const headY = shoulderY - height * 0.185 + nod
+  context.fillStyle = '#e8b48c'
+  context.beginPath()
+  context.ellipse(cx, headY, width * 0.085, height * 0.105, 0, 0, Math.PI * 2)
+  context.fill()
+  context.fillStyle = '#2a2036'
+  context.beginPath()
+  context.ellipse(cx, headY - height * 0.05, width * 0.092, height * 0.066, 0, Math.PI, Math.PI * 2)
+  context.fill()
+  // Eyes close briefly on a slow cycle, which is what keeps it from reading as
+  // a still image.
+  const blink = Math.sin(time * 0.7) > 0.965 ? 0.18 : 1
+  context.fillStyle = '#2a2036'
+  for (const side of [-1, 1]) {
+    context.beginPath()
+    context.ellipse(cx + side * width * 0.031, headY + height * 0.005, width * 0.011, height * 0.014 * blink, 0, 0, Math.PI * 2)
+    context.fill()
+  }
   context.restore()
 }
 
@@ -195,6 +291,59 @@ function displayMaterial(map: THREE.Texture, night: number, day = 0.05) {
 
 const storeSignMaterial = displayMaterial(convenienceStoreTexture, 0.9)
 const warningScreenMaterial = displayMaterial(ufoWarningTexture, 1.35, 0.58)
+
+/**
+ * A crown for the news towers: two setbacks and a spire, sitting on the host
+ * roof. Built as a separate merged piece rather than by changing the building
+ * itself, so the tower gains a distinct silhouette without disturbing the
+ * collision boxes the whole city shares.
+ */
+const newsTowerCrownGeometry = mergeGeometries([
+  new THREE.BoxGeometry(0.74, 0.1, 0.74).translate(0, 0.05, 0),
+  new THREE.BoxGeometry(0.56, 0.12, 0.56).translate(0, 0.16, 0),
+  new THREE.BoxGeometry(0.34, 0.14, 0.34).translate(0, 0.29, 0),
+  new THREE.CylinderGeometry(0.03, 0.06, 0.42, 6).translate(0, 0.57, 0),
+  new THREE.CylinderGeometry(0.012, 0.012, 0.22, 4).translate(0, 0.88, 0),
+], false)!
+
+/**
+ * A forecourt: canopy on posts with a pump island under it. Gives the tankers
+ * an origin, so a truck full of fuel reads as belonging to the city rather than
+ * as a hazard that wandered in from nowhere.
+ */
+const gasStationGeometry = mergeGeometries([
+  // Canopy and its posts.
+  new THREE.BoxGeometry(13, 0.9, 9).translate(0, 5.6, 0),
+  new THREE.BoxGeometry(13.4, 0.5, 9.4).translate(0, 5.05, 0),
+  ...[-5.4, 5.4].flatMap((x) => [-3.6, 3.6].map((z) =>
+    new THREE.CylinderGeometry(0.32, 0.32, 5.1, 8).translate(x, 2.55, z),
+  )),
+  // Pump island.
+  new THREE.BoxGeometry(7.4, 0.4, 3).translate(0, 0.2, 0),
+  ...[-2.2, 2.2].map((x) => new THREE.BoxGeometry(1, 2.1, 1.2).translate(x, 1.4, 0)),
+  // Kiosk off to one side.
+  new THREE.BoxGeometry(6, 3.4, 5).translate(-9.5, 1.7, 0),
+], false)!
+
+const gasStationMaterial = withLandmarkGlow(
+  new THREE.MeshToonMaterial({ color: '#e4e0d2', emissive: new THREE.Color('#ffcf6a') }),
+  0.04,
+  0.5,
+)
+
+const gasStationCanopyMaterial = withLandmarkGlow(
+  new THREE.MeshToonMaterial({ color: '#d8443f', emissive: new THREE.Color('#ff6a4d') }),
+  0.05,
+  0.55,
+)
+
+const gasStationBandGeometry = new THREE.BoxGeometry(13.6, 0.55, 9.6)
+
+const newsTowerCrownMaterial = withLandmarkGlow(
+  new THREE.MeshToonMaterial({ color: '#8fb6cf', emissive: new THREE.Color('#7fd8ff') }),
+  0.05,
+  0.7,
+)
 const metroSignMaterial = displayMaterial(metroTexture, 0.85)
 const busSignMaterial = displayMaterial(busTexture, 0.75)
 
@@ -216,6 +365,7 @@ function BuildingFeaturePool() {
   const storeBands = useRef<THREE.InstancedMesh>(null)
   const storeSigns = useRef<THREE.InstancedMesh>(null)
   const warningScreens = useRef<THREE.InstancedMesh>(null)
+  const towerCrowns = useRef<THREE.InstancedMesh>(null)
   const lastKey = useRef('')
   const lastNewsFrame = useRef(-1)
   const matrix = useMemo(() => new THREE.Matrix4(), [])
@@ -225,7 +375,7 @@ function BuildingFeaturePool() {
   const sideRotation = useMemo(() => new THREE.Quaternion().setFromEuler(new THREE.Euler(0, Math.PI / 2, 0)), [])
 
   useFrame(({ clock }) => {
-    if (!storeBands.current || !storeSigns.current || !warningScreens.current) return
+    if (!storeBands.current || !storeSigns.current || !warningScreens.current || !towerCrowns.current) return
     const newsFrame = Math.floor(clock.elapsedTime * 12)
     if (newsFrame !== lastNewsFrame.current) {
       lastNewsFrame.current = newsFrame
@@ -260,7 +410,7 @@ function BuildingFeaturePool() {
         storeCount += 1
       }
 
-      if (hasUfoWarningScreen(building)) {
+      if (isNewsTower(building)) {
         position.set(
           building.position.x + (signOnX ? building.size.x / 2 + 0.42 : 0),
           Math.max(12, building.size.y * 0.62),
@@ -269,12 +419,20 @@ function BuildingFeaturePool() {
         scale.set(Math.min(15, (signOnX ? building.size.z : building.size.x) * 0.78), 15, 0.34)
         matrix.compose(position, signOnX ? sideRotation : rotation, scale)
         warningScreens.current.setMatrixAt(warningCount, matrix)
+        // Crown scales with the host footprint so a wide tower does not get a
+        // toy hat and a narrow one does not get a slab.
+        const span = Math.max(building.size.x, building.size.z)
+        position.set(building.position.x, building.size.y, building.position.z)
+        scale.set(span, span, span)
+        matrix.compose(position, rotation, scale)
+        towerCrowns.current.setMatrixAt(warningCount, matrix)
         warningCount += 1
       }
     }
     setPoolCount(storeBands.current, storeCount)
     setPoolCount(storeSigns.current, storeCount)
     setPoolCount(warningScreens.current, warningCount)
+    setPoolCount(towerCrowns.current, warningCount)
   })
 
   return (
@@ -288,6 +446,7 @@ function BuildingFeaturePool() {
       <instancedMesh ref={warningScreens} args={[undefined, warningScreenMaterial, WORLD_MAX_BUILDINGS]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }}>
         <boxGeometry args={[1, 1, 1]} />
       </instancedMesh>
+      <instancedMesh ref={towerCrowns} args={[newsTowerCrownGeometry, newsTowerCrownMaterial, WORLD_MAX_BUILDINGS]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }} />
     </group>
   )
 }
@@ -427,6 +586,8 @@ function TransitUtilityPool() {
   const busStops = useRef<THREE.InstancedMesh>(null)
   const busSigns = useRef<THREE.InstancedMesh>(null)
   const pylons = useRef<THREE.InstancedMesh>(null)
+  const gasStations = useRef<THREE.InstancedMesh>(null)
+  const gasBands = useRef<THREE.InstancedMesh>(null)
   const lastKey = useRef('')
   const matrix = useMemo(() => new THREE.Matrix4(), [])
   const position = useMemo(() => new THREE.Vector3(), [])
@@ -436,6 +597,7 @@ function TransitUtilityPool() {
 
   useFrame(() => {
     if (!subway.current || !subwayOpenings.current || !subwaySigns.current || !busStops.current || !busSigns.current || !pylons.current) return
+    if (!gasStations.current || !gasBands.current) return
     const world = runtime.current.world
     const key = `${world.cellX}:${world.cellZ}`
     if (key === lastKey.current) return
@@ -443,9 +605,10 @@ function TransitUtilityPool() {
     let subwayCount = 0
     let busCount = 0
     let pylonCount = 0
+    let gasCount = 0
     for (const cell of groundCellsAround(runtime.current.drone.position, LANDMARK_RADIUS_CELLS)) {
       const landmark = groundLandmarkForCell(cell)
-      if (landmark !== 'subway' && landmark !== 'power-pylon') continue
+      if (landmark !== 'subway' && landmark !== 'power-pylon' && landmark !== 'gas-station') continue
       const centerX = (cell.cellX + 0.5) * WORLD_CELL_SIZE
       const centerZ = (cell.cellZ + 0.5) * WORLD_CELL_SIZE
       const seed = seedForWorldCell(cell.cellX, cell.cellZ, 0x7a4517)
@@ -466,6 +629,15 @@ function TransitUtilityPool() {
         matrix.compose(position, rotation, scale)
         subwaySigns.current.setMatrixAt(subwayCount, matrix)
         subwayCount += 1
+      } else if (landmark === 'gas-station') {
+        position.set(centerX, 0, centerZ)
+        scale.setScalar(1)
+        matrix.compose(position, rotation, scale)
+        gasStations.current.setMatrixAt(gasCount, matrix)
+        position.set(centerX, 5.35, centerZ)
+        matrix.compose(position, rotation, scale)
+        gasBands.current.setMatrixAt(gasCount, matrix)
+        gasCount += 1
       } else {
         position.set(centerX, 0, centerZ)
         scale.setScalar(1)
@@ -497,6 +669,8 @@ function TransitUtilityPool() {
     for (const mesh of [subway.current, subwayOpenings.current, subwaySigns.current]) setPoolCount(mesh, subwayCount)
     for (const mesh of [busStops.current, busSigns.current]) setPoolCount(mesh, busCount)
     setPoolCount(pylons.current, pylonCount)
+    setPoolCount(gasStations.current, gasCount)
+    setPoolCount(gasBands.current, gasCount)
   })
 
   return (
@@ -520,6 +694,8 @@ function TransitUtilityPool() {
       <instancedMesh ref={pylons} args={[pylonGeometry, undefined, LANDMARK_CELL_COUNT]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }}>
         <meshToonMaterial color={BUILDING.PYLON} />
       </instancedMesh>
+      <instancedMesh ref={gasStations} args={[gasStationGeometry, gasStationMaterial, LANDMARK_CELL_COUNT]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }} />
+      <instancedMesh ref={gasBands} args={[gasStationBandGeometry, gasStationCanopyMaterial, LANDMARK_CELL_COUNT]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }} />
     </group>
   )
 }

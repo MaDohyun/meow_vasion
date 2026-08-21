@@ -50,6 +50,7 @@ export const GROUND = {
   CROSSWALK: '#e8e5de',
   BUILDING_PAD: '#cfc3b9',
   PARK_GRASS: '#a9cf78',
+  FORECOURT: '#cfc9b6',
   TRANSIT_PAD: '#c9c4bd',
   PARKING_LOT: '#aaa9ae',
   UTILITY_PAD: '#bdaf9c',

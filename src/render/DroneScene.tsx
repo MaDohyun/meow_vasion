@@ -657,55 +657,50 @@ function CrowdPool({ kind }: { kind: CrowdKind }) {
   )
 }
 
-// The old bomb/drum silhouette is now a tanker about 2.5 times the footprint
-// of a normal car. Both the ambient hazard and the dropped weapon share this
-// fixed pooled geometry.
+// A tanker about 2.5 times the footprint of a normal car. Both the ambient
+// hazard and the dropped weapon share this fixed pooled geometry.
+//
+// Painted like a vehicle rather than like a hazard. It previously wore a
+// pulsing red-and-orange striped shader, which read as a glowing bomb on
+// wheels - the silhouette was already a tanker but nothing about the surface
+// said so. The danger cue moved off the paintwork and onto the marker floating
+// above it, which is what the player actually needs to see from a distance.
 const tankerGeometry = mergeModel([
-  unindexedPart(new RoundedBoxGeometry(2.65, 1.65, 2.15, 2, 0.18).translate(0, 0.05, -2.45)),
-  unindexedPart(new THREE.CylinderGeometry(1.25, 1.25, 4.8, 14).rotateX(Math.PI / 2).translate(0, 0.28, 0.85)),
-  unindexedPart(new THREE.BoxGeometry(2.55, 0.28, 5.3).translate(0, -0.72, 0.45)),
+  coloredPart(new RoundedBoxGeometry(2.65, 1.65, 2.15, 2, 0.18).translate(0, 0.05, -2.45), '#d8443f'),
+  coloredPart(new THREE.BoxGeometry(2.3, 0.9, 0.18).translate(0, 0.25, -3.5), '#1d2436'),
+  coloredPart(new THREE.CylinderGeometry(1.25, 1.25, 4.8, 14).rotateX(Math.PI / 2).translate(0, 0.28, 0.85), '#e9e6dc'),
+  // End caps and a waist band, so the tank reads as a pressure vessel rather
+  // than a plain tube.
+  coloredPart(new THREE.CylinderGeometry(1.28, 1.28, 0.22, 14).rotateX(Math.PI / 2).translate(0, 0.28, -1.45), '#b9b3a5'),
+  coloredPart(new THREE.CylinderGeometry(1.28, 1.28, 0.22, 14).rotateX(Math.PI / 2).translate(0, 0.28, 3.1), '#b9b3a5'),
+  coloredPart(new THREE.CylinderGeometry(1.3, 1.3, 0.3, 14).rotateX(Math.PI / 2).translate(0, 0.28, 0.85), '#c8483c'),
+  coloredPart(new THREE.CylinderGeometry(0.34, 0.34, 0.42, 8).translate(0, 1.5, 0.5), '#8f8a7e'),
+  coloredPart(new THREE.BoxGeometry(2.55, 0.28, 5.3).translate(0, -0.72, 0.45), '#2b3242'),
   ...[-1.05, 1.05].flatMap((x) => [-2.15, 1.85].map((z) =>
-    unindexedPart(new THREE.CylinderGeometry(0.53, 0.53, 0.32, 10).rotateZ(Math.PI / 2).translate(x, -0.78, z)),
+    coloredPart(new THREE.CylinderGeometry(0.53, 0.53, 0.32, 10).rotateZ(Math.PI / 2).translate(x, -0.78, z), '#191d2a'),
   )),
 ])
 
-const hazardTankerMaterial = new THREE.ShaderMaterial({
-  uniforms: { uTime: { value: 0 } },
-  vertexShader: `
-    varying vec3 vLocal;
-    varying vec3 vWorldNormal;
-    varying vec3 vWorldPosition;
-    void main() {
-      vLocal = position;
-      vec4 localPosition = vec4(position, 1.0);
-      vec3 localNormal = normal;
-      #ifdef USE_INSTANCING
-        localPosition = instanceMatrix * localPosition;
-        localNormal = mat3(instanceMatrix) * localNormal;
-      #endif
-      vec4 worldPosition = modelMatrix * localPosition;
-      vWorldPosition = worldPosition.xyz;
-      vWorldNormal = normalize(mat3(modelMatrix) * localNormal);
-      gl_Position = projectionMatrix * viewMatrix * worldPosition;
-    }
-  `,
-  fragmentShader: `
-    uniform float uTime;
-    varying vec3 vLocal;
-    varying vec3 vWorldNormal;
-    varying vec3 vWorldPosition;
-    void main() {
-      float stripe = step(0.5, fract((vLocal.z + vLocal.x * 0.45) * 1.15));
-      float pulse = 0.72 + 0.28 * sin(uTime * 7.0);
-      vec3 danger = mix(vec3(0.34, 0.035, 0.045), vec3(1.0, 0.62, 0.08), stripe);
-      vec3 viewDirection = normalize(cameraPosition - vWorldPosition);
-      float rim = pow(1.0 - max(0.0, dot(normalize(vWorldNormal), viewDirection)), 2.5);
-      vec3 color = danger * (0.72 + pulse * 0.42) + vec3(1.0, 0.08, 0.035) * rim * (0.8 + pulse * 0.5);
-      gl_FragColor = vec4(color, 1.0);
-    }
-  `,
+const hazardTankerMaterial = new THREE.MeshToonMaterial({
+  vertexColors: true,
+  emissive: new THREE.Color('#5a3320'),
+  emissiveIntensity: 0.18,
 })
-hazardTankerMaterial.toneMapped = false
+
+/**
+ * The floating warning above a tanker: a red exclamation mark that bobs.
+ *
+ * Movement carries the alarm, never transparency. Blinking a small marker reads
+ * as it vanishing rather than as it warning you - the radar made exactly that
+ * mistake and had to be undone. This one is always solid; it just rises and
+ * falls, faster and further once the beam has hold of the tanker.
+ */
+const hazardMarkGeometry = mergeModel([
+  coloredPart(new THREE.BoxGeometry(0.62, 1.5, 0.16).translate(0, 0.52, 0), '#ff3b34'),
+  coloredPart(new THREE.BoxGeometry(0.62, 0.55, 0.16).translate(0, -0.62, 0), '#ff3b34'),
+])
+
+const hazardMarkMaterial = new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false })
 
 function HazardPool() {
   const { runtime } = useGame()
@@ -716,16 +711,17 @@ function HazardPool() {
   const scale = useMemo(() => new THREE.Vector3(), [])
   const quaternion = useMemo(() => new THREE.Quaternion(), [])
   const euler = useMemo(() => new THREE.Euler(), [])
-  const flatRotation = useMemo(() => new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0)), [])
+  // The mark faces the camera so it is readable from any approach angle.
+  const billboard = useMemo(() => new THREE.Quaternion(), [])
   const color = useMemo(() => new THREE.Color(), [])
 
-  useFrame(({ clock }) => {
+  useFrame(({ clock, camera }) => {
     const body = bodies.current
-    const ring = rings.current
-    if (!body || !ring) return
+    const mark = rings.current
+    if (!body || !mark) return
+    billboard.copy(camera.quaternion)
     let count = 0
-    const blink = 0.55 + 0.45 * Math.sin(clock.elapsedTime * 7)
-    hazardTankerMaterial.uniforms.uTime!.value = clock.elapsedTime
+    const time = clock.elapsedTime
     for (const hazard of runtime.current.hazards.objects) {
       if (!hazard.active) continue
       position.set(hazard.position.x, hazard.position.y, hazard.position.z)
@@ -735,29 +731,27 @@ function HazardPool() {
       scale.setScalar(absorbScale)
       matrix.compose(position, quaternion, scale)
       body.setMatrixAt(count, matrix)
-      // The ring pulses faster and brighter the closer this is to going off.
-      const urgency = blink * (0.5 + hazard.alarm * 0.5) + hazard.alarm * 0.4
-      position.y += 2.4 + hazard.alarm * 0.6
-      scale.setScalar((3.1 + hazard.alarm * 1.4) * absorbScale)
-      matrix.compose(position, flatRotation, scale)
-      ring.setMatrixAt(count, matrix)
-      ring.setColorAt(count, color.setRGB(1, 0.28 - hazard.alarm * 0.2, 0.2).multiplyScalar(0.6 + urgency))
+      // Bob speed and travel both rise with the alarm, so a tanker being drawn
+      // in visibly gets more urgent without ever dimming.
+      const speed = 2.2 + hazard.alarm * 5.5
+      const travel = 0.28 + hazard.alarm * 0.6
+      const phase = hazard.slot * 1.7
+      position.y += 2.9 + Math.sin(time * speed + phase) * travel
+      scale.setScalar((1 + hazard.alarm * 0.45) * absorbScale)
+      matrix.compose(position, billboard, scale)
+      mark.setMatrixAt(count, matrix)
       count += 1
     }
     body.count = count
-    ring.count = count
+    mark.count = count
     body.instanceMatrix.needsUpdate = true
-    ring.instanceMatrix.needsUpdate = true
-    if (ring.instanceColor) ring.instanceColor.needsUpdate = true
+    mark.instanceMatrix.needsUpdate = true
   })
 
   return (
     <group>
       <instancedMesh ref={bodies} args={[tankerGeometry, hazardTankerMaterial, HAZARD_MAX]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }} />
-      <instancedMesh ref={rings} args={[undefined, undefined, HAZARD_MAX]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }} renderOrder={4}>
-        <ringGeometry args={[0.7, 1, 16]} />
-        <meshBasicMaterial vertexColors transparent opacity={0.95} depthWrite={false} side={THREE.DoubleSide} toneMapped={false} />
-      </instancedMesh>
+      <instancedMesh ref={rings} args={[hazardMarkGeometry, hazardMarkMaterial, HAZARD_MAX]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }} renderOrder={4} />
     </group>
   )
 }
@@ -1056,7 +1050,6 @@ function WeaponProjectilePool({ kind }: { kind: WeaponProjectileKind }) {
     mesh.count = count
     mesh.instanceMatrix.needsUpdate = true
     if (kind !== 'bomb' && mesh.instanceColor) mesh.instanceColor.needsUpdate = true
-    if (kind === 'bomb') hazardTankerMaterial.uniforms.uTime!.value = clock.elapsedTime
   })
   return <instancedMesh ref={ref} args={[geometry, material, WEAPON_POOL_CAPS[kind]]} frustumCulled={false} renderOrder={5} />
 }
