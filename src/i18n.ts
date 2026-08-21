@@ -196,7 +196,7 @@ export const STRINGS: Record<Language, Strings> = {
     msgTurbo: '터보 가동',
     breakingFlag: '속보',
     broadcast: [
-      { headline: '자폭 드론 상공 배치', line: '속보입니다. 정부가 UFO 격추를 위해 자폭 드론을 상공에 배치했습니다.' },
+      { headline: '미확인 비행물체 도심 출현', line: '속보입니다. 미확인 비행물체가 도심 상공에 출현했습니다. 정부는 요격을 위해 자폭 드론을 배치했습니다.' },
       { headline: '경찰 총력 대응', line: '속보입니다. 경찰이 전 병력에 비상을 걸고 도심으로 향하고 있습니다.' },
       { headline: '경찰 헬기 투입', line: '속보입니다. 경찰 헬기가 상공에 투입됐습니다. 시민 여러분은 실내로 대피하십시오.' },
       { headline: '군 병력 도심 전개', line: '속보입니다. 군 병력이 도심 전역에 전개됐습니다.' },
@@ -274,7 +274,7 @@ export const STRINGS: Record<Language, Strings> = {
     msgTurbo: 'ターボ作動',
     breakingFlag: '速報',
     broadcast: [
-      { headline: '自爆ドローンを上空に配備', line: '速報です。政府はUFO撃墜のため、自爆ドローンを上空に配備しました。' },
+      { headline: '未確認飛行物体が都心に出現', line: '速報です。未確認飛行物体が都心の上空に出現しました。政府は迎撃のため自爆ドローンを配備しました。' },
       { headline: '警察が総力対応', line: '速報です。警察が全部隊に非常態勢を敷き、都心へ向かっています。' },
       { headline: '警察ヘリを投入', line: '速報です。警察ヘリが上空に投入されました。市民の皆さまは屋内に避難してください。' },
       { headline: '軍部隊が都心に展開', line: '速報です。軍の部隊が都心全域に展開しました。' },
@@ -352,7 +352,7 @@ export const STRINGS: Record<Language, Strings> = {
     msgTurbo: 'TURBO ENGAGED',
     breakingFlag: 'BREAKING',
     broadcast: [
-      { headline: 'SUICIDE DRONES DEPLOYED', line: 'Breaking news. The government has deployed suicide drones over the city to bring the UFO down.' },
+      { headline: 'UFO SIGHTED OVER THE CITY', line: 'Breaking news. An unidentified craft has appeared over the city centre. The government has deployed suicide drones to intercept it.' },
       { headline: 'POLICE ON FULL ALERT', line: 'Breaking news. Police have called up every available unit and are moving into the city centre.' },
       { headline: 'POLICE HELICOPTERS UP', line: 'Breaking news. Police helicopters are now airborne. Residents are urged to stay indoors.' },
       { headline: 'ARMY DEPLOYS DOWNTOWN', line: 'Breaking news. Army units have deployed across the downtown districts.' },

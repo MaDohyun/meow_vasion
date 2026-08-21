@@ -43,7 +43,7 @@ import {
 import { requestedPilotExpression, updatePilotExpression, type PilotExpression } from './core/pilot'
 import { activeWorldColliders, createActiveWorld, updateActiveWorld, WORLD_MAX_CARS, WORLD_REMOVE_RADIUS, type ActiveWorld, type ProceduralCar } from './core/world'
 import { captureTrafficCar, createTrafficState, releaseTrafficSlot, stepTraffic, TRAFFIC_MAX_CARS, type TrafficCar, type TrafficState } from './core/traffic'
-import { BROADCAST_SECONDS } from './core/broadcast'
+import { BROADCAST_OPENING_AT, BROADCAST_SECONDS } from './core/broadcast'
 import { setBgmWave, startBgm, stopBgm, tone } from './audio'
 
 export type GamePhase = 'intro' | 'playing' | 'results'
@@ -67,6 +67,9 @@ export type GameRuntime = {
    *  whatever language the player set. */
   broadcastStage: number
   broadcastTime: number
+  /** The opening sighting report is time-triggered rather than raised by a
+   *  wave boundary, so it needs its own one-shot latch. */
+  openingBroadcastDone: boolean
   loadedCars: number
   damageCooldown: number
   collisionCooldown: number
@@ -277,6 +280,7 @@ function makeRuntime(): GameRuntime {
     waveStage: 0,
     broadcastStage: 0,
     broadcastTime: 0,
+    openingBroadcastDone: false,
     loadedCars: 0,
     damageCooldown: 0,
     collisionCooldown: 0,
@@ -762,6 +766,11 @@ export function GameProvider({ children }: { children: ReactNode }) {
     game.collisionCooldown = Math.max(0, game.collisionCooldown - d)
     game.laserCooldown = Math.max(0, game.laserCooldown - d)
     game.broadcastTime = Math.max(0, game.broadcastTime - d)
+    // The city reports the sighting once the player has had a moment to fly.
+    if (!game.openingBroadcastDone && game.sessionTime >= BROADCAST_OPENING_AT) {
+      game.openingBroadcastDone = true
+      raiseBroadcast(game, 0)
+    }
     game.laserFlash = Math.max(0, game.laserFlash - d)
     stepLaserBursts(game.laserBursts, d)
     stepLaserProjectiles(game.laserProjectiles, d)
@@ -950,9 +959,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
     const game = runtime.current
     game.phase = 'playing'
     setMessage(game, 'msgRunStart', 3)
-    // Stage 0 never crosses a wave boundary, so the opening bulletin - the one
-    // that explains the drones already hanging in the sky - is raised here.
-    raiseBroadcast(game, 0)
     publish()
   }, [publish])
 
@@ -977,7 +983,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
     runtime.current.phase = 'playing'
     runtime.current.message = 'NEW RUN · ABSORB TIME TO SURVIVE'
     runtime.current.messageTime = 3
-    raiseBroadcast(runtime.current, 0)
     publish()
   }, [publish])
 
