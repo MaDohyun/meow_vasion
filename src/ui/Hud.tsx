@@ -1,7 +1,7 @@
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { useGame } from '../GameContext'
-import { WEAPON_DEFINITIONS, WEAPON_IDS } from '../core/weapons'
-import { LANGUAGES, LANGUAGE_LABELS, formatMessage } from '../i18n'
+import { LANGUAGES, LANGUAGE_LABELS, bulletinFor, formatMessage } from '../i18n'
+import { broadcastPhase, broadcastProgress } from '../core/broadcast'
 import { Radar } from './Radar'
 import { pilotFrameStyle } from '../render/pilotArt'
 
@@ -129,7 +129,7 @@ function Options({ onClose }: { onClose: () => void }) {
 }
 
 function Intro() {
-  const { snapshot, start, selectWeapon, t } = useGame()
+  const { start, t } = useGame()
   const [optionsOpen, setOptionsOpen] = useState(false)
   if (optionsOpen) return <Options onClose={() => setOptionsOpen(false)} />
   return (
@@ -141,23 +141,6 @@ function Intro() {
       <div className="title-kicker">UFO ATTACK SURVIVAL</div>
       <h1><span>UFO</span><span>어택 서바이벌</span></h1>
       <p className="tagline">{t.tagline}</p>
-      <div className="weapon-picker" aria-label={t.weaponPicker}>
-        {WEAPON_IDS.map((weapon) => {
-          const definition = WEAPON_DEFINITIONS[weapon]
-          return (
-            <button
-              key={weapon}
-              className={`weapon-choice ${snapshot.selectedWeapon === weapon ? 'selected' : ''}`}
-              onClick={() => selectWeapon(weapon)}
-              type="button"
-            >
-              <b>{definition.shortLabel}</b>
-              <strong>{definition.label}</strong>
-              <small>{definition.description}</small>
-            </button>
-          )
-        })}
-      </div>
       <div className="intro-actions">
         <button className="primary-button" onClick={start}>{t.start}</button>
         <button className="secondary-button" onClick={() => setOptionsOpen(true)}>{t.options}</button>
@@ -195,6 +178,39 @@ function Results() {
       </div>
       <button className="primary-button" onClick={restart}>{t.retry}</button>
     </div>
+  )
+}
+
+/**
+ * The wave bulletin, as a broadcast lower third.
+ *
+ * It goes at the bottom because that is where a chyron belongs and because the
+ * middle of the screen is already the reticle plus the arcade wave label. It
+ * sits above the bottom instrument row rather than across it, so the radar,
+ * the systems panel and the flight card all stay readable while it is on air.
+ *
+ * The little bust on the left is the same anchor that is on the city's news
+ * screens, drawn in the same four colours - without it the band is just a
+ * caption, with it the player connects the words to the face they can see on
+ * the buildings.
+ */
+function BreakingNews() {
+  const { snapshot, t } = useGame()
+  if (snapshot.broadcastStage === null) return null
+  const bulletin = bulletinFor(t, snapshot.broadcastStage)
+  const phase = broadcastPhase(snapshot.broadcastRemaining)
+  return (
+    <aside className="breaking-band" data-phase={phase} role="status" aria-live="polite">
+      <div className="breaking-anchor" aria-hidden="true"><i /><b /></div>
+      <div className="breaking-body">
+        <div className="breaking-head">
+          <span className="breaking-flag">{t.breakingFlag}</span>
+          <strong>{bulletin.headline}</strong>
+        </div>
+        <p>{bulletin.line}</p>
+      </div>
+      <i className="breaking-timer" style={{ width: `${(1 - broadcastProgress(snapshot.broadcastRemaining)) * 100}%` }} />
+    </aside>
   )
 }
 
@@ -258,7 +274,6 @@ export function Hud() {
             <span>{snapshot.height >= 28 ? t.bandAa : snapshot.height > 5.5 ? t.bandArmor : t.bandGround}</span>
             <b>{snapshot.height >= 28 ? t.bandAaNote : snapshot.height > 5.5 ? t.bandArmorNote : t.bandGroundNote}</b>
           </div>
-          <div className="weapon-readout"><span>{t.auto} · {WEAPON_DEFINITIONS[snapshot.selectedWeapon].shortLabel}</span><b>{snapshot.activeWeaponProjectiles} {t.live}</b></div>
         </section>
 
         <section className="flight-card panel">
@@ -270,6 +285,7 @@ export function Hud() {
           <div className="pilot-portrait" style={pilotFrameStyle(snapshot.pilotExpression)} />
           <div><span className="eyebrow">{t.pilotCam}</span><b>{snapshot.pilotExpression.toUpperCase()}</b></div>
         </section>
+        <BreakingNews />
         {snapshot.timeBonusPulse > 0 && <div className="time-bonus">+{snapshot.timeBonusAmount}s</div>}
         <div
           className="reticle"

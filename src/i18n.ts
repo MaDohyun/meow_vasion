@@ -10,6 +10,10 @@
  * translated here at render time. The simulation has no business knowing what
  * language the player reads.
  *
+ * Wave bulletins work the same way: the runtime stores which wave went on air
+ * and nothing else, and the words are picked here - once for the HUD band and
+ * once, per frame, for the anchor's caption bar on the city's news towers.
+ *
  * Wave names ("POLICE DISPATCH" and friends) stay in English on purpose: they
  * are stylised arcade labels, closer to proper nouns than to sentences.
  */
@@ -34,7 +38,6 @@ type Strings = {
   qualityHigh: string
   qualityLow: string
   language: string
-  weaponPicker: string
   controlFly: string
   controlStrafe: string
   controlAim: string
@@ -60,7 +63,6 @@ type Strings = {
   slowdown: string
   turbo: string
   turboActive: string
-  auto: string
   live: string
   speed: string
   altitude: string
@@ -93,12 +95,32 @@ type Strings = {
   msgCarLaunched: string
   msgDumped: (count: number) => string
   msgTurbo: string
+  breakingFlag: string
+  broadcast: BulletinSet
 }
+
+/**
+ * One wave bulletin: a short headline for the caption bar on the city's news
+ * screens, and the sentence the anchor reads, which is what the player
+ * actually gets to read on the HUD band.
+ */
+export type Bulletin = {
+  headline: string
+  line: string
+}
+
+/** Exactly one bulletin per wave stage. A tuple rather than an array so a
+ *  language that forgets a stage fails to compile. */
+type BulletinSet = readonly [Bulletin, Bulletin, Bulletin, Bulletin, Bulletin, Bulletin, Bulletin, Bulletin]
 
 /** Keys the simulation may raise as a mid-run callout. */
 export type MessageKey = {
   [K in keyof Strings]: K extends `msg${string}` ? K : never
 }[keyof Strings]
+
+export function bulletinFor(strings: Strings, stage: number): Bulletin {
+  return strings.broadcast[Math.min(strings.broadcast.length - 1, Math.max(0, stage))]!
+}
 
 export function formatMessage(strings: Strings, key: MessageKey, arg: number) {
   const value = strings[key]
@@ -115,7 +137,6 @@ export const STRINGS: Record<Language, Strings> = {
     qualityHigh: '높음',
     qualityLow: '낮음',
     language: '언어',
-    weaponPicker: '시작 무기 선택',
     controlFly: '보는 방향으로 비행',
     controlStrafe: '좌우 이동',
     controlAim: '조종 · 조준',
@@ -141,7 +162,6 @@ export const STRINGS: Record<Language, Strings> = {
     slowdown: '감속',
     turbo: '터보',
     turboActive: '작동',
-    auto: '자동',
     live: '활성',
     speed: '속도',
     altitude: '고도',
@@ -174,6 +194,17 @@ export const STRINGS: Record<Language, Strings> = {
     msgCarLaunched: '자동차 파괴 · +50',
     msgDumped: (count) => `짐 투기 · ${count}개`,
     msgTurbo: '터보 가동',
+    breakingFlag: '속보',
+    broadcast: [
+      { headline: '자폭 드론 상공 배치', line: '속보입니다. 정부가 UFO 격추를 위해 자폭 드론을 상공에 배치했습니다.' },
+      { headline: '경찰 총력 대응', line: '속보입니다. 경찰이 전 병력에 비상을 걸고 도심으로 향하고 있습니다.' },
+      { headline: '경찰 헬기 투입', line: '속보입니다. 경찰 헬기가 상공에 투입됐습니다. 시민 여러분은 실내로 대피하십시오.' },
+      { headline: '군 병력 도심 전개', line: '속보입니다. 군 병력이 도심 전역에 전개됐습니다.' },
+      { headline: '전투기 긴급 발진', line: '속보입니다. 공군이 UFO 격추를 위해 전투기를 긴급 발진시켰습니다.' },
+      { headline: '대공 방어망 가동', line: '속보입니다. 도심 전역에 대공 방어망이 가동됐습니다. 저공 비행체를 요격합니다.' },
+      { headline: '기갑 부대 진입', line: '속보입니다. 기갑 부대가 시내로 진입했습니다.' },
+      { headline: '최종 요격 작전', line: '속보입니다. 정부가 최종 요격 작전을 승인했습니다. 모든 전력이 UFO를 향합니다.' },
+    ],
   },
   ja: {
     tagline: 'できるだけ長く生き延びて街を破壊しよう',
@@ -184,7 +215,6 @@ export const STRINGS: Record<Language, Strings> = {
     qualityHigh: '高',
     qualityLow: '低',
     language: '言語',
-    weaponPicker: '初期武器の選択',
     controlFly: '見ている方向へ飛行',
     controlStrafe: '左右移動',
     controlAim: '操縦・照準',
@@ -210,7 +240,6 @@ export const STRINGS: Record<Language, Strings> = {
     slowdown: '減速',
     turbo: 'ターボ',
     turboActive: '作動',
-    auto: '自動',
     live: '稼働',
     speed: '速度',
     altitude: '高度',
@@ -243,6 +272,17 @@ export const STRINGS: Record<Language, Strings> = {
     msgCarLaunched: '車を破壊 · +50',
     msgDumped: (count) => `積荷を投棄 · ${count}個`,
     msgTurbo: 'ターボ作動',
+    breakingFlag: '速報',
+    broadcast: [
+      { headline: '自爆ドローンを上空に配備', line: '速報です。政府はUFO撃墜のため、自爆ドローンを上空に配備しました。' },
+      { headline: '警察が総力対応', line: '速報です。警察が全部隊に非常態勢を敷き、都心へ向かっています。' },
+      { headline: '警察ヘリを投入', line: '速報です。警察ヘリが上空に投入されました。市民の皆さまは屋内に避難してください。' },
+      { headline: '軍部隊が都心に展開', line: '速報です。軍の部隊が都心全域に展開しました。' },
+      { headline: '戦闘機が緊急発進', line: '速報です。空軍がUFO撃墜のため、戦闘機を緊急発進させました。' },
+      { headline: '対空防衛網が稼働', line: '速報です。都心全域で対空防衛網が稼働しました。低空の飛行体を迎撃します。' },
+      { headline: '機甲部隊が市内に進入', line: '速報です。機甲部隊が市内に進入しました。' },
+      { headline: '最終迎撃作戦', line: '速報です。政府が最終迎撃作戦を承認しました。全戦力がUFOへ向かいます。' },
+    ],
   },
   en: {
     tagline: 'Survive as long as you can and tear the city apart',
@@ -253,7 +293,6 @@ export const STRINGS: Record<Language, Strings> = {
     qualityHigh: 'HIGH',
     qualityLow: 'LOW',
     language: 'LANGUAGE',
-    weaponPicker: 'starting weapon selection',
     controlFly: 'FLY WHERE YOU LOOK',
     controlStrafe: 'RIGHT / LEFT',
     controlAim: 'STEER / AIM',
@@ -279,7 +318,6 @@ export const STRINGS: Record<Language, Strings> = {
     slowdown: 'SLOWDOWN',
     turbo: 'TURBO',
     turboActive: 'ACTIVE',
-    auto: 'AUTO',
     live: 'LIVE',
     speed: 'SPEED',
     altitude: 'ALT',
@@ -312,6 +350,17 @@ export const STRINGS: Record<Language, Strings> = {
     msgCarLaunched: 'CAR LAUNCHED · +50',
     msgDumped: (count) => `LOAD DUMPED · ${count}`,
     msgTurbo: 'TURBO ENGAGED',
+    breakingFlag: 'BREAKING',
+    broadcast: [
+      { headline: 'SUICIDE DRONES DEPLOYED', line: 'Breaking news. The government has deployed suicide drones over the city to bring the UFO down.' },
+      { headline: 'POLICE ON FULL ALERT', line: 'Breaking news. Police have called up every available unit and are moving into the city centre.' },
+      { headline: 'POLICE HELICOPTERS UP', line: 'Breaking news. Police helicopters are now airborne. Residents are urged to stay indoors.' },
+      { headline: 'ARMY DEPLOYS DOWNTOWN', line: 'Breaking news. Army units have deployed across the downtown districts.' },
+      { headline: 'FIGHTERS SCRAMBLED', line: 'Breaking news. The air force has scrambled fighters to shoot the UFO down.' },
+      { headline: 'AIR DEFENCE ONLINE', line: 'Breaking news. The city-wide air defence network is online and engaging low-flying craft.' },
+      { headline: 'ARMOUR ROLLS IN', line: 'Breaking news. Armoured units have entered the city.' },
+      { headline: 'FINAL INTERCEPT ORDERED', line: 'Breaking news. The government has authorised a final intercept. Every asset is now converging on the UFO.' },
+    ],
   },
 }
 

@@ -5,26 +5,33 @@ test('loads first frame and validates combat and high-altitude flight', async ({
   page.on('console', (message) => { if (message.type() === 'error') errors.push(message.text()) })
   const started = Date.now()
   await page.goto('/')
-  await expect(page.getByRole('button', { name: 'START SURVIVAL' })).toBeVisible()
-  await page.getByRole('button', { name: /ORBIT/ }).click()
-  await page.getByRole('button', { name: 'START SURVIVAL' }).click()
-  await expect(page.locator('canvas')).toBeVisible()
+  // Selected by role rather than by label: the start button is translated, so
+  // matching its text would tie the smoke run to one language.
+  const startButton = page.locator('.intro-actions .primary-button')
+  await expect(startButton).toBeVisible()
+  // No weapon to choose any more - the only loadout is the beam and the laser.
+  await expect(page.locator('.weapon-choice')).toHaveCount(0)
+  await startButton.click()
+  await expect(page.locator('canvas').first()).toBeVisible()
   expect(Date.now() - started).toBeLessThan(3000)
+
+  // The opening bulletin goes on air with the run and names what is already in
+  // the sky, then leaves on its own.
+  const band = page.locator('.breaking-band')
+  await expect(band).toBeVisible()
+  await expect(band).toContainText('드론')
 
   await page.keyboard.down('q')
   await page.waitForTimeout(700)
   await page.keyboard.up('q')
   await page.waitForTimeout(550)
-  const heldShotMetrics = JSON.parse(await page.locator('canvas').getAttribute('data-render-metrics') ?? '{}')
+  const heldShotMetrics = JSON.parse(await page.locator('canvas[data-render-metrics]').getAttribute('data-render-metrics') ?? '{}')
   expect(heldShotMetrics.laserShotsFired).toBe(1)
-  expect(heldShotMetrics.selectedWeapon).toBe('orbit-satellite')
-  expect(heldShotMetrics.weaponShotsFired).toBeGreaterThan(0)
-  expect(heldShotMetrics.activeWeaponProjectiles).toBeGreaterThan(0)
   expect(heldShotMetrics.activeTraffic).toBeGreaterThan(0)
 
   await page.keyboard.press('q')
   await page.waitForTimeout(550)
-  const secondShotMetrics = JSON.parse(await page.locator('canvas').getAttribute('data-render-metrics') ?? '{}')
+  const secondShotMetrics = JSON.parse(await page.locator('canvas[data-render-metrics]').getAttribute('data-render-metrics') ?? '{}')
   expect(secondShotMetrics.laserShotsFired).toBe(2)
 
   const viewport = page.viewportSize()!
@@ -33,7 +40,7 @@ test('loads first frame and validates combat and high-altitude flight', async ({
   await page.waitForTimeout(7500)
   await page.keyboard.up('w')
   await page.waitForTimeout(550)
-  const altitudeMetrics = JSON.parse(await page.locator('canvas').getAttribute('data-render-metrics') ?? '{}')
+  const altitudeMetrics = JSON.parse(await page.locator('canvas[data-render-metrics]').getAttribute('data-render-metrics') ?? '{}')
   expect(altitudeMetrics.height).toBeGreaterThan(125)
   expect(altitudeMetrics.activeBuildings).toBeGreaterThan(20)
   await page.mouse.move(viewport.width / 2, viewport.height - 4)

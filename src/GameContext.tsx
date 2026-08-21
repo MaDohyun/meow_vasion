@@ -43,8 +43,8 @@ import {
 import { requestedPilotExpression, updatePilotExpression, type PilotExpression } from './core/pilot'
 import { activeWorldColliders, createActiveWorld, updateActiveWorld, WORLD_MAX_CARS, WORLD_REMOVE_RADIUS, type ActiveWorld, type ProceduralCar } from './core/world'
 import { captureTrafficCar, createTrafficState, releaseTrafficSlot, stepTraffic, TRAFFIC_MAX_CARS, type TrafficCar, type TrafficState } from './core/traffic'
+import { BROADCAST_SECONDS } from './core/broadcast'
 import { setBgmWave, startBgm, stopBgm, tone } from './audio'
-import { activeWeaponProjectileCount, createWeaponState, stepWeapons, type WeaponHitHandler, type WeaponId, type WeaponState, type WeaponTarget, type WeaponView } from './core/weapons'
 
 export type GamePhase = 'intro' | 'playing' | 'results'
 
@@ -62,6 +62,11 @@ export type GameRuntime = {
   remainingTime: number
   score: number
   waveStage: number
+  /** Which wave bulletin is on air, and for how much longer. The simulation
+   *  holds the stage number only - the words are chosen at render time, in
+   *  whatever language the player set. */
+  broadcastStage: number
+  broadcastTime: number
   loadedCars: number
   damageCooldown: number
   collisionCooldown: number
@@ -81,11 +86,6 @@ export type GameRuntime = {
   laserProjectiles: LaserProjectile[]
   laserBursts: LaserBurst[]
   laserTargets: LaserSphereTarget[]
-  selectedWeapon: WeaponId
-  weapons: WeaponState
-  weaponTargets: WeaponTarget[]
-  weaponView: WeaponView
-  weaponHitHandler: WeaponHitHandler
   enemies: EnemyState
   enemiesDown: number
   beamObjects: BeamObject[]
@@ -131,6 +131,9 @@ export type GameSnapshot = {
   survivalTarget: number
   score: number
   waveStage: number
+  /** The wave bulletin currently on air, or null when nothing is. */
+  broadcastStage: number | null
+  broadcastRemaining: number
   daylightLabel: string
   nightFactor: number
   size: number
@@ -151,9 +154,6 @@ export type GameSnapshot = {
   beamTargetId: string | null
   laserActive: boolean
   laserFlash: number
-  selectedWeapon: WeaponId
-  weaponShotsFired: number
-  activeWeaponProjectiles: number
   activeEnemies: number
   enemiesDown: number
   beamObjectCount: number
@@ -192,7 +192,6 @@ type GameContextValue = {
   advance: (dt: number) => void
   start: () => void
   restart: () => void
-  selectWeapon: (weapon: WeaponId) => void
   quality: RenderQuality
   setQuality: (quality: RenderQuality) => void
   language: Language
@@ -255,7 +254,7 @@ function makeTrafficBeamObject(car: TrafficCar): BeamObject {
   }
 }
 
-function makeRuntime(initialWeapon: WeaponId = 'homing-missile'): GameRuntime {
+function makeRuntime(): GameRuntime {
   const drone = createDroneState()
   // Start around the city's mid-rise band instead of at street level. The
   // opening view immediately reads as flying between buildings.
@@ -268,11 +267,7 @@ function makeRuntime(initialWeapon: WeaponId = 'homing-missile'): GameRuntime {
   const traffic = createTrafficState((Math.random() * 0xffffffff) >>> 0)
   const enemies = createEnemyState()
   const crowdThreats = [{ ...drone.position }, ...traffic.cars.map((car) => ({ ...car.position })), ...enemies.slots.map((enemy) => ({ ...enemy.position })), ...crowds.objects.map((object) => ({ ...object.position }))]
-  const weapons = createWeaponState(initialWeapon)
-  const weaponTargets: WeaponTarget[] = []
-  const weaponView: WeaponView = { position: drone.position, heading: drone.heading, pitch: drone.pitch, targets: weaponTargets }
-  let runtime: GameRuntime
-  runtime = {
+  const runtime: GameRuntime = {
     drone,
     world,
     worldColliders: activeWorldColliders(world),
@@ -280,6 +275,8 @@ function makeRuntime(initialWeapon: WeaponId = 'homing-missile'): GameRuntime {
     remainingTime: RUN_SECONDS,
     score: 0,
     waveStage: 0,
+    broadcastStage: 0,
+    broadcastTime: 0,
     loadedCars: 0,
     damageCooldown: 0,
     collisionCooldown: 0,
@@ -299,11 +296,6 @@ function makeRuntime(initialWeapon: WeaponId = 'homing-missile'): GameRuntime {
     laserProjectiles: createLaserPool(),
     laserBursts: createLaserBurstPool(),
     laserTargets: [],
-    selectedWeapon: initialWeapon,
-    weapons,
-    weaponTargets,
-    weaponView,
-    weaponHitHandler: (targetId, damage) => registerEnemyHit(runtime, targetId, damage, 'AUTO'),
     enemies,
     enemiesDown: 0,
     beamObjects: [...parkingCarsAround(drone.position), ...world.cars].slice(0, WORLD_MAX_CARS).map(makeBeamObject),
@@ -367,27 +359,6 @@ function writeLaserSphereTarget(targets: LaserSphereTarget[], slot: number, id: 
   target.radius = radius
   targets[slot] = target
   return slot + 1
-}
-
-function writeWeaponTarget(targets: WeaponTarget[], slot: number, id: string, center: Vec3, radius: number) {
-  const target = targets[slot] ?? { id, center: { x: 0, y: 0, z: 0 }, radius }
-  target.id = id
-  target.center.x = center.x
-  target.center.y = center.y
-  target.center.z = center.z
-  target.radius = radius
-  targets[slot] = target
-  return slot + 1
-}
-
-function syncWeaponTargets(game: GameRuntime) {
-  let slot = 0
-  for (const enemy of game.enemies.slots) {
-    if (!enemy.active || enemy.absorbing) continue
-    slot = writeWeaponTarget(game.weaponTargets, slot, enemy.id, enemy.position, enemy.kind === 'boss' ? 7 : enemy.hitRadius)
-  }
-  game.weaponTargets.length = slot
-  return game.weaponTargets
 }
 
 function laserSphereTargets(game: GameRuntime) {
@@ -468,7 +439,7 @@ function dropCars(game: GameRuntime) {
   }
 }
 
-function registerEnemyHit(game: GameRuntime, id: string, damage: number, source: 'LASER' | 'AUTO') {
+function registerEnemyHit(game: GameRuntime, id: string, damage: number) {
   const result = hitEnemy(game.enemies, id, damage)
   if (!result.destroyed || !result.kind) return
   const reward = result.kind === 'boss' ? 1200 : result.kind === 'tank' ? 260 : result.kind === 'anti-air' ? 180 : result.kind === 'fighter' ? 140 : result.kind === 'helicopter' ? 80 : result.kind === 'police-car' ? 55 : 35
@@ -479,7 +450,7 @@ function registerEnemyHit(game: GameRuntime, id: string, damage: number, source:
 }
 
 function registerEnemyLaserHit(game: GameRuntime, id: string) {
-  registerEnemyHit(game, id, 1, 'LASER')
+  registerEnemyHit(game, id, 1)
 }
 
 function destroyCar(game: GameRuntime, id: string, direction: Vec3) {
@@ -604,6 +575,8 @@ function snapshotOf(game: GameRuntime): GameSnapshot {
     survivalTarget: SURVIVAL_TARGET_TIME,
     score: game.score,
     waveStage: game.waveStage,
+    broadcastStage: game.broadcastTime > 0 ? game.broadcastStage : null,
+    broadcastRemaining: game.broadcastTime,
     daylightLabel: game.daylight.label,
     nightFactor: game.daylight.nightFactor,
     size: game.size,
@@ -624,9 +597,6 @@ function snapshotOf(game: GameRuntime): GameSnapshot {
     beamTargetId: game.beamTargetId,
     laserActive: game.laserActive,
     laserFlash: game.laserFlash,
-    selectedWeapon: game.selectedWeapon,
-    weaponShotsFired: game.weapons.shotsFired,
-    activeWeaponProjectiles: activeWeaponProjectileCount(game.weapons),
     activeEnemies: activeEnemyCount(game.enemies),
     enemiesDown: game.enemiesDown,
     beamObjectCount: game.loadedCars,
@@ -663,6 +633,14 @@ function updatePilotStatus(game: GameRuntime) {
   game.pilotPreviousThreat = game.waveStage
 }
 
+/** Put one wave bulletin on air. There is only ever one band, so raising a
+ *  bulletin while another is running replaces it rather than queueing behind
+ *  it - the newer wave is the one worth reading about. */
+function raiseBroadcast(game: GameRuntime, stage: number) {
+  game.broadcastStage = stage
+  game.broadcastTime = BROADCAST_SECONDS
+}
+
 /**
  * Callouts are stored as a key, not a sentence. The simulation writes what
  * happened; the interface decides what language to say it in.
@@ -681,6 +659,9 @@ function endRun(game: GameRuntime, title: string, victory: boolean) {
   game.victory = victory
   game.beamActive = false
   game.laserActive = false
+  // The run is over; a bulletin about the next wave would be reporting on a
+  // city that is no longer under attack.
+  game.broadcastTime = 0
   game.message = title
   game.messageKey = null
   game.messageTime = 10
@@ -780,6 +761,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     game.damageCooldown = Math.max(0, game.damageCooldown - d)
     game.collisionCooldown = Math.max(0, game.collisionCooldown - d)
     game.laserCooldown = Math.max(0, game.laserCooldown - d)
+    game.broadcastTime = Math.max(0, game.broadcastTime - d)
     game.laserFlash = Math.max(0, game.laserFlash - d)
     stepLaserBursts(game.laserBursts, d)
     stepLaserProjectiles(game.laserProjectiles, d)
@@ -828,17 +810,15 @@ export function GameProvider({ children }: { children: ReactNode }) {
       game.message = waveLabelForTime(game.sessionTime)
       game.messageKey = null
       game.messageTime = 2.2
+      // The arcade label says the wave changed; the bulletin says what the
+      // government just sent. They sit in different places on screen and are
+      // meant to be read one after the other.
+      raiseBroadcast(game, game.waveStage)
       tone('upgrade')
     }
     syncEnemyTiers(game.enemies, game.sessionTime, game.drone.position, game.drone.heading, d)
     syncAntiAirEnemies(game.enemies, game.sessionTime, game.world.buildings)
     stepEnemies(game.enemies, game.drone.position, d)
-    syncWeaponTargets(game)
-    game.weaponView.position = game.drone.position
-    game.weaponView.heading = game.drone.heading
-    game.weaponView.pitch = game.drone.pitch
-    game.weaponView.targets = game.weaponTargets
-    stepWeapons(game.weapons, game.weaponView, d, game.weaponHitHandler)
     if (collision.hit && collision.impulse > 2.5 && game.collisionCooldown <= 0) { game.collisionCooldown = 0.45; registerImpact(game, 'BUILDING') }
 
     game.beamActive = input.beam
@@ -970,6 +950,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
     const game = runtime.current
     game.phase = 'playing'
     setMessage(game, 'msgRunStart', 3)
+    // Stage 0 never crosses a wave boundary, so the opening bulletin - the one
+    // that explains the drones already hanging in the sky - is raised here.
+    raiseBroadcast(game, 0)
     publish()
   }, [publish])
 
@@ -987,26 +970,19 @@ export function GameProvider({ children }: { children: ReactNode }) {
     storeLanguage(next)
   }, [])
 
-  const selectWeapon = useCallback((weapon: WeaponId) => {
-    const game = runtime.current
-    if (game.phase !== 'intro') return
-    game.selectedWeapon = weapon
-    game.weapons = createWeaponState(weapon)
-    publish()
-  }, [publish])
-
   const restart = useCallback(() => {
     startBgm()
     pointer.current = { x: 0, y: 0 }
-    runtime.current = makeRuntime(runtime.current.selectedWeapon)
+    runtime.current = makeRuntime()
     runtime.current.phase = 'playing'
     runtime.current.message = 'NEW RUN · ABSORB TIME TO SURVIVE'
     runtime.current.messageTime = 3
+    raiseBroadcast(runtime.current, 0)
     publish()
   }, [publish])
 
   const setMobileInput = useCallback((input: Partial<MobileInput>) => { Object.assign(mobile.current, input) }, [])
-  const value = useMemo<GameContextValue>(() => ({ runtime, snapshot, readInput, advance, start, restart, selectWeapon, setMobileInput, quality, setQuality, language, setLanguage, t: STRINGS[language] }), [advance, quality, readInput, restart, selectWeapon, setMobileInput, setQuality, snapshot, start, language, setLanguage])
+  const value = useMemo<GameContextValue>(() => ({ runtime, snapshot, readInput, advance, start, restart, setMobileInput, quality, setQuality, language, setLanguage, t: STRINGS[language] }), [advance, quality, readInput, restart, setMobileInput, setQuality, snapshot, start, language, setLanguage])
   return <GameContext.Provider value={value}>{children}</GameContext.Provider>
 }
 
