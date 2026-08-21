@@ -10,10 +10,9 @@ const vertexShader = `
   }
 `
 
-// Deliberately still a single pass over a small offscreen target rather than a
-// composer chain. Bloom here is a handful of extra taps on a 640x360 buffer;
-// a separate bright-pass plus blur pipeline would cost several full-screen
-// passes for a look this palette does not need.
+// A single, soft comfort pass. It deliberately avoids motion blur, chromatic
+// aberration, speed lines and hard flashes: all four make a fast 3D game more
+// tiring to track even when the underlying camera is stable.
 const fragmentShader = `
   uniform sampler2D tDiffuse;
   uniform vec2 texel;
@@ -40,7 +39,7 @@ const fragmentShader = `
   vec3 brightPass(vec2 uv) {
     vec3 c = texture2D(tDiffuse, uv).rgb;
     float luma = dot(c, vec3(0.2126, 0.7152, 0.0722));
-    return c * smoothstep(0.66, 1.0, luma);
+    return c * smoothstep(0.84, 1.08, luma);
   }
 
   vec3 gatherBloom(vec2 uv) {
@@ -49,8 +48,8 @@ const fragmentShader = `
     for (int i = 0; i < 8; i++) {
       float a = float(i) * 0.7853981634;
       vec2 dir = vec2(cos(a), sin(a));
-      sum += brightPass(uv + dir * texel * 3.0);
-      if (quality > 0.5) sum += brightPass(uv + dir * texel * 7.0);
+      sum += brightPass(uv + dir * texel * 2.2);
+      if (quality > 0.5) sum += brightPass(uv + dir * texel * 4.8);
     }
     return sum / (quality > 0.5 ? 16.0 : 8.0);
   }
@@ -58,19 +57,16 @@ const fragmentShader = `
   void main() {
     vec2 centered = vUv - 0.5;
     float radius = length(centered);
-    float ray = abs(sin(atan(centered.y, centered.x) * 24.0 + radius * 70.0));
-    float lines = smoothstep(0.92, 1.0, ray) * smoothstep(0.35, 0.8, radius) * speed;
     vec3 color = texture2D(tDiffuse, vUv).rgb;
     color += gatherBloom(vUv) * bloom;
-    float dither = bayer4(gl_FragCoord.xy) - 0.5;
-    color = floor(color * 13.0 + dither * 0.16 + 0.5) / 13.0;
-    color = pow(color, vec3(0.94));
-    color = mix(vec3(0.012, 0.016, 0.032), color, 0.965);
-    // Vignette. Stronger than the daytime value: at night it frames the city
-    // without eating the screen edges where enemies come from.
-    color *= 1.05 - radius * radius * 0.40;
-    color += lines * vec3(1.0, 0.9, 0.65) * 0.12;
-    color = mix(color, vec3(1.0) - color, impact * 0.45);
+    float luma = dot(color, vec3(0.2126, 0.7152, 0.0722));
+    color = mix(vec3(luma), color, 0.84);
+    color = pow(max(color, 0.0), vec3(0.84));
+    color = mix(vec3(0.19, 0.18, 0.2), color, 0.96);
+    color *= 1.02 - radius * radius * 0.07;
+    // A warm, very short luminance lift is readable without the disorienting
+    // full-frame colour inversion the old impact feedback used.
+    color = mix(color, vec3(1.0, 0.93, 0.86), impact * 0.08);
     gl_FragColor = vec4(color, 1.0);
   }
 `
@@ -80,8 +76,8 @@ export type RenderQuality = 'high' | 'low'
 export function PostFx({ speed, impact, quality }: { speed: number; impact: number; quality: RenderQuality }) {
   const { gl, scene, camera, size } = useThree()
   const target = useMemo(() => new THREE.WebGLRenderTarget(640, 360, {
-    minFilter: THREE.NearestFilter,
-    magFilter: THREE.NearestFilter,
+    minFilter: THREE.LinearFilter,
+    magFilter: THREE.LinearFilter,
     depthBuffer: true,
   }), [])
   const post = useMemo(() => {
@@ -120,10 +116,10 @@ export function PostFx({ speed, impact, quality }: { speed: number; impact: numb
   }, [post.material, quality, size.height, size.width, target])
 
   useFrame(() => {
-    post.material.uniforms.speed!.value = Math.min(1, Math.max(0, (speed - 14) / 28))
+    post.material.uniforms.speed!.value = 0
     post.material.uniforms.impact!.value = impact
     post.material.uniforms.quality!.value = quality === 'high' ? 1 : 0
-    post.material.uniforms.bloom!.value = quality === 'high' ? 0.9 : 0.62
+    post.material.uniforms.bloom!.value = quality === 'high' ? 0.3 : 0.1
     gl.setRenderTarget(target)
     gl.render(scene, camera)
     if (import.meta.env.DEV) {

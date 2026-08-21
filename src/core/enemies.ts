@@ -1,3 +1,4 @@
+import type { BeamObject } from './beam'
 import type { Vec3 } from './drone'
 import { seedForWorldCell, WORLD_CELL_SIZE, type ProceduralBuilding } from './world'
 
@@ -100,8 +101,7 @@ export const ENEMY_CONTACT_DAMAGE: Record<EnemyKind, number> = {
   boss: 8,
 }
 
-export type EnemySlot = {
-  id: string
+export type EnemySlot = BeamObject & {
   kind: EnemyKind
   slot: number
   generation: number
@@ -153,6 +153,30 @@ export type EnemyState = {
 
 const ORDER: EnemyKind[] = ['drone', 'police', 'police-car', 'helicopter', 'soldier', 'fighter', 'anti-air', 'tank', 'boss']
 const SPAWN_ORDER: EnemyKind[] = ['boss', 'tank', 'anti-air', 'fighter', 'soldier', 'helicopter', 'police-car', 'police', 'drone']
+
+export const ENEMY_DIAMETER: Record<EnemyKind, number> = {
+  drone: 1.6,
+  police: 1.35,
+  'police-car': 3.2,
+  helicopter: 4.6,
+  soldier: 1.55,
+  fighter: 4.4,
+  'anti-air': 5.2,
+  tank: 4.8,
+  boss: 13.6,
+}
+
+const ENEMY_MASS: Record<EnemyKind, number> = {
+  drone: 0.7,
+  police: 0.4,
+  'police-car': 2.8,
+  helicopter: 4.1,
+  soldier: 0.55,
+  fighter: 3.8,
+  'anti-air': 7,
+  tank: 6.4,
+  boss: 20,
+}
 
 export function waveStageForTime(elapsed: number) {
   let stage = 0
@@ -212,10 +236,26 @@ function makeSlot(kind: EnemyKind, slot: number): EnemySlot {
     slot,
     generation: 0,
     active: false,
+    mass: ENEMY_MASS[kind],
+    color: '#ff3355',
     hp: ENEMY_MAX_HP[kind],
     maxHp: ENEMY_MAX_HP[kind],
     position: { x: 0, y: 0, z: 0 },
     velocity: { x: 0, y: 0, z: 0 },
+    rotation: { x: 0, y: 0, z: 0 },
+    angularVelocity: { x: 0, y: 0, z: 0 },
+    inBeam: false,
+    tether: 0,
+    playerTouched: false,
+    destroying: false,
+    destroyTimer: 0,
+    explosionPending: false,
+    absorbing: false,
+    absorbTimer: 0,
+    diameter: ENEMY_DIAMETER[kind],
+    scoreValue: kind === 'boss' ? 1200 : kind === 'tank' ? 260 : kind === 'fighter' ? 140 : kind === 'helicopter' ? 80 : kind === 'police-car' ? 55 : 35,
+    beamImmune: kind === 'anti-air',
+    freePhysics: false,
     target: { x: 0, y: 0, z: 0 },
     phase: slot / Math.max(1, ENEMY_CAPS[kind]) * Math.PI * 2,
     age: 0,
@@ -252,6 +292,20 @@ function resetSlot(enemy: EnemySlot, player: Vec3, heading: number, state: Enemy
   enemy.age = 0
   enemy.telegraph = 0
   enemy.aiming = false
+  enemy.inBeam = false
+  enemy.tether = 0
+  enemy.playerTouched = false
+  enemy.destroying = false
+  enemy.destroyTimer = 0
+  enemy.explosionPending = false
+  enemy.absorbing = false
+  enemy.absorbTimer = 0
+  enemy.rotation.x = 0
+  enemy.rotation.y = 0
+  enemy.rotation.z = 0
+  enemy.angularVelocity.x = 0
+  enemy.angularVelocity.y = 0
+  enemy.angularVelocity.z = 0
   enemy.phase = heading + (enemy.slot + 1) * 2.399963
   enemy.mode = enemy.kind === 'fighter' ? 'strafe' : enemy.kind === 'anti-air' ? 'fixed' : enemy.kind === 'police' || enemy.kind === 'police-car' || enemy.kind === 'soldier' || enemy.kind === 'tank' ? 'ground' : enemy.kind === 'boss' ? 'chase' : 'roam'
   enemy.radius = enemy.kind === 'fighter' ? 110 : enemy.kind === 'boss' ? 78 : enemy.kind === 'helicopter' ? 92 : 82
@@ -367,6 +421,10 @@ export function syncAntiAirEnemies(state: EnemyState, elapsed: number, buildings
     slot.hp = slot.maxHp
     slot.sourceId = building.id
     slot.mode = 'fixed'
+    slot.beamImmune = true
+    slot.inBeam = false
+    slot.tether = 0
+    slot.absorbing = false
     slot.position.x = building.position.x
     slot.position.y = building.size.y + 2.3
     slot.position.z = building.position.z
@@ -483,6 +541,11 @@ export function stepEnemies(state: EnemyState, player: Vec3, dt: number) {
   const d = Math.min(Math.max(0, dt), 0.05)
   for (const enemy of state.slots) {
     if (!enemy.active) continue
+    if (enemy.absorbing || enemy.inBeam || enemy.tether > 0.02) {
+      enemy.aiming = false
+      enemy.telegraph = 0
+      continue
+    }
     if (enemy.kind === 'anti-air') {
       enemy.aiming = player.y >= 28 && distanceToPlayer(enemy, player) <= 145
     } else if (enemy.kind === 'fighter') stepFighter(enemy, player, d)
@@ -561,7 +624,7 @@ export function stepEnemyProjectiles(state: EnemyState, player: Vec3, dt: number
 
 export function hitEnemy(state: EnemyState, id: string, damage = 1) {
   for (const enemy of state.slots) {
-    if (!enemy.active || enemy.id !== id) continue
+    if (!enemy.active || enemy.absorbing || enemy.id !== id) continue
     enemy.hp = Math.max(0, enemy.hp - damage)
     if (enemy.hp > 0) return { hit: true, destroyed: false, kind: enemy.kind, enemy }
     enemy.active = false
@@ -581,7 +644,7 @@ export function activeEnemyCount(state: EnemyState, kind?: EnemyKind) {
 export function nearbyEnemyThreats(state: EnemyState, player: Vec3) {
   let count = 0
   for (const enemy of state.slots) {
-    if (!enemy.active) continue
+    if (!enemy.active || enemy.absorbing || enemy.inBeam || enemy.tether > 0.02) continue
     const range = enemy.kind === 'anti-air' ? 145 : enemy.kind === 'drone' ? 32 : enemy.kind === 'helicopter' ? 42 : enemy.hitRadius + 2.4
     if (distanceToPlayer(enemy, player) <= range) count += 1
   }
@@ -595,7 +658,7 @@ export function resolveEnemyContacts(state: EnemyState, player: Vec3, playerRadi
   let damage = 0
   state.contactKills = 0
   for (const enemy of state.slots) {
-    if (!enemy.active) continue
+    if (!enemy.active || enemy.absorbing || enemy.inBeam || enemy.tether > 0.02) continue
     if (distanceToPlayer(enemy, player) > enemy.hitRadius + playerRadius) continue
     const contact = ENEMY_CONTACT_DAMAGE[enemy.kind]
     if (contact > damage) damage = contact

@@ -8,6 +8,7 @@ import {
   isSizeFatal,
   shrinkSize,
   sizeProfile,
+  ufoDiameter,
 } from '../src/core/size'
 
 describe('craft size as the only resource', () => {
@@ -39,7 +40,8 @@ describe('craft size as the only resource', () => {
   })
 
   it('pulls the camera back as the craft grows', () => {
-    expect(sizeProfile(SIZE_MAX).cameraDistance).toBeGreaterThan(sizeProfile(SIZE_START).cameraDistance)
+    expect(sizeProfile(SIZE_MAX).cameraDistance).toBeGreaterThan(sizeProfile(SIZE_START).cameraDistance * 4)
+    expect(ufoDiameter(SIZE_MAX) / 3).toBeGreaterThan(5)
   })
 
   it('grows on absorption and shrinks on hits, clamped at the top', () => {
@@ -51,16 +53,15 @@ describe('craft size as the only resource', () => {
     expect(clampSize(-5)).toBe(0)
   })
 
-  it('needs a real feeding streak to recover a heavy hit', () => {
-    // A missile should cost several bodies, or damage stops mattering.
+  it('uses the doubled feeding pace without making one person erase a missile', () => {
     let size = shrinkSize(SIZE_START, 'missile')
     let absorbed = 0
     while (size < SIZE_START) {
       size = growSize(size, 'pedestrian')
       absorbed += 1
     }
-    expect(absorbed).toBeGreaterThanOrEqual(4)
-    expect(absorbed).toBeLessThanOrEqual(8)
+    expect(absorbed).toBeGreaterThanOrEqual(2)
+    expect(absorbed).toBeLessThanOrEqual(4)
   })
 
   it('reports ratio from the death threshold, not from zero', () => {

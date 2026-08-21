@@ -14,11 +14,13 @@ import {
 const view = (elapsed: number, x = 0, z = 0) => ({ position: { x, y: 6, z }, heading: 0, elapsed })
 
 describe('ground explosives', () => {
-  it('cannot be absorbed, only carried', () => {
-    expect(isAbsorbable('explosive')).toBe(false)
-    expect(isAbsorbable('car')).toBe(false)
-    expect(isAbsorbable('pedestrian')).toBe(true)
-    expect(isAbsorbable('cat')).toBe(true)
+  it('gates non-building objects by one-third of the current UFO diameter', () => {
+    expect(isAbsorbable('explosive', 5.1, 1.8)).toBe(false)
+    expect(isAbsorbable('explosive', 5.1, 5.1)).toBe(true)
+    expect(isAbsorbable('car', 2.9, 3)).toBe(true)
+    expect(isAbsorbable('pedestrian', 0.78, 1.8)).toBe(true)
+    expect(isAbsorbable('cat', 0.55, 1.8)).toBe(true)
+    expect(isAbsorbable('anti-air', 1, 20)).toBe(false)
   })
 
   it('stays out of the opening minute and then builds up', () => {

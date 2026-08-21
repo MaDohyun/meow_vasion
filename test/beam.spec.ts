@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { BEAM_MIN_GRIP, beamGrip, beamProfile, beamVisualLength, isInsideBeam, stepBeamObjects, type BeamField, type BeamObject } from '../src/core/beam'
+import { BEAM_MIN_GRIP, absorptionScore, beamGrip, beamProfile, beamVisualLength, beginNearbyBeamObjectAbsorption, isInsideBeam, stepBeamObjects, type BeamField, type BeamObject } from '../src/core/beam'
 
 const makeCar = (id = 'car-1', x = 0, y = 0.65, z = 0): BeamObject => ({
   id,
@@ -132,5 +132,26 @@ describe('tractor beam physics', () => {
     touchedRight.playerTouched = true
     stepBeamObjects([touchedLeft, touchedRight], inactive, 1 / 60)
     expect(Math.abs(touchedRight.position.x - touchedLeft.position.x)).toBeGreaterThan(2)
+  })
+
+  it('only starts absorption after the UFO one-third diameter gate is met', () => {
+    const car = makeCar('size-gated', 0, 6.2, 0)
+    car.inBeam = true
+    car.diameter = 2.9
+    expect(beginNearbyBeamObjectAbsorption([car], { x: 0, y: 7, z: 0 }, 2.8, 3)).toBeNull()
+    expect(beginNearbyBeamObjectAbsorption([car], { x: 0, y: 7, z: 0 }, 2.9, 3)).toBe(car)
+    expect(car.absorbing).toBe(true)
+  })
+
+  it('awards more base score for a larger absorbed object', () => {
+    const person = makeCar('person')
+    person.kind = 'pedestrian'
+    person.mass = 0.28
+    person.diameter = 0.78
+    const tanker = makeCar('tanker')
+    tanker.kind = 'explosive'
+    tanker.mass = 6.2
+    tanker.diameter = 5.1
+    expect(absorptionScore(tanker)).toBeGreaterThan(absorptionScore(person) * 4)
   })
 })

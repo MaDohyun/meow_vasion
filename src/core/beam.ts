@@ -1,13 +1,33 @@
 import type { Vec3 } from './drone'
 
-export type BeamObjectKind = 'car' | 'pedestrian' | 'cat' | 'explosive'
+export type BeamObjectKind =
+  | 'car' | 'pedestrian' | 'cat' | 'explosive'
+  | 'drone' | 'police' | 'police-car' | 'helicopter' | 'soldier'
+  | 'fighter' | 'anti-air' | 'tank' | 'boss'
 
-/**
- * Nothing inanimate can be absorbed. It hangs off the beam instead, and its
- * mass is what slows the craft - that is the entire speed penalty in the game.
- */
-export function isAbsorbable(kind: BeamObjectKind) {
-  return kind === 'pedestrian' || kind === 'cat'
+export const BEAM_ABSORB_TIME = 0.24
+
+const DEFAULT_DIAMETER: Record<BeamObjectKind, number> = {
+  cat: 0.55,
+  pedestrian: 0.78,
+  police: 1.35,
+  soldier: 1.55,
+  drone: 1.6,
+  car: 2.9,
+  'police-car': 3.2,
+  fighter: 4.4,
+  helicopter: 4.6,
+  tank: 4.8,
+  explosive: 5.1,
+  'anti-air': 5.2,
+  boss: 13.6,
+}
+
+/** Building-mounted anti-air emplacements are the only beam objects treated
+ * as architecture. Everything else is eligible once it is no wider than a
+ * third of the current UFO diameter. */
+export function isAbsorbable(kind: BeamObjectKind, diameter = DEFAULT_DIAMETER[kind], maxDiameter = Number.POSITIVE_INFINITY) {
+  return kind !== 'anti-air' && diameter <= maxDiameter
 }
 
 export type BeamObject = {
@@ -28,6 +48,14 @@ export type BeamObject = {
   explosionPending: boolean
   absorbing: boolean
   absorbTimer: number
+  /** Broad physical width used by the UFO-size absorption gate. */
+  diameter?: number
+  /** Optional fixed base score; final points still scale with size. */
+  scoreValue?: number
+  /** Building-shaped or otherwise intentionally immune to beam physics. */
+  beamImmune?: boolean
+  /** False for AI actors that should resume their own motion after release. */
+  freePhysics?: boolean
 }
 
 export type BeamField = {
@@ -66,6 +94,47 @@ export function beamProfile(boosting: boolean, radiusScale = 1): BeamProfile {
 
 export function beamVisualLength(droneHeight: number, maxDrop: number, groundHeight = 0.15) {
   return Math.max(0, Math.min(maxDrop, droneHeight - groundHeight))
+}
+
+export function beamObjectDiameter(object: Pick<BeamObject, 'kind' | 'diameter'>) {
+  return object.diameter ?? DEFAULT_DIAMETER[object.kind]
+}
+
+export function absorptionScore(object: Pick<BeamObject, 'kind' | 'diameter' | 'mass' | 'scoreValue'>, scoreMultiplier = 1) {
+  const diameter = beamObjectDiameter(object)
+  const base = object.scoreValue ?? 8 + diameter * diameter * 7 + object.mass * 5
+  return Math.max(1, Math.round(base * Math.max(0.1, scoreMultiplier)))
+}
+
+export function beginNearbyBeamObjectAbsorption(
+  objects: BeamObject[],
+  ufoPosition: Vec3,
+  maxDiameter: number,
+  reach: number,
+) {
+  for (const object of objects) {
+    if (!object.active || object.absorbing || !object.inBeam || object.beamImmune) continue
+    const diameter = beamObjectDiameter(object)
+    if (!isAbsorbable(object.kind, diameter, maxDiameter)) continue
+    const distance = Math.hypot(
+      object.position.x - ufoPosition.x,
+      object.position.y - ufoPosition.y,
+      object.position.z - ufoPosition.z,
+    )
+    if (distance > reach) continue
+    object.absorbing = true
+    object.absorbTimer = BEAM_ABSORB_TIME
+    object.inBeam = false
+    object.tether = 0
+    object.velocity.x = 0
+    object.velocity.y = 0
+    object.velocity.z = 0
+    object.angularVelocity.x = 0
+    object.angularVelocity.y = 0
+    object.angularVelocity.z = 0
+    return object
+  }
+  return null
 }
 
 function hashId(id: string) {
@@ -109,13 +178,23 @@ export function beginCarDestruction(object: BeamObject, direction: Vec3, inherit
   return true
 }
 
-export function stepBeamObjects(objects: BeamObject[], field: BeamField, dt: number) {
+export function stepBeamObjects(objects: BeamObject[], field: BeamField, dt: number, stepAbsorption = true) {
   const d = Math.min(Math.max(0, dt), 0.05)
   const profile = beamProfile(field.boosting, field.radiusScale)
 
   for (const object of objects) {
     if (!object.active) continue
-    if (object.absorbing) continue
+    if (object.absorbing) {
+      if (!stepAbsorption) continue
+      object.absorbTimer = Math.max(0, object.absorbTimer - d)
+      if (object.absorbTimer <= 0) {
+        object.active = false
+        object.absorbing = false
+        object.inBeam = false
+        object.tether = 0
+      }
+      continue
+    }
     if (object.destroying) {
       object.destroyTimer = Math.max(0, object.destroyTimer - d)
       object.velocity.y -= 7.5 * d
@@ -131,6 +210,11 @@ export function stepBeamObjects(objects: BeamObject[], field: BeamField, dt: num
         object.inBeam = false
         object.tether = 0
       }
+      continue
+    }
+    if (object.beamImmune) {
+      object.inBeam = false
+      object.tether = 0
       continue
     }
     const captured = isInsideBeam(object, field)
@@ -173,6 +257,7 @@ export function stepBeamObjects(objects: BeamObject[], field: BeamField, dt: num
       object.angularVelocity.z += (Math.sin(angle) * 1.6 * wriggle - object.angularVelocity.z) * blend
     } else {
       object.tether = Math.max(0, object.tether - d * 3.5)
+      if (object.freePhysics === false && object.tether <= 0.02) continue
       object.velocity.y -= 9.8 * d
     }
 
@@ -208,10 +293,10 @@ function separateTouchedBeamObjects(objects: BeamObject[]) {
   const minimumDistance = 2.15
   for (let leftIndex = 0; leftIndex < objects.length; leftIndex += 1) {
     const left = objects[leftIndex]!
-    if (!left.active || left.destroying || !left.playerTouched) continue
+    if (!left.active || left.destroying || left.absorbing || !left.playerTouched) continue
     for (let rightIndex = leftIndex + 1; rightIndex < objects.length; rightIndex += 1) {
       const right = objects[rightIndex]!
-      if (!right.active || right.destroying || !right.playerTouched) continue
+      if (!right.active || right.destroying || right.absorbing || !right.playerTouched) continue
       const dx = right.position.x - left.position.x
       const dy = right.position.y - left.position.y
       const dz = right.position.z - left.position.z

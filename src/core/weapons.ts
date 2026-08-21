@@ -80,9 +80,9 @@ export const WEAPON_DEFINITIONS: Record<WeaponId, WeaponDefinition> = {
   },
   'drop-bomb': {
     id: 'drop-bomb',
-    label: '낙하 폭탄',
-    shortLabel: 'BOMB',
-    description: 'UFO 아래로 떨어져 지면을 폭발시킵니다. 저공 비행에 특화됩니다.',
+    label: '유조차 투하',
+    shortLabel: 'TANKER',
+    description: '대형 유조차를 투하해 지면에 강한 폭발을 일으킵니다.',
     cooldown: 2.25,
     damage: 5,
     range: 130,
