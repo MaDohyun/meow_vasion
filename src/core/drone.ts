@@ -7,6 +7,9 @@ export type DroneInput = {
   lookPitch?: number
   vertical: number
   special: boolean
+  /** Temporary world effects can raise horizontal top speed without changing
+   * the player's input range. */
+  speedMultiplier?: number
 }
 
 export type DroneUpgrades = {
@@ -116,9 +119,10 @@ export function stepDrone(
   const isBoosting = next.boostRemaining > 0
   const cargoSpeed = 1 / (1 + load * 0.13)
   const topSpeed = (isBoosting ? DRONE_DEFAULTS.boostSpeed : DRONE_DEFAULTS.maxSpeed) * speedUpgrade * cargoSpeed
+  const speedMultiplier = Math.max(1, input.speedMultiplier ?? 1)
   const lowFlightBonus = next.position.y <= 1.5 ? 1.12 : 1
   const targetSpeed = input.throttle >= 0
-    ? input.throttle * topSpeed * lowFlightBonus
+    ? input.throttle * topSpeed * speedMultiplier * lowFlightBonus
     : input.throttle * 4
   const accel = Math.abs(targetSpeed) < Math.abs(next.speed)
     ? DRONE_DEFAULTS.brakeDeceleration
@@ -140,7 +144,7 @@ export function stepDrone(
   const forwardZ = Math.cos(next.heading) * horizontalForward
   const rightX = Math.cos(next.heading)
   const rightZ = -Math.sin(next.heading)
-  const strafeSpeed = (input.strafe ?? 0) * 14.5
+  const strafeSpeed = (input.strafe ?? 0) * 14.5 * speedMultiplier
   const desiredX = forwardX * next.speed + rightX * strafeSpeed
   const desiredZ = forwardZ * next.speed + rightZ * strafeSpeed
   const lateralRetention = clamp(0.88 + load * 0.018, 0.88, 0.97)

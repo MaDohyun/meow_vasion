@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { collideDrone, createDroneState, stepDrone, type Aabb, type DroneInput, type DroneState, type Vec3 } from './core/drone'
+import { collideDrone, createDroneState, DRONE_DEFAULTS, stepDrone, type Aabb, type DroneInput, type DroneState, type Vec3 } from './core/drone'
 import {
   type BeamField,
   type BeamObject,
@@ -52,6 +52,7 @@ import {
   buildingMass,
   createActiveWorld,
   lakeDepthAt,
+  mysteryCircleAt,
   TUTORIAL_SPAWN,
   updateActiveWorld,
 } from './core/world'
@@ -61,9 +62,10 @@ import { applyUpgrade, createUpgradeState, isUpgradeDue, rollUpgradeChoices, upg
 import { createBuildingRuin, damageBuilding, ruinCollider, type BuildingRuin } from './core/buildings'
 import { stepLakeAbsorption } from './core/lakes'
 import { createMissionState, missionHasQuest, recordMissionEvent, startMissionOne, syncMissionState, type MissionQuest, type MissionState } from './core/missions'
+import { MYSTERY_BOOST_DURATION, MYSTERY_BOOST_MAX_MULTIPLIER, mysteryBoostMultiplier } from './core/mysteryCircles'
 import { absorbShieldDamage, createShieldState, isShieldRegenerating, setShieldCapacity, shieldRatio, stepShield, type ShieldState } from './core/shield'
 import { shouldCrashFromOverload } from './core/overload'
-import { playBoosterSound, playLaserSound, startBeamSound, startGameplayMusic, stopBeamSound, stopGameplayMusic, stopLobbyMusic, tone, unlockAudio } from './audio'
+import { playBoosterSound, playLaserSound, playMysteryCircleSound, startBeamSound, startGameplayMusic, stopBeamSound, stopGameplayMusic, stopLobbyMusic, tone, unlockAudio } from './audio'
 
 export type GamePhase = 'intro' | 'playing' | 'upgrade' | 'results'
 
@@ -110,6 +112,9 @@ export type GameRuntime = {
    *  otherwise a full gauge is a straight line to another full drain and the
    *  cost of using it is only ever "wait for the bar." */
   turboLockout: number
+  mysteryCircleId: string | null
+  mysteryBoostRemaining: number
+  mysteryFlash: number
   aimX: number
   aimY: number
   laserAimOrigin: Vec3
@@ -409,6 +414,9 @@ function makeRuntime(): GameRuntime {
     collisionCooldown: 0,
     turbo: 1,
     turboLockout: 0,
+    mysteryCircleId: null,
+    mysteryBoostRemaining: 0,
+    mysteryFlash: 0,
     aimX: 0,
     aimY: 0,
     laserAimOrigin: { ...drone.position },
@@ -1214,6 +1222,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     game.sizePulse = Math.max(0, game.sizePulse - d * 2.4)
     game.daze = Math.max(0, game.daze - d)
     game.turboLockout = Math.max(0, game.turboLockout - d)
+    game.mysteryFlash = Math.max(0, game.mysteryFlash - d)
     game.timeBonusPulse = Math.max(0, game.timeBonusPulse - d * 2.6)
     game.damageCooldown = Math.max(0, game.damageCooldown - d)
     game.collisionCooldown = Math.max(0, game.collisionCooldown - d)
@@ -1269,7 +1278,33 @@ export function GameProvider({ children }: { children: ReactNode }) {
       }
     } else game.turbo = Math.min(1, game.turbo + d * 0.13 * upgradeMultiplier(game.upgrades, 'turbo-recharge'))
 
-    const flightInput: DroneInput = { ...input, special: false }
+    const mysteryCircle = mysteryCircleAt(game.drone.position)
+    if (mysteryCircle) {
+      if (game.mysteryCircleId !== mysteryCircle.id) {
+        game.mysteryCircleId = mysteryCircle.id
+        game.mysteryBoostRemaining = MYSTERY_BOOST_DURATION
+        game.mysteryFlash = 0.65
+        game.turbo = 1
+        game.turboLockout = 0
+        playMysteryCircleSound()
+        // Give a moving craft the surge immediately, while leaving a parked
+        // craft to choose its own direction with the next throttle input.
+        const horizontalSpeed = Math.hypot(game.drone.velocity.x, game.drone.velocity.z)
+        if (horizontalSpeed > 0.5 || input.throttle > 0) {
+          const direction = horizontalSpeed > 0.5
+            ? { x: game.drone.velocity.x / horizontalSpeed, z: game.drone.velocity.z / horizontalSpeed }
+            : { x: Math.sin(game.drone.heading), z: Math.cos(game.drone.heading) }
+          game.drone.speed = Math.max(game.drone.speed, DRONE_DEFAULTS.maxSpeed * MYSTERY_BOOST_MAX_MULTIPLIER)
+          game.drone.velocity.x = direction.x * game.drone.speed
+          game.drone.velocity.z = direction.z * game.drone.speed
+        }
+      } else game.mysteryBoostRemaining = MYSTERY_BOOST_DURATION
+    } else {
+      game.mysteryCircleId = null
+      game.mysteryBoostRemaining = Math.max(0, game.mysteryBoostRemaining - d)
+    }
+    const mysterySpeedMultiplier = mysteryBoostMultiplier(game.mysteryBoostRemaining)
+    const flightInput: DroneInput = { ...input, special: false, speedMultiplier: mysterySpeedMultiplier }
     const beamStarted = input.beam && !game.beamActive
     const beamStopped = !input.beam && game.beamActive
     game.beamActive = input.beam

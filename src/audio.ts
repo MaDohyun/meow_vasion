@@ -7,6 +7,7 @@ let lobbyMusic: HTMLAudioElement | null = null
 let gameplayMusic: HTMLAudioElement | null = null
 let beamSound: HTMLAudioElement | null = null
 let boosterSound: HTMLAudioElement | null = null
+let mysteryCircleSound: HTMLAudioElement | null = null
 let gameplayFadeFrame: number | null = null
 
 const GAMEPLAY_MUSIC_START_VOLUME = 0.025
@@ -64,6 +65,17 @@ function boosterTrack() {
     boosterSound.volume = 0.4
   }
   return boosterSound
+}
+
+function mysteryCircleTrack() {
+  if (typeof Audio === 'undefined') return null
+  if (!mysteryCircleSound) {
+    mysteryCircleSound = new Audio('/audio/mystery-circle.wav')
+    mysteryCircleSound.loop = false
+    mysteryCircleSound.preload = 'auto'
+    mysteryCircleSound.volume = 0.7
+  }
+  return mysteryCircleSound
 }
 
 /** Best effort on initial load; browsers that block autoplay retry on the
@@ -133,6 +145,14 @@ export function stopBeamSound() {
 /** Play the booster sample once for each fresh boost activation. */
 export function playBoosterSound() {
   const track = boosterTrack()
+  if (!track) return
+  track.currentTime = 0
+  void track.play().catch(() => undefined)
+}
+
+/** Play the mystery-circle surge cue once on entry. */
+export function playMysteryCircleSound() {
+  const track = mysteryCircleTrack()
   if (!track) return
   track.currentTime = 0
   void track.play().catch(() => undefined)

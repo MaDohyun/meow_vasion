@@ -193,6 +193,8 @@ const PARK_SHAPES = [
 // the lake roll, so the signal is a rare city discovery rather than street
 // furniture; the one-tile footprint keeps the mark readable from the air.
 const MYSTERY_SECTOR_SIZE = 6
+export const MYSTERY_CIRCLE_HALF_WIDTH = 12.75
+export const MYSTERY_CIRCLE_HALF_DEPTH = 11.65
 
 /** Returns the deterministic 1–9 tile park cluster that owns a cell. */
 export function parkClusterForCell(cellX: number, cellZ: number) {
@@ -261,6 +263,28 @@ export function isParkAt(position: Pick<Vec3, 'x' | 'z'>) {
 
 export function isMysteryCircleAt(position: Pick<Vec3, 'x' | 'z'>) {
   return mysteryCircleForCell(worldCellCoord(position.x), worldCellCoord(position.z)) !== null
+}
+
+export type MysteryCircleHit = { id: string; x: number; z: number }
+
+/** Returns the circle under a craft, ignoring its altitude. */
+export function mysteryCircleAt(position: Pick<Vec3, 'x' | 'z'>): MysteryCircleHit | null {
+  const centerX = worldCellCoord(position.x)
+  const centerZ = worldCellCoord(position.z)
+  for (let dz = -1; dz <= 1; dz += 1) {
+    for (let dx = -1; dx <= 1; dx += 1) {
+      const cellX = centerX + dx
+      const cellZ = centerZ + dz
+      const id = mysteryCircleForCell(cellX, cellZ)
+      if (!id) continue
+      const x = worldCellCenter(cellX)
+      const z = worldCellCenter(cellZ)
+      const localX = (position.x - x) / MYSTERY_CIRCLE_HALF_WIDTH
+      const localZ = (position.z - z) / MYSTERY_CIRCLE_HALF_DEPTH
+      if (localX * localX + localZ * localZ <= 1) return { id, x, z }
+    }
+  }
+  return null
 }
 
 /**

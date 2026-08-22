@@ -580,7 +580,11 @@ function Ufo() {
   const cameraPosition = useMemo(() => new THREE.Vector3(), [])
   const hullBaseColor = useMemo(() => new THREE.Color(ENTITY.UFO_HULL), [])
   const hullImpactColor = useMemo(() => new THREE.Color('#ff4d4d'), [])
+  const hullMysteryColor = useMemo(() => new THREE.Color('#ffd45e'), [])
   const hullColor = useMemo(() => new THREE.Color(), [])
+  const domeBaseColor = useMemo(() => new THREE.Color(ENTITY.UFO_DOME), [])
+  const domeMysteryColor = useMemo(() => new THREE.Color('#ffe59b'), [])
+  const domeColor = useMemo(() => new THREE.Color(), [])
   const { camera } = useThree()
 
   useFrame((_, dt) => {
@@ -600,13 +604,21 @@ function Ufo() {
     // The player should be readable without becoming a glowing white disc.
     // Keep a small, stable self-light in both daytime and nighttime.
     const impact = Math.max(0, Math.min(1, snapshot.impactFlash))
+    const mysteryFlash = Math.max(0, Math.min(1, game.mysteryFlash / 0.65))
+    const goldFlash = mysteryFlash * (0.78 + 0.22 * (0.5 + 0.5 * Math.sin(game.pilotClock * 24)))
     if (hullMaterial.current) {
       hullColor.copy(hullBaseColor).lerp(hullImpactColor, impact)
+      hullColor.lerp(hullMysteryColor, goldFlash)
       hullMaterial.current.color.copy(hullColor)
       hullMaterial.current.emissive.copy(hullColor)
-      hullMaterial.current.emissiveIntensity = 0.2 + impact * 1.8
+      hullMaterial.current.emissiveIntensity = 0.2 + impact * 1.8 + goldFlash * 2.2
     }
-    if (domeMaterial.current) domeMaterial.current.emissiveIntensity = 0.18
+    if (domeMaterial.current) {
+      domeColor.copy(domeBaseColor).lerp(domeMysteryColor, goldFlash)
+      domeMaterial.current.color.copy(domeColor)
+      domeMaterial.current.emissive.copy(domeColor)
+      domeMaterial.current.emissiveIntensity = 0.18 + goldFlash * 1.7
+    }
 
     const heading = game.drone.heading
     const pitch = game.drone.pitch

@@ -42,7 +42,7 @@ const LAKE_SHORE_TREE_CAPACITY = LANDMARK_CELL_COUNT * 2
 const MYSTERY_MARK_WIDTH = 25.5
 const MYSTERY_MARK_DEPTH = 23.3
 const MYSTERY_BEACON_HEIGHT = 68
-const MYSTERY_PARTICLES_PER_CIRCLE = 88
+const MYSTERY_PARTICLES_PER_CIRCLE = 106
 const MYSTERY_PARTICLE_CAPACITY = LANDMARK_CELL_COUNT * MYSTERY_PARTICLES_PER_CIRCLE
 
 function canvasTexture(
@@ -707,10 +707,14 @@ function MysterySignalPool() {
       const seed = seedForWorldCell(cell.cellX, cell.cellZ, 0x6d797374)
       const seedPhase = (seed % 997) * 0.013
       for (let particle = 0; particle < MYSTERY_PARTICLES_PER_CIRCLE; particle += 1) {
-        const t = (particle + 0.5) / MYSTERY_PARTICLES_PER_CIRCLE
+        // Bias the distribution upward so the signal grows denser toward the
+        // high-rise end of the inverted frustum instead of looking hollow at
+        // the top.
+        const rawT = (particle + 0.5) / MYSTERY_PARTICLES_PER_CIRCLE
+        const t = Math.pow(rawT, 0.72)
         const height = 0.8 + t * MYSTERY_BEACON_HEIGHT
         const pulse = 0.82 + Math.sin(clock.elapsedTime * 1.8 + seedPhase + particle * 0.63) * 0.18
-        const radius = (1.8 + (1 - t) * 10.8) * pulse
+        const radius = (1.8 + t * 10.8) * pulse
         const angle = seedPhase + particle * 2.399963 + clock.elapsedTime * (0.08 + (1 - t) * 0.08)
         const slot = count * 3
         mysteryParticlePositions[slot] = centerX + Math.cos(angle) * radius
