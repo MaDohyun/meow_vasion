@@ -190,6 +190,9 @@ export type EnemySlot = BeamObject & {
   turret: number
   burstLeft: number
   volley: number
+  /** Drone mines arm on proximity and cannot be disarmed once the fuse starts. */
+  mineArmed: boolean
+  mineFuse: number
 }
 
 export type EnemyProjectile = {
@@ -216,6 +219,8 @@ export type EnemyState = {
   lastHitKind: EnemyProjectileKind | null
   /** Where the last suicide drone detonated, for the explosion effect. */
   lastContactPoint: Vec3
+  /** A mine explosion is consumed by the game loop after all enemy movement. */
+  mineExplosion: { position: Vec3; radius: number; damage: number } | null
 }
 
 const ORDER: EnemyKind[] = ['drone', 'police', 'police-car', 'helicopter', 'soldier', 'fighter', 'anti-air', 'tank', 'boss']
@@ -343,6 +348,8 @@ function makeSlot(kind: EnemyKind, slot: number): EnemySlot {
     turret: 0,
     burstLeft: 0,
     volley: 0,
+    mineArmed: false,
+    mineFuse: 0,
   }
 }
 
@@ -350,7 +357,7 @@ export function createEnemyState(seed = 0x91eab7) {
   const slots: EnemySlot[] = []
   for (const kind of ORDER) for (let slot = 0; slot < ENEMY_CAPS[kind]; slot += 1) slots.push(makeSlot(kind, slot))
   const projectiles = Array.from({ length: ENEMY_MAX_PROJECTILES }, (_, slot) => makeProjectile(slot))
-  return { slots, projectiles, destroyedAntiAir: new Set<string>(), waveStage: 0, spawnTimer: 0, randomState: seed >>> 0 || 1, contactKills: 0, lastHitKind: null, lastContactPoint: { x: 0, y: 0, z: 0 } } satisfies EnemyState
+  return { slots, projectiles, destroyedAntiAir: new Set<string>(), waveStage: 0, spawnTimer: 0, randomState: seed >>> 0 || 1, contactKills: 0, lastHitKind: null, lastContactPoint: { x: 0, y: 0, z: 0 }, mineExplosion: null } satisfies EnemyState
 }
 
 export function isAntiAirBuilding(building: Pick<ProceduralBuilding, 'cellX' | 'cellZ'>) {
@@ -388,6 +395,8 @@ function resetSlot(enemy: EnemySlot, player: Vec3, heading: number, state: Enemy
   enemy.turret = 0
   enemy.burstLeft = 0
   enemy.volley = 0
+  enemy.mineArmed = false
+  enemy.mineFuse = 0
   enemy.velocity.x = 0
   enemy.velocity.y = 0
   enemy.velocity.z = 0
@@ -675,7 +684,7 @@ function stepAirEnemy(enemy: EnemySlot, player: Vec3, d: number) {
     // Holds station. The bob is cosmetic; the hazard is that it does not move.
     enemy.position.y = enemy.target.y + Math.sin(enemy.age * 1.3 + enemy.phase) * MINE_BOB
     // Mines are only cleared by leaving them far behind, never by waiting.
-    if (distanceToPlayer(enemy, player) > AIR_DESPAWN_DISTANCE) enemy.active = false
+    if (!enemy.mineArmed && distanceToPlayer(enemy, player) > AIR_DESPAWN_DISTANCE) enemy.active = false
     return
   }
   const kind = enemy.kind === 'drone' ? 'drone' : 'helicopter'
@@ -828,8 +837,26 @@ function stepBattleshipGuns(state: EnemyState, enemy: EnemySlot, player: Vec3, p
 
 export function stepEnemies(state: EnemyState, player: Vec3, dt: number, playerVelocity: Vec3 = STILL) {
   const d = Math.min(Math.max(0, dt), 0.05)
+  state.mineExplosion = null
   for (const enemy of state.slots) {
     if (!enemy.active) continue
+    const mine = enemy.kind === 'drone' && isDroneMine(enemy)
+    if (mine) {
+      const distance = distanceToPlayer(enemy, player)
+      if (!enemy.mineArmed && distance <= 5) {
+        enemy.mineArmed = true
+        enemy.mineFuse = 2.4
+      }
+      if (enemy.mineArmed) {
+        enemy.mineFuse -= d
+        if (enemy.mineFuse <= 0) {
+          state.mineExplosion = { position: { ...enemy.position }, radius: 5, damage: ENEMY_CONTACT_DAMAGE.drone }
+          enemy.active = false
+          enemy.respawn = 4.5
+          continue
+        }
+      }
+    }
     if (enemy.absorbing || enemy.inBeam || enemy.tether > 0.02) {
       enemy.aiming = false
       enemy.telegraph = 0

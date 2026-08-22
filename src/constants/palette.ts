@@ -16,15 +16,15 @@
 
 export const SKY = {
   /** Clear colour behind everything. */
-  BACKGROUND: '#666b8b',
+  BACKGROUND: '#3f679b',
   /** Just above the skyline — the city's own light bouncing off the air. */
-  HORIZON: '#d5a9b9',
+  HORIZON: '#8fb8d6',
   /** Mid sky. */
-  MIDDLE: '#8488ad',
+  MIDDLE: '#5d88c2',
   /** Straight up, the darkest part. */
-  TOP: '#555b82',
+  TOP: '#29467f',
   /** Distance fog. Matches the horizon so buildings dissolve into the sky. */
-  FOG: '#a4a5ba',
+  FOG: '#8baeca',
   MOON: '#fff2d8',
   MOON_HALO: '#d7c8dd',
   STAR: '#fff5dc',
@@ -33,7 +33,7 @@ export const SKY = {
 
 export const LIGHT = {
   /** Cool skylight fill. */
-  AMBIENT: '#d8d4df',
+  AMBIENT: '#b7c5da',
   HEMI_SKY: '#c8d4df',
   HEMI_GROUND: '#777180',
   /** The moon stands in for the sun; low and cold. */

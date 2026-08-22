@@ -118,10 +118,19 @@ describe('deterministic infinite city', () => {
         const building = getProceduralCell(cellX, cellZ).building
         if (!building) continue
         buildings += 1
-        expect(building.size.x).toBeGreaterThanOrEqual(16)
-        expect(building.size.x).toBeLessThanOrEqual(22)
-        expect(building.size.z).toBeGreaterThanOrEqual(16)
-        expect(building.size.z).toBeLessThanOrEqual(22)
+        if (building.largeFootprint) {
+          expect(building.size.x).toBeGreaterThanOrEqual(23.5)
+          expect(building.size.x).toBeLessThanOrEqual(25)
+          expect(building.size.z).toBeGreaterThanOrEqual(23.5)
+          expect(building.size.z).toBeLessThanOrEqual(25)
+          expect(building.size.y).toBeGreaterThanOrEqual(10)
+          expect(building.size.y).toBeLessThanOrEqual(15)
+        } else {
+          expect(building.size.x).toBeGreaterThanOrEqual(16)
+          expect(building.size.x).toBeLessThanOrEqual(22)
+          expect(building.size.z).toBeGreaterThanOrEqual(16)
+          expect(building.size.z).toBeLessThanOrEqual(22)
+        }
         expect(building.position.x - building.size.x / 2 - cellX * WORLD_CELL_SIZE).toBeGreaterThanOrEqual(4.5 - 1e-8)
         expect((cellX + 1) * WORLD_CELL_SIZE - building.position.x - building.size.x / 2).toBeGreaterThanOrEqual(4.5 - 1e-8)
         expect(building.position.z - building.size.z / 2 - cellZ * WORLD_CELL_SIZE).toBeGreaterThanOrEqual(4.5 - 1e-8)
