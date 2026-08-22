@@ -163,6 +163,7 @@ export function PostFx({ speed, impact, impactKind, quality }: { speed: number; 
   const { runtime } = useGame()
   const { gl, scene, camera, size } = useThree()
   const sunWorld = useMemo(() => new THREE.Vector3(), [])
+  const sunViewSpace = useMemo(() => new THREE.Vector3(), [])
   const splashTextures = useMemo(() => ({
     light: splashTexture('light'),
     guided: splashTexture('guided'),
@@ -253,9 +254,29 @@ export function PostFx({ speed, impact, impactKind, quality }: { speed: number; 
       Math.sin(altitude) * 330,
       camera.position.z - 330 * 0.55,
     )
+    // The light source sits at a fixed world bearing, not one relative to
+    // where the camera is looking - as the craft turns, that point swings
+    // behind the camera on every ordinary heading change. Vector3.project()
+    // does not clip that case: a point behind the camera divides by a
+    // near-zero or negative w and comes back at an extreme or sign-flipped
+    // screen position, which is exactly what a "corrupts whenever you move"
+    // symptom looks like once it lands in a texture-sampling shader. Check
+    // the view-space depth before trusting the projection, and drop the
+    // shaft contribution to zero for the frame instead of feeding it a
+    // point that was never in view.
+    sunViewSpace.copy(sunWorld).applyMatrix4(camera.matrixWorldInverse)
+    const sunInFrontOfCamera = sunViewSpace.z < 0
     sunWorld.project(camera)
-    post.material.uniforms.sunPosition!.value.set(sunWorld.x * 0.5 + 0.5, sunWorld.y * 0.5 + 0.5)
-    post.material.uniforms.sunOpacity!.value = sample.sunOpacity * 0.76 + sample.moonOpacity * 0.1
+    const rawSunOpacity = sample.sunOpacity * 0.76 + sample.moonOpacity * 0.1
+    if (sunInFrontOfCamera && Number.isFinite(sunWorld.x) && Number.isFinite(sunWorld.y)) {
+      post.material.uniforms.sunPosition!.value.set(
+        THREE.MathUtils.clamp(sunWorld.x * 0.5 + 0.5, -1, 2),
+        THREE.MathUtils.clamp(sunWorld.y * 0.5 + 0.5, -1, 2),
+      )
+      post.material.uniforms.sunOpacity!.value = rawSunOpacity
+    } else {
+      post.material.uniforms.sunOpacity!.value = 0
+    }
     post.material.uniforms.speed!.value = 0
     post.material.uniforms.impact!.value = impact
     post.material.uniforms.quality!.value = quality === 'high' ? 1 : 0

@@ -28,6 +28,7 @@ import {
   seedForWorldCell,
   lakeClusterForCell,
   sameLandmarkCluster,
+  isTutorialCell,
   type BuildingHeightTier,
   type GroundVariant,
 } from '../core/world'
@@ -501,7 +502,7 @@ function GroundBase() {
 }
 
 const lotMaterial = (() => {
-  const material = new THREE.MeshToonMaterial({ color: '#ffffff', map: lotTexture, gradientMap: toonGradient })
+  const material = new THREE.MeshToonMaterial({ color: '#ffffff', map: lotTexture, gradientMap: toonGradient, vertexColors: true })
   cityDaylightMaterials.lot = material
   return material
 })()
@@ -1291,6 +1292,9 @@ function CrosswalkPool() {
         if (slot >= CROSSWALK_CELLS) break
         const cellX = world.cellX + dx
         const cellZ = world.cellZ + dz
+        // The tutorial park and lake tiles carry no road strip underneath,
+        // so a crossing here would paint stripes straight onto open grass/water.
+        if (isTutorialCell(cellX, cellZ) || lakeClusterForCell(cellX, cellZ)) continue
         const seed = seedForWorldCell(cellX, cellZ, 0xc7085)
         if (seed % 100 >= CROSSWALK_SHARE * 4) continue
         const acrossX = seed % 2 === 0
