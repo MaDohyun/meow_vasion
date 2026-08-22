@@ -26,13 +26,30 @@ describe('recon overhaul support systems', () => {
   })
 
   it('absorbs lake water only while beaming and never returns ballast', () => {
-    expect(stepLakeAbsorption(0, 1, false, true)).toEqual({ litres: 0, absorbed: 0, speedScale: 1 })
-    const active = stepLakeAbsorption(20, 2, true, true)
+    expect(stepLakeAbsorption(0, 1, false, 20)).toEqual({ litres: 0, absorbed: 0, speedScale: 1, anchored: false })
+    const active = stepLakeAbsorption(20, 2, true, 20)
     expect(active.litres).toBe(120)
     expect(active.absorbed).toBe(100)
-    expect(active.speedScale).toBe(LAKE_BEAM_SPEED_SCALE)
+    expect(active.speedScale).toBeCloseTo(LAKE_BEAM_SPEED_SCALE)
+    expect(active.anchored).toBe(true)
     expect('ballast' in active).toBe(false)
-    expect(stepLakeAbsorption(active.litres, 1, true, false).speedScale).toBe(1)
+    expect(stepLakeAbsorption(active.litres, 1, true, 0).speedScale).toBe(1)
+  })
+
+  it('ramps the lake speed penalty in from the shore instead of snapping at the edge', () => {
+    // Right at the shoreline (depth 0) the beam is not "over" the lake yet.
+    expect(stepLakeAbsorption(0, 1, true, 0).anchored).toBe(false)
+    // A step past the shore barely slows the craft...
+    const shallow = stepLakeAbsorption(0, 1, true, 1)
+    expect(shallow.anchored).toBe(true)
+    expect(shallow.speedScale).toBeGreaterThan(0.9)
+    // ...and it keeps easing down as the craft pushes toward open water,
+    // bottoming out at the 80%-slower floor only once fully out from shore.
+    const mid = stepLakeAbsorption(0, 1, true, 6)
+    expect(mid.speedScale).toBeLessThan(shallow.speedScale)
+    expect(mid.speedScale).toBeGreaterThan(LAKE_BEAM_SPEED_SCALE)
+    const deep = stepLakeAbsorption(0, 1, true, 30)
+    expect(deep.speedScale).toBeCloseTo(LAKE_BEAM_SPEED_SCALE)
   })
 
   it('crashes only with beam on, overload and ground contact together', () => {

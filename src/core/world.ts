@@ -202,6 +202,35 @@ export function isLakeAt(position: Pick<Vec3, 'x' | 'z'>) {
   return lakeClusterForCell(worldCellCoord(position.x), worldCellCoord(position.z)) !== null
 }
 
+/**
+ * Metres from the nearest shore, 0 at the water's edge and outside it.
+ *
+ * Beam drag near a lake used to be a flat on/off switch the moment the craft
+ * crossed the shoreline, which made the edge itself the slow part - the
+ * opposite of "wading in". Reusing the same open/closed edge test WaterPool
+ * uses to shape the water mesh gives a real distance-to-shore instead, so the
+ * drag can ramp in as the craft actually moves toward open water.
+ */
+export function lakeDepthAt(position: Pick<Vec3, 'x' | 'z'>) {
+  const cellX = worldCellCoord(position.x)
+  const cellZ = worldCellCoord(position.z)
+  if (!lakeClusterForCell(cellX, cellZ)) return 0
+  const localX = position.x - cellX * WORLD_CELL_SIZE
+  const localZ = position.z - cellZ * WORLD_CELL_SIZE
+  const westOpen = !sameLandmarkCluster(cellX, cellZ, cellX - 1, cellZ)
+  const eastOpen = !sameLandmarkCluster(cellX, cellZ, cellX + 1, cellZ)
+  const southOpen = !sameLandmarkCluster(cellX, cellZ, cellX, cellZ - 1)
+  const northOpen = !sameLandmarkCluster(cellX, cellZ, cellX, cellZ + 1)
+  let depth = Infinity
+  if (westOpen) depth = Math.min(depth, localX)
+  if (eastOpen) depth = Math.min(depth, WORLD_CELL_SIZE - localX)
+  if (southOpen) depth = Math.min(depth, localZ)
+  if (northOpen) depth = Math.min(depth, WORLD_CELL_SIZE - localZ)
+  // An interior cell of a multi-cell lake has no shore edge of its own -
+  // every neighbour is more water, so treat it as fully deep.
+  return Number.isFinite(depth) ? Math.max(0, depth) : WORLD_CELL_SIZE / 2
+}
+
 export function getProceduralCell(cellX: number, cellZ: number, worldSeed = WORLD_SEED): ProceduralCell {
   const seed = seedForWorldCell(cellX, cellZ, worldSeed)
   const roll = seed % 100

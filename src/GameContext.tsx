@@ -51,7 +51,7 @@ import {
   buildingBulk,
   buildingMass,
   createActiveWorld,
-  isLakeAt,
+  lakeDepthAt,
   TUTORIAL_SPAWN,
   updateActiveWorld,
 } from './core/world'
@@ -59,7 +59,7 @@ import { captureTrafficCar, createTrafficState, releaseTrafficSlot, stepTraffic,
 import { BROADCAST_OPENING_AT, BROADCAST_SECONDS } from './core/broadcast'
 import { applyUpgrade, createUpgradeState, isUpgradeDue, rollUpgradeChoices, upgradeBonus, upgradeMultiplier, type UpgradeId, type UpgradeState } from './core/upgrades'
 import { createBuildingRuin, damageBuilding, ruinCollider, type BuildingRuin } from './core/buildings'
-import { LAKE_BEAM_SPEED_SCALE, stepLakeAbsorption } from './core/lakes'
+import { stepLakeAbsorption } from './core/lakes'
 import { createMissionState, missionHasQuest, recordMissionEvent, startMissionOne, syncMissionState, type MissionQuest, type MissionState } from './core/missions'
 import { absorbShieldDamage, createShieldState, isShieldRegenerating, setShieldCapacity, shieldRatio, stepShield, type ShieldState } from './core/shield'
 import { shouldCrashFromOverload } from './core/overload'
@@ -1255,13 +1255,13 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
     const flightInput: DroneInput = { ...input, special: false }
     game.beamActive = input.beam
-    const lake = stepLakeAbsorption(game.waterAbsorbed, d, game.beamActive, isLakeAt(game.drone.position))
+    const lake = stepLakeAbsorption(game.waterAbsorbed, d, game.beamActive, lakeDepthAt(game.drone.position))
     game.waterAbsorbed = lake.litres
-    game.waterAnchored = lake.speedScale === LAKE_BEAM_SPEED_SCALE
+    game.waterAnchored = lake.anchored
     if (lake.absorbed > 0) reportMissionEvent(game, { type: 'absorb-water', litres: lake.absorbed })
     if (game.waterAnchored) {
-      flightInput.throttle *= LAKE_BEAM_SPEED_SCALE
-      flightInput.strafe = (flightInput.strafe ?? 0) * LAKE_BEAM_SPEED_SCALE
+      flightInput.throttle *= lake.speedScale
+      flightInput.strafe = (flightInput.strafe ?? 0) * lake.speedScale
     }
     // Only ballast slows the craft. Size is deliberately absent: growth is what
     // the player is good at, and taxing it directly punishes them for winning.
@@ -1305,9 +1305,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
       stability: game.upgrades.levels.turn,
     })
     if (game.waterAnchored) {
-      stepped.speed *= LAKE_BEAM_SPEED_SCALE
-      stepped.velocity.x *= LAKE_BEAM_SPEED_SCALE
-      stepped.velocity.z *= LAKE_BEAM_SPEED_SCALE
+      stepped.speed *= lake.speedScale
+      stepped.velocity.x *= lake.speedScale
+      stepped.velocity.z *= lake.speedScale
     }
     const nextWorld = updateActiveWorld(game.world, stepped.position, false, game.destroyedBuildings)
     if (nextWorld !== game.world) {
