@@ -33,7 +33,7 @@ export const BUILDING_STYLES = [
 export const BUILDING_SIGN_LABELS = [
   'RAMEN', 'HOTEL', 'ARCADE', 'CAFE 24', 'MARKET',
   'DINER', 'VIDEO', 'SKY', 'CLINIC', 'DEPOT',
-  'MEGA MART',
+  'MEGA MART', 'FACTORY', 'DEPT STORE',
 ] as const
 
 export const BUILDING_SIGN_COLORS = ['#ffe66b', '#ff7bbf', '#78ffcf', '#ffdb5d', '#81ffd1'] as const
@@ -49,6 +49,8 @@ export const PARKED_CAR_COLORS = ['#f38ca0', '#83cde3', '#f2cf7d', '#b6a0e1'] as
  * almost entirely in those two places.
  */
 export type BuildingForm = 'plain' | 'podium' | 'setback'
+/** Recognisable authored building families layered over the shared facade. */
+export type BuildingSpecialty = 'factory' | 'department-store'
 
 /** Facade variants in the atlas. A 4x4 sheet: sixteen window layouts, not
  *  sixteen phase shifts of one grid. */
@@ -97,6 +99,8 @@ export type ProceduralBuilding = {
   roofThickness: number
   /** A rare low, wide anchor building that breaks up the repeated towers. */
   largeFootprint?: boolean
+  /** Optional authored silhouette, rendered by a fixed decoration pool. */
+  specialty?: BuildingSpecialty
 }
 
 export type ProceduralCar = {
@@ -323,14 +327,17 @@ export function getProceduralCell(cellX: number, cellZ: number, worldSeed = WORL
   const mystery = mysteryCircleForCell(cellX, cellZ)
   const forcedOpen = park !== null || mystery !== null
   const lake = lakeClusterForCell(cellX, cellZ)
-  // Bands: building 48%, parked car 10%, intersection 12%, empty 30%.
+  // Bands: building 58%, parked car 8%, intersection 12%, empty 22%.
+  // Raising the building band by ten points adds roughly one fifth more
+  // occupied lots while leaving roads and the deterministic landmark cells
+  // available for traffic and open-space dressing.
   const kind: WorldCellKind = forcedOpen || lake
     ? 'empty'
-    : roll < 48
-    ? 'building'
     : roll < 58
+    ? 'building'
+    : roll < 66
       ? 'parked-car'
-      : roll < 70
+      : roll < 78
         ? 'intersection'
         : 'empty'
   const id = `${cellX}:${cellZ}`
@@ -358,8 +365,17 @@ export function getProceduralCell(cellX: number, cellZ: number, worldSeed = WORL
         : heightBand < 0.9
           ? 20 + heightVariation * 20
           : heightBand < 0.98
-            ? 40 + heightVariation * 25
-            : 65 + heightVariation * 25
+          ? 40 + heightVariation * 25
+          : 65 + heightVariation * 25
+    const specialtyRoll = saltedUnit(seed, 37)
+    // Factories are low-rise industrial lots: their stacks and smoke should
+    // sit on a squat roof, never on a mid/high-rise tower. Department stores
+    // keep their wider height range and remain eligible on the next band.
+    const specialty = sizeY < 20 && specialtyRoll < 0.055
+      ? 'factory'
+      : specialtyRoll < 0.11
+        ? 'department-store'
+        : undefined
     const roadInset = 4.5
     const minX = cellX * WORLD_CELL_SIZE + roadInset + sizeX / 2
     const maxX = (cellX + 1) * WORLD_CELL_SIZE - roadInset - sizeX / 2
@@ -388,7 +404,13 @@ export function getProceduralCell(cellX: number, cellZ: number, worldSeed = WORL
       color: style.color,
       roof: style.roof,
       sign: {
-        text: largeFootprint ? 'MEGA MART' : BUILDING_SIGN_LABELS[(seed >>> 19) % (BUILDING_SIGN_LABELS.length - 1)]!,
+        text: specialty === 'factory'
+          ? 'FACTORY'
+          : specialty === 'department-store'
+            ? 'DEPT STORE'
+            : largeFootprint
+              ? 'MEGA MART'
+              : BUILDING_SIGN_LABELS[(seed >>> 19) % 10]!,
         color: BUILDING_SIGN_COLORS[(seed >>> 23) % BUILDING_SIGN_COLORS.length]!,
         side: (seed & 0x40000000) === 0 ? 'z' : 'x',
       },
@@ -399,6 +421,7 @@ export function getProceduralCell(cellX: number, cellZ: number, worldSeed = WORL
       roofOverhang: 0.87 + saltedUnit(seed, 33) * 0.17,
       roofThickness: 0.5 + saltedUnit(seed, 35) * 0.75,
       largeFootprint,
+      specialty,
     }
     return { id, cellX, cellZ, seed, kind, ground, building }
   }

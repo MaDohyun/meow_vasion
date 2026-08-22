@@ -188,8 +188,10 @@ describe('deterministic infinite city', () => {
         expect((cellZ + 1) * WORLD_CELL_SIZE - building.position.z - building.size.z / 2).toBeGreaterThanOrEqual(4.5 - 1e-8)
       }
     }
-    expect(buildings / (61 * 61)).toBeGreaterThan(0.45)
-    expect(buildings / (61 * 61)).toBeLessThan(0.50)
+    // The city now fills roughly one fifth more lots than the old 48% band,
+    // while landmark cells still reserve some open ground.
+    expect(buildings / (61 * 61)).toBeGreaterThan(0.54)
+    expect(buildings / (61 * 61)).toBeLessThan(0.59)
   })
 
   it('mixes mostly low-rise buildings with a meaningful high-rise tier', () => {
@@ -295,6 +297,18 @@ describe('building variety', () => {
     for (let variant = 0; variant < FACADE_VARIANTS; variant += 1) {
       const share = buildings.filter((building) => building.facade === variant).length / buildings.length
       expect(share, `facade ${variant}`).toBeGreaterThan(0.02)
+    }
+  })
+
+  it('includes both authored commercial and industrial building families', () => {
+    const specialties = new Set(sample().map((building) => building.specialty).filter(Boolean))
+    expect(specialties).toEqual(new Set(['factory', 'department-store']))
+    for (const building of sample()) {
+      if (building.specialty === 'factory') {
+        expect(building.sign.text).toBe('FACTORY')
+        expect(building.size.y).toBeLessThan(20)
+      }
+      if (building.specialty === 'department-store') expect(building.sign.text).toBe('DEPT STORE')
     }
   })
 

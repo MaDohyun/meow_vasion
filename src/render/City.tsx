@@ -30,6 +30,7 @@ import {
   parkClusterForCell,
   sameLandmarkCluster,
   type BuildingHeightTier,
+  type BuildingSpecialty,
   type GroundVariant,
 } from '../core/world'
 
@@ -889,7 +890,12 @@ function EntrancePool() {
  */
 // Not registered for daylight modulation: these are unlit solids like the roof
 // slabs, and their read comes from the sun, not from windows.
-const massingMaterial = new THREE.MeshToonMaterial({ color: '#ffffff', map: roofTexture, gradientMap: toonGradient })
+// Use a neutral base so each instanced rooftop piece keeps its authored paint
+// instead of being pushed back toward the old ochre tone by material
+// multiplication. The four tints deliberately mix dark bronze, off-white,
+// light brown and muted gold across the city.
+const massingMaterial = new THREE.MeshToonMaterial({ color: '#ffffff', gradientMap: toonGradient })
+const MASSING_TINTS = ['#705b4e', '#ece9e1', '#b58b6b', '#d1b06b'] as const
 
 function MassingPool({ form }: { form: 'podium' | 'setback' }) {
   const { runtime } = useGame()
@@ -900,7 +906,6 @@ function MassingPool({ form }: { form: 'podium' | 'setback' }) {
   const scale = useMemo(() => new THREE.Vector3(), [])
   const rotation = useMemo(() => new THREE.Quaternion(), [])
   const color = useMemo(() => new THREE.Color(), [])
-  const pastelRoof = useMemo(() => new THREE.Color(BUILDING.ROOF), [])
 
   useFrame(() => {
     const mesh = ref.current
@@ -924,7 +929,11 @@ function MassingPool({ form }: { form: 'podium' | 'setback' }) {
       }
       matrix.compose(position, rotation, scale)
       mesh.setMatrixAt(slot, matrix)
-      mesh.setColorAt(slot, color.set(building.roof).lerp(pastelRoof, 0.42))
+      // Setback/podium caps use their own light architectural palette. Never
+      // inherit the facade roof colour here: some facade variants are cyan and
+      // would make an entire rooftop read as a chunk of sky.
+      const tint = MASSING_TINTS[seedForWorldCell(building.cellX, building.cellZ, 0x6d455) % MASSING_TINTS.length]!
+      mesh.setColorAt(slot, color.set(tint))
       slot += 1
     }
     mesh.count = slot
@@ -933,6 +942,156 @@ function MassingPool({ form }: { form: 'podium' | 'setback' }) {
   })
 
   return <instancedMesh ref={ref} args={[roundedRoofGeometry, massingMaterial, WORLD_MAX_BUILDINGS]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }} />
+}
+
+// Special building silhouettes are authored in a unit footprint and placed on
+// top of the shared facade body. Each family has one merged geometry and one
+// fixed instanced pool, so recognisable landmarks do not multiply draw calls
+// with the number of buildings in view.
+// Factory silhouette: a pale processing hall, service tanks, pipe racks and
+// three stacks of different heights. The geometry stays compact so it reads as
+// an industrial roof installation rather than another building tower.
+const factoryGeometry = mergeGeometries([
+  new THREE.BoxGeometry(0.98, 0.1, 0.94).translate(0, 0.05, 0),
+  new THREE.BoxGeometry(0.72, 0.28, 0.54).translate(-0.08, 0.24, 0.04),
+  new THREE.BoxGeometry(0.46, 0.22, 0.32).translate(0.24, 0.46, -0.16),
+  new THREE.CylinderGeometry(0.14, 0.19, 0.34, 8).translate(-0.28, 0.48, 0.16),
+  new THREE.CylinderGeometry(0.11, 0.15, 0.28, 8).translate(0.28, 0.42, -0.18),
+  new THREE.BoxGeometry(0.08, 0.52, 0.08).translate(0.36, 0.43, 0.18),
+  // Tall stacks. Their tips line up with the smoke sources below.
+  new THREE.CylinderGeometry(0.105, 0.16, 1.1, 8).translate(-0.28, 0.82, 0.16),
+  new THREE.CylinderGeometry(0.09, 0.14, 0.88, 8).translate(0.27, 0.7, -0.18),
+  new THREE.CylinderGeometry(0.07, 0.11, 0.66, 8).translate(0.38, 0.55, 0.18),
+  new THREE.CylinderGeometry(0.14, 0.14, 0.06, 8).translate(-0.28, 1.38, 0.16),
+  new THREE.CylinderGeometry(0.12, 0.12, 0.06, 8).translate(0.27, 1.15, -0.18),
+  new THREE.CylinderGeometry(0.095, 0.095, 0.05, 8).translate(0.38, 0.9, 0.18),
+], false)!
+
+const departmentStoreGeometry = mergeGeometries([
+  new THREE.BoxGeometry(1.04, 0.09, 1.04).translate(0, 0.045, 0),
+  new THREE.BoxGeometry(0.88, 0.13, 0.88).translate(0, 0.15, 0),
+  new THREE.BoxGeometry(0.7, 0.16, 0.7).translate(0, 0.29, 0),
+  new THREE.BoxGeometry(0.98, 0.07, 0.12).translate(0, 0.18, 0.53),
+  new THREE.BoxGeometry(0.74, 0.08, 0.1).translate(0, 0.35, 0.39),
+], false)!
+
+const specialBuildingMaterial = {
+  factory: new THREE.MeshToonMaterial({ color: '#ffffff', gradientMap: toonGradient }),
+  'department-store': new THREE.MeshToonMaterial({ color: '#d2ad67', gradientMap: toonGradient }),
+} satisfies Record<BuildingSpecialty, THREE.MeshToonMaterial>
+
+const FACTORY_SMOKE_PUFFS_PER_CHIMNEY = 2
+const FACTORY_SMOKE_CHIMNEYS = [
+  { x: -0.28, z: 0.16, height: 1.42 },
+  { x: 0.27, z: -0.18, height: 1.18 },
+  { x: 0.38, z: 0.18, height: 0.92 },
+] as const
+const FACTORY_SMOKE_CAPACITY = WORLD_MAX_BUILDINGS * FACTORY_SMOKE_CHIMNEYS.length * FACTORY_SMOKE_PUFFS_PER_CHIMNEY
+const factorySmokeGeometry = new THREE.SphereGeometry(0.5, 7, 5)
+const factorySmokeMaterial = new THREE.MeshBasicMaterial({
+  color: '#f1eee7',
+  transparent: true,
+  opacity: 0.22,
+  depthWrite: false,
+})
+
+function FactorySmokePool() {
+  const { runtime } = useGame()
+  const ref = useRef<THREE.InstancedMesh>(null)
+  const matrix = useMemo(() => new THREE.Matrix4(), [])
+  const position = useMemo(() => new THREE.Vector3(), [])
+  const scale = useMemo(() => new THREE.Vector3(), [])
+  const rotation = useMemo(() => new THREE.Quaternion(), [])
+  const color = useMemo(() => new THREE.Color(), [])
+
+  useFrame(({ clock }) => {
+    const mesh = ref.current
+    if (!mesh) return
+    const time = clock.elapsedTime
+    let slot = 0
+    for (const building of runtime.current.world.buildings) {
+      if (building.specialty !== 'factory') continue
+      const attachmentHeight = Math.min(14, Math.max(6, building.size.y * 0.26))
+      const baseY = building.position.y + building.size.y / 2 + building.roofThickness
+      const seed = seedForWorldCell(building.cellX, building.cellZ, 0x5a0ce)
+      for (let chimney = 0; chimney < FACTORY_SMOKE_CHIMNEYS.length; chimney += 1) {
+        const source = FACTORY_SMOKE_CHIMNEYS[chimney]!
+        for (let puff = 0; puff < FACTORY_SMOKE_PUFFS_PER_CHIMNEY; puff += 1) {
+          const phase = ((seed + chimney * 37 + puff * 71) >>> 0) / 0xffffffff
+          const progress = (time * (0.12 + chimney * 0.015) + phase) % 1
+          const sway = Math.sin(time * 0.9 + phase * Math.PI * 2) * (0.35 + progress * 0.9)
+          const drift = Math.cos(time * 0.72 + phase * Math.PI * 2) * (0.28 + progress * 0.7)
+          position.set(
+            building.position.x + source.x * building.size.x * 0.76 + sway,
+            baseY + attachmentHeight * (source.height + progress * 0.75),
+            building.position.z + source.z * building.size.z * 0.76 + drift,
+          )
+          const puffScale = (0.42 + progress * 0.62) * (0.86 + 0.12 * Math.sin(phase * 19))
+          scale.set(puffScale * 1.15, puffScale * 0.72, puffScale)
+          matrix.compose(position, rotation, scale)
+          mesh.setMatrixAt(slot, matrix)
+          mesh.setColorAt(slot, color.setScalar(0.82 + 0.1 * Math.sin(phase * 13 + time)))
+          slot += 1
+        }
+      }
+    }
+    mesh.count = slot
+    mesh.instanceMatrix.needsUpdate = true
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
+  })
+
+  return <instancedMesh ref={ref} args={[factorySmokeGeometry, factorySmokeMaterial, FACTORY_SMOKE_CAPACITY]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }} />
+}
+
+function SpecialBuildingPool({ specialty }: { specialty: BuildingSpecialty }) {
+  const { runtime } = useGame()
+  const ref = useRef<THREE.InstancedMesh>(null)
+  const lastKey = useRef('')
+  const matrix = useMemo(() => new THREE.Matrix4(), [])
+  const position = useMemo(() => new THREE.Vector3(), [])
+  const scale = useMemo(() => new THREE.Vector3(), [])
+  const rotation = useMemo(() => new THREE.Quaternion(), [])
+  const color = useMemo(() => new THREE.Color(), [])
+  const roofTint = useMemo(() => new THREE.Color(BUILDING.ROOF), [])
+
+  useFrame(() => {
+    const mesh = ref.current
+    if (!mesh) return
+    const world = runtime.current.world
+    if (world.key === lastKey.current) return
+    lastKey.current = world.key
+    let slot = 0
+    for (const building of world.buildings) {
+      if (building.specialty !== specialty) continue
+      // Geometry is authored from y=0 to y=1, so its origin sits exactly on
+      // the roof. Limit the added detail height so a high-rise host does not
+      // turn a small factory crown into an accidental second tower.
+      const attachmentHeight = Math.min(14, Math.max(6, building.size.y * 0.26))
+      position.set(
+        building.position.x,
+        building.position.y + building.size.y / 2 + building.roofThickness,
+        building.position.z,
+      )
+      const footprint = specialty === 'factory' ? 0.76 : 0.9
+      scale.set(building.size.x * footprint, attachmentHeight, building.size.z * footprint)
+      matrix.compose(position, rotation, scale)
+      mesh.setMatrixAt(slot, matrix)
+      mesh.setColorAt(slot, color.set(specialty === 'factory' ? '#e8e4db' : '#d2ad67').lerp(roofTint, 0.18))
+      slot += 1
+    }
+    mesh.count = slot
+    mesh.instanceMatrix.needsUpdate = true
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
+  })
+
+  return (
+    <instancedMesh
+      ref={ref}
+      args={[specialty === 'factory' ? factoryGeometry : departmentStoreGeometry, specialBuildingMaterial[specialty], WORLD_MAX_BUILDINGS]}
+      frustumCulled={false}
+      onUpdate={(mesh) => { mesh.count = 0 }}
+    />
+  )
 }
 
 const roofMaterial = (() => {
@@ -1478,6 +1637,7 @@ function RoofStructurePool({ variant }: { variant: number }) {
   const rotation = useMemo(() => new THREE.Quaternion(), [])
   const euler = useMemo(() => new THREE.Euler(), [])
   const color = useMemo(() => new THREE.Color(), [])
+  const structureTints = ['#705b4e', '#ece9e1', '#b58b6b', '#d1b06b'] as const
 
   useFrame(() => {
     const mesh = ref.current
@@ -1499,7 +1659,9 @@ function RoofStructurePool({ variant }: { variant: number }) {
       scale.setScalar(0.55 + fit * 0.55)
       matrix.compose(position, rotation, scale)
       mesh.setMatrixAt(slot, matrix)
-      mesh.setColorAt(slot, color.set(building.roof))
+      // Roof props get a light metal/stone tint independent of the building's
+      // facade palette, so no cyan roof variant can leak into the skyline.
+      mesh.setColorAt(slot, color.set(structureTints[variant]!))
       slot += 1
     }
     mesh.count = slot
@@ -1513,7 +1675,7 @@ function RoofStructurePool({ variant }: { variant: number }) {
           colour attribute, and enabling it makes the shader read one that is
           not there - the rooftops rendered solid black. The tint arrives via
           setColorAt, which works independently of this flag. */}
-      <meshToonMaterial gradientMap={toonGradient} />
+      <meshToonMaterial color="#ffffff" gradientMap={toonGradient} />
     </instancedMesh>
   )
 }
@@ -1591,6 +1753,9 @@ export const City = memo(function City() {
       <GroundPool />
       <WaterPool />
       <BuildingPool />
+      <SpecialBuildingPool specialty="factory" />
+      <SpecialBuildingPool specialty="department-store" />
+      <FactorySmokePool />
       <RuinPool />
       <LiftedBuildingPool />
       <MassingPool form="podium" />

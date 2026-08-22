@@ -363,20 +363,6 @@ const storeSignMaterial = displayMaterial(convenienceStoreTexture, 0.9)
 const warningScreenMaterial = displayMaterial(ufoWarningTexture, 0.52, 0.2)
 
 /**
- * A crown for the news towers: two setbacks and a spire, sitting on the host
- * roof. Built as a separate merged piece rather than by changing the building
- * itself, so the tower gains a distinct silhouette without disturbing the
- * collision boxes the whole city shares.
- */
-const newsTowerCrownGeometry = mergeGeometries([
-  new THREE.BoxGeometry(0.74, 0.1, 0.74).translate(0, 0.05, 0),
-  new THREE.BoxGeometry(0.56, 0.12, 0.56).translate(0, 0.16, 0),
-  new THREE.BoxGeometry(0.34, 0.14, 0.34).translate(0, 0.29, 0),
-  new THREE.CylinderGeometry(0.03, 0.06, 0.42, 6).translate(0, 0.57, 0),
-  new THREE.CylinderGeometry(0.012, 0.012, 0.22, 4).translate(0, 0.88, 0),
-], false)!
-
-/**
  * A forecourt: canopy on posts with a pump island under it. Gives the tankers
  * an origin, so a truck full of fuel reads as belonging to the city rather than
  * as a hazard that wandered in from nowhere.
@@ -409,11 +395,6 @@ const gasStationCanopyMaterial = withLandmarkGlow(
 
 const gasStationBandGeometry = new THREE.BoxGeometry(13.6, 0.55, 9.6)
 
-const newsTowerCrownMaterial = withLandmarkGlow(
-  new THREE.MeshToonMaterial({ color: '#8fb6cf', emissive: new THREE.Color('#7fd8ff') }),
-  0.05,
-  0.7,
-)
 const metroSignMaterial = displayMaterial(metroTexture, 0.85)
 const busSignMaterial = displayMaterial(busTexture, 0.75)
 
@@ -436,7 +417,6 @@ function BuildingFeaturePool() {
   const storeSigns = useRef<THREE.InstancedMesh>(null)
   const warningScreens = useRef<THREE.InstancedMesh>(null)
   const screenMounts = useRef<THREE.InstancedMesh>(null)
-  const towerCrowns = useRef<THREE.InstancedMesh>(null)
   const lastKey = useRef('')
   const lastNewsFrame = useRef(-1)
   const matrix = useMemo(() => new THREE.Matrix4(), [])
@@ -448,7 +428,7 @@ function BuildingFeaturePool() {
   const sideRotation = useMemo(() => new THREE.Quaternion().setFromEuler(new THREE.Euler(0, Math.PI / 2, 0)), [])
 
   useFrame(({ clock }) => {
-    if (!storeBands.current || !storeSigns.current || !warningScreens.current || !towerCrowns.current) return
+    if (!storeBands.current || !storeSigns.current || !warningScreens.current) return
     if (!screenMounts.current) return
     const newsFrame = Math.floor(clock.elapsedTime * 12)
     if (newsFrame !== lastNewsFrame.current) {
@@ -516,13 +496,6 @@ function BuildingFeaturePool() {
         scale.set(Math.min(15, (signOnX ? building.size.z : building.size.x) * 0.78), NEWS_SCREEN_HEIGHT, 0.34)
         matrix.compose(position, signOnX ? sideRotation : rotation, scale)
         warningScreens.current.setMatrixAt(warningCount, matrix)
-        // Crown scales with the host footprint so a wide tower does not get a
-        // toy hat and a narrow one does not get a slab.
-        const span = Math.max(building.size.x, building.size.z)
-        position.set(building.position.x, building.size.y + building.roofThickness, building.position.z)
-        scale.set(span, span, span)
-        matrix.compose(position, rotation, scale)
-        towerCrowns.current.setMatrixAt(warningCount, matrix)
         warningCount += 1
       }
     }
@@ -530,7 +503,6 @@ function BuildingFeaturePool() {
     setPoolCount(storeSigns.current, storeCount)
     setPoolCount(warningScreens.current, warningCount)
     setPoolCount(screenMounts.current, warningCount, true)
-    setPoolCount(towerCrowns.current, warningCount)
   })
 
   return (
@@ -547,7 +519,6 @@ function BuildingFeaturePool() {
       <instancedMesh ref={warningScreens} args={[undefined, warningScreenMaterial, WORLD_MAX_BUILDINGS]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }}>
         <boxGeometry args={[1, 1, 1]} />
       </instancedMesh>
-      <instancedMesh ref={towerCrowns} args={[newsTowerCrownGeometry, newsTowerCrownMaterial, WORLD_MAX_BUILDINGS]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }} />
     </group>
   )
 }
@@ -782,22 +753,73 @@ const pylonGeometry = (() => {
   return mergeGeometries(parts, false)!
 })()
 
-const communicationsGeometry = mergeGeometries([
-  new THREE.CylinderGeometry(0.55, 1.4, 2.4, 8).translate(0, 1.2, 0),
-  new THREE.CylinderGeometry(0.22, 0.32, 17, 6).translate(0, 10.8, 0),
-  new THREE.TorusGeometry(2.4, 0.18, 5, 12).rotateX(Math.PI / 2).translate(0, 12.5, 0),
-  new THREE.TorusGeometry(1.6, 0.14, 5, 10).rotateX(Math.PI / 2).translate(0, 16.3, 0),
-  ...[-1, 1].map((side) => cylinderBetween(
-    new THREE.Vector3(0, 2, 0),
-    new THREE.Vector3(side * 4.2, 0.2, 0),
-    0.1,
-  )),
-], false)!
+// A full-height lattice mast reads as a communications tower even from the
+// aerial camera: tapered legs, broadcast rings, a central antenna and a
+// beacon cap. It is deliberately high-rise scale rather than a small utility
+// prop, while the one merged geometry keeps the landmark in a fixed pool.
+function communicationsLegPoint(sideX: number, sideZ: number, t: number) {
+  const spread = 5 + (1.1 - 5) * t
+  return new THREE.Vector3(sideX * spread, 3 + 44 * t, sideZ * spread)
+}
 
-const communicationsMaterial = withLandmarkGlow(
-  new THREE.MeshToonMaterial({ color: '#a5bdd0', emissive: new THREE.Color('#68e8ff') }),
-  0.04,
-  0.62,
+function communicationsGeometryFor(paint: 'red' | 'white') {
+  const parts: THREE.BufferGeometry[] = []
+  if (paint === 'red') {
+    parts.push(
+      new THREE.CylinderGeometry(2.8, 4.8, 3.4, 8).translate(0, 1.7, 0),
+      new THREE.CylinderGeometry(0.46, 0.54, 12.5, 8).translate(0, 9.25, 0),
+      new THREE.CylinderGeometry(0.46, 0.54, 12.5, 8).translate(0, 34.25, 0),
+      new THREE.TorusGeometry(4.5, 0.18, 6, 16).rotateX(Math.PI / 2).translate(0, 42, 0),
+      new THREE.SphereGeometry(0.8, 8, 4).translate(0, 62, 0),
+    )
+  } else {
+    parts.push(
+      new THREE.CylinderGeometry(0.46, 0.54, 12.5, 8).translate(0, 21.75, 0),
+      new THREE.CylinderGeometry(0.46, 0.62, 12.5, 8).translate(0, 46.75, 0),
+      new THREE.CylinderGeometry(0.2, 0.32, 9, 6).translate(0, 57.5, 0),
+      new THREE.TorusGeometry(5.6, 0.22, 6, 16).rotateX(Math.PI / 2).translate(0, 24, 0),
+      new THREE.TorusGeometry(3.2, 0.15, 6, 14).rotateX(Math.PI / 2).translate(0, 54, 0),
+    )
+  }
+  for (const sideX of [-1, 1]) {
+    for (const sideZ of [-1, 1]) {
+      for (let segment = 0; segment < 4; segment += 1) {
+        if ((segment % 2 === 0 ? 'red' : 'white') !== paint) continue
+        parts.push(cylinderBetween(
+          communicationsLegPoint(sideX, sideZ, segment / 4),
+          communicationsLegPoint(sideX, sideZ, (segment + 1) / 4),
+          0.22,
+        ))
+      }
+    }
+  }
+  // Alternating braces keep the red/white bands visible from above instead of
+  // leaving the paint pattern only on the four vertical legs.
+  if (paint === 'red') {
+    parts.push(
+      cylinderBetween(new THREE.Vector3(-3.8, 32, -3.8), new THREE.Vector3(3.8, 32, 3.8), 0.13),
+      cylinderBetween(new THREE.Vector3(-3.8, 32, 3.8), new THREE.Vector3(3.8, 32, -3.8), 0.13),
+    )
+  } else {
+    parts.push(
+      cylinderBetween(new THREE.Vector3(-3.8, 16, -3.8), new THREE.Vector3(3.8, 16, 3.8), 0.13),
+      cylinderBetween(new THREE.Vector3(-3.8, 16, 3.8), new THREE.Vector3(3.8, 16, -3.8), 0.13),
+    )
+  }
+  return mergeGeometries(parts, false)!
+}
+
+const communicationsRedGeometry = communicationsGeometryFor('red')
+const communicationsWhiteGeometry = communicationsGeometryFor('white')
+const communicationsRedMaterial = withLandmarkGlow(
+  new THREE.MeshToonMaterial({ color: '#c74747', emissive: new THREE.Color('#4d2027') }),
+  0.03,
+  0.16,
+)
+const communicationsWhiteMaterial = withLandmarkGlow(
+  new THREE.MeshToonMaterial({ color: '#f1eee5', emissive: new THREE.Color('#5b574f') }),
+  0.03,
+  0.18,
 )
 
 function TransitUtilityPool() {
@@ -810,7 +832,8 @@ function TransitUtilityPool() {
   const pylons = useRef<THREE.InstancedMesh>(null)
   const gasStations = useRef<THREE.InstancedMesh>(null)
   const gasBands = useRef<THREE.InstancedMesh>(null)
-  const communications = useRef<THREE.InstancedMesh>(null)
+  const communicationsRed = useRef<THREE.InstancedMesh>(null)
+  const communicationsWhite = useRef<THREE.InstancedMesh>(null)
   const lastKey = useRef('')
   const matrix = useMemo(() => new THREE.Matrix4(), [])
   const position = useMemo(() => new THREE.Vector3(), [])
@@ -820,7 +843,7 @@ function TransitUtilityPool() {
 
   useFrame(() => {
     if (!subway.current || !subwayOpenings.current || !subwaySigns.current || !busStops.current || !busSigns.current || !pylons.current) return
-    if (!gasStations.current || !gasBands.current || !communications.current) return
+    if (!gasStations.current || !gasBands.current || !communicationsRed.current || !communicationsWhite.current) return
     const world = runtime.current.world
     const key = `${world.cellX}:${world.cellZ}:${runtime.current.destroyedLandmarks.size}`
     if (key === lastKey.current) return
@@ -867,7 +890,8 @@ function TransitUtilityPool() {
         position.set(centerX, 0, centerZ)
         scale.setScalar(1)
         matrix.compose(position, rotation, scale)
-        communications.current.setMatrixAt(communicationsCount, matrix)
+        communicationsRed.current.setMatrixAt(communicationsCount, matrix)
+        communicationsWhite.current.setMatrixAt(communicationsCount, matrix)
         communicationsCount += 1
       } else {
         position.set(centerX, 0, centerZ)
@@ -902,7 +926,8 @@ function TransitUtilityPool() {
     setPoolCount(pylons.current, pylonCount)
     setPoolCount(gasStations.current, gasCount)
     setPoolCount(gasBands.current, gasCount)
-    setPoolCount(communications.current, communicationsCount)
+    setPoolCount(communicationsRed.current, communicationsCount)
+    setPoolCount(communicationsWhite.current, communicationsCount)
   })
 
   return (
@@ -928,7 +953,8 @@ function TransitUtilityPool() {
       </instancedMesh>
       <instancedMesh ref={gasStations} args={[gasStationGeometry, gasStationMaterial, LANDMARK_CELL_COUNT]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }} />
       <instancedMesh ref={gasBands} args={[gasStationBandGeometry, gasStationCanopyMaterial, LANDMARK_CELL_COUNT]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }} />
-      <instancedMesh ref={communications} args={[communicationsGeometry, communicationsMaterial, LANDMARK_CELL_COUNT]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }} />
+      <instancedMesh ref={communicationsRed} args={[communicationsRedGeometry, communicationsRedMaterial, LANDMARK_CELL_COUNT]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }} />
+      <instancedMesh ref={communicationsWhite} args={[communicationsWhiteGeometry, communicationsWhiteMaterial, LANDMARK_CELL_COUNT]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }} />
     </group>
   )
 }

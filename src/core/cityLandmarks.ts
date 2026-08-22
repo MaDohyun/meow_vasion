@@ -47,6 +47,7 @@ export function groundLandmarkForCell(cell: ProceduralCell): GroundLandmark {
 }
 
 export function isConvenienceStore(building: ProceduralBuilding) {
+  if (building.specialty) return false
   if (building.size.y > 11.5) return false
   return seedForWorldCell(building.cellX, building.cellZ, 0xc071e) % 100 < 42
 }
@@ -228,10 +229,10 @@ export function destructibleLandmarksAround(position: Pick<Vec3, 'x' | 'z'>, rad
       cellZ: cell.cellZ,
       position: {
         x: (cell.cellX + 0.5) * WORLD_CELL_SIZE,
-        y: kind === 'communications' ? 10 : 3,
+        y: kind === 'communications' ? 29 : 3,
         z: (cell.cellZ + 0.5) * WORLD_CELL_SIZE,
       },
-      radius: kind === 'communications' ? 5 : 9,
+      radius: kind === 'communications' ? 8 : 9,
     })
   }
   return landmarks
