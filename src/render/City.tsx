@@ -892,14 +892,15 @@ function EntrancePool() {
 // slabs, and their read comes from the sun, not from windows.
 // Use a neutral base so each instanced rooftop piece keeps its authored paint
 // instead of being pushed back toward the old ochre tone by material
-// multiplication. The four tints deliberately mix dark bronze, off-white,
-// light brown and muted gold across the city.
+// multiplication. Urban neutral tints dominate, with only a few warm accents.
 const massingMaterial = new THREE.MeshToonMaterial({ color: '#ffffff', gradientMap: toonGradient })
 const MASSING_TINTS = [
   '#34495E', '#34495E', '#34495E',
   '#F5F5F5', '#F5F5F5',
   '#1F2833', '#1F2833',
   '#7F8C8D', '#7F8C8D',
+  '#CFD8DC', '#B0BEC5', '#78909C', '#607D8B',
+  '#455A64', '#9E9E9E', '#ECEFF1', '#37474F',
   '#705b4e', '#ece9e1', '#b58b6b', '#d1b06b',
 ] as const
 
@@ -1648,6 +1649,8 @@ function RoofStructurePool({ variant }: { variant: number }) {
     '#F5F5F5', '#F5F5F5',
     '#1F2833', '#1F2833',
     '#7F8C8D', '#7F8C8D',
+    '#CFD8DC', '#B0BEC5', '#78909C', '#607D8B',
+    '#455A64', '#9E9E9E', '#ECEFF1', '#37474F',
     '#705b4e', '#ece9e1', '#b58b6b', '#d1b06b',
   ] as const
 

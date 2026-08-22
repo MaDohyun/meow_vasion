@@ -33,17 +33,35 @@ export const BUILDING_STYLES = [
   { color: '#F5F5F5', roof: '#D5D8DC' },
   { color: '#1F2833', roof: '#151B22' },
   { color: '#7F8C8D', roof: '#626E70' },
+  { color: '#CFD8DC', roof: '#B0BEC5' },
+  { color: '#B0BEC5', roof: '#90A4AE' },
+  { color: '#78909C', roof: '#546E7A' },
+  { color: '#607D8B', roof: '#455A64' },
+  { color: '#455A64', roof: '#263238' },
+  { color: '#9E9E9E', roof: '#757575' },
+  { color: '#ECEFF1', roof: '#B0BEC5' },
+  { color: '#37474F', roof: '#263238' },
 ] as const
 
-// Keep the city colourful, but make the slate facade the most common choice.
-// The old warm colours remain available while their combined share is reduced
-// so the skyline reads more like concrete, steel and glass than brown clay.
+// Keep a little colour for neighbourhood variety, but make concrete, steel and
+// blue-grey glass the clear majority. Warm/brown facades remain as rare accents
+// instead of dominating the skyline.
 const BUILDING_STYLE_PICK_ORDER = [
-  11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11,
-  12, 12, 12, 12, 12, 12, 12,
-  13, 13, 13, 13, 13,
-  14, 14, 14, 14, 14, 14,
-  0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+  11, 11, 11, 11, 11, 11,
+  12, 12, 12, 12, 12,
+  13, 13, 13, 13,
+  14, 14, 14, 14,
+  15, 15, 15, 15, 15,
+  16, 16, 16, 16, 16,
+  17, 17, 17, 17,
+  18, 18, 18, 18,
+  19, 19, 19,
+  20, 20, 20,
+  21, 21, 21,
+  22, 22, 22,
+  // A few legacy accents keep districts from becoming monochrome.
+  0, 1, 3, 4, 5, 6, 8, 9,
+  2, 7, 10,
 ] as const
 
 export const BUILDING_SIGN_LABELS = [
