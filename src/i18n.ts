@@ -100,8 +100,6 @@ type Strings = {
   msgAbsorbedCat: (reward: number) => string
   msgAbsorbedObject: (reward: number) => string
   msgEnemyDown: (reward: number) => string
-  msgImpact: string
-  msgDetonated: string
   msgCarLaunched: string
   msgTurbo: string
   msgTurboOverload: string
@@ -223,8 +221,6 @@ export const STRINGS: Record<Language, Strings> = {
     msgAbsorbedCat: (reward) => `고양이 구출 · +${reward}`,
     msgAbsorbedObject: (reward) => `대형 오브젝트 흡수 · +${reward}`,
     msgEnemyDown: (reward) => `적 격추 · +${reward}`,
-    msgImpact: '피격 · 질량 감소',
-    msgDetonated: '폭발물 기폭 · 질량 감소',
     msgCarLaunched: '자동차 파괴 · +50',
     msgTurbo: '터보 가동',
     msgTurboOverload: '터보 과부하 · 잠시 사용 불가',
@@ -326,8 +322,6 @@ export const STRINGS: Record<Language, Strings> = {
     msgAbsorbedCat: (reward) => `猫を救出 · +${reward}`,
     msgAbsorbedObject: (reward) => `大型オブジェクト吸収 · +${reward}`,
     msgEnemyDown: (reward) => `敵を撃破 · +${reward}`,
-    msgImpact: '被弾 · 質量減少',
-    msgDetonated: '爆発物が起爆 · 質量減少',
     msgCarLaunched: '車を破壊 · +50',
     msgTurbo: 'ターボ作動',
     msgTurboOverload: 'ターボ過負荷 · 一時使用不可',
@@ -429,8 +423,6 @@ export const STRINGS: Record<Language, Strings> = {
     msgAbsorbedCat: (reward) => `CAT RESCUED · +${reward}`,
     msgAbsorbedObject: (reward) => `LARGE OBJECT ABSORBED · +${reward}`,
     msgEnemyDown: (reward) => `ENEMY DOWN · +${reward}`,
-    msgImpact: 'IMPACT · SIZE DOWN',
-    msgDetonated: 'EXPLOSIVE DETONATED · SIZE DOWN',
     msgCarLaunched: 'CAR LAUNCHED · +50',
     msgTurbo: 'TURBO ENGAGED',
     msgTurboOverload: 'TURBO OVERLOAD · OFFLINE BRIEFLY',

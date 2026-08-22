@@ -44,6 +44,6 @@ describe('interface languages', () => {
     expect(STRINGS.ko.start).not.toBe(STRINGS.en.start)
     expect(STRINGS.ja.start).not.toBe(STRINGS.en.start)
     expect(STRINGS.ko.collapsedTitle).not.toBe(STRINGS.en.collapsedTitle)
-    expect(STRINGS.ko.msgImpact).not.toBe(STRINGS.en.msgImpact)
+    expect(STRINGS.ko.msgCarLaunched).not.toBe(STRINGS.en.msgCarLaunched)
   })
 })

@@ -979,7 +979,6 @@ function registerImpact(game: GameRuntime, source: 'ENEMY' | 'BUILDING', loss?: 
   // hit without leaving the whole late game permanently vibrating.
   game.hitstop = HITSTOP_TIME
   wound(game, source === 'BUILDING' ? 'building' : loss ?? 'contact')
-  setMessage(game, 'msgImpact', 1.8)
   tone(source === 'BUILDING' ? 'impact' : 'warning')
   if ('vibrate' in navigator) navigator.vibrate?.([35, 20, 35])
 }
@@ -1488,7 +1487,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
       // another name.
       if (game.daze <= 0) game.daze = DAZE_TIME
       game.impactFlash = 1
-      setMessage(game, 'msgDetonated', 1.6)
       tone('warning')
     }
     game.loadedCars = loadedCarCount(game)
