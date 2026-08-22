@@ -105,6 +105,11 @@ export type GameRuntime = {
   damageCooldown: number
   collisionCooldown: number
   turbo: number
+  /** Draining the gauge to empty forces a short cooldown before it can be
+   *  engaged again, even though the gauge itself keeps refilling underneath -
+   *  otherwise a full gauge is a straight line to another full drain and the
+   *  cost of using it is only ever "wait for the bar." */
+  turboLockout: number
   aimX: number
   aimY: number
   laserAimOrigin: Vec3
@@ -114,7 +119,6 @@ export type GameRuntime = {
   laserActive: boolean
   laserInputHeld: boolean
   boostInputHeld: boolean
-  dropInputHeld: boolean
   laserFlash: number
   laserCooldown: number
   laserShotsFired: number
@@ -162,7 +166,6 @@ export type GameRuntime = {
   missionTarget: Vec3 | null
   hazards: HazardState
   daze: number
-  dumpLockout: number
   daylight: DaylightSample
   pickupPulse: number
   timeBonusPulse: number
@@ -255,7 +258,7 @@ export type GameSnapshot = {
   pilotExpression: PilotExpression
 }
 
-export type PlayerInput = DroneInput & { beam: boolean; laser: boolean; laserContinuous?: boolean; drop: boolean }
+export type PlayerInput = DroneInput & { beam: boolean; laser: boolean; laserContinuous?: boolean }
 type MobileInput = PlayerInput & { active: boolean }
 export type RenderQuality = 'high' | 'low'
 
@@ -321,12 +324,6 @@ const BALLAST_DRAG = 0.31
  */
 const DAZE_TIME = 1.2
 const DAZE_DRAG = 9
-/**
- * Refuses new pickups briefly after a dump. Without it the still-held beam
- * re-grabs whatever was just released on the next frame, and the escape hatch
- * does nothing - measured as ballast never dropping after pressing release.
- */
-const DUMP_LOCKOUT = 0.7
 
 function makeBeamObject(car: ProceduralCar): BeamObject {
   return {
@@ -404,6 +401,7 @@ function makeRuntime(): GameRuntime {
     damageCooldown: 0,
     collisionCooldown: 0,
     turbo: 1,
+    turboLockout: 0,
     aimX: 0,
     aimY: 0,
     laserAimOrigin: { ...drone.position },
@@ -413,7 +411,6 @@ function makeRuntime(): GameRuntime {
     laserActive: false,
     laserInputHeld: false,
     boostInputHeld: false,
-    dropInputHeld: false,
     laserFlash: 0,
     laserCooldown: 0,
     laserShotsFired: 0,
@@ -459,7 +456,6 @@ function makeRuntime(): GameRuntime {
     missionTarget: null,
     hazards: createHazardState(),
     daze: 0,
-    dumpLockout: 0,
     daylight: createDaylightSample(),
     pickupPulse: 0,
     timeBonusPulse: 0,
@@ -559,7 +555,7 @@ function reportMissionEvent(game: GameRuntime, event: Parameters<typeof recordMi
  * nothing left there to fly into.
  */
 function grabBuildings(game: GameRuntime, field: BeamField) {
-  if (!game.beamActive || game.dumpLockout > 0) return
+  if (!game.beamActive) return
   const strength = beamStrength(game)
   let taken = false
   for (const building of game.world.buildings) {
@@ -718,41 +714,6 @@ function loadedCarCount(game: GameRuntime) {
   for (const object of game.hazards.objects) if (object.active && (object.inBeam || object.tether > 0.02)) count += 1
   for (const object of game.enemies.slots) if (object.active && (object.inBeam || object.tether > 0.02)) count += 1
   return count
-}
-
-function dropCars(game: GameRuntime) {
-  let dropped = 0
-  // Hazards release too: dumping the load is the escape hatch, and it has to
-  // work on the thing you most want to get rid of.
-  for (const hazard of game.hazards.objects) {
-    if (!hazard.active || (!hazard.inBeam && hazard.tether <= 0.02)) continue
-    hazard.inBeam = false
-    hazard.tether = 0
-    hazard.hold = 0
-  }
-  for (const enemy of game.enemies.slots) {
-    if (!enemy.active || (!enemy.inBeam && enemy.tether <= 0.02)) continue
-    enemy.inBeam = false
-    enemy.tether = 0
-    enemy.hold = 0
-    dropped += 1
-  }
-  for (const object of game.beamObjects) {
-    if (!object.active || (!object.inBeam && object.tether <= 0.02)) continue
-    object.inBeam = false
-    object.tether = 0
-    object.hold = 0
-    object.velocity.x += game.drone.velocity.x * 0.18
-    object.velocity.z += game.drone.velocity.z * 0.18
-    object.velocity.y = Math.max(2, object.velocity.y)
-    dropped += 1
-  }
-  game.loadedCars = 0
-  if (dropped > 0) {
-    setMessage(game, 'msgDumped', 1.1, dropped)
-    game.messageTime = 1.1
-    tone('upgrade')
-  }
 }
 
 function registerEnemyHit(game: GameRuntime, id: string, damage: number) {
@@ -1146,7 +1107,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const [language, setLanguageState] = useState<Language>(readStoredLanguage)
   const keys = useRef<Record<string, boolean>>({})
   const pointer = useRef({ x: 0, y: 0 })
-  const mobile = useRef<MobileInput>({ throttle: 0, steer: 0, strafe: 0, lookPitch: 0, vertical: 0, special: false, beam: false, laser: false, drop: false, active: false })
+  const mobile = useRef<MobileInput>({ throttle: 0, steer: 0, strafe: 0, lookPitch: 0, vertical: 0, special: false, beam: false, laser: false, active: false })
   const publishAccumulator = useRef(0)
   const publish = useCallback(() => setSnapshot(snapshotOf(runtime.current)), [])
 
@@ -1197,7 +1158,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
       // normal cooldown cadence instead of requiring repeated key presses.
       laser: Boolean(keys.current.KeyQ),
       laserContinuous: Boolean(keys.current.KeyQ),
-      drop: Boolean(keys.current.KeyR),
     }
     if (!mobile.current.active) return keyboard
     const { active: _active, ...mobileInput } = mobile.current
@@ -1223,10 +1183,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
     const rawInput = readInput()
     const tutorialAtStart = game.mission.stage === 0
     // The tutorial teaches one control at a time: until the beam actually
-    // lands on the cat, flight, laser, turbo and cargo-drop are all inert, so
-    // the only thing left to try is the one the prompt names.
+    // lands on the cat, flight, laser and turbo are all inert, so the only
+    // thing left to try is the one the prompt names.
     const input: PlayerInput = tutorialAtStart
-      ? { ...rawInput, throttle: 0, strafe: 0, vertical: 0, special: false, laser: false, laserContinuous: false, drop: false }
+      ? { ...rawInput, throttle: 0, strafe: 0, vertical: 0, special: false, laser: false, laserContinuous: false }
       : rawInput
     game.aimX = pointer.current.x
     game.aimY = pointer.current.y
@@ -1242,7 +1202,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     game.missionBannerTime = Math.max(0, game.missionBannerTime - d)
     game.sizePulse = Math.max(0, game.sizePulse - d * 2.4)
     game.daze = Math.max(0, game.daze - d)
-    game.dumpLockout = Math.max(0, game.dumpLockout - d)
+    game.turboLockout = Math.max(0, game.turboLockout - d)
     game.timeBonusPulse = Math.max(0, game.timeBonusPulse - d * 2.6)
     game.damageCooldown = Math.max(0, game.damageCooldown - d)
     game.collisionCooldown = Math.max(0, game.collisionCooldown - d)
@@ -1272,21 +1232,30 @@ export function GameProvider({ children }: { children: ReactNode }) {
       return
     }
 
-    const dropPressed = input.drop && !game.dropInputHeld
-    game.dropInputHeld = input.drop
-    if (dropPressed) {
-      dropCars(game)
-      game.dumpLockout = DUMP_LOCKOUT
-    }
     const boostPressed = input.special && !game.boostInputHeld
     game.boostInputHeld = input.special
-    const turboActive = input.special && game.turbo > 0.02
+    const turboActive = game.turboLockout <= 0 && input.special && game.turbo > 0.02
     if (turboActive) {
       if (boostPressed) playBoosterSound()
       if (game.drone.boostRemaining <= 0) { setMessage(game, 'msgTurbo', 1.2); tone('upgrade') }
-      const duration = 5 + upgradeBonus(game.upgrades, 'turbo-capacity')
+      // Halved from the old 5s base: a full gauge used to be enough that
+      // tapping the trigger just before it emptied kept it topped up forever.
+      const duration = 2.5 + upgradeBonus(game.upgrades, 'turbo-capacity')
       game.turbo = Math.max(0, game.turbo - d / duration)
       game.drone.boostRemaining = Math.max(game.drone.boostRemaining, 0.12)
+      // <= 0.02, not <= 0: that is the same floor turboActive itself checks,
+      // so without matching it here the gauge stalls just above the floor -
+      // each frame drains a hair below it, disqualifies itself from draining
+      // further, recharges a hair back above it, and repeats forever. That
+      // stall is a softer version of the exact "turbo never runs out" bug
+      // this lockout exists to close.
+      if (game.turbo <= 0.02) {
+        // The gauge keeps refilling through the lockout - the cost of running
+        // it dry is a forced pause, not a longer wait for the bar to move.
+        game.turboLockout = 2
+        setMessage(game, 'msgTurboOverload', 2)
+        tone('warning')
+      }
     } else game.turbo = Math.min(1, game.turbo + d * 0.13 * upgradeMultiplier(game.upgrades, 'turbo-recharge'))
 
     const flightInput: DroneInput = { ...input, special: false }
@@ -1436,7 +1405,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     }
     // No pickup cap: hanging mass is its own limit, and a craft that grabbed
     // too much should feel it rather than be quietly protected from it.
-    if (game.beamActive && game.dumpLockout <= 0) {
+    if (game.beamActive) {
       for (const car of game.traffic.cars) {
         if (!car.active || !isInsideBeam(car, beamField)) continue
         const captured = captureTrafficCar(game.traffic, car.id)
@@ -1444,16 +1413,13 @@ export function GameProvider({ children }: { children: ReactNode }) {
       }
     }
     if (!tutorialAtStart) stepHazards(game.hazards, { position: game.drone.position, heading: game.drone.heading, elapsed: game.sessionTime }, d)
-    // Suppress the whole field during the lockout, otherwise the dumped load is
-    // simply picked straight back up.
-    const pullField: BeamField = game.dumpLockout > 0 ? { ...beamField, active: false } : beamField
-    grabBuildings(game, pullField)
-    stepBeamObjects(game.beamObjects, pullField, d)
+    grabBuildings(game, beamField)
+    stepBeamObjects(game.beamObjects, beamField, d)
     // Crowd movement owns its absorption timer; beam physics only handles the
     // pull so the shrink animation is not advanced twice per frame.
-    stepBeamObjects(game.crowds.objects, pullField, d, false)
-    stepBeamObjects(game.hazards.objects, pullField, d)
-    stepBeamObjects(game.enemies.slots, pullField, d)
+    stepBeamObjects(game.crowds.objects, beamField, d, false)
+    stepBeamObjects(game.hazards.objects, beamField, d)
+    stepBeamObjects(game.enemies.slots, beamField, d)
     const maxAbsorbDiameter = Number.POSITIVE_INFINITY
     const absorbFrom = (objects: BeamObject[]) => {
       let object = beginNearbyBeamObjectAbsorption(objects, game.drone.position, maxAbsorbDiameter, game.sizeProfile.absorbDistance)

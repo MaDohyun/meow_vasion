@@ -212,7 +212,6 @@ function Intro() {
         <span><b>MOUSE</b> {t.controlAim}</span>
         <span><b>E</b> {t.controlBeam}</span>
         <span><b>Q</b> {t.controlLaser} · HOLD</span>
-        <span><b>R</b> {t.controlDump}</span>
         <span><b>SPACE</b> {t.controlBoost}</span>
       </div>
     </div>

@@ -47,7 +47,6 @@ type Strings = {
   controlAim: string
   controlBeam: string
   controlLaser: string
-  controlDump: string
   controlBoost: string
   mass: string
   massHint: string
@@ -69,7 +68,6 @@ type Strings = {
   beamPulling: string
   beamAmplified: string
   drag: string
-  dumpHint: string
   slowdown: string
   turbo: string
   turboActive: string
@@ -104,8 +102,8 @@ type Strings = {
   msgImpact: string
   msgDetonated: string
   msgCarLaunched: string
-  msgDumped: (count: number) => string
   msgTurbo: string
+  msgTurboOverload: string
   breakingFlag: string
   broadcast: BulletinSet
   upgradeTitle: string
@@ -171,7 +169,6 @@ export const STRINGS: Record<Language, Strings> = {
     controlAim: '조종 · 조준',
     controlBeam: '빔 유지 · 흡수',
     controlLaser: '레이저',
-    controlDump: '매달린 짐 버리기',
     controlBoost: '터보',
     mass: '질량',
     massHint: '사람은 흡수하고, 고양이는 구출해서 커지세요',
@@ -193,7 +190,6 @@ export const STRINGS: Record<Language, Strings> = {
     beamPulling: '견인',
     beamAmplified: '증폭',
     drag: '항력',
-    dumpHint: 'R로 투기',
     slowdown: '감속',
     turbo: '터보',
     turboActive: '작동',
@@ -228,8 +224,8 @@ export const STRINGS: Record<Language, Strings> = {
     msgImpact: '피격 · 질량 감소',
     msgDetonated: '폭발물 기폭 · 질량 감소',
     msgCarLaunched: '자동차 파괴 · +50',
-    msgDumped: (count) => `짐 투기 · ${count}개`,
     msgTurbo: '터보 가동',
+    msgTurboOverload: '터보 과부하 · 잠시 사용 불가',
     breakingFlag: '속보',
     broadcast: [
       { headline: '미확인 비행물체 도심 출현', line: '속보입니다. 미확인 비행물체가 도심 상공에 출현했습니다.\n정부는 요격을 위해 자폭 드론을 배치했습니다.' },
@@ -275,7 +271,6 @@ export const STRINGS: Record<Language, Strings> = {
     controlAim: '操縦・照準',
     controlBeam: 'ビーム維持・吸収',
     controlLaser: 'レーザー',
-    controlDump: '積荷を切り離す',
     controlBoost: 'ターボ',
     mass: '質量',
     massHint: '人は吸収、猫は救出して大きくなろう',
@@ -297,7 +292,6 @@ export const STRINGS: Record<Language, Strings> = {
     beamPulling: '牽引',
     beamAmplified: '増幅',
     drag: '抗力',
-    dumpHint: 'Rで投棄',
     slowdown: '減速',
     turbo: 'ターボ',
     turboActive: '作動',
@@ -332,8 +326,8 @@ export const STRINGS: Record<Language, Strings> = {
     msgImpact: '被弾 · 質量減少',
     msgDetonated: '爆発物が起爆 · 質量減少',
     msgCarLaunched: '車を破壊 · +50',
-    msgDumped: (count) => `積荷を投棄 · ${count}個`,
     msgTurbo: 'ターボ作動',
+    msgTurboOverload: 'ターボ過負荷 · 一時使用不可',
     breakingFlag: '速報',
     broadcast: [
       { headline: '未確認飛行物体が都心に出現', line: '速報です。未確認飛行物体が都心の上空に出現しました。\n政府は迎撃のため自爆ドローンを配備しました。' },
@@ -379,7 +373,6 @@ export const STRINGS: Record<Language, Strings> = {
     controlAim: 'STEER / AIM',
     controlBeam: 'HOLD BEAM · ABSORB',
     controlLaser: 'LASER',
-    controlDump: 'DUMP BEAM LOAD',
     controlBoost: 'TURBO BOOST',
     mass: 'MASS',
     massHint: 'ABSORB PEOPLE, RESCUE CATS, GROW',
@@ -401,7 +394,6 @@ export const STRINGS: Record<Language, Strings> = {
     beamPulling: 'PULLING',
     beamAmplified: 'AMPLIFIED',
     drag: 'DRAG',
-    dumpHint: 'R TO DUMP',
     slowdown: 'SLOWDOWN',
     turbo: 'TURBO',
     turboActive: 'ACTIVE',
@@ -436,8 +428,8 @@ export const STRINGS: Record<Language, Strings> = {
     msgImpact: 'IMPACT · SIZE DOWN',
     msgDetonated: 'EXPLOSIVE DETONATED · SIZE DOWN',
     msgCarLaunched: 'CAR LAUNCHED · +50',
-    msgDumped: (count) => `LOAD DUMPED · ${count}`,
     msgTurbo: 'TURBO ENGAGED',
+    msgTurboOverload: 'TURBO OVERLOAD · OFFLINE BRIEFLY',
     breakingFlag: 'BREAKING',
     broadcast: [
       { headline: 'UFO SIGHTED OVER THE CITY', line: 'Breaking news. An unidentified craft has appeared over the city.\nThe government has deployed suicide drones to intercept it.' },
