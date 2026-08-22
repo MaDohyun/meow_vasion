@@ -129,6 +129,11 @@ export type GameRuntime = {
    *  leaving the tutorial impossible to clear - holding the beam on until
    *  the cat is actually absorbed is the fix. */
   tutorialBeamLatched: boolean
+  /** Flips true once the general's briefing reaches "hold E to rescue the
+   *  cat" (BossBriefing calls unlockTutorialBeam). E does nothing before
+   *  that - see beamUnlocked in advance() - so an early tap can't finish the
+   *  tutorial while the briefing is still on an earlier line. */
+  tutorialBriefingReady: boolean
   laserActive: boolean
   laserInputHeld: boolean
   boostInputHeld: boolean
@@ -241,6 +246,7 @@ export type GameSnapshot = {
   missionPulse: number
   missionBanner: string
   tutorial: boolean
+  tutorialBriefingReady: boolean
   daze: number
   loadedCars: number
   cargoSlowdown: number
@@ -296,6 +302,7 @@ type GameContextValue = {
   start: () => void
   restart: () => void
   chooseUpgrade: (id: UpgradeId) => void
+  unlockTutorialBeam: () => void
   quality: RenderQuality
   setQuality: (quality: RenderQuality) => void
   language: Language
@@ -426,6 +433,7 @@ function makeRuntime(): GameRuntime {
     beamActive: false,
     beamTargetId: null,
     tutorialBeamLatched: false,
+    tutorialBriefingReady: false,
     laserActive: false,
     laserInputHeld: false,
     boostInputHeld: false,
@@ -1033,6 +1041,7 @@ function snapshotOf(game: GameRuntime): GameSnapshot {
     missionPulse: game.missionPulse,
     missionBanner: game.missionBannerTime > 0 ? game.missionBanner : '',
     tutorial: game.mission.stage === 0,
+    tutorialBriefingReady: game.tutorialBriefingReady,
     daze: game.daze,
     loadedCars: game.loadedCars,
     cargoSlowdown: slowdown,
@@ -1200,14 +1209,20 @@ export function GameProvider({ children }: { children: ReactNode }) {
     const d = Math.min(dt, 0.05)
     const rawInput = readInput()
     const tutorialAtStart = game.mission.stage === 0
-    if (tutorialAtStart && rawInput.beam) game.tutorialBeamLatched = true
+    // The general's briefing has to actually reach "hold E to rescue the
+    // cat" before E does anything - otherwise a player who taps E while
+    // reading the earlier lines finishes the tutorial in the background,
+    // the stage flips, movement unlocks, and the ship takes off while the
+    // briefing is still mid-sentence.
+    const beamUnlocked = !tutorialAtStart || game.tutorialBriefingReady
+    if (tutorialAtStart && beamUnlocked && rawInput.beam) game.tutorialBeamLatched = true
     // The tutorial teaches one control at a time: until the beam actually
     // lands on the cat, flight, laser and turbo are all inert, so the only
     // thing left to try is the one the prompt names. Once E has been pressed
     // once, the beam latches on for the rest of the tutorial - see
     // tutorialBeamLatched - so tapping it does not let the cat go mid-pull.
     const input: PlayerInput = tutorialAtStart
-      ? { ...rawInput, throttle: 0, strafe: 0, vertical: 0, special: false, laser: false, laserContinuous: false, beam: rawInput.beam || game.tutorialBeamLatched }
+      ? { ...rawInput, throttle: 0, strafe: 0, vertical: 0, special: false, laser: false, laserContinuous: false, beam: beamUnlocked && (rawInput.beam || game.tutorialBeamLatched) }
       : rawInput
     game.aimX = pointer.current.x
     game.aimY = pointer.current.y
@@ -1627,6 +1642,11 @@ export function GameProvider({ children }: { children: ReactNode }) {
     publish()
   }, [publish])
 
+  const unlockTutorialBeam = useCallback(() => {
+    runtime.current.tutorialBriefingReady = true
+    publish()
+  }, [publish])
+
   const restart = useCallback(() => {
     stopBeamSound()
     unlockAudio()
@@ -1639,7 +1659,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   }, [publish])
 
   const setMobileInput = useCallback((input: Partial<MobileInput>) => { Object.assign(mobile.current, input) }, [])
-  const value = useMemo<GameContextValue>(() => ({ runtime, snapshot, readInput, advance, start, restart, chooseUpgrade, setMobileInput, quality, setQuality, language, setLanguage, t: STRINGS[language] }), [advance, quality, readInput, restart, chooseUpgrade, setMobileInput, setQuality, snapshot, start, language, setLanguage])
+  const value = useMemo<GameContextValue>(() => ({ runtime, snapshot, readInput, advance, start, restart, chooseUpgrade, unlockTutorialBeam, setMobileInput, quality, setQuality, language, setLanguage, t: STRINGS[language] }), [advance, quality, readInput, restart, chooseUpgrade, unlockTutorialBeam, setMobileInput, setQuality, snapshot, start, language, setLanguage])
   return <GameContext.Provider value={value}>{children}</GameContext.Provider>
 }
 

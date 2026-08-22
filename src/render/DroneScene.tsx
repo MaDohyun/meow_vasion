@@ -73,6 +73,15 @@ function mergeModel(parts: THREE.BufferGeometry[]) {
   return geometry
 }
 
+// Dark "button eyes" for the crowd - vertex-colored near-black, so they read
+// as dark dots under every instance tint instead of getting washed out by it
+// (instance color multiplies the vertex color, and near-zero stays near-zero).
+const EYE_COLOR = '#1e1728'
+
+function eyePair(radius: number, x: number, y: number, z: number) {
+  return [-x, x].map((eyeX) => coloredPart(new THREE.SphereGeometry(radius, 6, 5).translate(eyeX, y, z), EYE_COLOR))
+}
+
 function pedestrianGeometry() {
   return mergeModel([
     coloredPart(new THREE.CapsuleGeometry(0.34, 0.72, 4, 8), '#ee6f9f'),
@@ -81,6 +90,7 @@ function pedestrianGeometry() {
     coloredPart(new THREE.BoxGeometry(0.2, 0.7, 0.24).translate(0.2, -0.68, 0), '#38547e'),
     coloredPart(new THREE.BoxGeometry(0.15, 0.82, 0.17).rotateZ(0.34).translate(-0.46, 0.02, 0), '#f4b98d'),
     coloredPart(new THREE.BoxGeometry(0.15, 0.82, 0.17).rotateZ(-0.34).translate(0.46, 0.02, 0), '#f4b98d'),
+    ...eyePair(0.065, 0.13, 0.95, 0.32),
   ])
 }
 
@@ -104,6 +114,7 @@ function catGeometry() {
     ...[-0.25, 0.25].flatMap((x) => [-0.32, 0.32].map((z) =>
       coloredPart(new THREE.BoxGeometry(0.13, 0.42, 0.14).translate(x, -0.4, z), '#d98b45'),
     )),
+    ...eyePair(0.065, 0.14, 0.28, 0.97),
   ]).scale(CAT_SCALE, CAT_SCALE, CAT_SCALE).translate(0, -0.34 * (1 - CAT_SCALE), 0)
 }
 
