@@ -57,6 +57,7 @@ type Strings = {
   ceiling: string
   overloaded: string
   overloadAlarm: string
+  waterAlarm: string
   clock: string
   score: string
   wave: string
@@ -178,7 +179,8 @@ export const STRINGS: Record<Language, Strings> = {
     repairing: '수리 중',
     ceiling: '상승 한계',
     overloaded: '과적',
-    overloadAlarm: '과적 — 고도 유지 불가 · R로 투기',
+    overloadAlarm: '무게가 높습니다. 고도 유지 불가. 무게를 줄이세요.',
+    waterAlarm: '호수 물을 빨아들이는 중 · 속도 저하',
     clock: '남은 시간',
     score: '점수',
     wave: '웨이브',
@@ -280,7 +282,8 @@ export const STRINGS: Record<Language, Strings> = {
     repairing: '修理中',
     ceiling: '上昇限界',
     overloaded: '過積載',
-    overloadAlarm: '過積載 — 高度を保てません · Rで投棄',
+    overloadAlarm: '重量超過。高度を維持できません。重量を減らしてください。',
+    waterAlarm: '湖の水を吸収中 · 速度低下',
     clock: '残り時間',
     score: 'スコア',
     wave: 'ウェーブ',
@@ -382,7 +385,8 @@ export const STRINGS: Record<Language, Strings> = {
     repairing: 'REPAIRING',
     ceiling: 'CEILING',
     overloaded: 'OVERLOADED',
-    overloadAlarm: 'OVERLOADED — LOSING ALTITUDE · R TO DUMP',
+    overloadAlarm: 'WEIGHT TOO HIGH. LOSING ALTITUDE. REDUCE YOUR LOAD.',
+    waterAlarm: 'DRAWING LAKE WATER · SLOWED',
     clock: 'CLOCK',
     score: 'SCORE',
     wave: 'WAVE',

@@ -251,7 +251,12 @@ button { font: inherit; }
 .shield-bar b { position:absolute; right:0; top:-1px; color:var(--green); font-size:7px; }
 .shield-bar[data-regen="true"] i[data-state="empty"],.shield-bar[data-regen="true"] i[data-state="part"] { animation:warning-pulse 1s steps(2) infinite; }
 
-.overload-alarm { position:absolute; left:50%; top:24%; padding:9px 18px; color:var(--cream); background:rgba(196,44,64,.94); border:3px solid var(--cream); box-shadow:5px 5px 0 rgba(22,17,40,.6); font-size:11px; font-weight:1000; letter-spacing:1.6px; white-space:nowrap; transform:translateX(-50%); animation:warning-pulse .35s steps(2) infinite; }
+/* Static on purpose - the pulse used to swap out the centring transform for
+   a scale each keyframe step, so the box snapped half its own width sideways
+   twice a second instead of pulsing in place. A message worth reading is
+   worth holding still. */
+.overload-alarm { position:absolute; left:50%; top:24%; padding:9px 18px; color:var(--cream); background:rgba(196,44,64,.94); border:3px solid var(--cream); box-shadow:5px 5px 0 rgba(22,17,40,.6); font-size:11px; font-weight:1000; letter-spacing:1.6px; white-space:nowrap; transform:translateX(-50%); }
+.water-alarm { position:absolute; left:50%; top:32%; padding:9px 18px; color:var(--cream); background:rgba(38,110,168,.94); border:3px solid var(--cream); box-shadow:5px 5px 0 rgba(22,17,40,.6); font-size:11px; font-weight:1000; letter-spacing:1.6px; white-space:nowrap; transform:translateX(-50%); }
 
 @media (pointer: coarse), (max-width: 760px) {
   .mobile-controls { display:block; }

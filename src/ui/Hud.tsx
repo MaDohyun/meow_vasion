@@ -406,6 +406,7 @@ export function Hud() {
           <div><span className="eyebrow">{t.pilotCam}</span><b>{snapshot.pilotExpression.toUpperCase()}</b></div>
         </section>
         {snapshot.overloadWarn >= 1 && <div className="overload-alarm">{t.overloadAlarm}</div>}
+        {snapshot.waterAnchored && <div className="water-alarm">{t.waterAlarm}</div>}
         <BreakingNews />
         {snapshot.timeBonusPulse > 0 && <div className="time-bonus">+{snapshot.timeBonusAmount}s</div>}
         <div
