@@ -12,18 +12,19 @@ import {
   isInsideBeam,
   stepBeamObjects,
 } from './core/beam'
-import { createCrowdState, stepCrowds, type CrowdState } from './core/crowds'
-import { type CrowdSpawnZone, canAbsorbBuilding, crowdSpawnZonesAround, parkingCarsAround } from './core/cityLandmarks'
+import { createCrowdState, finishTutorialCrowd, prepareTutorialCrowd, stepCrowds, type CrowdState } from './core/crowds'
+import { type CrowdSpawnZone, canAbsorbBuilding, crowdSpawnZonesAround, destructibleLandmarksAround, nearestDestructibleLandmark, parkingCarsAround, type DestructibleLandmark } from './core/cityLandmarks'
 import { STRINGS, readStoredLanguage, storeLanguage, type Language, type MessageKey } from './i18n'
 import { createDaylightSample, daylightClock, sampleDaylight, type DaylightSample } from './core/daylight'
 import {
   createHazardState,
   detonateReachedHazard,
+  destroyHazard,
   stepHazards,
   type HazardState,
 } from './core/hazards'
-import { SIZE_MIN, SIZE_START, type SizeGainKind, type SizeProfile, clampSize, growSize, growSizeBy, sizeProfile, ufoDiameter } from './core/size'
-import { createHealthState, damageHealth, healHealth, healthRatio, isDead, isRegenerating, stepHealth, type HealthLossKind, type HealthState } from './core/health'
+import { SIZE_MIN, SIZE_START, type SizeGainKind, type SizeProfile, clampSize, growSize, growSizeBy, sizeProfile } from './core/size'
+import { HEALTH_LOSS, createHealthState, healthRatio, isDead, isRegenerating, stepHealth, type HealthLossKind, type HealthState } from './core/health'
 import { BATTLESHIP_TURRETS, activeEnemyCount, battleshipTurretPoint, createEnemyState, hitEnemy, resolveEnemyContacts, stepEnemies, stepEnemyProjectiles, syncAntiAirEnemies, syncEnemyTiers, waveLabelForTime, waveStageForTime, type EnemyState } from './core/enemies'
 import {
   createLaserPool,
@@ -50,11 +51,18 @@ import {
   buildingBulk,
   buildingMass,
   createActiveWorld,
+  isLakeAt,
+  TUTORIAL_SPAWN,
   updateActiveWorld,
 } from './core/world'
 import { captureTrafficCar, createTrafficState, releaseTrafficSlot, stepTraffic, TRAFFIC_MAX_CARS, type TrafficCar, type TrafficState } from './core/traffic'
 import { BROADCAST_OPENING_AT, BROADCAST_SECONDS } from './core/broadcast'
-import { REGEN_CARD_INSTANT_HEAL, applyUpgrade, createUpgradeState, isUpgradeDue, rollUpgradeChoices, upgradeMultiplier, type UpgradeId, type UpgradeState } from './core/upgrades'
+import { applyUpgrade, createUpgradeState, isUpgradeDue, rollUpgradeChoices, upgradeBonus, upgradeMultiplier, type UpgradeId, type UpgradeState } from './core/upgrades'
+import { createBuildingRuin, damageBuilding, ruinCollider, type BuildingRuin } from './core/buildings'
+import { LAKE_BEAM_SPEED_SCALE, stepLakeAbsorption } from './core/lakes'
+import { createMissionState, missionHasQuest, recordMissionEvent, startMissionOne, syncMissionState, type MissionQuest, type MissionState } from './core/missions'
+import { absorbShieldDamage, createShieldState, isShieldRegenerating, setShieldCapacity, shieldRatio, stepShield, type ShieldState } from './core/shield'
+import { shouldCrashFromOverload } from './core/overload'
 import { tone, unlockAudio } from './audio'
 
 export type GamePhase = 'intro' | 'playing' | 'upgrade' | 'results'
@@ -109,6 +117,7 @@ export type GameRuntime = {
   laserTargets: LaserSphereTarget[]
   enemies: EnemyState
   enemiesDown: number
+  bossDestroyed: boolean
   beamObjects: BeamObject[]
   crowds: CrowdState
   traffic: TrafficState
@@ -116,6 +125,9 @@ export type GameRuntime = {
   /** Buildings the player has eaten. Consulted whenever the city streams, so a
    *  swallowed block does not reappear on the way back. */
   destroyedBuildings: Set<string>
+  buildingHealth: Map<string, number>
+  ruinedBuildings: Map<string, BuildingRuin>
+  destroyedLandmarks: Set<string>
   crowdThreats: Vec3[]
   crowdSpawnZones: CrowdSpawnZone[]
   phase: GamePhase
@@ -128,9 +140,19 @@ export type GameRuntime = {
   size: number
   sizeProfile: SizeProfile
   health: HealthState
+  shield: ShieldState
   sizePulse: number
   absorbedCount: number
   ballast: number
+  waterAbsorbed: number
+  waterAnchored: boolean
+  mission: MissionState
+  missionPulse: number
+  missionBanner: string
+  missionBannerTime: number
+  checkpoint: Vec3 | null
+  checkpointGeneration: number
+  missionTarget: Vec3 | null
   hazards: HazardState
   daze: number
   dumpLockout: number
@@ -179,10 +201,22 @@ export type GameSnapshot = {
   healthMax: number
   healthRatio: number
   regenerating: boolean
+  shield: number
+  shieldMax: number
+  shieldRatio: number
+  shieldRegenerating: boolean
   maxAltitude: number
   sizePulse: number
   absorbedCount: number
   ballast: number
+  beamStrength: number
+  waterAbsorbed: number
+  waterAnchored: boolean
+  missionStage: number
+  missionQuests: MissionQuest[]
+  missionPulse: number
+  missionBanner: string
+  tutorial: boolean
   daze: number
   loadedCars: number
   cargoSlowdown: number
@@ -246,7 +280,7 @@ type GameContextValue = {
 }
 
 const GameContext = createContext<GameContextValue | null>(null)
-const UFO_UPGRADES = { speed: 0.45, stability: 0, rack: 0, special: 'none' as const }
+const UFO_UPGRADES = { speed: 0, stability: 0, rack: 0, special: 'none' as const }
 
 const HITSTOP_TIME = 0.05
 /**
@@ -271,9 +305,6 @@ const BALLAST_DRAG = 0.31
  * It is a countdown, not a dead end. Dropping the load with R or finishing the
  * meal both clear it, so the answer is always in the player's hands.
  */
-const BALLAST_CRUSH = 34
-/** Where the warnings start. Dying has to be something you watched coming. */
-const BALLAST_WARN = BALLAST_CRUSH * 0.6
 /**
  * A detonation makes the craft sluggish; it never takes the controls away.
  * Input keeps registering, it just responds badly, so the player is still
@@ -326,12 +357,12 @@ function makeRuntime(): GameRuntime {
   const drone = createDroneState()
   // Down in the streets. The opening craft is small, its ceiling is low, and
   // its beam is weak - it belongs among the buildings, not above them.
-  drone.position = { x: 0, y: 7, z: 54.5 }
+  drone.position = { ...TUTORIAL_SPAWN }
   drone.heading = Math.PI
   const world = createActiveWorld(drone.position)
   const crowdSpawnZones = crowdSpawnZonesAround(drone.position)
   const crowds = createCrowdState((Math.random() * 0xffffffff) >>> 0)
-  stepCrowds(crowds, { position: drone.position, heading: drone.heading, colliders: activeWorldColliders(world), spawnZones: crowdSpawnZones }, 0)
+  prepareTutorialCrowd(crowds, { x: TUTORIAL_SPAWN.x, z: 51 })
   const traffic = createTrafficState((Math.random() * 0xffffffff) >>> 0)
   const enemies = createEnemyState()
   const crowdThreats = [{ ...drone.position }, ...traffic.cars.map((car) => ({ ...car.position })), ...enemies.slots.map((enemy) => ({ ...enemy.position })), ...crowds.objects.map((object) => ({ ...object.position }))]
@@ -370,11 +401,15 @@ function makeRuntime(): GameRuntime {
     laserTargets: [],
     enemies,
     enemiesDown: 0,
+    bossDestroyed: false,
     beamObjects: [...parkingCarsAround(drone.position), ...world.cars].slice(0, WORLD_MAX_CARS).map(makeBeamObject),
     crowds,
     traffic,
     destroyedCars: new Set<string>(),
     destroyedBuildings: new Set<string>(),
+    buildingHealth: new Map<string, number>(),
+    ruinedBuildings: new Map<string, BuildingRuin>(),
+    destroyedLandmarks: new Set<string>(),
     crowdThreats,
     crowdSpawnZones,
     phase: 'intro',
@@ -387,9 +422,19 @@ function makeRuntime(): GameRuntime {
     size: SIZE_START,
     sizeProfile: sizeProfile(SIZE_START),
     health: createHealthState(),
+    shield: createShieldState(),
     sizePulse: 0,
     absorbedCount: 0,
     ballast: 0,
+    waterAbsorbed: 0,
+    waterAnchored: false,
+    mission: createMissionState((Math.random() * 0xffffffff) >>> 0),
+    missionPulse: 0,
+    missionBanner: '',
+    missionBannerTime: 0,
+    checkpoint: null,
+    checkpointGeneration: 0,
+    missionTarget: null,
     hazards: createHazardState(),
     daze: 0,
     dumpLockout: 0,
@@ -407,6 +452,81 @@ function makeRuntime(): GameRuntime {
   return runtime
 }
 
+function liftLimit(game: GameRuntime) {
+  return game.sizeProfile.liftCapacity + upgradeBonus(game.upgrades, 'lift')
+}
+
+function beamStrength(game: GameRuntime) {
+  return game.sizeProfile.beamStrength + upgradeBonus(game.upgrades, 'beam-grip')
+}
+
+function refreshWorldGeometry(game: GameRuntime) {
+  game.worldColliders = [
+    ...activeWorldColliders(game.world),
+    ...[...game.ruinedBuildings.values()]
+      .filter((ruin) => Math.hypot(ruin.position.x - game.drone.position.x, ruin.position.z - game.drone.position.z) <= WORLD_REMOVE_RADIUS)
+      .map(ruinCollider),
+  ]
+}
+
+function spawnCheckpoint(game: GameRuntime) {
+  game.checkpointGeneration += 1
+  const seed = Math.imul(game.checkpointGeneration + game.mission.randomState, 0x45d9f3b) >>> 0
+  const angle = seed % 360 / 180 * Math.PI
+  const distance = 44 + ((seed >>> 9) % 28)
+  game.checkpoint = {
+    x: game.drone.position.x + Math.sin(angle) * distance,
+    y: Math.max(10, Math.min(game.sizeProfile.maxAltitude - 3, 17 + ((seed >>> 15) % 15))),
+    z: game.drone.position.z + Math.cos(angle) * distance,
+  }
+}
+
+function updateMissionTarget(game: GameRuntime) {
+  const targets = [] as DestructibleLandmark[]
+  if (missionHasQuest(game.mission, 'destroy-gas-station')) {
+    const station = nearestDestructibleLandmark(game.drone.position, 'gas-station', game.destroyedLandmarks)
+    if (station) targets.push(station)
+  }
+  if (missionHasQuest(game.mission, 'destroy-comms')) {
+    const communications = nearestDestructibleLandmark(game.drone.position, 'communications', game.destroyedLandmarks)
+    if (communications) targets.push(communications)
+  }
+  targets.sort((left, right) =>
+    Math.hypot(left.position.x - game.drone.position.x, left.position.z - game.drone.position.z) -
+    Math.hypot(right.position.x - game.drone.position.x, right.position.z - game.drone.position.z),
+  )
+  game.missionTarget = targets[0] ? { ...targets[0].position } : null
+}
+
+function presentMissionChange(game: GameRuntime, previousStage: number, previousRevision: number) {
+  if (game.mission.revision === previousRevision) return
+  game.missionPulse = 1
+  if (game.mission.stage !== previousStage) {
+    if (game.mission.stage >= 1 && game.mission.stage <= 3) {
+      game.missionBanner = previousStage >= 1
+        ? `미션 ${previousStage} 완료 · 미션 ${game.mission.stage}, 골라서 해!`
+        : `미션 ${game.mission.stage} 개시 · 골라서 해, 순서는 자유야!`
+      game.missionBannerTime = 2.4
+    } else if (game.mission.stage === 4) {
+      game.missionBanner = '지구 정찰 완료 · 장군님 퇴근 준비 끝!'
+      game.missionBannerTime = 4
+    }
+  }
+  if (missionHasQuest(game.mission, 'air-checkpoints') && !game.checkpoint) spawnCheckpoint(game)
+  if (!missionHasQuest(game.mission, 'air-checkpoints')) game.checkpoint = null
+  if (game.mission.stage === 3 && game.bossDestroyed && missionHasQuest(game.mission, 'destroy-battleship')) {
+    recordMissionEvent(game.mission, { type: 'destroy-enemy', kind: 'boss' }, game.sessionTime)
+  }
+  updateMissionTarget(game)
+}
+
+function reportMissionEvent(game: GameRuntime, event: Parameters<typeof recordMissionEvent>[1]) {
+  const previousStage = game.mission.stage
+  const previousRevision = game.mission.revision
+  recordMissionEvent(game.mission, event, game.sessionTime)
+  presentMissionChange(game, previousStage, previousRevision)
+}
+
 /**
  * Tears a building out of the ground if the craft is big enough to take it.
  *
@@ -418,11 +538,11 @@ function makeRuntime(): GameRuntime {
  */
 function grabBuildings(game: GameRuntime, field: BeamField) {
   if (!game.beamActive || game.dumpLockout > 0) return
-  const reach = ufoDiameter(game.size)
+  const strength = beamStrength(game)
   let taken = false
   for (const building of game.world.buildings) {
     if (game.destroyedBuildings.has(building.id)) continue
-    if (!canAbsorbBuilding(building, reach)) continue
+    if (!canAbsorbBuilding(building, strength)) continue
     const footprint = {
       position: { x: building.position.x, y: building.position.y, z: building.position.z },
     }
@@ -483,10 +603,10 @@ function syncBeamObjects(game: GameRuntime) {
   for (const car of game.traffic.cars) if (car.captured && !retainedTrafficIds.has(car.id)) releaseTrafficSlot(game.traffic, car.id)
 }
 
-function writeLaserSphereTarget(targets: LaserSphereTarget[], slot: number, id: string, center: Vec3, radius: number) {
+function writeLaserSphereTarget(targets: LaserSphereTarget[], slot: number, id: string, center: Vec3, radius: number, explicitKind?: LaserSphereTarget['kind']) {
   const target = targets[slot] ?? { id, kind: 'fighter' as const, center: { x: 0, y: 0, z: 0 }, radius }
   target.id = id
-  target.kind = id.startsWith('car:') || id.startsWith('traffic:') || id.startsWith('parking-car:') ? 'car' : 'fighter'
+  target.kind = explicitKind ?? (id.startsWith('car:') || id.startsWith('traffic:') || id.startsWith('parking-car:') || id.startsWith('hazard:') ? 'car' : 'fighter')
   target.center.x = center.x
   target.center.y = center.y
   target.center.z = center.z
@@ -525,6 +645,10 @@ function laserSphereTargets(game: GameRuntime) {
   }
   for (const object of game.beamObjects) if (object.active && !object.destroying && !object.absorbing) slot = writeLaserSphereTarget(game.laserTargets, slot, object.id, object.position, 1.7)
   for (const car of game.traffic.cars) if (car.active) slot = writeLaserSphereTarget(game.laserTargets, slot, car.id, car.position, 1.7)
+  for (const landmark of destructibleLandmarksAround(game.drone.position)) {
+    if (game.destroyedLandmarks.has(landmark.id)) continue
+    slot = writeLaserSphereTarget(game.laserTargets, slot, landmark.id, landmark.position, landmark.radius, 'landmark')
+  }
   game.laserTargets.length = slot
   return game.laserTargets
 }
@@ -542,16 +666,24 @@ function laserSphereTargets(game: GameRuntime) {
  */
 function beamBallast(game: GameRuntime) {
   let mass = 0
+  for (const object of game.crowds.objects) {
+    if (!object.active || (!object.inBeam && object.tether <= 0.02)) continue
+    if (object.position.y <= 0.72 && object.tether <= 0.02) continue
+    mass += object.mass
+  }
   for (const object of game.beamObjects) {
     if (!object.active || (!object.inBeam && object.tether <= 0.02)) continue
+    if (object.position.y <= 0.72 && object.tether <= 0.02) continue
     mass += object.mass
   }
   for (const hazard of game.hazards.objects) {
     if (!hazard.active || (!hazard.inBeam && hazard.tether <= 0.02)) continue
+    if (hazard.position.y <= 1.3 && hazard.tether <= 0.02) continue
     mass += hazard.mass
   }
   for (const enemy of game.enemies.slots) {
     if (!enemy.active || (!enemy.inBeam && enemy.tether <= 0.02)) continue
+    if (enemy.position.y <= 0.72 && enemy.tether <= 0.02) continue
     mass += enemy.mass
   }
   return mass
@@ -609,6 +741,7 @@ function registerEnemyHit(game: GameRuntime, id: string, damage: number) {
     triggerLaserBurst(game.laserBursts, 'impact', result.enemy.position, '#ffd27a')
   }
   if (!result.destroyed || !result.kind) return
+  if (result.kind === 'boss') game.bossDestroyed = true
   if (result.kind === 'boss' && result.enemy) {
     // Seventy-four metres of ship does not go up in one puff. A burst at every
     // gun station breaks along the whole length.
@@ -624,6 +757,7 @@ function registerEnemyHit(game: GameRuntime, id: string, damage: number) {
   const reward = result.kind === 'boss' ? 3200 : result.kind === 'tank' ? 260 : result.kind === 'anti-air' ? 180 : result.kind === 'fighter' ? 140 : result.kind === 'helicopter' ? 80 : result.kind === 'police-car' ? 55 : 35
   game.enemiesDown += 1
   game.score += reward
+  reportMissionEvent(game, { type: 'destroy-enemy', kind: result.kind })
   setMessage(game, 'msgEnemyDown', 1.4, reward)
   tone('upgrade')
 }
@@ -642,6 +776,73 @@ function destroyCar(game: GameRuntime, id: string, direction: Vec3) {
   if (!target || !beginCarDestruction(target, direction, game.drone.velocity)) return false
   game.destroyedCars.add(id)
   game.score += 50
+  reportMissionEvent(game, { type: 'destroy-car' })
+  return true
+}
+
+function destroyHeavyVehicle(game: GameRuntime, id: string) {
+  const hazard = game.hazards.objects.find((candidate) => candidate.active && candidate.id === id)
+  if (!hazard) return false
+  if (hazard.kind === 'explosive') {
+    const destroyed = destroyHazard(game.hazards, id)
+    if (!destroyed) return false
+  } else {
+    hazard.active = false
+    hazard.inBeam = false
+    hazard.tether = 0
+    hazard.explosionPending = true
+    reportMissionEvent(game, { type: 'destroy-truck' })
+  }
+  game.score += hazard.kind === 'truck' ? 90 : 140
+  triggerLaserBurst(game.laserBursts, 'impact', hazard.position, '#ff8a45')
+  return true
+}
+
+function registerBuildingLaserHit(game: GameRuntime, id: string) {
+  const building = game.world.buildings.find((candidate) => candidate.id === id)
+  if (!building || game.destroyedBuildings.has(id)) return false
+  const result = damageBuilding(game.buildingHealth, building, upgradeMultiplier(game.upgrades, 'laser-power'))
+  triggerLaserBurst(game.laserBursts, 'impact', building.position, '#ffca63')
+  if (!result.destroyed) return true
+  game.destroyedBuildings.add(building.id)
+  game.ruinedBuildings.set(building.id, createBuildingRuin(building))
+  game.score += 420
+  reportMissionEvent(game, { type: 'ruin-building' })
+  game.world = updateActiveWorld(game.world, game.drone.position, true, game.destroyedBuildings)
+  refreshWorldGeometry(game)
+  game.impactFlash = 1
+  return true
+}
+
+function detonateLandmark(game: GameRuntime, landmark: DestructibleLandmark) {
+  if (game.destroyedLandmarks.has(landmark.id)) return false
+  game.destroyedLandmarks.add(landmark.id)
+  const point = landmark.position
+  for (let burst = 0; burst < 4; burst += 1) {
+    triggerLaserBurst(game.laserBursts, 'impact', {
+      x: point.x + (burst % 2 ? 3 : -3),
+      y: point.y + burst * 1.4,
+      z: point.z + (burst < 2 ? -2 : 2),
+    }, burst % 2 ? '#ffcf63' : '#ff6a45')
+  }
+  const knock = (object: BeamObject) => {
+    if (!object.active) return
+    const dx = object.position.x - point.x
+    const dz = object.position.z - point.z
+    const distance = Math.hypot(dx, dz)
+    if (distance > 28) return
+    const force = (1 - distance / 28) * 22
+    object.velocity.x += dx / Math.max(1, distance) * force
+    object.velocity.y += force * 0.55
+    object.velocity.z += dz / Math.max(1, distance) * force
+  }
+  for (const object of game.beamObjects) knock(object)
+  for (const object of game.crowds.objects) knock(object)
+  for (const object of game.hazards.objects) knock(object)
+  game.score += 650
+  reportMissionEvent(game, { type: landmark.kind === 'gas-station' ? 'destroy-gas-station' : 'destroy-comms' })
+  updateMissionTarget(game)
+  game.impactFlash = 1
   return true
 }
 
@@ -666,10 +867,11 @@ function growBy(game: GameRuntime, amount: number) {
  * one place. Size is not touched - it never falls.
  */
 function wound(game: GameRuntime, kind: HealthLossKind) {
-  // Hull is the one upgrade that reduces rather than increases, so it divides.
-  const before = game.health.current
-  damageHealth(game.health, kind)
-  game.health.current = Math.max(0, before - (before - game.health.current) / upgradeMultiplier(game.upgrades, 'hull'))
+  const hullDamage = absorbShieldDamage(game.shield, HEALTH_LOSS[kind])
+  if (hullDamage > 0) {
+    game.health.current = Math.max(0, game.health.current - hullDamage)
+    game.health.sinceHit = 0
+  }
   if (isDead(game.health)) endRun(game, 'CRAFT DOWN', false)
 }
 
@@ -690,6 +892,7 @@ function offerUpgradeIfDue(game: GameRuntime) {
 }
 
 function absorbCrowd(game: GameRuntime, kind: 'cat' | 'pedestrian') {
+  const tutorialCat = kind === 'cat' && game.mission.stage === 0
   // Score scales with size, so a big craft earns more per body. Growing is
   // worth chasing beyond simply staying alive.
   const reward = Math.round((kind === 'cat' ? 40 : 15) * game.sizeProfile.scoreMultiplier)
@@ -697,7 +900,18 @@ function absorbCrowd(game: GameRuntime, kind: 'cat' | 'pedestrian') {
   game.absorbedCount += 1
   game.score += reward
   game.pickupPulse = 1
-  setMessage(game, kind === 'cat' ? 'msgAbsorbedCat' : 'msgAbsorbedPerson', 1.25, reward)
+  if (tutorialCat) {
+    const previousRevision = game.mission.revision
+    startMissionOne(game.mission, 0)
+    finishTutorialCrowd(game.crowds)
+    presentMissionChange(game, 0, previousRevision)
+    game.message = '좋아, 고양이는 합격. 이제 도시를 좀 어질러 보자고.'
+    game.messageKey = null
+    game.messageTime = 2.8
+  } else {
+    reportMissionEvent(game, { type: kind === 'cat' ? 'capture-cat' : 'capture-person' })
+  }
+  if (!tutorialCat) setMessage(game, kind === 'cat' ? 'msgAbsorbedCat' : 'msgAbsorbedPerson', 1.25, reward)
   tone('pickup')
   offerUpgradeIfDue(game)
 }
@@ -713,11 +927,14 @@ function absorbBeamObject(game: GameRuntime, object: BeamObject) {
   game.pickupPulse = 1
   offerUpgradeIfDue(game)
   if (object.kind === 'car') game.destroyedCars.add(object.id)
+  if (object.kind === 'car') reportMissionEvent(game, { type: 'destroy-car' })
+  if (object.kind === 'truck') reportMissionEvent(game, { type: 'destroy-truck' })
   if (object.id.startsWith('enemy:')) {
     const enemy = game.enemies.slots.find((candidate) => candidate.id === object.id)
     if (enemy) {
       enemy.respawn = enemy.kind === 'boss' ? 999 : 4.5
       game.enemiesDown += 1
+      reportMissionEvent(game, { type: 'destroy-enemy', kind: enemy.kind })
     }
   }
   setMessage(game, 'msgAbsorbedObject', 1.25, reward)
@@ -782,7 +999,7 @@ function snapshotOf(game: GameRuntime): GameSnapshot {
     upgradeLevels: game.upgrades.levels,
     upgradeNextAt: game.upgrades.nextAt,
     beamRadiusScale: upgradeMultiplier(game.upgrades, 'beam-radius'),
-    beamReachScale: upgradeMultiplier(game.upgrades, 'beam-reach'),
+    beamReachScale: 1,
     daylightLabel: game.daylight.label,
     daylightClock: daylightClock(game.sessionTime),
     nightFactor: game.daylight.nightFactor,
@@ -790,15 +1007,27 @@ function snapshotOf(game: GameRuntime): GameSnapshot {
     sizeRatio: game.sizeProfile.ratio,
     sizeMin: SIZE_MIN,
     overloadWarn: game.overloadWarn,
-    ballastLimit: BALLAST_CRUSH,
+    ballastLimit: liftLimit(game),
     health: game.health.current,
     healthMax: game.health.max,
     healthRatio: healthRatio(game.health),
     regenerating: isRegenerating(game.health),
+    shield: game.shield.current,
+    shieldMax: game.shield.max,
+    shieldRatio: shieldRatio(game.shield),
+    shieldRegenerating: isShieldRegenerating(game.shield),
     maxAltitude: game.sizeProfile.maxAltitude,
     sizePulse: game.sizePulse,
     absorbedCount: game.absorbedCount,
     ballast: game.ballast,
+    beamStrength: beamStrength(game),
+    waterAbsorbed: game.waterAbsorbed,
+    waterAnchored: game.waterAnchored,
+    missionStage: game.mission.stage,
+    missionQuests: game.mission.quests.map((quest) => ({ ...quest })),
+    missionPulse: game.missionPulse,
+    missionBanner: game.missionBannerTime > 0 ? game.missionBanner : '',
+    tutorial: game.mission.stage === 0,
     daze: game.daze,
     loadedCars: game.loadedCars,
     cargoSlowdown: slowdown,
@@ -960,13 +1189,18 @@ export function GameProvider({ children }: { children: ReactNode }) {
     }
     const d = Math.min(dt, 0.05)
     const input = readInput()
+    const tutorialAtStart = game.mission.stage === 0
     game.aimX = pointer.current.x
     game.aimY = pointer.current.y
-    game.sessionTime += d
-    game.remainingTime = Math.max(0, game.remainingTime - d)
+    if (!tutorialAtStart) {
+      game.sessionTime += d
+      game.remainingTime = Math.max(0, game.remainingTime - d)
+    }
     game.messageTime = Math.max(0, game.messageTime - d)
     game.impactFlash = Math.max(0, game.impactFlash - d * 5)
     game.pickupPulse = Math.max(0, game.pickupPulse - d * 3.2)
+    game.missionPulse = Math.max(0, game.missionPulse - d * 3.2)
+    game.missionBannerTime = Math.max(0, game.missionBannerTime - d)
     game.sizePulse = Math.max(0, game.sizePulse - d * 2.4)
     game.daze = Math.max(0, game.daze - d)
     game.dumpLockout = Math.max(0, game.dumpLockout - d)
@@ -975,9 +1209,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
     game.collisionCooldown = Math.max(0, game.collisionCooldown - d)
     game.laserCooldown = Math.max(0, game.laserCooldown - d)
     game.broadcastTime = Math.max(0, game.broadcastTime - d)
-    stepHealth(game.health, d, upgradeMultiplier(game.upgrades, 'regen'))
+    stepHealth(game.health, d)
+    stepShield(game.shield, d)
     // The city reports the sighting once the player has had a moment to fly.
-    if (!game.openingBroadcastDone && game.sessionTime >= BROADCAST_OPENING_AT) {
+    if (!tutorialAtStart && !game.openingBroadcastDone && game.sessionTime >= BROADCAST_OPENING_AT) {
       game.openingBroadcastDone = true
       raiseBroadcast(game, 0)
     }
@@ -987,8 +1222,12 @@ export function GameProvider({ children }: { children: ReactNode }) {
     // One end condition for the clock. It used to fire here AND again on
     // sessionTime, and since the round length and the target were the same
     // number both hit on the same frame.
-    if (game.remainingTime <= 0) {
-      endRun(game, 'SURVIVED THE RAID', true)
+    if (!tutorialAtStart && game.remainingTime <= 0) {
+      const previousStage = game.mission.stage
+      const previousRevision = game.mission.revision
+      const complete = syncMissionState(game.mission, game.sessionTime, game.score)
+      presentMissionChange(game, previousStage, previousRevision)
+      endRun(game, complete ? 'EARTH RECON COMPLETE' : 'EARTH WAS WEIRDER THAN EXPECTED', complete)
       updatePilotStatus(game)
       publish()
       return
@@ -1003,11 +1242,21 @@ export function GameProvider({ children }: { children: ReactNode }) {
     const turboActive = input.special && game.turbo > 0.02
     if (turboActive) {
       if (game.drone.boostRemaining <= 0) { setMessage(game, 'msgTurbo', 1.2); tone('upgrade') }
-      game.turbo = Math.max(0, game.turbo - d * 0.31 / upgradeMultiplier(game.upgrades, 'turbo'))
+      const duration = 5 + upgradeBonus(game.upgrades, 'turbo-capacity')
+      game.turbo = Math.max(0, game.turbo - d / duration)
       game.drone.boostRemaining = Math.max(game.drone.boostRemaining, 0.12)
-    } else game.turbo = Math.min(1, game.turbo + d * 0.13 * upgradeMultiplier(game.upgrades, 'turbo'))
+    } else game.turbo = Math.min(1, game.turbo + d * 0.13 * upgradeMultiplier(game.upgrades, 'turbo-recharge'))
 
     const flightInput: DroneInput = { ...input, special: false }
+    game.beamActive = input.beam
+    const lake = stepLakeAbsorption(game.waterAbsorbed, d, game.beamActive, isLakeAt(game.drone.position))
+    game.waterAbsorbed = lake.litres
+    game.waterAnchored = lake.speedScale === LAKE_BEAM_SPEED_SCALE
+    if (lake.absorbed > 0) reportMissionEvent(game, { type: 'absorb-water', litres: lake.absorbed })
+    if (game.waterAnchored) {
+      flightInput.throttle *= LAKE_BEAM_SPEED_SCALE
+      flightInput.strafe = (flightInput.strafe ?? 0) * LAKE_BEAM_SPEED_SCALE
+    }
     // Only ballast slows the craft. Size is deliberately absent: growth is what
     // the player is good at, and taxing it directly punishes them for winning.
     // Soft ceiling. The climb input fades out as the craft nears the height its
@@ -1021,19 +1270,21 @@ export function GameProvider({ children }: { children: ReactNode }) {
     // Overloaded: the engines lose the argument with the load and the craft
     // starts down. Climb is cut rather than reversed - the sinking comes from
     // the flight model's own gravity, so it eases in instead of snapping.
-    const overload = Math.max(0, game.ballast - BALLAST_CRUSH)
+    const capacity = liftLimit(game)
+    const overload = Math.max(0, game.ballast - capacity)
     if (overload > 0) {
       flightInput.vertical = Math.min(flightInput.vertical, 0) - Math.min(1, overload / 12)
-      if (game.drone.position.y <= 1.6) {
+      if (shouldCrashFromOverload(game.beamActive, game.ballast, capacity, game.drone.position.y)) {
         endRun(game, 'CRUSHED BY THE LOAD', false)
         updatePilotStatus(game)
         publish()
         return
       }
     }
-    game.overloadWarn = game.ballast <= BALLAST_WARN
+    const warningAt = capacity * 0.6
+    game.overloadWarn = game.ballast <= warningAt
       ? 0
-      : Math.min(1, (game.ballast - BALLAST_WARN) / Math.max(1, BALLAST_CRUSH - BALLAST_WARN))
+      : Math.min(1, (game.ballast - warningAt) / Math.max(1, capacity - warningAt))
     if (game.overloadWarn > 0) {
       // Faster as it gets worse, so the sound itself carries the urgency.
       game.overloadBeep -= d * (0.9 + game.overloadWarn * 3.4)
@@ -1042,17 +1293,35 @@ export function GameProvider({ children }: { children: ReactNode }) {
         tone('warning')
       }
     } else game.overloadBeep = 1
-    const thrust = upgradeMultiplier(game.upgrades, 'thrust')
-    const stepped = stepDrone(game.drone, flightInput, d, game.ballast * BALLAST_DRAG + (game.daze > 0 ? DAZE_DRAG : 0), { ...UFO_UPGRADES, speed: UFO_UPGRADES.speed * thrust })
+    const stepped = stepDrone(game.drone, flightInput, d, game.ballast * BALLAST_DRAG + (game.daze > 0 ? DAZE_DRAG : 0), {
+      ...UFO_UPGRADES,
+      speed: upgradeBonus(game.upgrades, 'speed') / 0.12,
+      stability: game.upgrades.levels.turn,
+    })
+    if (game.waterAnchored) {
+      stepped.speed *= LAKE_BEAM_SPEED_SCALE
+      stepped.velocity.x *= LAKE_BEAM_SPEED_SCALE
+      stepped.velocity.z *= LAKE_BEAM_SPEED_SCALE
+    }
     const nextWorld = updateActiveWorld(game.world, stepped.position, false, game.destroyedBuildings)
     if (nextWorld !== game.world) {
       game.world = nextWorld
-      game.worldColliders = activeWorldColliders(nextWorld)
+      refreshWorldGeometry(game)
       game.crowdSpawnZones = crowdSpawnZonesAround(game.drone.position)
       syncBeamObjects(game)
+      updateMissionTarget(game)
     }
     const collision = collideDrone(stepped, game.worldColliders)
     game.drone = collision.state
+    if (game.checkpoint && Math.hypot(
+      game.drone.position.x - game.checkpoint.x,
+      game.drone.position.y - game.checkpoint.y,
+      game.drone.position.z - game.checkpoint.z,
+    ) <= 5) {
+      reportMissionEvent(game, { type: 'pass-checkpoint' })
+      if (missionHasQuest(game.mission, 'air-checkpoints')) spawnCheckpoint(game)
+      else game.checkpoint = null
+    }
     // One sample per tick, written into the runtime's own object so the render
     // layer can read it without sampling again or allocating.
     sampleDaylight(game.sessionTime, game.daylight)
@@ -1067,17 +1336,18 @@ export function GameProvider({ children }: { children: ReactNode }) {
       raiseBroadcast(game, game.waveStage)
       tone('upgrade')
     }
-    syncEnemyTiers(game.enemies, game.sessionTime, game.drone.position, game.drone.heading, d)
-    syncAntiAirEnemies(game.enemies, game.sessionTime, game.world.buildings)
+    if (!tutorialAtStart) {
+      syncEnemyTiers(game.enemies, game.sessionTime, game.drone.position, game.drone.heading, d)
+      syncAntiAirEnemies(game.enemies, game.sessionTime, game.world.buildings)
+    }
     // The craft's velocity goes in with its position: enemies lead the shot,
     // and the lead is computed from how it is actually moving.
-    stepEnemies(game.enemies, game.drone.position, d, game.drone.velocity)
+    if (!tutorialAtStart) stepEnemies(game.enemies, game.drone.position, d, game.drone.velocity)
     if (collision.hit && collision.impulse > 2.5 && game.collisionCooldown <= 0) { game.collisionCooldown = 0.45; registerImpact(game, 'BUILDING') }
 
-    game.beamActive = input.beam
-    stepTraffic(game.traffic, { position: game.drone.position, heading: game.drone.heading }, d)
+    if (!tutorialAtStart) stepTraffic(game.traffic, { position: game.drone.position, heading: game.drone.heading }, d)
     syncCrowdThreats(game)
-    stepCrowds(game.crowds, { position: game.drone.position, heading: game.drone.heading, colliders: game.worldColliders, threats: game.crowdThreats, crowdThreatStart: 1 + game.traffic.cars.length + game.enemies.slots.length, spawnZones: game.crowdSpawnZones }, d)
+    if (!tutorialAtStart) stepCrowds(game.crowds, { position: game.drone.position, heading: game.drone.heading, colliders: game.worldColliders, threats: game.crowdThreats, crowdThreatStart: 1 + game.traffic.cars.length + game.enemies.slots.length, spawnZones: game.crowdSpawnZones }, d)
     const beamField: BeamField = {
       active: game.beamActive,
       boosting: turboActive,
@@ -1086,15 +1356,22 @@ export function GameProvider({ children }: { children: ReactNode }) {
       // Radius follows the hull and the upgrade multiplies it; reach is
       // upgrade-only now, so a bigger craft gets a wider beam but not a longer
       // one unless it spent a card on length.
-      radiusScale: game.sizeProfile.beamScale * upgradeMultiplier(game.upgrades, 'beam-radius'),
-      reachScale: upgradeMultiplier(game.upgrades, 'beam-reach'),
+      radiusScale: upgradeMultiplier(game.upgrades, 'beam-radius'),
+      reachScale: 1,
       // Natural grip from size, multiplied by whatever the player spent cards
       // on. Growing alone makes the beam stronger; cards make it stronger
       // sooner.
-      gripScale: game.sizeProfile.beamPower * upgradeMultiplier(game.upgrades, 'beam-grip'),
+      gripStrength: beamStrength(game),
       // So a dropped load lands on the roof it was dropped over rather than
       // falling through it into the street.
       colliders: game.worldColliders,
+    }
+    if (game.beamActive) {
+      for (const landmark of destructibleLandmarksAround(game.drone.position, 1)) {
+        if (game.destroyedLandmarks.has(landmark.id)) continue
+        const contact = { position: { x: landmark.position.x, y: 0.65, z: landmark.position.z } }
+        if (isInsideBeam(contact, beamField)) detonateLandmark(game, landmark)
+      }
     }
     // No pickup cap: hanging mass is its own limit, and a craft that grabbed
     // too much should feel it rather than be quietly protected from it.
@@ -1105,7 +1382,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         if (captured) game.beamObjects.unshift(makeTrafficBeamObject(captured))
       }
     }
-    stepHazards(game.hazards, { position: game.drone.position, heading: game.drone.heading, elapsed: game.sessionTime }, d)
+    if (!tutorialAtStart) stepHazards(game.hazards, { position: game.drone.position, heading: game.drone.heading, elapsed: game.sessionTime }, d)
     // Suppress the whole field during the lockout, otherwise the dumped load is
     // simply picked straight back up.
     const pullField: BeamField = game.dumpLockout > 0 ? { ...beamField, active: false } : beamField
@@ -1116,7 +1393,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     stepBeamObjects(game.crowds.objects, pullField, d, false)
     stepBeamObjects(game.hazards.objects, pullField, d)
     stepBeamObjects(game.enemies.slots, pullField, d)
-    const maxAbsorbDiameter = ufoDiameter(game.size) / 3
+    const maxAbsorbDiameter = Number.POSITIVE_INFINITY
     const absorbFrom = (objects: BeamObject[]) => {
       let object = beginNearbyBeamObjectAbsorption(objects, game.drone.position, maxAbsorbDiameter, game.sizeProfile.absorbDistance)
       while (object) {
@@ -1190,7 +1467,17 @@ export function GameProvider({ children }: { children: ReactNode }) {
       triggerLaserBurst(game.laserBursts, 'muzzle', projectile.position)
       if (aim.targetKind) triggerLaserBurst(game.laserBursts, 'impact', aim.point, aim.targetKind === 'car' ? '#ffb24d' : aim.targetKind === 'fighter' ? '#ff557f' : aim.targetKind === 'building' ? '#6deeff' : '#fff0a1')
       if (aim.targetKind === 'fighter' && aim.targetId) registerEnemyLaserHit(game, aim.targetId)
-      if (aim.targetKind === 'car' && aim.targetId && destroyCar(game, aim.targetId, direction)) { setMessage(game, 'msgCarLaunched', 0.9) }
+      if (aim.targetKind === 'building' && aim.targetId) registerBuildingLaserHit(game, aim.targetId)
+      if (aim.targetKind === 'landmark' && aim.targetId) {
+        const landmark = destructibleLandmarksAround(game.drone.position).find((candidate) => candidate.id === aim.targetId)
+        if (landmark) detonateLandmark(game, landmark)
+      }
+      if (aim.targetKind === 'car' && aim.targetId) {
+        const destroyed = aim.targetId.startsWith('hazard:')
+          ? destroyHeavyVehicle(game, aim.targetId)
+          : destroyCar(game, aim.targetId, direction)
+        if (destroyed) setMessage(game, 'msgCarLaunched', 0.9)
+      }
       game.laserShotsFired += 1
       tone('pickup')
     }
@@ -1207,6 +1494,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
       triggerLaserBurst(game.laserBursts, 'impact', game.enemies.lastContactPoint, '#ff9a3d')
     }
     if (contactDamage > 0) registerImpact(game, 'ENEMY', 'contact')
+    const previousMissionStage = game.mission.stage
+    const previousMissionRevision = game.mission.revision
+    syncMissionState(game.mission, game.sessionTime, game.score)
+    presentMissionChange(game, previousMissionStage, previousMissionRevision)
     updatePilotStatus(game)
     publishAccumulator.current += d
     if (game.phase !== phaseAtEntry || publishAccumulator.current >= 0.06) {
@@ -1243,7 +1534,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     if (game.phase !== 'upgrade') return
     if (!game.upgrades.offered.includes(id)) return
     applyUpgrade(game.upgrades, id)
-    if (id === 'regen') healHealth(game.health, REGEN_CARD_INSTANT_HEAL)
+    if (id === 'shield') setShieldCapacity(game.shield, game.upgrades.levels.shield)
     game.phase = 'playing'
     tone('pickup')
     publish()
@@ -1254,7 +1545,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
     pointer.current = { x: 0, y: 0 }
     runtime.current = makeRuntime()
     runtime.current.phase = 'playing'
-    runtime.current.message = 'NEW RUN · ABSORB TIME TO SURVIVE'
+    runtime.current.message = ''
+    runtime.current.messageKey = 'msgRunStart'
     runtime.current.messageTime = 3
     publish()
   }, [publish])

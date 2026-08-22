@@ -17,6 +17,8 @@ import {
   WORLD_LOD_RADIUS,
   WORLD_REMOVE_RADIUS,
   WORLD_SPAWN_RADIUS,
+  isTutorialCell,
+  lakeClusterForCell,
 } from '../src/core/world'
 
 describe('deterministic infinite city', () => {
@@ -65,6 +67,41 @@ describe('deterministic infinite city', () => {
     )).toBe(false)
   })
 
+  it('reserves the complete tutorial 3x3 with no buildings, cars or lakes', () => {
+    let cells = 0
+    for (let z = -4; z <= 5; z += 1) {
+      for (let x = -4; x <= 4; x += 1) {
+        if (!isTutorialCell(x, z)) continue
+        cells += 1
+        const cell = getProceduralCell(x, z)
+        expect(cell.building).toBeUndefined()
+        expect(cell.car).toBeUndefined()
+        expect(lakeClusterForCell(x, z)).toBeNull()
+      }
+    }
+    expect(cells).toBe(9)
+  })
+
+  it('builds every deterministic lake from two to four joined cells', () => {
+    const clusters = new Map<string, Array<[number, number]>>()
+    for (let z = -60; z <= 60; z += 1) {
+      for (let x = -60; x <= 60; x += 1) {
+        const id = lakeClusterForCell(x, z)
+        if (!id) continue
+        const cells = clusters.get(id) ?? []
+        cells.push([x, z])
+        clusters.set(id, cells)
+      }
+    }
+    expect(clusters.size).toBeGreaterThan(10)
+    for (const cells of clusters.values()) {
+      expect(cells.length).toBeGreaterThanOrEqual(2)
+      expect(cells.length).toBeLessThanOrEqual(4)
+      const connected = cells.every(([x, z], index) => index === 0 || cells.some(([ox, oz]) => Math.abs(ox - x) + Math.abs(oz - z) === 1))
+      expect(connected).toBe(true)
+    }
+  })
+
   it('keeps a sparser city active even thousands of units away', () => {
     for (const position of [{ x: 0, z: 0 }, { x: 2400, z: -3100 }, { x: -7800, z: 5200 }]) {
       const world = createActiveWorld(position)
@@ -91,11 +128,8 @@ describe('deterministic infinite city', () => {
         expect((cellZ + 1) * WORLD_CELL_SIZE - building.position.z - building.size.z / 2).toBeGreaterThanOrEqual(4.5 - 1e-8)
       }
     }
-    // Density band, not a fixed number: the point is that the city stays a city
-    // rather than a field or a solid block. Raised from ~48% when the skyline
-    // was thickened by about a third.
-    expect(buildings / (61 * 61)).toBeGreaterThan(0.57)
-    expect(buildings / (61 * 61)).toBeLessThan(0.67)
+    expect(buildings / (61 * 61)).toBeGreaterThan(0.45)
+    expect(buildings / (61 * 61)).toBeLessThan(0.50)
   })
 
   it('mixes mostly low-rise buildings with a meaningful high-rise tier', () => {

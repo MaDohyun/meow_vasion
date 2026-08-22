@@ -50,10 +50,11 @@ describe('single-shot pooled hitscan laser beams', () => {
 
   it('selects the closest real cursor-ray target and blocks fighters behind buildings', () => {
     const ray = { origin: { x: 0, y: 3, z: 0 }, direction: { x: 0, y: 0, z: 1 } }
-    const building = [{ minX: -2, maxX: 2, minY: 0, maxY: 8, minZ: 20, maxZ: 25 }]
+    const building = [{ id: 'building:0:0', minX: -2, maxX: 2, minY: 0, maxY: 8, minZ: 20, maxZ: 25 }]
     const fighter = [{ id: 'fighter:0', kind: 'fighter' as const, center: { x: 0, y: 3, z: 30 }, radius: 2 }]
     const blocked = resolveLaserAim(ray, building, fighter)
     expect(blocked.targetKind).toBe('building')
+    expect(blocked.targetId).toBe('building:0:0')
     expect(blocked.distance).toBeCloseTo(20)
 
     const visible = resolveLaserAim(ray, [], fighter)

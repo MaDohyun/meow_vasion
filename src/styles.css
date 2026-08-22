@@ -64,6 +64,20 @@ button { font: inherit; }
 .score-card > div small { float: right; color: var(--cyan); }
 .score-card time { position: absolute; right: 12px; top: 9px; color: #fff; font-size: 15px; font-weight: 1000; }
 
+.mission-panel { position:absolute; top:164px; left:18px; width:310px; padding:10px 12px; border-left-color:var(--yellow); }
+.mission-panel .eyebrow { display:block; margin-bottom:7px; color:var(--yellow); font-size:9px; letter-spacing:2px; }
+.mission-panel > div { display:grid; grid-template-columns:14px minmax(0,1fr) auto; align-items:center; gap:5px; min-height:24px; color:var(--cream); border-top:1px dashed rgba(255,245,199,.24); font-size:8px; font-weight:900; }
+.mission-panel > div i { color:var(--yellow); font-style:normal; font-size:12px; }
+.mission-panel > div b { color:var(--cyan); font-size:9px; }
+.mission-panel > div[data-complete="true"] { color:rgba(183,255,99,.72); text-decoration:line-through; }
+.mission-panel > div[data-complete="true"] i,.mission-panel > div[data-complete="true"] b { color:var(--green); }
+.mission-panel.mission-pulse { animation:mission-pop .28s steps(3); }
+.tutorial-mission strong { display:block; color:var(--green); font-size:9px; line-height:1.55; }
+.tutorial-mission p { margin:7px 0 0; color:var(--cream); font-size:8px; }
+.tutorial-mission p b { color:var(--yellow); font-size:11px; }
+.mission-banner { padding:10px 18px; color:var(--ink); background:var(--yellow); border:4px solid var(--cream); box-shadow:6px 6px 0 var(--coral); font-size:12px; font-weight:1000; letter-spacing:1px; animation:mission-pop .28s steps(3); }
+@keyframes mission-pop { from { opacity:0; transform:scale(.72) rotate(-2deg); } to { opacity:1; transform:scale(1); } }
+
 /* The battleship's health, above the wave banner. Deliberately the widest
    thing on screen: it is the only fight in the game with a health bar, and it
    should feel like the screen has been taken over. */
@@ -94,6 +108,8 @@ button { font: inherit; }
 .beam-readout b { color: var(--green); }
 .beam-readout[data-active="true"] b { animation: beam-blink .25s steps(1) infinite; }
 .beam-readout[data-error="true"] b { color: var(--coral); }
+.beam-stats { display:flex; justify-content:space-between; margin-top:5px; color:rgba(255,245,199,.72); font-size:7px; font-weight:1000; }
+.beam-stats b { color:var(--yellow); }
 .cargo-readout { display: flex; justify-content: space-between; margin-top: 8px; padding-top: 7px; border-top: 1px dashed rgba(255,245,199,.45); color: var(--cream); font-size: 8px; font-weight: 1000; }
 .cargo-readout b { color: var(--pink); }
 .altitude-alert { display: flex; justify-content: space-between; margin-top: 8px; padding-top: 7px; border-top: 1px dashed rgba(255,245,199,.45); color: var(--cream); font-size: 8px; font-weight: 1000; }
@@ -232,6 +248,12 @@ button { font: inherit; }
 .health-bar i[data-state="full"] { background:var(--green); border-color:var(--cream); }
 .health-bar i[data-state="part"] { background:linear-gradient(90deg,var(--green) 50%,rgba(255,245,199,.14) 50%); border-color:var(--cream); }
 .health-bar[data-regen="true"] i[data-state="empty"], .health-bar[data-regen="true"] i[data-state="part"] { animation:warning-pulse 1s steps(2) infinite; }
+.shield-bar { position:relative; display:flex; gap:3px; margin:3px 0 7px; padding-right:62px; }
+.shield-bar i { flex:1; height:7px; background:rgba(100,241,238,.12); border:1px solid rgba(100,241,238,.45); }
+.shield-bar i[data-state="full"] { background:var(--green); border-color:var(--cyan); }
+.shield-bar i[data-state="part"] { background:linear-gradient(90deg,var(--green) 50%,rgba(100,241,238,.12) 50%); }
+.shield-bar b { position:absolute; right:0; top:-1px; color:var(--green); font-size:7px; }
+.shield-bar[data-regen="true"] i[data-state="empty"],.shield-bar[data-regen="true"] i[data-state="part"] { animation:warning-pulse 1s steps(2) infinite; }
 
 /* Load is fatal now, so the readout carries a fill bar and two alarm states. */
 .cargo-readout { position:relative; }
@@ -250,6 +272,8 @@ button { font: inherit; }
   .score-card > strong { font-size:19px; }
   .score-card > div, .score-card time { font-size:7px; }
   .score-card time { top:6px; right:7px; }
+  .mission-panel { top:116px; left:8px; width:min(310px,76vw); padding:7px 8px; }
+  .mission-panel > div { min-height:20px; font-size:7px; }
   .systems-panel { display:none; }
   .flight-card { right:8px; bottom:188px; padding:5px; gap:5px; }
   .flight-card > div { min-width:38px; }

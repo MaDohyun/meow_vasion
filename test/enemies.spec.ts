@@ -44,6 +44,14 @@ const AA_WAVE_AT = ENEMY_WAVE_STAGES[5]!.at
 const LAST_WAVE_AT = ENEMY_WAVE_STAGES[ENEMY_WAVE_STAGES.length - 1]!.at
 
 describe('time-based enemy waves', () => {
+  it('makes every airborne enemy completely immune to tractor physics', () => {
+    const state = createEnemyState()
+    for (const kind of ['drone', 'helicopter', 'fighter'] as const) {
+      const enemy = state.slots.find((candidate) => candidate.kind === kind)!
+      expect(enemy.beamImmune).toBe(true)
+    }
+    expect(ENEMY_WAVE_STAGES.at(-1)!.at).toBe(180)
+  })
   it('starts with only a couple of recon drones', () => {
     const state = createEnemyState()
     syncEnemyTiers(state, 0, { x: 0, y: 4, z: 0 }, 0, 1 / 60)

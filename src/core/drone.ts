@@ -30,6 +30,7 @@ export type DroneState = {
 }
 
 export type Aabb = {
+  id?: string
   minX: number
   maxX: number
   minY: number
@@ -125,8 +126,9 @@ export function stepDrone(
   next.speed = approach(next.speed, targetSpeed, accel * d)
 
   const speedRatio = clamp(Math.abs(next.speed) / Math.max(1, topSpeed), 0, 1)
-  const turnRate = DRONE_DEFAULTS.turnRateLow +
-    (DRONE_DEFAULTS.turnRateHigh - DRONE_DEFAULTS.turnRateLow) * speedRatio
+  const turnResponse = 1 + Math.max(0, upgrades.stability) * 0.15
+  const turnRate = (DRONE_DEFAULTS.turnRateLow +
+    (DRONE_DEFAULTS.turnRateHigh - DRONE_DEFAULTS.turnRateLow) * speedRatio) * turnResponse
   next.yawVelocity = input.steer * turnRate * cargoTurn
   next.heading += next.yawVelocity * d
   const targetPitch = clamp(input.lookPitch ?? 0, -1, 1) * DRONE_DEFAULTS.pitchMax

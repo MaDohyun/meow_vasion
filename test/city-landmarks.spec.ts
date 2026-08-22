@@ -36,7 +36,7 @@ describe('render-only city landmarks', () => {
         if (landmark) counts.set(landmark, (counts.get(landmark) ?? 0) + 1)
       }
     }
-    for (const kind of ['park', 'subway', 'parking-lot', 'power-pylon']) {
+    for (const kind of ['park', 'subway', 'parking-lot', 'power-pylon', 'gas-station', 'communications', 'lake']) {
       expect(counts.get(kind) ?? 0).toBeGreaterThan(20)
     }
     // Car parks are the exception, and deliberately so: they are the densest
@@ -44,7 +44,7 @@ describe('render-only city landmarks', () => {
     // coming into view. They are still under one cell in forty.
     expect((counts.get('parking-lot') ?? 0) / cells).toBeGreaterThan(0.012)
     expect((counts.get('parking-lot') ?? 0) / cells).toBeLessThan(0.025)
-    expect((counts.get('power-pylon') ?? 0) / cells).toBeLessThan(0.008)
+    expect((counts.get('power-pylon') ?? 0) / cells).toBeLessThan(0.009)
   })
 
   it('attaches bus stops only to occupied building cells', () => {

@@ -30,11 +30,11 @@ import { seedForWorldCell, WORLD_CELL_SIZE } from './world'
 export type HeavyVehicleKind = 'explosive' | 'truck'
 
 export const HAZARD_MAX = 34
-export const TRUCK_MASS = 12.4
+export const TRUCK_MASS = 4
 export const TRUCK_DIAMETER = 4.2
 /** Tripled with the other inert masses: a tanker is the heaviest thing the
  *  beam can pick up and should be the slowest to come up. */
-export const HAZARD_MASS = 18.6
+export const HAZARD_MASS = 5
 /** Detonates once it is drawn this close to the craft. */
 export const HAZARD_TRIGGER_DISTANCE = 3.4
 export const HAZARD_HP = 1

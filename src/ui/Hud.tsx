@@ -3,12 +3,56 @@ import { useGame } from '../GameContext'
 import { LANGUAGES, LANGUAGE_LABELS, bulletinFor, formatMessage } from '../i18n'
 import { broadcastPhase, broadcastProgress } from '../core/broadcast'
 import { UPGRADE_DEFINITIONS, type UpgradeId } from '../core/upgrades'
+import type { MissionQuestId } from '../core/missions'
 import { Radar } from './Radar'
 import { pilotFrameStyle } from '../render/pilotArt'
 
 const formatTime = (seconds: number) => {
   const safe = Math.max(0, Math.ceil(seconds))
   return `${Math.floor(safe / 60)}:${String(safe % 60).padStart(2, '0')}`
+}
+
+const MISSION_COPY: Record<MissionQuestId, string> = {
+  'capture-cats': '고양이 포획! (실험체가 더 필요해)',
+  'capture-people': '지구인 표본 챙기기',
+  'destroy-cars': '승용차를 깡통으로 만들기',
+  'destroy-trucks': '트럭 해체 쇼',
+  'absorb-water': '호수 물 쪽 빨아보기',
+  'ruin-buildings': '건물을 폐허로 리모델링',
+  'destroy-gas-station': '주유소 불꽃놀이',
+  'destroy-comms': '지구 통신 끊어놓기',
+  'destroy-drones': '드론은 Q로 톡톡',
+  'destroy-fighters': '전투기 격추하기',
+  'air-checkpoints': '상공 고리 통과',
+  'destroy-battleship': '저 큰 전함 치우기',
+  'reach-score': '보고서용 점수 채우기',
+  'survive-final': '퇴근 시간까지 버티기',
+}
+
+function MissionPanel() {
+  const { snapshot } = useGame()
+  if (snapshot.tutorial) {
+    return (
+      <section className="mission-panel panel tutorial-mission">
+        <span className="eyebrow">장군의 첫 무전</span>
+        <strong>“대원, 공원 고양이부터 빨아들여 봐.”</strong>
+        <p><b>E</b> 트랙터 빔으로 고양이 포획</p>
+      </section>
+    )
+  }
+  if (snapshot.missionStage < 1) return null
+  return (
+    <section className={`mission-panel panel ${snapshot.missionPulse > 0 ? 'mission-pulse' : ''}`}>
+      <span className="eyebrow">미션 {Math.min(3, snapshot.missionStage)}</span>
+      {snapshot.missionQuests.map((quest) => (
+        <div key={quest.id} data-complete={quest.complete}>
+          <i>{quest.complete ? '✓' : '·'}</i>
+          <span>{MISSION_COPY[quest.id]}</span>
+          <b>{Math.floor(quest.progress)}/{Math.floor(quest.target)}</b>
+        </div>
+      ))}
+    </section>
+  )
 }
 
 function Joystick() {
@@ -285,11 +329,21 @@ export function Hud() {
               <i key={pip} data-state={snapshot.health >= pip + 1 ? 'full' : snapshot.health > pip ? 'part' : 'empty'} />
             ))}
           </div>
+          {snapshot.shieldMax > 0 && (
+            <div className="shield-bar" data-regen={snapshot.shieldRegenerating}>
+              {Array.from({ length: snapshot.shieldMax }, (_, pip) => (
+                <i key={pip} data-state={snapshot.shield >= pip + 1 ? 'full' : snapshot.shield > pip ? 'part' : 'empty'} />
+              ))}
+              <b>쉴드 {snapshot.shield.toFixed(1)}/{snapshot.shieldMax}</b>
+            </div>
+          )}
           <small>
             {t.hull} {Math.ceil(snapshot.health)}/{snapshot.healthMax}
             {snapshot.regenerating ? ` · ${t.repairing}` : ''} / {t.clock} {formatTime(snapshot.remainingTime)}
           </small>
         </section>
+
+        <MissionPanel />
 
         <section className="score-card panel">
           <span className="eyebrow">{t.score}</span>
@@ -312,6 +366,7 @@ export function Hud() {
         )}
 
         <div className="hud-center">
+          {snapshot.missionBanner && <div className="mission-banner">{snapshot.missionBanner}</div>}
           {(snapshot.messageKey || snapshot.message) && (
             <div className="message">
               {snapshot.messageKey ? formatMessage(t, snapshot.messageKey, snapshot.messageArg) : snapshot.message}
@@ -329,6 +384,10 @@ export function Hud() {
           <div className="beam-readout" data-active={snapshot.beamActive} data-error={!snapshot.beamAvailable}>
             <span>E · {t.beam}</span><b>{beamStatus}</b>
           </div>
+          <div className="beam-stats">
+            <span>흡수력 <b>{snapshot.beamStrength}</b></span>
+            <span>{snapshot.waterAnchored ? `호수 정박 · ${Math.floor(snapshot.waterAbsorbed)}L` : `양력 ${snapshot.ballast.toFixed(1)}/${snapshot.ballastLimit.toFixed(1)}`}</span>
+          </div>
           {/* Hanging mass is the only thing slowing the craft, so it has to be
               visible - otherwise the player just feels sluggish for no stated
               reason and has no cue to hit R. */}
@@ -336,7 +395,7 @@ export function Hud() {
               close to fatal it is. Dying under a load must be something the
               player watched arrive. */}
           <div className="cargo-readout" data-error={snapshot.overloadWarn > 0} data-critical={snapshot.overloadWarn >= 1}>
-            <span>{t.drag} · {snapshot.ballast.toFixed(1)}/{snapshot.ballastLimit}t{snapshot.loadedCars > 0 ? ` · ${t.dumpHint}` : ''}</span>
+            <span>{t.drag} · {snapshot.ballast.toFixed(1)}/{snapshot.ballastLimit.toFixed(1)}t{snapshot.loadedCars > 0 ? ` · ${t.dumpHint}` : ''}</span>
             <b>{snapshot.overloadWarn >= 1 ? t.overloaded : `${Math.round(snapshot.cargoSlowdown * 100)}% ${t.slowdown}`}</b>
             <i style={{ width: `${Math.min(100, (snapshot.ballast / snapshot.ballastLimit) * 100)}%` }} />
           </div>

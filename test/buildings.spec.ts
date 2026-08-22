@@ -8,10 +8,10 @@ import {
   type ProceduralBuilding,
 } from '../src/core/world'
 import { canAbsorbBuilding, isNewsTower } from '../src/core/cityLandmarks'
-import { SIZE_MAX, SIZE_START, ufoDiameter } from '../src/core/size'
+import { BEAM_STRENGTH_MAX } from '../src/core/size'
 
-const canEat = (building: ProceduralBuilding, size: number) =>
-  canAbsorbBuilding(building, ufoDiameter(size))
+const canEat = (building: ProceduralBuilding, strength: number) =>
+  canAbsorbBuilding(building, strength)
 
 function everyBuilding() {
   const buildings: ProceduralBuilding[] = []
@@ -25,40 +25,29 @@ function everyBuilding() {
 }
 
 describe('eating buildings', () => {
-  it('spreads mass between a shop and a tower without snapping the ladder', () => {
-    // Straight volume makes a ninety-metre tower tens of thousands of times a
-    // seven-metre shop, which ends the ladder rather than extending it. The
-    // root flattens that into a handful of rungs, and those rungs are what the
-    // back half of a run is reaching for.
+  it('maps the four existing height bands to weights 8 through 11', () => {
     const buildings = everyBuilding()
     const masses = buildings.map(buildingMass).sort((a, b) => a - b)
     const lightest = masses[0]!
     const heaviest = masses[masses.length - 1]!
-    expect(heaviest / lightest).toBeGreaterThan(6)
-    expect(heaviest / lightest).toBeLessThan(60)
+    expect(lightest).toBe(8)
+    expect(heaviest).toBe(11)
     // And taller always means heavier.
     const short = buildings.reduce((a, b) => (a.size.y < b.size.y ? a : b))
     const tall = buildings.reduce((a, b) => (a.size.y > b.size.y ? a : b))
     expect(buildingMass(tall)).toBeGreaterThan(buildingMass(short))
   })
 
-  it('opens buildings up in order, low-rise first and towers last', () => {
+  it('opens buildings by integer strength, low-rise first and towers last', () => {
     const buildings = everyBuilding().filter((building) => !isNewsTower(building))
     const short = buildings.reduce((a, b) => (a.size.y < b.size.y ? a : b))
     const tall = buildings.reduce((a, b) => (a.size.y > b.size.y ? a : b))
 
-    // Nothing at all at the starting size: the opening craft is two metres
-    // across and a building is twenty.
-    expect(buildings.some((building) => canEat(building, SIZE_START))).toBe(false)
-    // Everything by the ceiling, or the last rung is unreachable.
-    expect(canEat(tall, SIZE_MAX)).toBe(true)
-    // And the short one comes first.
-    const firstSize = (building: ProceduralBuilding) => {
-      for (let size = SIZE_START; size <= SIZE_MAX; size += 0.1) if (canEat(building, size)) return size
-      return Infinity
-    }
-    expect(firstSize(short)).toBeLessThan(firstSize(tall))
-    expect(firstSize(short)).toBeGreaterThan(SIZE_MAX * 0.15)
+    expect(buildings.some((building) => canEat(building, 1))).toBe(false)
+    expect(canEat(short, BEAM_STRENGTH_MAX)).toBe(true)
+    expect(canEat(tall, BEAM_STRENGTH_MAX)).toBe(false)
+    expect(canEat(tall, BEAM_STRENGTH_MAX + 5)).toBe(true)
+    expect(buildingMass(short)).toBeLessThan(buildingMass(tall))
   })
 
   it('never lets a news tower be eaten', () => {
@@ -66,7 +55,7 @@ describe('eating buildings', () => {
     // screens are this game's voice.
     const towers = everyBuilding().filter(isNewsTower)
     expect(towers.length).toBeGreaterThan(0)
-    for (const tower of towers) expect(canEat(tower, SIZE_MAX)).toBe(false)
+    for (const tower of towers) expect(canEat(tower, BEAM_STRENGTH_MAX + 5)).toBe(false)
   })
 
   it('keeps an eaten building gone as the city streams', () => {

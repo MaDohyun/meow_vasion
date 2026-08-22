@@ -5,11 +5,11 @@ export const LASER_PROJECTILE_LIFETIME = 0.14
 export const LASER_FALLBACK_DISTANCE = 300
 export const LASER_MAX_BURSTS = 12
 
-export type LaserTargetKind = 'fighter' | 'car' | 'building' | 'ground'
+export type LaserTargetKind = 'fighter' | 'car' | 'landmark' | 'building' | 'ground'
 
 export type LaserSphereTarget = {
   id: string
-  kind: Extract<LaserTargetKind, 'fighter' | 'car'>
+  kind: Extract<LaserTargetKind, 'fighter' | 'car' | 'landmark'>
   center: Vec3
   radius: number
 }
@@ -129,7 +129,7 @@ export function resolveLaserAim(
     const hit = rayAabbDistance({ origin: ray.origin, direction }, box, distance)
     if (hit !== null && hit < distance) {
       distance = hit
-      targetId = null
+      targetId = box.id ?? null
       targetKind = 'building'
     }
   }

@@ -24,7 +24,9 @@ import {
   WORLD_MAX_DISTANT_BUILDINGS,
   WORLD_SPAWN_RADIUS,
   WORLD_LOD_RADIUS,
+  WORLD_REMOVE_RADIUS,
   seedForWorldCell,
+  type BuildingHeightTier,
   type GroundVariant,
 } from '../core/world'
 
@@ -630,6 +632,64 @@ function GroundPool() {
         <primitive object={parkMaterial} attach="material" />
       </instancedMesh>
     </group>
+  )
+}
+
+const waterTexture = pixelTexture((context) => {
+  context.fillStyle = '#76cfda'
+  context.fillRect(0, 0, 64, 64)
+  context.strokeStyle = 'rgba(225,255,245,.55)'
+  context.lineWidth = 3
+  for (let y = 7; y < 64; y += 13) {
+    context.beginPath()
+    for (let x = -8; x <= 72; x += 8) {
+      const wave = y + Math.sin((x + y) * 0.22) * 2
+      if (x === -8) context.moveTo(x, wave)
+      else context.lineTo(x, wave)
+    }
+    context.stroke()
+  }
+})
+waterTexture.wrapS = THREE.RepeatWrapping
+waterTexture.wrapT = THREE.RepeatWrapping
+waterTexture.needsUpdate = true
+
+function WaterPool() {
+  const { runtime } = useGame()
+  const ref = useRef<THREE.InstancedMesh>(null)
+  const lastKey = useRef('')
+  const matrix = useMemo(() => new THREE.Matrix4(), [])
+  const position = useMemo(() => new THREE.Vector3(), [])
+  const scale = useMemo(() => new THREE.Vector3(), [])
+  const rotation = useMemo(() => new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0)), [])
+  const material = useMemo(() => new THREE.MeshBasicMaterial({ map: waterTexture, transparent: true, opacity: 0.82, depthWrite: false }), [])
+
+  useFrame((_, dt) => {
+    const mesh = ref.current
+    if (!mesh) return
+    waterTexture.offset.x = (waterTexture.offset.x + dt * 0.035) % 1
+    waterTexture.offset.y = (waterTexture.offset.y + dt * 0.018) % 1
+    const world = runtime.current.world
+    const key = `${world.cellX}:${world.cellZ}`
+    if (lastKey.current === key) return
+    lastKey.current = key
+    let slot = 0
+    for (const cell of groundCellsAround(runtime.current.drone.position)) {
+      if (groundLandmarkForCell(cell) !== 'lake') continue
+      position.set((cell.cellX + 0.5) * WORLD_CELL_SIZE, 0.055, (cell.cellZ + 0.5) * WORLD_CELL_SIZE)
+      scale.set(WORLD_CELL_SIZE - 8.5, WORLD_CELL_SIZE - 8.5, 1)
+      matrix.compose(position, rotation, scale)
+      mesh.setMatrixAt(slot, matrix)
+      slot += 1
+    }
+    mesh.count = slot
+    mesh.instanceMatrix.needsUpdate = true
+  })
+
+  return (
+    <instancedMesh ref={ref} args={[undefined, material, GROUND_CELL_COUNT]} frustumCulled={false} renderOrder={2} onUpdate={(mesh) => { mesh.count = 0 }}>
+      <planeGeometry args={[1, 1]} />
+    </instancedMesh>
   )
 }
 
@@ -1374,11 +1434,76 @@ function RoofStructurePool({ variant }: { variant: number }) {
   )
 }
 
+const RUIN_TIERS: BuildingHeightTier[] = ['low', 'mid', 'high', 'supertall']
+const ruinGeometries = RUIN_TIERS.map((_, tier) => {
+  const rise = 0.55 + tier * 0.13
+  return mergeGeometries([
+    new THREE.BoxGeometry(0.48, rise, 0.38).translate(-0.23, rise / 2, -0.18),
+    new THREE.BoxGeometry(0.34, rise * 0.58, 0.46).translate(0.28, rise * 0.29, 0.19),
+    new THREE.BoxGeometry(0.26, rise * 0.36, 0.28).translate(0.05, rise * 0.18, -0.32),
+  ], false)!
+})
+
+function RuinPool() {
+  const { runtime } = useGame()
+  const refs = [
+    useRef<THREE.InstancedMesh>(null),
+    useRef<THREE.InstancedMesh>(null),
+    useRef<THREE.InstancedMesh>(null),
+    useRef<THREE.InstancedMesh>(null),
+  ]
+  const lastKey = useRef('')
+  const matrix = useMemo(() => new THREE.Matrix4(), [])
+  const position = useMemo(() => new THREE.Vector3(), [])
+  const scale = useMemo(() => new THREE.Vector3(), [])
+  const rotation = useMemo(() => new THREE.Quaternion(), [])
+  const color = useMemo(() => new THREE.Color(), [])
+
+  useFrame(() => {
+    if (refs.some((ref) => !ref.current)) return
+    const game = runtime.current
+    const key = `${game.world.key}:${game.ruinedBuildings.size}`
+    if (key === lastKey.current) return
+    lastKey.current = key
+    const counts = [0, 0, 0, 0]
+    for (const ruin of game.ruinedBuildings.values()) {
+      if (Math.hypot(ruin.position.x - game.drone.position.x, ruin.position.z - game.drone.position.z) > WORLD_REMOVE_RADIUS) continue
+      const tier = RUIN_TIERS.indexOf(ruin.tier)
+      const mesh = refs[tier]!.current!
+      const slot = counts[tier]!
+      position.set(ruin.position.x, 0, ruin.position.z)
+      scale.set(ruin.size.x, ruin.size.y, ruin.size.z)
+      matrix.compose(position, rotation, scale)
+      mesh.setMatrixAt(slot, matrix)
+      mesh.setColorAt(slot, color.set(ruin.color).multiplyScalar(0.52))
+      counts[tier] = slot + 1
+    }
+    refs.forEach((ref, tier) => {
+      const mesh = ref.current!
+      mesh.count = counts[tier]!
+      mesh.instanceMatrix.needsUpdate = true
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
+    })
+  })
+
+  return (
+    <group>
+      {RUIN_TIERS.map((tier, index) => (
+        <instancedMesh key={tier} ref={refs[index]} args={[ruinGeometries[index], undefined, WORLD_MAX_BUILDINGS]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }}>
+          <meshToonMaterial gradientMap={toonGradient} />
+        </instancedMesh>
+      ))}
+    </group>
+  )
+}
+
 export const City = memo(function City() {
   return (
     <group>
       <GroundPool />
+      <WaterPool />
       <BuildingPool />
+      <RuinPool />
       <LiftedBuildingPool />
       <MassingPool form="podium" />
       <MassingPool form="setback" />

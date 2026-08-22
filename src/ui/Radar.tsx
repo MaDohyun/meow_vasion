@@ -32,6 +32,8 @@ const COLORS = {
   explosive: '#ff8a3d',
   hostile: '#ff4d6d',
   mine: '#ff2f5a',
+  mission: '#fff06d',
+  checkpoint: '#b7ff63',
 }
 
 export function Radar() {
@@ -107,6 +109,34 @@ export function Radar() {
           enemy.kind === 'boss' ? 4 : enemy.kind === 'drone' ? 2 : 2.5,
           mine,
         )
+      }
+
+      const missionMarker = game.checkpoint ?? game.missionTarget
+      if (missionMarker) {
+        const dx = missionMarker.x - player.x
+        const dz = missionMarker.z - player.z
+        const projected = projectToRadar(dx, dz, heading, center, scale)
+        const edge = center - 8
+        const offsetX = projected.px - center
+        const offsetY = projected.py - center
+        const length = Math.hypot(offsetX, offsetY)
+        const factor = length > edge ? edge / length : 1
+        const px = center + offsetX * factor
+        const py = center + offsetY * factor
+        const color = game.checkpoint ? COLORS.checkpoint : COLORS.mission
+        context.fillStyle = color
+        context.strokeStyle = '#fff5c7'
+        context.lineWidth = 1
+        context.beginPath()
+        if (length > edge) {
+          const angle = Math.atan2(offsetY, offsetX)
+          context.moveTo(px + Math.cos(angle) * 5, py + Math.sin(angle) * 5)
+          context.lineTo(px + Math.cos(angle + 2.45) * 4, py + Math.sin(angle + 2.45) * 4)
+          context.lineTo(px + Math.cos(angle - 2.45) * 4, py + Math.sin(angle - 2.45) * 4)
+          context.closePath()
+        } else context.arc(px, py, game.checkpoint ? 4 : 3.5, 0, Math.PI * 2)
+        context.fill()
+        context.stroke()
       }
 
       // The craft last, so nothing can cover it.

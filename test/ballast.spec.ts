@@ -45,7 +45,7 @@ describe('beam ballast is where the speed penalty lives', () => {
     expect(state.speed).toBeGreaterThan(clean * 0.98)
   })
 
-  it('makes a grown craft foul its beam more easily', () => {
+  it('keeps beam radius independent of craft growth', () => {
     // This is the actual cost of growing: the wider cone sweeps up people
     // faster, and sweeps up cars faster too.
     const ufo = { x: 0, y: 6, z: 0 }
@@ -55,8 +55,8 @@ describe('beam ballast is where the speed penalty lives', () => {
     })
     const junk = objectAt(7.4, 0)
     expect(isInsideBeam(junk, field(SIZE_START))).toBe(false)
-    expect(isInsideBeam(junk, field(SIZE_MAX))).toBe(true)
+    expect(isInsideBeam(junk, field(SIZE_MAX))).toBe(false)
     expect(beamProfile(false, sizeProfile(SIZE_MAX).beamScale).baseRadius)
-      .toBeGreaterThan(beamProfile(false, sizeProfile(SIZE_START).beamScale).baseRadius)
+      .toBe(beamProfile(false, sizeProfile(SIZE_START).beamScale).baseRadius)
   })
 })

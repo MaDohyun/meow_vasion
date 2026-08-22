@@ -194,7 +194,7 @@ describe('pooled city crowds and destructible cars', () => {
     expect(Math.abs(pedestrian.position.x)).toBeGreaterThan(2)
   })
 
-  it('gives cats and pedestrians much less beam mass than cars', () => {
+  it('uses the integer reconnaissance weight table', () => {
     // Every mass went up so objects ride the beam long enough to be felt, but
     // inert ones went up further. The gap is the point, not the numbers: it is
     // what makes hauling the wrong thing feel different from hauling the right
@@ -203,8 +203,9 @@ describe('pooled city crowds and destructible cars', () => {
     const pedestrian = state.objects.find((object) => object.kind === 'pedestrian')!
     const cat = state.objects.find((object) => object.kind === 'cat')!
     expect(cat.mass).toBeLessThan(pedestrian.mass)
-    expect(pedestrian.mass).toBeLessThan(car().mass / 5)
-    expect(cat.mass).toBeLessThan(car().mass / 10)
+    expect(cat.mass).toBe(1)
+    expect(pedestrian.mass).toBe(2)
+    expect(car().mass).toBe(3)
   })
 
   it('shrinks a beamed crowd member only after reaching the UFO', () => {

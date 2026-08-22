@@ -5,7 +5,6 @@ import { useEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
-import { upgradeMultiplier } from '../core/upgrades'
 import { useGame } from '../GameContext'
 import { BUILDING, ENTITY, FX, LIGHT, SKY } from '../constants/palette'
 import {
@@ -256,6 +255,9 @@ declare global {
       upgradeLevels: Record<string, number>
       beamReachScale: number
       height: number
+      missionStage: number
+      remainingTime: number
+      tutorialCats: number
       visibleMeshPools: number
     }
   }
@@ -1340,8 +1342,11 @@ function PerformanceProbe() {
       activeEnemyProjectiles: runtime.current.enemies.projectiles.filter((projectile) => projectile.active).length,
       laserShotsFired: runtime.current.laserShotsFired,
       upgradeLevels: { ...runtime.current.upgrades.levels },
-      beamReachScale: upgradeMultiplier(runtime.current.upgrades, 'beam-reach'),
+      beamReachScale: 1,
       height: runtime.current.drone.position.y,
+      missionStage: runtime.current.mission.stage,
+      remainingTime: runtime.current.remainingTime,
+      tutorialCats: runtime.current.crowds.objects.filter((object) => object.active && object.kind === 'cat').length,
       visibleMeshPools,
     }
     gl.domElement.dataset.renderMetrics = JSON.stringify(window.__BEAM_BANDIT_METRICS__)
@@ -1626,6 +1631,34 @@ function Sky() {
   )
 }
 
+function MissionCheckpoint() {
+  const { runtime } = useGame()
+  const ref = useRef<THREE.Group>(null)
+  useFrame(({ clock }) => {
+    const group = ref.current
+    if (!group) return
+    const checkpoint = runtime.current.checkpoint
+    group.visible = Boolean(checkpoint)
+    if (!checkpoint) return
+    group.position.set(checkpoint.x, checkpoint.y, checkpoint.z)
+    group.lookAt(runtime.current.drone.position.x, checkpoint.y, runtime.current.drone.position.z)
+    const pulse = 1 + Math.sin(clock.elapsedTime * 5) * 0.08
+    group.scale.setScalar(pulse)
+  })
+  return (
+    <group ref={ref} visible={false}>
+      <mesh>
+        <torusGeometry args={[4.2, 0.42, 8, 28]} />
+        <meshBasicMaterial color="#b7ff63" transparent opacity={0.9} toneMapped={false} />
+      </mesh>
+      <mesh scale={0.83}>
+        <torusGeometry args={[4.2, 0.12, 6, 28]} />
+        <meshBasicMaterial color="#fff5c7" transparent opacity={0.78} toneMapped={false} />
+      </mesh>
+    </group>
+  )
+}
+
 export function DroneScene() {
   const { snapshot, quality } = useGame()
   return (
@@ -1637,6 +1670,7 @@ export function DroneScene() {
       <FixedEffectLights />
       <PerformanceProbe />
       <City />
+      <MissionCheckpoint />
       <PullableCars />
       <DrivingTraffic />
       <CrowdPools />
