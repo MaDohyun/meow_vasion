@@ -1,4 +1,4 @@
-import { ufoDiameter } from '../core/size'
+import { sizeCameraLift, ufoDiameter } from '../core/size'
 import { Edges } from '@react-three/drei'
 import { useFrame, useThree } from '@react-three/fiber'
 import { useEffect, useMemo, useRef } from 'react'
@@ -558,6 +558,9 @@ function Ufo() {
   const smoothedCameraPull = useRef<number | null>(null)
   const cameraTarget = useMemo(() => new THREE.Vector3(), [])
   const cameraPosition = useMemo(() => new THREE.Vector3(), [])
+  const hullBaseColor = useMemo(() => new THREE.Color(ENTITY.UFO_HULL), [])
+  const hullImpactColor = useMemo(() => new THREE.Color('#ff4d4d'), [])
+  const hullColor = useMemo(() => new THREE.Color(), [])
   const { camera } = useThree()
 
   useFrame((_, dt) => {
@@ -576,7 +579,13 @@ function Ufo() {
 
     // The player should be readable without becoming a glowing white disc.
     // Keep a small, stable self-light in both daytime and nighttime.
-    if (hullMaterial.current) hullMaterial.current.emissiveIntensity = 0.1
+    const impact = Math.max(0, Math.min(1, snapshot.impactFlash))
+    if (hullMaterial.current) {
+      hullColor.copy(hullBaseColor).lerp(hullImpactColor, impact)
+      hullMaterial.current.color.copy(hullColor)
+      hullMaterial.current.emissive.copy(hullColor)
+      hullMaterial.current.emissiveIntensity = 0.2 + impact * 1.8
+    }
     if (domeMaterial.current) domeMaterial.current.emissiveIntensity = 0.18
 
     const heading = game.drone.heading
@@ -587,6 +596,7 @@ function Ufo() {
     const forwardZ = Math.cos(heading) * horizontalForward
     const speedRatio = Math.min(1, snapshot.speed / 30)
     const altitudeView = Math.max(0, game.drone.position.y - 6) * 0.12
+    const sizeLift = sizeCameraLift(game.sizeProfile.size)
     // Pull back with size, or a grown craft fills the screen and hides the
     // bodies it is trying to reach.
     // Size changes are discrete gameplay events. Smooth the derived pull-back
@@ -600,7 +610,7 @@ function Ufo() {
     const distance = smoothedCameraPull.current + speedRatio * 3.3 + altitudeView
     cameraPosition.set(
       game.drone.position.x - forwardX * distance,
-      Math.max(1, game.drone.position.y + 3.6 + speedRatio * 1.1 + altitudeView - forwardY * distance * 0.72),
+      Math.max(1, game.drone.position.y + 3.6 + speedRatio * 1.1 + altitudeView + sizeLift - forwardY * distance * 0.72),
       game.drone.position.z - forwardZ * distance,
     )
     camera.position.lerp(cameraPosition, 1 - Math.exp(-3.2 * dt))

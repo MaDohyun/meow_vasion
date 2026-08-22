@@ -51,6 +51,7 @@ describe('three-stage reconnaissance missions', () => {
     expect(state.quests).toHaveLength(3)
     expect(new Set(state.quests.map((quest) => quest.id)).size).toBe(3)
     for (const quest of state.quests) expect(MISSION_TWO_POOL).toContain(quest.id)
+    expect(state.quests.filter((quest) => quest.id === 'destroy-gas-station' || quest.id === 'destroy-comms').length).toBeLessThanOrEqual(1)
   })
 
   it('uses the fixed final trio and wins only when the clock and other goals are done', () => {
