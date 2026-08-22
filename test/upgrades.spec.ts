@@ -14,6 +14,20 @@ import {
 import { LANGUAGES, STRINGS } from '../src/i18n'
 
 describe('upgrade cards', () => {
+  it('contains exactly the nine reconnaissance stats with fixed caps', () => {
+    expect(UPGRADE_IDS).toHaveLength(9)
+    expect(new Set(UPGRADE_IDS)).toEqual(new Set([
+      'laser-power', 'shield', 'beam-radius', 'beam-grip', 'lift', 'speed',
+      'turbo-recharge', 'turbo-capacity', 'turn',
+    ]))
+    expect(UPGRADE_DEFINITIONS['laser-power'].maxLevel).toBe(5)
+    expect(UPGRADE_DEFINITIONS.shield.maxLevel).toBe(5)
+    expect(UPGRADE_DEFINITIONS['beam-radius'].step).toBe(0.15)
+    expect(UPGRADE_DEFINITIONS['beam-grip'].step).toBe(1)
+    expect(UPGRADE_DEFINITIONS.lift.step).toBe(2)
+    expect(UPGRADE_DEFINITIONS['turbo-capacity'].step).toBe(1.5)
+    expect(UPGRADE_DEFINITIONS.turn.maxLevel).toBe(2)
+  })
   it('offers three distinct cards', () => {
     const state = createUpgradeState(7)
     const choices = rollUpgradeChoices(state)
@@ -33,12 +47,12 @@ describe('upgrade cards', () => {
 
   it('never offers a card that is already maxed', () => {
     const state = createUpgradeState(3)
-    for (let level = 0; level < UPGRADE_DEFINITIONS.thrust.maxLevel; level += 1) {
-      applyUpgrade(state, 'thrust')
+    for (let level = 0; level < UPGRADE_DEFINITIONS.speed.maxLevel; level += 1) {
+      applyUpgrade(state, 'speed')
     }
-    expect(isUpgradeMaxed(state, 'thrust')).toBe(true)
+    expect(isUpgradeMaxed(state, 'speed')).toBe(true)
     for (let roll = 0; roll < 60; roll += 1) {
-      expect(rollUpgradeChoices(state)).not.toContain('thrust')
+      expect(rollUpgradeChoices(state)).not.toContain('speed')
     }
   })
 
@@ -55,11 +69,11 @@ describe('upgrade cards', () => {
 
   it('raises the stat it names and leaves the others alone', () => {
     const state = createUpgradeState()
-    expect(upgradeMultiplier(state, 'beam-reach')).toBe(1)
-    applyUpgrade(state, 'beam-reach')
-    expect(upgradeMultiplier(state, 'beam-reach')).toBeGreaterThan(1)
+    expect(upgradeMultiplier(state, 'laser-power')).toBe(1)
+    applyUpgrade(state, 'laser-power')
+    expect(upgradeMultiplier(state, 'laser-power')).toBeGreaterThan(1)
     expect(upgradeMultiplier(state, 'beam-radius')).toBe(1)
-    expect(upgradeMultiplier(state, 'hull')).toBe(1)
+    expect(upgradeMultiplier(state, 'shield')).toBe(1)
   })
 
   it('never returns a multiplier below one', () => {
@@ -113,6 +127,6 @@ describe('upgrade cards', () => {
       expect(STRINGS[language].upgradeTitle).toBeTruthy()
       expect(STRINGS[language].upgradeHint).toBeTruthy()
     }
-    expect(STRINGS.ko.upgrades.thrust.name).not.toBe(STRINGS.en.upgrades.thrust.name)
+    expect(STRINGS.ko.upgrades.speed.name).not.toBe(STRINGS.en.upgrades.speed.name)
   })
 })

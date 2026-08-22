@@ -15,14 +15,15 @@
  */
 
 export type UpgradeId =
-  | 'beam-reach'
+  | 'laser-power'
+  | 'shield'
   | 'beam-radius'
   | 'beam-grip'
-  | 'laser-power'
-  | 'thrust'
-  | 'turbo'
-  | 'hull'
-  | 'regen'
+  | 'lift'
+  | 'speed'
+  | 'turbo-recharge'
+  | 'turbo-capacity'
+  | 'turn'
 
 export type UpgradeDefinition = {
   id: UpgradeId
@@ -39,14 +40,15 @@ export type UpgradeDefinition = {
 }
 
 export const UPGRADE_DEFINITIONS: Record<UpgradeId, UpgradeDefinition> = {
-  'beam-reach': { id: 'beam-reach', step: 0.18, maxLevel: 5 },
-  'beam-radius': { id: 'beam-radius', step: 0.12, maxLevel: 5 },
-  'beam-grip': { id: 'beam-grip', step: 0.16, maxLevel: 5 },
-  'laser-power': { id: 'laser-power', step: 0.45, maxLevel: 4 },
-  thrust: { id: 'thrust', step: 0.1, maxLevel: 4 },
-  turbo: { id: 'turbo', step: 0.2, maxLevel: 4 },
-  hull: { id: 'hull', step: 0.16, maxLevel: 4 },
-  regen: { id: 'regen', step: 0.35, maxLevel: 4 },
+  'laser-power': { id: 'laser-power', step: 0.2, maxLevel: 5 },
+  shield: { id: 'shield', step: 1, maxLevel: 5 },
+  'beam-radius': { id: 'beam-radius', step: 0.15, maxLevel: 5 },
+  'beam-grip': { id: 'beam-grip', step: 1, maxLevel: 5 },
+  lift: { id: 'lift', step: 2, maxLevel: 5 },
+  speed: { id: 'speed', step: 0.08, maxLevel: 3 },
+  'turbo-recharge': { id: 'turbo-recharge', step: 0.2, maxLevel: 3 },
+  'turbo-capacity': { id: 'turbo-capacity', step: 1.5, maxLevel: 3 },
+  turn: { id: 'turn', step: 0.15, maxLevel: 2 },
 }
 
 /**
@@ -56,8 +58,6 @@ export const UPGRADE_DEFINITIONS: Record<UpgradeId, UpgradeDefinition> = {
  * alone is worthless at full health, so nobody would ever pick it when they
  * were doing well - which is exactly when the card screen tends to appear.
  */
-export const REGEN_CARD_INSTANT_HEAL = 1.5
-
 export const UPGRADE_IDS = Object.keys(UPGRADE_DEFINITIONS) as UpgradeId[]
 
 /** Cards shown per offer. */
@@ -146,6 +146,11 @@ export function applyUpgrade(state: UpgradeState, id: UpgradeId) {
  *  never makes anything worse, so callers that need a reduction divide. */
 export function upgradeMultiplier(state: UpgradeState, id: UpgradeId) {
   return 1 + state.levels[id] * UPGRADE_DEFINITIONS[id].step
+}
+
+/** Flat integer/additive stats use their level step rather than a multiplier. */
+export function upgradeBonus(state: UpgradeState, id: UpgradeId) {
+  return state.levels[id] * UPGRADE_DEFINITIONS[id].step
 }
 
 /** True when this many absorptions has earned a card that has not been taken. */

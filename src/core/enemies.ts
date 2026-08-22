@@ -17,13 +17,13 @@ export type EnemyProjectileKind = 'rifle' | 'shell' | 'missile' | 'rocket' | 'bo
  */
 export const ENEMY_WAVE_STAGES = [
   { at: 0, tempo: 0, label: 'RECON DRONES', targets: { drone: 2 } },
-  { at: 35, tempo: 1, label: 'POLICE DISPATCH', targets: { drone: 8, police: 6, 'police-car': 2 } },
-  { at: 75, tempo: 2, label: 'AIR SUPPORT', targets: { drone: 14, police: 10, 'police-car': 4, helicopter: 4 } },
-  { at: 115, tempo: 3, label: 'MILITARY DEPLOYMENT', targets: { drone: 24, police: 14, 'police-car': 6, helicopter: 7, soldier: 18 } },
-  { at: 150, tempo: 4, label: 'FIGHTER SCRAMBLE', targets: { drone: 30, police: 16, 'police-car': 8, helicopter: 9, soldier: 24, fighter: 3 } },
-  { at: 185, tempo: 5, label: 'AA NETWORK', targets: { drone: 32, police: 18, 'police-car': 9, helicopter: 11, soldier: 26, fighter: 4, 'anti-air': 5 } },
-  { at: 220, tempo: 6, label: 'ARMORED RESPONSE', targets: { drone: 34, police: 19, 'police-car': 10, helicopter: 12, soldier: 28, fighter: 5, 'anti-air': 6, tank: 7 } },
-  { at: 250, tempo: 7, label: 'SKY DREADNOUGHT', targets: { drone: 36, police: 20, 'police-car': 10, helicopter: 14, soldier: 30, fighter: 6, 'anti-air': 6, tank: 8, boss: 1 } },
+  { at: 25, tempo: 1, label: 'POLICE DISPATCH', targets: { drone: 8, police: 6, 'police-car': 2 } },
+  { at: 54, tempo: 2, label: 'AIR SUPPORT', targets: { drone: 14, police: 10, 'police-car': 4, helicopter: 4 } },
+  { at: 83, tempo: 3, label: 'MILITARY DEPLOYMENT', targets: { drone: 24, police: 14, 'police-car': 6, helicopter: 7, soldier: 18 } },
+  { at: 108, tempo: 4, label: 'FIGHTER SCRAMBLE', targets: { drone: 30, police: 16, 'police-car': 8, helicopter: 9, soldier: 24, fighter: 3 } },
+  { at: 133, tempo: 5, label: 'AA NETWORK', targets: { drone: 32, police: 18, 'police-car': 9, helicopter: 11, soldier: 26, fighter: 4, 'anti-air': 5 } },
+  { at: 158, tempo: 6, label: 'ARMORED RESPONSE', targets: { drone: 34, police: 19, 'police-car': 10, helicopter: 12, soldier: 28, fighter: 5, 'anti-air': 6, tank: 7 } },
+  { at: 180, tempo: 7, label: 'SKY DREADNOUGHT', targets: { drone: 36, police: 20, 'police-car': 10, helicopter: 14, soldier: 30, fighter: 6, 'anti-air': 6, tank: 8, boss: 1 } },
 ] as const
 
 export const ENEMY_TIER: Record<EnemyKind, number> = {
@@ -234,15 +234,15 @@ export const ENEMY_DIAMETER: Record<EnemyKind, number> = {
 }
 
 const ENEMY_MASS: Record<EnemyKind, number> = {
-  drone: 0.7,
-  police: 0.4,
-  'police-car': 2.8,
-  helicopter: 4.1,
-  soldier: 0.55,
-  fighter: 3.8,
+  drone: 3,
+  police: 2.5,
+  'police-car': 3,
+  helicopter: 4,
+  soldier: 2.5,
+  fighter: 4,
   'anti-air': 7,
-  tank: 6.4,
-  boss: 20,
+  tank: 7,
+  boss: 12,
 }
 
 export function waveStageForTime(elapsed: number) {
@@ -323,7 +323,7 @@ function makeSlot(kind: EnemyKind, slot: number): EnemySlot {
     scoreValue: kind === 'boss' ? 1200 : kind === 'tank' ? 260 : kind === 'fighter' ? 140 : kind === 'helicopter' ? 80 : kind === 'police-car' ? 55 : 35,
     // The battleship is not "too big to eat yet" - it is not food. A craft at
     // the size cap still cannot take it.
-    beamImmune: kind === 'anti-air' || kind === 'boss',
+    beamImmune: kind === 'drone' || kind === 'helicopter' || kind === 'fighter' || kind === 'anti-air' || kind === 'boss',
     freePhysics: false,
     target: { x: 0, y: 0, z: 0 },
     phase: slot / Math.max(1, ENEMY_CAPS[kind]) * Math.PI * 2,

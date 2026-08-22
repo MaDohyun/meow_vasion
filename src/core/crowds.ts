@@ -13,10 +13,10 @@ export type CrowdKind = 'pedestrian' | 'cat'
  * so a body only ever tests against the craft and the handful of real threats,
  * and each of them draws from one instanced pool regardless of count.
  */
-export const PEDESTRIAN_MAX = 58
-export const CAT_MAX = 14
-export const INITIAL_PEDESTRIANS = 34
-export const INITIAL_CATS = 12
+export const PEDESTRIAN_MAX = 28
+export const CAT_MAX = 7
+export const INITIAL_PEDESTRIANS = 20
+export const INITIAL_CATS = 6
 // Tight on purpose. The pool is fixed size, so stragglers left alive far behind
 // the player squat in every slot and block respawns near the path: the pool
 // saturated at 53 bodies while only two or three were ever within reach.
@@ -30,8 +30,8 @@ export const INITIAL_CATS = 12
  * and that gap is what makes hauling the wrong thing feel different from
  * hauling the right one.
  */
-export const CAT_MASS = 0.2
-export const PEDESTRIAN_MASS = 0.56
+export const CAT_MASS = 1
+export const PEDESTRIAN_MASS = 2
 
 export const CROWD_REMOVE_DISTANCE = 185
 export const CROWD_ABSORB_DISTANCE = 3.35
@@ -196,6 +196,37 @@ export function createCrowdState(seed = 0xc47cafe): CrowdState {
     clusterZ: 0,
     clusterLeft: 0,
   }
+}
+
+/** Exactly one cat and no other crowd actor in the opening 3x3 park. */
+export function prepareTutorialCrowd(state: CrowdState, position: Pick<Vec3, 'x' | 'z'>) {
+  for (const object of state.objects) object.active = false
+  const cat = state.objects.find((object) => object.kind === 'cat')!
+  cat.generation += 1
+  cat.id = `tutorial-cat:${cat.generation}`
+  cat.position.x = position.x
+  cat.position.y = 0.65
+  cat.position.z = position.z
+  cat.velocity.x = 0
+  cat.velocity.y = 0
+  cat.velocity.z = 0
+  cat.active = true
+  cat.inBeam = false
+  cat.tether = 0
+  cat.absorbing = false
+  cat.absorbTimer = 0
+  cat.roams = false
+  cat.targetX = position.x
+  cat.targetZ = position.z
+  cat.pauseTimer = 999
+  state.initialSpawnDone = true
+  state.spawnTimer = Number.POSITIVE_INFINITY
+  return cat
+}
+
+export function finishTutorialCrowd(state: CrowdState) {
+  state.spawnTimer = 0
+  state.clusterLeft = 0
 }
 
 function random(state: CrowdState) {

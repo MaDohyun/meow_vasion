@@ -9,14 +9,14 @@
  * The run opens on a saucer barely wider than the people under it, and there
  * is room to grow for the whole five minutes. Nothing here can kill you.
  *
- * Growing is not free, though. Two costs, both answerable with skill:
+ * Growing is not free, though. It still has two readable trade-offs:
  *
  * 1. A bigger craft is a bigger target. The hit radius scales, and since shots
  *    are led and fast enough to arrive, a grown craft holding a heading takes
  *    several times the fire a small one does. Weaving is the answer.
- * 2. A bigger beam is easier to foul. The cone widens with size, which sweeps
- *    up people faster but also snags cars and other dead weight, and dead
- *    weight is what slows the craft down. Beam discipline is the answer.
+ * 2. A bigger craft gains integer beam strength and lift capacity, which opens
+ *    heavier targets. Beam radius remains a card-only stat, so growth never
+ *    changes the aiming footprint behind the player's back.
  *
  * Size also decides how high the craft can fly, which is less a limit than a
  * change of scenery: a small saucer is pinned among the buildings and threads
@@ -67,7 +67,7 @@ export type SizeProfile = {
   size: number
   /** 0 at the death threshold, 1 at maximum. Drives HUD and audio. */
   ratio: number
-  /** Beam cone radius multiplier. */
+  /** Beam cone radius multiplier. Size never changes it; only cards do. */
   beamScale: number
   /**
    * Natural grip on whatever the beam has hold of, before any upgrade.
@@ -80,6 +80,10 @@ export type SizeProfile = {
    * stronger simply by being bigger.
    */
   beamPower: number
+  /** Integer base pull strength, 0..7. */
+  beamStrength: number
+  /** Hanging weight the craft can keep aloft before lift-card bonuses. */
+  liftCapacity: number
   /** How close a body must come before it is swallowed. */
   absorbDistance: number
   /** Body radius for incoming fire and contact damage. */
@@ -99,34 +103,22 @@ export type SizeProfile = {
  *  layer so the pull-back rule below is one number applied to one number. */
 export const CAMERA_REST_DISTANCE = 12
 
-/**
- * The natural-grip curve, and it is the whole progression ladder.
- *
- * The rule it is built to: **every doubling of size moves you one rung up the
- * list of things the beam can lift.** Cat, person, car, tanker, low-rise,
- * mid-rise, tower. What you are is what you can just about manage; the rung
- * below is easy; the rung above is out of reach until you grow or spend a card.
- *
- * The exponent was fitted by measuring, not derived. The arithmetic says 2 -
- * mass spans 1071 from a person to a tower and size spans 32.6, so grip should
- * span the first over the second - but the beam is a spring, and rise time is
- * not linear in grip over mass. Past a point the object simply snaps up, which
- * compresses the ladder badly: at 2, everything in the game was liftable by
- * size four and the top two thirds of the range had nothing new in it. 1.4 is
- * the value that actually spreads the rungs across the whole range, checked
- * against measured rise times rather than against the model.
- *
- * The floor is what a brand new saucer manages on its own. Deliberately
- * feeble - struggling to drag one person up the beam is the opening this run
- * is supposed to have - but not so feeble that it cannot feed at all. Grip also
- * falls off with how far below the craft the load is, and at first the two
- * together left the opening saucer unable to lift anybody from any altitude it
- * could actually fly at. The floor lifts the bottom of the ladder without
- * moving the top, where the exponent has already taken over.
- */
-export const BEAM_POWER_FLOOR = 0.13
-export const BEAM_POWER_EXPONENT = 1.4
-export const BEAM_POWER_GAIN = 0.46
+/** The seven integer strength rungs shared by the HUD and beam simulation. */
+export const BEAM_STRENGTH_MAX = 7
+export const LIFT_CAPACITY_MIN = 1
+export const LIFT_CAPACITY_MAX = 26
+
+export function beamStrengthForSize(size: number) {
+  const clamped = clampSize(size)
+  if (clamped < SIZE_START) return 0
+  const progress = Math.max(0, Math.min(1, (clamped - SIZE_START) / (SIZE_MAX - SIZE_START)))
+  return Math.min(BEAM_STRENGTH_MAX, 1 + Math.round(progress * (BEAM_STRENGTH_MAX - 1)))
+}
+
+export function liftCapacityForSize(size: number) {
+  const progress = Math.max(0, Math.min(1, (clampSize(size) - SIZE_START) / (SIZE_MAX - SIZE_START)))
+  return LIFT_CAPACITY_MIN + progress * (LIFT_CAPACITY_MAX - LIFT_CAPACITY_MIN)
+}
 
 /**
  * Doubling the craft pulls the camera back by half again, not by double.
@@ -147,20 +139,17 @@ export function clampSize(size: number) {
 export function sizeProfile(size: number): SizeProfile {
   const clamped = clampSize(size)
   const ratio = Math.min(1, Math.max(0, (clamped - SIZE_MIN) / (SIZE_MAX - SIZE_MIN)))
-  // Sub-linear, so the beam still grows at the top end without the late game
-  // turning into a vacuum that clears a whole block in one pass - and with a
-  // floor under it, because aperture and strength are different levers. The
-  // opening craft is meant to *struggle* to lift a person, not to be unable to
-  // catch one: scaling the cone straight off size gave the starting saucer a
-  // four-metre beam that swept a street for a minute without touching anybody,
-  // since people scatter sideways faster than a narrow cone can cover. Weakness
-  // belongs in beamPower. Normalised so size 1 is unchanged at 1.
-  const beamScale = 0.55 + Math.pow(clamped, 0.78) * 0.45
+  // Aperture is a card stat now. Growing the hull must not secretly widen the
+  // beam and pay the player twice for the same progression.
+  const beamScale = 1
+  const beamStrength = beamStrengthForSize(clamped)
   return {
     size: clamped,
     ratio,
     beamScale,
-    beamPower: BEAM_POWER_FLOOR + Math.pow(clamped, BEAM_POWER_EXPONENT) * BEAM_POWER_GAIN,
+    beamPower: beamStrength,
+    beamStrength,
+    liftCapacity: liftCapacityForSize(clamped),
     absorbDistance: 2.1 + clamped * 1.5,
     hitRadius: 1.05 * clamped,
     maxAltitude: maxAltitude(clamped),

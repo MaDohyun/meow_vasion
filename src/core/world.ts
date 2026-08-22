@@ -8,10 +8,13 @@ export const WORLD_REMOVE_RADIUS = 300
  *  out there to reveal rather than an empty ring. */
 export const WORLD_LOD_RADIUS = 820
 export const WORLD_REFRESH_DISTANCE = 10
-export const WORLD_MAX_BUILDINGS = 168
+export const WORLD_MAX_BUILDINGS = 128
 export const WORLD_MAX_DISTANT_BUILDINGS = 880
 export const WORLD_MAX_CARS = 48
 export const WORLD_GROUND_RADIUS_CELLS = 9
+export const TUTORIAL_SPAWN = { x: 0, y: 7, z: 54.5 } as const
+export const TUTORIAL_CELL_X = 0
+export const TUTORIAL_CELL_Z = 1
 
 export const BUILDING_STYLES = [
   { color: '#f29b9a', roof: '#d7798e' },
@@ -151,27 +154,63 @@ export function worldCellCenter(cell: number) {
   return (cell + 0.5) * WORLD_CELL_SIZE
 }
 
+/** The opening park is a permanent, deterministic exception in the grid. */
+export function isTutorialCell(cellX: number, cellZ: number) {
+  return Math.abs(cellX - TUTORIAL_CELL_X) <= 1 && Math.abs(cellZ - TUTORIAL_CELL_Z) <= 1
+}
+
+const LAKE_SECTOR_SIZE = 6
+const LAKE_SHAPES = [
+  [[0, 0], [1, 0]],
+  [[0, 0], [0, 1], [0, 2]],
+  [[0, 0], [1, 0], [0, 1]],
+  [[0, 0], [1, 0], [0, 1], [1, 1]],
+  [[0, 0], [1, 0], [2, 0], [3, 0]],
+] as const
+
+/**
+ * Returns a stable cluster id for the two-to-four joined cells of a lake.
+ * Clusters stay inside a six-cell sector, so checking membership is constant
+ * work and never needs stored skyline/terrain data.
+ */
+export function lakeClusterForCell(cellX: number, cellZ: number) {
+  if (isTutorialCell(cellX, cellZ)) return null
+  const sectorX = Math.floor(cellX / LAKE_SECTOR_SIZE)
+  const sectorZ = Math.floor(cellZ / LAKE_SECTOR_SIZE)
+  const seed = seedForWorldCell(sectorX, sectorZ, 0x1a6e)
+  if (seed % 100 >= 24) return null
+  const anchorX = sectorX * LAKE_SECTOR_SIZE + 1 + ((seed >>> 9) % 2)
+  const anchorZ = sectorZ * LAKE_SECTOR_SIZE + 1 + ((seed >>> 13) % 2)
+  const shape = LAKE_SHAPES[(seed >>> 17) % LAKE_SHAPES.length]!
+  if (shape.some(([dx, dz]) => isTutorialCell(anchorX + dx, anchorZ + dz))) return null
+  const member = shape.some(([dx, dz]) => cellX === anchorX + dx && cellZ === anchorZ + dz)
+  return member ? `lake:${sectorX}:${sectorZ}` : null
+}
+
+export function isLakeAt(position: Pick<Vec3, 'x' | 'z'>) {
+  return lakeClusterForCell(worldCellCoord(position.x), worldCellCoord(position.z)) !== null
+}
+
 export function getProceduralCell(cellX: number, cellZ: number, worldSeed = WORLD_SEED): ProceduralCell {
   const seed = seedForWorldCell(cellX, cellZ, worldSeed)
   const roll = seed % 100
-  // Roughly a third denser than before. The pools below were raised to match:
-  // lifting the odds without lifting the caps just crops the far end of the
-  // skyline, so the city ends up no fuller, only more sharply cut off.
-  // Bands: building 62%, parked car 10%, intersection 12%, empty 16%.
-  // Every threshold shifts together - moving only the first one would have
-  // swallowed the intersection band whole.
-  const kind: WorldCellKind = roll < 62
+  const forcedOpen = isTutorialCell(cellX, cellZ)
+  const lake = lakeClusterForCell(cellX, cellZ)
+  // Bands: building 48%, parked car 10%, intersection 12%, empty 30%.
+  const kind: WorldCellKind = forcedOpen || lake
+    ? 'empty'
+    : roll < 48
     ? 'building'
-    : roll < 72
+    : roll < 58
       ? 'parked-car'
-      : roll < 84
+      : roll < 70
         ? 'intersection'
         : 'empty'
   const id = `${cellX}:${cellZ}`
   const centerX = worldCellCenter(cellX)
   const centerZ = worldCellCenter(cellZ)
   const groundVariants: GroundVariant[] = ['grass', 'parking', 'sand', 'plaza', 'pond', 'vacant']
-  const ground = groundVariants[Math.floor(saltedUnit(seed, 19) * groundVariants.length)] ?? 'vacant'
+  const ground = lake ? 'pond' : groundVariants[Math.floor(saltedUnit(seed, 19) * groundVariants.length)] ?? 'vacant'
 
   if (kind === 'building') {
     const styleIndex = (seed >>> 8) % BUILDING_STYLES.length
@@ -364,8 +403,19 @@ export function updateActiveWorld(
  * because a tower is tall and thin rather than genuinely bulky.
  */
 export function buildingMass(building: ProceduralBuilding) {
-  const volume = building.size.x * building.size.y * building.size.z
-  return Math.pow(volume, 0.75) * 0.16
+  if (building.size.y < 20) return 8
+  if (building.size.y < 40) return 9
+  if (building.size.y < 65) return 10
+  return 11
+}
+
+export type BuildingHeightTier = 'low' | 'mid' | 'high' | 'supertall'
+
+export function buildingHeightTier(building: Pick<ProceduralBuilding, 'size'>): BuildingHeightTier {
+  if (building.size.y < 20) return 'low'
+  if (building.size.y < 40) return 'mid'
+  if (building.size.y < 65) return 'high'
+  return 'supertall'
 }
 
 /**
@@ -382,6 +432,7 @@ export function buildingBulk(building: ProceduralBuilding) {
 
 export function activeWorldColliders(world: ActiveWorld): Aabb[] {
   return world.buildings.map((building) => ({
+    id: building.id,
     minX: building.position.x - building.size.x / 2,
     maxX: building.position.x + building.size.x / 2,
     minY: 0,

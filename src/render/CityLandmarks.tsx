@@ -10,6 +10,7 @@ import {
   hasBusStop,
   isNewsTower,
   isConvenienceStore,
+  landmarkId,
   newsScreenMount,
   NEWS_SCREEN_HEIGHT,
 } from '../core/cityLandmarks'
@@ -683,6 +684,24 @@ const pylonGeometry = (() => {
   return mergeGeometries(parts, false)!
 })()
 
+const communicationsGeometry = mergeGeometries([
+  new THREE.CylinderGeometry(0.55, 1.4, 2.4, 8).translate(0, 1.2, 0),
+  new THREE.CylinderGeometry(0.22, 0.32, 17, 6).translate(0, 10.8, 0),
+  new THREE.TorusGeometry(2.4, 0.18, 5, 12).rotateX(Math.PI / 2).translate(0, 12.5, 0),
+  new THREE.TorusGeometry(1.6, 0.14, 5, 10).rotateX(Math.PI / 2).translate(0, 16.3, 0),
+  ...[-1, 1].map((side) => cylinderBetween(
+    new THREE.Vector3(0, 2, 0),
+    new THREE.Vector3(side * 4.2, 0.2, 0),
+    0.1,
+  )),
+], false)!
+
+const communicationsMaterial = withLandmarkGlow(
+  new THREE.MeshToonMaterial({ color: '#a5bdd0', emissive: new THREE.Color('#68e8ff') }),
+  0.04,
+  0.62,
+)
+
 function TransitUtilityPool() {
   const { runtime } = useGame()
   const subway = useRef<THREE.InstancedMesh>(null)
@@ -693,6 +712,7 @@ function TransitUtilityPool() {
   const pylons = useRef<THREE.InstancedMesh>(null)
   const gasStations = useRef<THREE.InstancedMesh>(null)
   const gasBands = useRef<THREE.InstancedMesh>(null)
+  const communications = useRef<THREE.InstancedMesh>(null)
   const lastKey = useRef('')
   const matrix = useMemo(() => new THREE.Matrix4(), [])
   const position = useMemo(() => new THREE.Vector3(), [])
@@ -702,18 +722,20 @@ function TransitUtilityPool() {
 
   useFrame(() => {
     if (!subway.current || !subwayOpenings.current || !subwaySigns.current || !busStops.current || !busSigns.current || !pylons.current) return
-    if (!gasStations.current || !gasBands.current) return
+    if (!gasStations.current || !gasBands.current || !communications.current) return
     const world = runtime.current.world
-    const key = `${world.cellX}:${world.cellZ}`
+    const key = `${world.cellX}:${world.cellZ}:${runtime.current.destroyedLandmarks.size}`
     if (key === lastKey.current) return
     lastKey.current = key
     let subwayCount = 0
     let busCount = 0
     let pylonCount = 0
     let gasCount = 0
+    let communicationsCount = 0
     for (const cell of groundCellsAround(runtime.current.drone.position, LANDMARK_RADIUS_CELLS)) {
       const landmark = groundLandmarkForCell(cell)
-      if (landmark !== 'subway' && landmark !== 'power-pylon' && landmark !== 'gas-station') continue
+      if (landmark !== 'subway' && landmark !== 'power-pylon' && landmark !== 'gas-station' && landmark !== 'communications') continue
+      if ((landmark === 'gas-station' || landmark === 'communications') && runtime.current.destroyedLandmarks.has(landmarkId(landmark, cell.cellX, cell.cellZ))) continue
       const centerX = (cell.cellX + 0.5) * WORLD_CELL_SIZE
       const centerZ = (cell.cellZ + 0.5) * WORLD_CELL_SIZE
       const seed = seedForWorldCell(cell.cellX, cell.cellZ, 0x7a4517)
@@ -743,6 +765,12 @@ function TransitUtilityPool() {
         matrix.compose(position, rotation, scale)
         gasBands.current.setMatrixAt(gasCount, matrix)
         gasCount += 1
+      } else if (landmark === 'communications') {
+        position.set(centerX, 0, centerZ)
+        scale.setScalar(1)
+        matrix.compose(position, rotation, scale)
+        communications.current.setMatrixAt(communicationsCount, matrix)
+        communicationsCount += 1
       } else {
         position.set(centerX, 0, centerZ)
         scale.setScalar(1)
@@ -776,6 +804,7 @@ function TransitUtilityPool() {
     setPoolCount(pylons.current, pylonCount)
     setPoolCount(gasStations.current, gasCount)
     setPoolCount(gasBands.current, gasCount)
+    setPoolCount(communications.current, communicationsCount)
   })
 
   return (
@@ -801,6 +830,7 @@ function TransitUtilityPool() {
       </instancedMesh>
       <instancedMesh ref={gasStations} args={[gasStationGeometry, gasStationMaterial, LANDMARK_CELL_COUNT]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }} />
       <instancedMesh ref={gasBands} args={[gasStationBandGeometry, gasStationCanopyMaterial, LANDMARK_CELL_COUNT]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }} />
+      <instancedMesh ref={communications} args={[communicationsGeometry, communicationsMaterial, LANDMARK_CELL_COUNT]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }} />
     </group>
   )
 }

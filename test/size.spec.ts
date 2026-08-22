@@ -53,12 +53,13 @@ describe('craft size as growth, not as health', () => {
     }
   })
 
-  it('trades reach for agility as it grows', () => {
+  it('grows strength and lift without secretly widening the beam', () => {
     const start = sizeProfile(SIZE_START)
     const big = sizeProfile(SIZE_MAX)
-    // Growing buys beam and score...
-    expect(big.beamScale).toBeGreaterThan(start.beamScale)
+    expect(big.beamScale).toBe(start.beamScale)
     expect(big.beamPower).toBeGreaterThan(start.beamPower)
+    expect(big.beamStrength).toBe(7)
+    expect(big.liftCapacity).toBe(26)
     expect(big.absorbDistance).toBeGreaterThan(start.absorbDistance)
     expect(big.scoreMultiplier).toBeGreaterThan(start.scoreMultiplier)
     // ...and pays only by being a bigger target. Speed is deliberately not a

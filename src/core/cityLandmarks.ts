@@ -1,7 +1,11 @@
 import type { Vec3 } from './drone'
 import {
-  buildingBulk,
+  buildingMass,
+  isTutorialCell,
+  lakeClusterForCell,
   PARKED_CAR_COLORS,
+  TUTORIAL_CELL_X,
+  TUTORIAL_CELL_Z,
   WORLD_CELL_SIZE,
   groundCellsAround,
   seedForWorldCell,
@@ -10,7 +14,7 @@ import {
   type ProceduralCell,
 } from './world'
 
-export type GroundLandmark = 'park' | 'subway' | 'parking-lot' | 'power-pylon' | 'gas-station' | null
+export type GroundLandmark = 'park' | 'subway' | 'parking-lot' | 'power-pylon' | 'gas-station' | 'communications' | 'lake' | null
 export type CrowdSpawnZone = { x: number; z: number; radius: number; kind: 'park' | 'parking-lot' }
 
 /**
@@ -19,6 +23,9 @@ export type CrowdSpawnZone = { x: number; z: number; radius: number; kind: 'park
  * returns exactly the same result after leaving and revisiting a district.
  */
 export function groundLandmarkForCell(cell: ProceduralCell): GroundLandmark {
+  if (cell.cellX === TUTORIAL_CELL_X && cell.cellZ === TUTORIAL_CELL_Z) return 'park'
+  if (isTutorialCell(cell.cellX, cell.cellZ)) return null
+  if (lakeClusterForCell(cell.cellX, cell.cellZ)) return 'lake'
   const roll = seedForWorldCell(cell.cellX, cell.cellZ, 0x1a4d6a7) % 1000
 
   // Car parks were 45 in a thousand of the cells that already hold a parked
@@ -32,7 +39,8 @@ export function groundLandmarkForCell(cell: ProceduralCell): GroundLandmark {
   // Gas stations give the tankers somewhere to have come from. Rare enough to
   // stay a landmark, common enough that the connection is legible.
   if (roll < 62) return 'gas-station'
-  if (roll < 110) return 'subway'
+  if (roll < 92) return 'communications'
+  if (roll < 140) return 'subway'
   if (roll < 279) return 'park'
   return null
 }
@@ -59,27 +67,16 @@ export function isNewsTower(building: ProceduralBuilding) {
 }
 
 /**
- * How much bigger than a building the craft has to be to take it.
+ * Whether the beam can tear this building out of the ground.
  *
- * Two and a half, so a low-rise comes within reach a good way up the size
- * range and the tallest tower waits until the ceiling. This is the last rung
- * of the ladder and the reason the back half of a run has anything left to
- * reach for.
+ * Building tiers use the same integer weight ladder as every other object.
+ * The one-step margin is the deliberately slow `w = g + 1` lift band.
  */
-export const BUILDING_ABSORB_RATIO = 2.5
-
-/**
- * Whether a craft of this size can tear this building out of the ground.
- *
- * Lives here rather than in the game loop so the rule has one home: the
- * news-tower exclusion is part of the rule, not a special case bolted on at
- * the call site.
- */
-export function canAbsorbBuilding(building: ProceduralBuilding, ufoDiameter: number) {
+export function canAbsorbBuilding(building: ProceduralBuilding, beamStrength: number) {
   // News towers stay standing. A city you can strip to nothing is a duller
   // one, and the broadcast screens are this game's voice.
   if (isNewsTower(building)) return false
-  return buildingBulk(building) <= ufoDiameter / BUILDING_ABSORB_RATIO
+  return buildingMass(building) <= beamStrength + 1
 }
 
 /** Screen height, in world units. */
@@ -146,6 +143,54 @@ export function gasStationsAround(position: Pick<Vec3, 'x' | 'z'>, radius = 6) {
     stations.push({ x: (cell.cellX + 0.5) * WORLD_CELL_SIZE, z: (cell.cellZ + 0.5) * WORLD_CELL_SIZE })
   }
   return stations
+}
+
+export type DestructibleLandmarkKind = 'gas-station' | 'communications'
+export type DestructibleLandmark = {
+  id: string
+  kind: DestructibleLandmarkKind
+  cellX: number
+  cellZ: number
+  position: Vec3
+  radius: number
+}
+
+export function landmarkId(kind: DestructibleLandmarkKind, cellX: number, cellZ: number) {
+  return `landmark:${kind}:${cellX}:${cellZ}`
+}
+
+export function destructibleLandmarksAround(position: Pick<Vec3, 'x' | 'z'>, radius = 9): DestructibleLandmark[] {
+  const landmarks: DestructibleLandmark[] = []
+  for (const cell of groundCellsAround(position, radius)) {
+    const kind = groundLandmarkForCell(cell)
+    if (kind !== 'gas-station' && kind !== 'communications') continue
+    landmarks.push({
+      id: landmarkId(kind, cell.cellX, cell.cellZ),
+      kind,
+      cellX: cell.cellX,
+      cellZ: cell.cellZ,
+      position: {
+        x: (cell.cellX + 0.5) * WORLD_CELL_SIZE,
+        y: kind === 'communications' ? 10 : 3,
+        z: (cell.cellZ + 0.5) * WORLD_CELL_SIZE,
+      },
+      radius: kind === 'communications' ? 5 : 9,
+    })
+  }
+  return landmarks
+}
+
+export function nearestDestructibleLandmark(
+  position: Pick<Vec3, 'x' | 'z'>,
+  kind: DestructibleLandmarkKind,
+  removed?: ReadonlySet<string>,
+) {
+  return destructibleLandmarksAround(position, 20)
+    .filter((landmark) => landmark.kind === kind && !removed?.has(landmark.id))
+    .sort((left, right) =>
+      Math.hypot(left.position.x - position.x, left.position.z - position.z) -
+      Math.hypot(right.position.x - position.x, right.position.z - position.z),
+    )[0] ?? null
 }
 
 export function parkingCarsAround(position: Pick<Vec3, 'x' | 'z'>, radius = 6): ProceduralCar[] {

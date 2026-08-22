@@ -33,7 +33,7 @@ export const BEAM_HOLD_TIME = 0.35
  * was charged for about a second and never actually felt. Tripled, a car is a
  * load you fly with and have to decide whether to keep.
  */
-export const CAR_MASS = 7.2
+export const CAR_MASS = 3
 
 const DEFAULT_DIAMETER: Record<BeamObjectKind, number> = {
   // Buildings always carry their own measured bulk; this is only a fallback.
@@ -129,6 +129,8 @@ export type BeamField = {
    * back.
    */
   gripScale?: number
+  /** Integer tractor strength. Compared directly with object mass. */
+  gripStrength?: number
   /**
    * Building boxes to land on.
    *
@@ -266,6 +268,22 @@ export function beamGrip(drop: number, maxDrop: number, minGrip = BEAM_MIN_GRIP,
   return minGrip + (1 - minGrip) * Math.pow(1 - dropRatio, Math.max(2, exponent))
 }
 
+export type BeamLiftBand = 'fast' | 'strained' | 'marginal' | 'blocked'
+
+/** The visible, teachable weight-vs-strength rule. */
+export function beamLiftBand(weight: number, strength: number): BeamLiftBand {
+  const delta = weight - strength
+  if (delta <= -2) return 'fast'
+  if (delta <= 0) return 'strained'
+  if (delta <= 1) return 'marginal'
+  return 'blocked'
+}
+
+export function beamLiftScale(weight: number, strength: number) {
+  const band = beamLiftBand(weight, strength)
+  return band === 'fast' ? 1.55 : band === 'strained' ? 0.58 : band === 'marginal' ? 0.12 : 0
+}
+
 export function beginCarDestruction(object: BeamObject, direction: Vec3, inheritedVelocity: Vec3) {
   if (!object.active || object.kind !== 'car' || object.destroying) return false
   object.destroying = true
@@ -337,12 +355,14 @@ export function stepBeamObjects(objects: BeamObject[], field: BeamField, dt: num
         : Math.max(0, (object.hold ?? 0) - d)
     const captured = field.active && (inside || (object.hold ?? 0) > 0)
     object.inBeam = captured
+    const liftScale = beamLiftScale(object.mass, field.gripStrength ?? 12)
+    const lifting = captured && liftScale > 0
 
-    if (captured) {
+    if (lifting) {
       object.playerTouched = true
       const mass = Math.max(0.08, object.mass)
       const drop = Math.max(0, field.position.y - object.position.y)
-      const grip = beamGrip(drop, profile.maxDrop) * Math.max(0.1, field.gripScale ?? 1)
+      const grip = beamGrip(drop, profile.maxDrop) * liftScale * Math.max(0.1, field.gripScale ?? 1)
       const spring = profile.spring * grip / mass
       const hash = hashId(object.id)
       const slot = hash % 11
@@ -393,7 +413,7 @@ export function stepBeamObjects(objects: BeamObject[], field: BeamField, dt: num
     object.rotation.y += object.angularVelocity.y * d
     object.rotation.z += object.angularVelocity.z * d
 
-    const floor = captured ? GROUND_HEIGHT : surfaceHeightAt(object.position.x, object.position.z, field.colliders)
+    const floor = lifting ? GROUND_HEIGHT : surfaceHeightAt(object.position.x, object.position.z, field.colliders)
     if (object.position.y < floor) {
       object.position.y = floor
       object.velocity.y = Math.abs(object.velocity.y) * 0.18
@@ -403,7 +423,7 @@ export function stepBeamObjects(objects: BeamObject[], field: BeamField, dt: num
       object.angularVelocity.x *= groundFriction
       object.angularVelocity.y *= Math.pow(0.86, d * 60)
       object.angularVelocity.z *= groundFriction
-      if (!captured) {
+      if (!lifting) {
         object.rotation.x *= Math.pow(0.5, d * 60)
         object.rotation.z *= Math.pow(0.5, d * 60)
       }
