@@ -6,6 +6,7 @@ import { UPGRADE_DEFINITIONS, type UpgradeId } from '../core/upgrades'
 import type { MissionQuestId } from '../core/missions'
 import { Radar } from './Radar'
 import { pilotFrameStyle } from '../render/pilotArt'
+import { startLobbyMusic, unlockAudio } from '../audio'
 
 const formatTime = (seconds: number) => {
   const safe = Math.max(0, Math.ceil(seconds))
@@ -176,6 +177,21 @@ function Options({ onClose }: { onClose: () => void }) {
 function Intro() {
   const { start, t } = useGame()
   const [optionsOpen, setOptionsOpen] = useState(false)
+  useEffect(() => {
+    // Try immediately for browsers that permit it. Otherwise retry from the
+    // first intentional lobby input, which satisfies autoplay policy.
+    startLobbyMusic()
+    const enableMusic = () => {
+      unlockAudio()
+      startLobbyMusic()
+    }
+    window.addEventListener('pointerdown', enableMusic, { once: true })
+    window.addEventListener('keydown', enableMusic, { once: true })
+    return () => {
+      window.removeEventListener('pointerdown', enableMusic)
+      window.removeEventListener('keydown', enableMusic)
+    }
+  }, [])
   if (optionsOpen) return <Options onClose={() => setOptionsOpen(false)} />
   return (
     <div className="overlay intro-overlay">

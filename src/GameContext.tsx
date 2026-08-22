@@ -63,7 +63,7 @@ import { stepLakeAbsorption } from './core/lakes'
 import { createMissionState, missionHasQuest, recordMissionEvent, startMissionOne, syncMissionState, type MissionQuest, type MissionState } from './core/missions'
 import { absorbShieldDamage, createShieldState, isShieldRegenerating, setShieldCapacity, shieldRatio, stepShield, type ShieldState } from './core/shield'
 import { shouldCrashFromOverload } from './core/overload'
-import { tone, unlockAudio } from './audio'
+import { playLaserSound, startGameplayMusic, stopGameplayMusic, stopLobbyMusic, tone, unlockAudio } from './audio'
 
 export type GamePhase = 'intro' | 'playing' | 'upgrade' | 'results'
 
@@ -1103,6 +1103,7 @@ function setMessage(game: GameRuntime, key: MessageKey, seconds: number, arg = 0
 }
 
 function endRun(game: GameRuntime, title: string, victory: boolean) {
+  stopGameplayMusic()
   game.phase = 'results'
   game.resultTitle = title
   game.victory = victory
@@ -1496,7 +1497,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         if (destroyed) setMessage(game, 'msgCarLaunched', 0.9)
       }
       game.laserShotsFired += 1
-      tone('pickup')
+      playLaserSound()
     }
     game.laserActive = game.laserFlash > 0
 
@@ -1525,6 +1526,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   const start = useCallback(() => {
     unlockAudio()
+    stopLobbyMusic()
+    startGameplayMusic()
     pointer.current = { x: 0, y: 0 }
     const game = runtime.current
     game.phase = 'playing'
@@ -1559,6 +1562,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   const restart = useCallback(() => {
     unlockAudio()
+    stopLobbyMusic()
+    startGameplayMusic()
     pointer.current = { x: 0, y: 0 }
     runtime.current = makeRuntime()
     runtime.current.phase = 'playing'
