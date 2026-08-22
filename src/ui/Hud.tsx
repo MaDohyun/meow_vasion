@@ -324,13 +324,6 @@ function UpgradeCards() {
 export function Hud() {
   const { snapshot, t } = useGame()
   if (snapshot.phase === 'intro') return <Intro />
-  const beamStatus = snapshot.beamActive
-    ? [
-        snapshot.beamTargetId ? t.beamLocked : null,
-        snapshot.beamObjectCount > 0 ? `${t.beamPulling} ${snapshot.beamObjectCount}` : null,
-        snapshot.boostActive ? t.beamAmplified : null,
-      ].filter(Boolean).join(' · ') || t.beamSearching
-    : t.beamReady
   return (
     <>
       <div className="hud" data-dazed={snapshot.daze > 0}>
@@ -392,41 +385,22 @@ export function Hud() {
 
         <Radar />
 
+        {/* Turbo and overload are the two things that can kill a run on their
+            own (stranded with no boost, or crushed under too much cargo), so
+            they are the only readouts kept here - everything else this panel
+            used to carry (beam lock, altitude band) was detail the player
+            could live without. Both are bars first, numbers second: a raw
+            tonnage figure does not tell you how close to the ceiling you are
+            the way a fill level does. */}
         <section className="systems-panel panel">
           <div className="system-meter" data-active={snapshot.boostActive}>
             <span>SPACE · {t.turbo} <b>{snapshot.boostActive ? t.turboActive : `${Math.round(snapshot.turbo * 100)}%`}</b></span>
             <div><i style={{ width: `${snapshot.turbo * 100}%` }} /></div>
           </div>
-          <div className="beam-readout" data-active={snapshot.beamActive} data-error={!snapshot.beamAvailable}>
-            <span>E · {t.beam}</span><b>{beamStatus}</b>
+          <div className="ballast-meter" data-warn={snapshot.overloadWarn > 0} data-critical={snapshot.overloadWarn >= 1}>
+            <span>{t.drag} <b>{snapshot.overloadWarn >= 1 ? t.overloaded : `${Math.round(snapshot.cargoSlowdown * 100)}% ${t.slowdown}`}</b></span>
+            <div><i style={{ width: `${Math.min(100, (snapshot.ballast / snapshot.ballastLimit) * 100)}%` }} /></div>
           </div>
-          <div className="beam-stats">
-            <span>흡수력 <b>{snapshot.beamStrength}</b></span>
-            <span>{snapshot.waterAnchored ? `호수 정박 · ${Math.floor(snapshot.waterAbsorbed)}L` : `양력 ${snapshot.ballast.toFixed(1)}/${snapshot.ballastLimit.toFixed(1)}`}</span>
-          </div>
-          {/* Hanging mass is the only thing slowing the craft, so it has to be
-              visible - otherwise the player just feels sluggish for no stated
-              reason and has no cue to hit R. */}
-          {/* Weight is now fatal, not just slow, so the readout has to show how
-              close to fatal it is. Dying under a load must be something the
-              player watched arrive. */}
-          <div className="cargo-readout" data-error={snapshot.overloadWarn > 0} data-critical={snapshot.overloadWarn >= 1}>
-            <span>{t.drag} · {snapshot.ballast.toFixed(1)}/{snapshot.ballastLimit.toFixed(1)}t{snapshot.loadedCars > 0 ? ` · ${t.dumpHint}` : ''}</span>
-            <b>{snapshot.overloadWarn >= 1 ? t.overloaded : `${Math.round(snapshot.cargoSlowdown * 100)}% ${t.slowdown}`}</b>
-            <i style={{ width: `${Math.min(100, (snapshot.ballast / snapshot.ballastLimit) * 100)}%` }} />
-          </div>
-          <div className="altitude-alert" data-active={snapshot.height >= 28}>
-            <span>{snapshot.height >= 28 ? t.bandAa : snapshot.height > 5.5 ? t.bandArmor : t.bandGround}</span>
-            {/* An unseen rule is not a rule: the craft can only climb as high
-                as its size allows, so the limit has to be on screen. */}
-            <b>{t.ceiling} {Math.round(snapshot.maxAltitude)}m</b>
-          </div>
-        </section>
-
-        <section className="flight-card panel">
-          <div><span className="eyebrow">{t.speed}</span><strong>{Math.round(snapshot.speed * 3.6)}</strong><small>KM/H</small></div>
-          <div><span className="eyebrow">{t.altitude}</span><strong>{snapshot.height.toFixed(1)}</strong><small>M</small></div>
-          <div><span className="eyebrow">{t.threats}</span><strong>{snapshot.activeEnemies}</strong><small>{t.live}</small></div>
         </section>
         <section className="pilot-card panel" data-expression={snapshot.pilotExpression} aria-label={`pilot expression ${snapshot.pilotExpression}`}>
           <div className="pilot-portrait" style={pilotFrameStyle(snapshot.pilotExpression)} />

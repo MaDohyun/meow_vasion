@@ -92,7 +92,7 @@ button { font: inherit; }
 @keyframes message-pop { from { transform: scale(.72) rotate(-2deg); } to { transform: scale(1); } }
 @keyframes warning-pulse { 50% { transform: scale(1.045); filter: brightness(1.25); } }
 
-.systems-panel { position: absolute; left: 18px; bottom: 18px; width: 238px; padding: 10px 12px; border-left-color: var(--cyan); }
+.systems-panel { position: absolute; right: 18px; bottom: 18px; width: 200px; padding: 10px 12px; border-right-color: var(--pink); }
 .shield-row { display: flex; align-items: center; gap: 5px; }
 .shield-row .eyebrow { margin-right: auto; }
 .shield-row i { color: #4b485c; font-size: 18px; font-style: normal; -webkit-text-stroke: 1px #b5aebd; }
@@ -104,30 +104,26 @@ button { font: inherit; }
 .system-meter > div i { display: block; height: 100%; background: repeating-linear-gradient(90deg,var(--yellow) 0 12px,#ff9d65 12px 15px); }
 .system-meter[data-active="true"] > span b { color: var(--cyan); animation: beam-blink .22s steps(1) infinite; }
 .system-meter[data-active="true"] > div i { background: repeating-linear-gradient(90deg,var(--cyan) 0 12px,#fff06d 12px 15px); }
-.beam-readout { display: flex; justify-content: space-between; margin-top: 8px; padding-top: 7px; border-top: 1px dashed rgba(255,245,199,.45); color: var(--cream); font-size: 8px; font-weight: 1000; }
-.beam-readout b { color: var(--green); }
-.beam-readout[data-active="true"] b { animation: beam-blink .25s steps(1) infinite; }
-.beam-readout[data-error="true"] b { color: var(--coral); }
-.beam-stats { display:flex; justify-content:space-between; margin-top:5px; color:rgba(255,245,199,.72); font-size:7px; font-weight:1000; }
-.beam-stats b { color:var(--yellow); }
-.cargo-readout { display: flex; justify-content: space-between; margin-top: 8px; padding-top: 7px; border-top: 1px dashed rgba(255,245,199,.45); color: var(--cream); font-size: 8px; font-weight: 1000; }
-.cargo-readout b { color: var(--pink); }
-.altitude-alert { display: flex; justify-content: space-between; margin-top: 8px; padding-top: 7px; border-top: 1px dashed rgba(255,245,199,.45); color: var(--cream); font-size: 8px; font-weight: 1000; }
-.altitude-alert b { color: var(--green); }
-.altitude-alert[data-active="true"] b { color: var(--coral); animation: beam-blink .25s steps(1) infinite; }
+/* Same bar language as .system-meter, tuned to a warning colour instead of
+   the turbo gauge's cyan/yellow - a fill level reads at a glance, the way a
+   raw tonnage figure never did. */
+.ballast-meter { margin-top: 8px; }
+.ballast-meter > span { display: flex; justify-content: space-between; color: var(--cream); font-size: 8px; font-weight: 1000; }
+.ballast-meter > span b { color: var(--pink); }
+.ballast-meter > div { height: 7px; background: #111426; border: 1px solid var(--cream); }
+.ballast-meter > div i { display: block; height: 100%; background: var(--pink); transition: width .1s linear; }
+.ballast-meter[data-warn="true"] > span b { color: var(--coral); }
+.ballast-meter[data-warn="true"] > div i { background: var(--coral); }
+.ballast-meter[data-critical="true"] { animation: warning-pulse .35s steps(2) infinite; }
 @keyframes beam-blink { 50% { color: #fff; } }
 
 .time-bonus { position: absolute; top: 31%; left: 50%; padding: 10px 16px; color: var(--ink); background: var(--yellow); border: 3px solid var(--cream); box-shadow: 4px 4px 0 var(--ink); font-size: 18px; font-weight: 1000; letter-spacing: 1px; transform: translateX(-50%); animation: bonus-pop .8s steps(3) both; }
 @keyframes bonus-pop { from { opacity: 0; transform: translate(-50%, 18px) scale(.7); } 22% { opacity: 1; } to { opacity: 0; transform: translate(-50%, -36px) scale(1.06); } }
 
-.flight-card { position: absolute; right: 18px; bottom: 18px; display: flex; gap: 14px; padding: 9px 12px; border-right-color: var(--pink); }
-.flight-card > div { min-width: 53px; }
-.flight-card strong { color: var(--yellow); font-size: 21px; }
-.flight-card small { margin-left: 3px; color: var(--cream); font-size: 7px; }
-.pilot-card { position:absolute; left:18px; bottom:112px; display:flex; align-items:center; gap:8px; width:146px; padding:6px; border-color:#ef8d96; background:rgba(58,50,76,.92); transform:rotate(-1deg); }
-.pilot-portrait { flex:0 0 76px; width:76px; height:57px; border:2px solid var(--cream); background-repeat:no-repeat; image-rendering:pixelated; }
+.pilot-card { position:absolute; left:18px; bottom:18px; display:flex; align-items:center; gap:12px; width:230px; padding:10px; border-color:#ef8d96; background:rgba(58,50,76,.92); transform:rotate(-1deg); }
+.pilot-portrait { flex:0 0 120px; width:120px; height:110px; border:2px solid var(--cream); background-repeat:no-repeat; image-rendering:pixelated; }
 .pilot-card > div:last-child { min-width:0; }
-.pilot-card b { display:block; margin-top:4px; overflow:hidden; color:#b9df78; font-size:8px; letter-spacing:.4px; text-overflow:ellipsis; }
+.pilot-card b { display:block; margin-top:6px; overflow:hidden; color:#b9df78; font-size:12px; letter-spacing:.4px; text-overflow:ellipsis; }
 .pilot-card[data-expression="surprise"], .pilot-card[data-expression="scream"] { animation:warning-pulse .3s steps(2) infinite; }
 .captive-rack { position: absolute; right: 18px; bottom: 89px; min-width: 126px; padding: 7px 10px; background: rgba(33,27,53,.85); border-bottom: 4px solid var(--green); text-align: right; }
 .captive-rack .eyebrow { text-align: left; }
@@ -255,12 +251,6 @@ button { font: inherit; }
 .shield-bar b { position:absolute; right:0; top:-1px; color:var(--green); font-size:7px; }
 .shield-bar[data-regen="true"] i[data-state="empty"],.shield-bar[data-regen="true"] i[data-state="part"] { animation:warning-pulse 1s steps(2) infinite; }
 
-/* Load is fatal now, so the readout carries a fill bar and two alarm states. */
-.cargo-readout { position:relative; }
-.cargo-readout i { position:absolute; left:0; bottom:-3px; height:2px; background:var(--yellow); transition:width .1s linear; }
-.cargo-readout[data-error="true"] i { background:var(--coral); }
-.cargo-readout[data-critical="true"] { animation:warning-pulse .35s steps(2) infinite; }
-.cargo-readout[data-critical="true"] b { color:var(--coral); }
 .overload-alarm { position:absolute; left:50%; top:24%; padding:9px 18px; color:var(--cream); background:rgba(196,44,64,.94); border:3px solid var(--cream); box-shadow:5px 5px 0 rgba(22,17,40,.6); font-size:11px; font-weight:1000; letter-spacing:1.6px; white-space:nowrap; transform:translateX(-50%); animation:warning-pulse .35s steps(2) infinite; }
 
 @media (pointer: coarse), (max-width: 760px) {
@@ -275,9 +265,6 @@ button { font: inherit; }
   .mission-panel { top:116px; left:8px; width:min(310px,76vw); padding:7px 8px; }
   .mission-panel > div { min-height:20px; font-size:7px; }
   .systems-panel { display:none; }
-  .flight-card { right:8px; bottom:188px; padding:5px; gap:5px; }
-  .flight-card > div { min-width:38px; }
-  .flight-card strong { font-size:15px; }
   .captive-rack { display:none; }
   .planet-radar { display:none; }
   .boss-bar { top:11%; width:88vw; }
