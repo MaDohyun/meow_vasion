@@ -23,7 +23,7 @@ export const ENEMY_WAVE_STAGES = [
   { at: 150, tempo: 4, label: 'FIGHTER SCRAMBLE', targets: { drone: 30, police: 16, 'police-car': 8, helicopter: 9, soldier: 24, fighter: 3 } },
   { at: 185, tempo: 5, label: 'AA NETWORK', targets: { drone: 32, police: 18, 'police-car': 9, helicopter: 11, soldier: 26, fighter: 4, 'anti-air': 5 } },
   { at: 220, tempo: 6, label: 'ARMORED RESPONSE', targets: { drone: 34, police: 19, 'police-car': 10, helicopter: 12, soldier: 28, fighter: 5, 'anti-air': 6, tank: 7 } },
-  { at: 250, tempo: 7, label: 'COUNTER-UFO', targets: { drone: 36, police: 20, 'police-car': 10, helicopter: 14, soldier: 30, fighter: 6, 'anti-air': 6, tank: 8, boss: 1 } },
+  { at: 250, tempo: 7, label: 'SKY DREADNOUGHT', targets: { drone: 36, police: 20, 'police-car': 10, helicopter: 14, soldier: 30, fighter: 6, 'anti-air': 6, tank: 8, boss: 1 } },
 ] as const
 
 export const ENEMY_TIER: Record<EnemyKind, number> = {
@@ -47,7 +47,10 @@ export const ENEMY_MAX_HP: Record<EnemyKind, number> = {
   fighter: 4,
   'anti-air': 10,
   tank: 8,
-  boss: 25,
+  // Fifty seconds of fighting. An unupgraded laser can just about do it; a
+  // maxed laser-power does it with time to spare, which is the whole point of
+  // putting a laser-only target in the game.
+  boss: 64,
 }
 
 export const ENEMY_CAPS: Record<EnemyKind, number> = {
@@ -63,6 +66,40 @@ export const ENEMY_CAPS: Record<EnemyKind, number> = {
 }
 
 export const ENEMY_MAX_PROJECTILES = 96
+
+/**
+ * Earth's last resort: a flying capital ship.
+ *
+ * The final wave used to send up an oversized saucer - a bigger copy of the
+ * thing the player has spent five minutes growing. Nothing about that reads as
+ * humanity's last card. A battleship does: it is the largest thing people
+ * actually build, it is the wrong shape for this game's sky, and it cannot be
+ * eaten. The only answer to it is the laser, which is what finally gives the
+ * laser-power card something to be for.
+ *
+ * The hull is long rather than round, so these are lengths along its own axis:
+ * turrets sit down one flank, the main gun sits at the bow.
+ */
+export const BATTLESHIP_LENGTH = 74
+export const BATTLESHIP_BEAM_WIDTH = 16
+/** How high it holds station. Above the drone ceiling, so it is always
+ *  overhead rather than something you can climb past. */
+export const BATTLESHIP_ALTITUDE = 96
+/** Big enough that the whole ship fits on screen when it is beside you. */
+export const BATTLESHIP_ORBIT = 118
+/** Turret positions along the hull, as a fraction of half-length from the
+ *  centre: negative is aft. Fired in this order, so the broadside walks from
+ *  stern to bow instead of arriving as one lump. */
+export const BATTLESHIP_TURRETS = [-0.74, -0.44, -0.15, 0.16, 0.45, 0.72] as const
+/** Seconds between turrets inside one broadside, and the reload after it.
+ *  The reload is the window the player shoots back in - remove it and the
+ *  fight is a wall of shells with no rhythm. */
+export const BATTLESHIP_TURRET_GAP = 0.34
+export const BATTLESHIP_RELOAD = 4.4
+/** Every third broadside is replaced by the bow gun: a long telegraph, a
+ *  visible aim line, and a shot that hurts. */
+export const BATTLESHIP_MAIN_GUN_EVERY = 3
+export const BATTLESHIP_MAIN_GUN_TELEGRAPH = 1.9
 
 /**
  * Drones are suicide drones: no weapons, no pursuit, they only detonate on
@@ -142,6 +179,17 @@ export type EnemySlot = BeamObject & {
    * line honest: the line the player saw is the line the shot takes.
    */
   muzzle: Vec3
+  /** How long this shot's telegraph was, so the warning can fill over the
+   *  actual wait rather than over a per-kind guess. */
+  telegraphLength: number
+  /**
+   * Battleship only. Which turret fires next, how many are left in this
+   * broadside, and how many broadsides have gone by - the third is replaced
+   * by the bow gun.
+   */
+  turret: number
+  burstLeft: number
+  volley: number
 }
 
 export type EnemyProjectile = {
@@ -273,7 +321,9 @@ function makeSlot(kind: EnemyKind, slot: number): EnemySlot {
     absorbTimer: 0,
     diameter: ENEMY_DIAMETER[kind],
     scoreValue: kind === 'boss' ? 1200 : kind === 'tank' ? 260 : kind === 'fighter' ? 140 : kind === 'helicopter' ? 80 : kind === 'police-car' ? 55 : 35,
-    beamImmune: kind === 'anti-air',
+    // The battleship is not "too big to eat yet" - it is not food. A craft at
+    // the size cap still cannot take it.
+    beamImmune: kind === 'anti-air' || kind === 'boss',
     freePhysics: false,
     target: { x: 0, y: 0, z: 0 },
     phase: slot / Math.max(1, ENEMY_CAPS[kind]) * Math.PI * 2,
@@ -289,6 +339,10 @@ function makeSlot(kind: EnemyKind, slot: number): EnemySlot {
     telegraph: 0,
     aiming: false,
     muzzle: { x: 0, y: 0, z: 0 },
+    telegraphLength: 1,
+    turret: 0,
+    burstLeft: 0,
+    volley: 0,
   }
 }
 
@@ -328,14 +382,17 @@ function resetSlot(enemy: EnemySlot, player: Vec3, heading: number, state: Enemy
   enemy.angularVelocity.z = 0
   enemy.phase = heading + (enemy.slot + 1) * 2.399963
   enemy.mode = enemy.kind === 'fighter' ? 'strafe' : enemy.kind === 'anti-air' ? 'fixed' : enemy.kind === 'police' || enemy.kind === 'police-car' || enemy.kind === 'soldier' || enemy.kind === 'tank' ? 'ground' : enemy.kind === 'boss' ? 'chase' : 'roam'
-  enemy.radius = enemy.kind === 'fighter' ? 110 : enemy.kind === 'boss' ? 78 : enemy.kind === 'helicopter' ? 92 : 82
-  enemy.hitRadius = enemy.kind === 'drone' ? 0.75 : enemy.kind === 'police' ? 0.9 : enemy.kind === 'police-car' ? 1.8 : enemy.kind === 'soldier' ? 1.1 : enemy.kind === 'helicopter' ? 2.4 : enemy.kind === 'fighter' ? 2.2 : enemy.kind === 'tank' ? 2.8 : enemy.kind === 'anti-air' ? 2.2 : 6.8
-  enemy.attackTimer = 0.7 + (enemy.slot % 5) * 0.22
+  enemy.radius = enemy.kind === 'fighter' ? 110 : enemy.kind === 'boss' ? BATTLESHIP_ORBIT : enemy.kind === 'helicopter' ? 92 : 82
+  enemy.hitRadius = enemy.kind === 'drone' ? 0.75 : enemy.kind === 'police' ? 0.9 : enemy.kind === 'police-car' ? 1.8 : enemy.kind === 'soldier' ? 1.1 : enemy.kind === 'helicopter' ? 2.4 : enemy.kind === 'fighter' ? 2.2 : enemy.kind === 'tank' ? 2.8 : enemy.kind === 'anti-air' ? 2.2 : 9.5
+  enemy.attackTimer = enemy.kind === 'boss' ? 3.2 : 0.7 + (enemy.slot % 5) * 0.22
+  enemy.turret = 0
+  enemy.burstLeft = 0
+  enemy.volley = 0
   enemy.velocity.x = 0
   enemy.velocity.y = 0
   enemy.velocity.z = 0
   const angle = heading + (enemy.slot + 1) * 2.399963 + (random(state) - 0.5) * 0.3
-  const distance = enemy.kind === 'fighter' ? 118 : enemy.kind === 'boss' ? 92 : 78 + (enemy.slot % 3) * 7
+  const distance = enemy.kind === 'fighter' ? 118 : enemy.kind === 'boss' ? BATTLESHIP_ORBIT : 78 + (enemy.slot % 3) * 7
   if (enemy.mode === 'ground') {
     enemy.roadAxis = enemy.slot % 2 === 0 ? 'x' : 'z'
     enemy.roadDirection = enemy.slot % 3 === 0 ? -1 : 1
@@ -353,7 +410,9 @@ function resetSlot(enemy: EnemySlot, player: Vec3, heading: number, state: Enemy
     enemy.position.z = player.z + Math.cos(angle) * distance
     enemy.position.y = enemy.kind === 'drone' || enemy.kind === 'helicopter'
       ? airBandForSlot(enemy.kind, enemy.slot)
-      : Math.min(118, Math.max(8, player.y + 10))
+      : enemy.kind === 'boss'
+        ? BATTLESHIP_ALTITUDE
+        : Math.min(118, Math.max(8, player.y + 10))
   }
   if (enemy.kind === 'drone') {
     // Decided once, here. A drone never converts between the two.
@@ -538,13 +597,16 @@ export function interceptTime(toTarget: Vec3, velocity: Vec3, speed: number) {
   return Math.min(...candidates)
 }
 
-function aimProjectile(state: EnemyState, enemy: EnemySlot, player: Vec3, playerVelocity: Vec3, kind: EnemyProjectileKind, speed: number, damage: number, telegraph: number) {
+function aimProjectile(state: EnemyState, enemy: EnemySlot, player: Vec3, playerVelocity: Vec3, kind: EnemyProjectileKind, speed: number, damage: number, telegraph: number, muzzle?: Vec3) {
   enemy.telegraph = telegraph
+  enemy.telegraphLength = Math.max(0.01, telegraph)
   enemy.aiming = true
   const accuracy = LEAD_ACCURACY[enemy.kind]
-  enemy.muzzle.x = enemy.position.x
-  enemy.muzzle.y = enemy.position.y
-  enemy.muzzle.z = enemy.position.z
+  // Most enemies shoot from where they are. The battleship shoots from
+  // whichever turret is next, which is what turns one big gun into a broadside.
+  enemy.muzzle.x = muzzle ? muzzle.x : enemy.position.x
+  enemy.muzzle.y = muzzle ? muzzle.y : enemy.position.y
+  enemy.muzzle.z = muzzle ? muzzle.z : enemy.position.z
   // The shot leaves after the telegraph, so the prediction has to cover the
   // wait as well as the flight. Leading only for flight time leaves every shot
   // a telegraph's worth of travel behind - at cruising speed that is fifteen
@@ -639,6 +701,59 @@ function stepGroundEnemy(enemy: EnemySlot, player: Vec3, d: number) {
   if (distanceToPlayer(enemy, player) > 230) enemy.active = false
 }
 
+/**
+ * The battleship holds station and turns, rather than chasing.
+ *
+ * The old boss sat eight metres above the player's head, which made a
+ * thirteen-metre saucer impossible to see and identical in behaviour to a
+ * helicopter. A capital ship should be somewhere else in the sky: high, wide
+ * of you, and slow enough that its arc is readable. It circles at a distance
+ * so its flank - where the turrets are - faces the player, and its bow points
+ * along its own travel, because a ship crabbing sideways does not read as a
+ * ship.
+ */
+function stepBattleship(enemy: EnemySlot, player: Vec3, d: number) {
+  enemy.age += d
+  // Circle the player, closing the radius only if they have run.
+  const toPlayerX = player.x - enemy.position.x
+  const toPlayerZ = player.z - enemy.position.z
+  const range = Math.max(0.001, Math.hypot(toPlayerX, toPlayerZ))
+  enemy.phase += d * 0.11
+  const desiredX = player.x + Math.sin(enemy.phase) * BATTLESHIP_ORBIT
+  const desiredZ = player.z + Math.cos(enemy.phase) * BATTLESHIP_ORBIT
+  // Slow. Outrunning it has to be possible; staying ahead of it forever must
+  // not be, or the last fifty seconds are a chase with no fight in them.
+  const closing = 1 - Math.exp(-(range > BATTLESHIP_ORBIT * 1.8 ? 0.42 : 0.16) * d)
+  const previousX = enemy.position.x
+  const previousZ = enemy.position.z
+  enemy.position.x += (desiredX - enemy.position.x) * closing
+  enemy.position.z += (desiredZ - enemy.position.z) * closing
+  enemy.position.y += (BATTLESHIP_ALTITUDE - enemy.position.y) * (1 - Math.exp(-0.5 * d))
+  const travelX = enemy.position.x - previousX
+  const travelZ = enemy.position.z - previousZ
+  if (Math.hypot(travelX, travelZ) > 1e-4) {
+    const heading = Math.atan2(travelX, travelZ)
+    // Shortest-way turn, so crossing the +/-PI seam does not spin the hull.
+    const delta = Math.atan2(Math.sin(heading - enemy.rotation.y), Math.cos(heading - enemy.rotation.y))
+    enemy.rotation.y += delta * (1 - Math.exp(-1.6 * d))
+  }
+  // A slow list into the turn. Purely cosmetic, and the only thing that makes
+  // the hull look like it has mass.
+  enemy.rotation.z += (-0.12 - enemy.rotation.z) * (1 - Math.exp(-0.8 * d))
+}
+
+/** World position of one of the ship's turrets, along its own hull axis. */
+export function battleshipTurretPoint(enemy: EnemySlot, index: number, into: Vec3) {
+  const along = BATTLESHIP_TURRETS[index % BATTLESHIP_TURRETS.length] ?? 0
+  const offset = along * BATTLESHIP_LENGTH / 2
+  const sine = Math.sin(enemy.rotation.y)
+  const cosine = Math.cos(enemy.rotation.y)
+  into.x = enemy.position.x + sine * offset
+  into.y = enemy.position.y - 1.4
+  into.z = enemy.position.z + cosine * offset
+  return into
+}
+
 function stepFighter(enemy: EnemySlot, player: Vec3, d: number) {
   enemy.age += d
   if (enemy.mode === 'strafe') {
@@ -668,6 +783,49 @@ function stepFighter(enemy: EnemySlot, player: Vec3, d: number) {
 
 const STILL: Vec3 = { x: 0, y: 0, z: 0 }
 
+const TURRET_POINT: Vec3 = { x: 0, y: 0, z: 0 }
+
+/**
+ * One broadside, walked down the hull, then a reload.
+ *
+ * Firing every turret at once would just be one large shell with extra noise.
+ * Spacing them makes the shots arrive as a line sweeping past the player, so
+ * moving across the line is a different decision from moving along it - and it
+ * is the reload afterwards, not the volley, that is the actual fight: that gap
+ * is when the laser gets used.
+ */
+function stepBattleshipGuns(state: EnemyState, enemy: EnemySlot, player: Vec3, playerVelocity: Vec3, d: number) {
+  if (enemy.telegraph > 0) {
+    enemy.telegraph = Math.max(0, enemy.telegraph - d)
+    if (enemy.telegraph > 0) return
+    // Which shot this telegraph belonged to. burstLeft is zero both after a
+    // main-gun aim and after the last turret of a broadside, so the volley
+    // counter is what tells them apart.
+    const mainGun = enemy.volley % BATTLESHIP_MAIN_GUN_EVERY === 0
+    fireProjectile(state, enemy, mainGun ? 'boss-beam' : 'shell')
+    enemy.aiming = false
+    enemy.attackTimer = enemy.burstLeft > 0 ? BATTLESHIP_TURRET_GAP : BATTLESHIP_RELOAD
+    return
+  }
+  if (enemy.attackTimer > 0) return
+  if (enemy.burstLeft <= 0) {
+    enemy.volley += 1
+    if (enemy.volley % BATTLESHIP_MAIN_GUN_EVERY === 0) {
+      // The bow gun. Long telegraph and a visible aim line, so it is always a
+      // shot the player was shown before it left.
+      battleshipTurretPoint(enemy, BATTLESHIP_TURRETS.length - 1, TURRET_POINT)
+      aimProjectile(state, enemy, player, playerVelocity, 'boss-beam', PROJECTILE_SPEED['boss-beam'], 7, BATTLESHIP_MAIN_GUN_TELEGRAPH, TURRET_POINT)
+      return
+    }
+    enemy.burstLeft = BATTLESHIP_TURRETS.length
+    enemy.turret = 0
+  }
+  battleshipTurretPoint(enemy, enemy.turret, TURRET_POINT)
+  enemy.turret += 1
+  enemy.burstLeft -= 1
+  aimProjectile(state, enemy, player, playerVelocity, 'shell', PROJECTILE_SPEED.shell, 4, 0.42, TURRET_POINT)
+}
+
 export function stepEnemies(state: EnemyState, player: Vec3, dt: number, playerVelocity: Vec3 = STILL) {
   const d = Math.min(Math.max(0, dt), 0.05)
   for (const enemy of state.slots) {
@@ -679,7 +837,8 @@ export function stepEnemies(state: EnemyState, player: Vec3, dt: number, playerV
     }
     if (enemy.kind === 'anti-air') {
       enemy.aiming = player.y >= 28 && distanceToPlayer(enemy, player) <= 145
-    } else if (enemy.kind === 'fighter') stepFighter(enemy, player, d)
+    } else if (enemy.kind === 'boss') stepBattleship(enemy, player, d)
+    else if (enemy.kind === 'fighter') stepFighter(enemy, player, d)
     else if (enemy.kind === 'drone' || enemy.kind === 'helicopter') stepAirEnemy(enemy, player, d)
     else if (enemy.kind === 'police' || enemy.kind === 'police-car' || enemy.kind === 'soldier' || enemy.kind === 'tank') stepGroundEnemy(enemy, player, d)
     else {
@@ -695,6 +854,7 @@ export function stepEnemies(state: EnemyState, player: Vec3, dt: number, playerV
     }
 
     enemy.attackTimer -= d
+    if (enemy.kind === 'boss') { stepBattleshipGuns(state, enemy, player, playerVelocity, d); continue }
     if (enemy.telegraph > 0) {
       enemy.telegraph = Math.max(0, enemy.telegraph - d)
       if (enemy.telegraph <= 0) {
@@ -703,9 +863,8 @@ export function stepEnemies(state: EnemyState, player: Vec3, dt: number, playerV
         else if (enemy.kind === 'tank') fireProjectile(state, enemy, 'shell')
         else if (enemy.kind === 'anti-air') fireProjectile(state, enemy, 'missile')
         else if (enemy.kind === 'fighter') fireProjectile(state, enemy, 'rocket')
-        else if (enemy.kind === 'boss') fireProjectile(state, enemy, enemy.slot % 2 === 0 ? 'boss-beam' : 'missile')
         enemy.aiming = false
-        enemy.attackTimer = enemy.kind === 'boss' ? 2.5 : enemy.kind === 'anti-air' ? 3.8 : enemy.kind === 'tank' ? 2.8 : enemy.kind === 'helicopter' ? 1.6 : 2.2
+        enemy.attackTimer = enemy.kind === 'anti-air' ? 3.8 : enemy.kind === 'tank' ? 2.8 : enemy.kind === 'helicopter' ? 1.6 : 2.2
       }
     } else if (enemy.attackTimer <= 0) {
       const distance = distanceToPlayer(enemy, player)
@@ -719,12 +878,12 @@ export function stepEnemies(state: EnemyState, player: Vec3, dt: number, playerV
           : enemy.kind === 'helicopter' ? !high && distance < 78
             : enemy.kind === 'tank' ? middle && distance < 100
               : enemy.kind === 'anti-air' ? high && distance < 145
-                : enemy.kind === 'boss' || enemy.kind === 'fighter'
+                : enemy.kind === 'fighter'
       if (canAttack) {
-        const kind = enemy.kind === 'police' || enemy.kind === 'soldier' || enemy.kind === 'helicopter' ? 'rifle' : enemy.kind === 'police-car' || enemy.kind === 'tank' ? 'shell' : enemy.kind === 'anti-air' ? 'missile' : enemy.kind === 'fighter' ? 'rocket' : 'boss-beam'
+        const kind = enemy.kind === 'police' || enemy.kind === 'soldier' || enemy.kind === 'helicopter' ? 'rifle' : enemy.kind === 'police-car' || enemy.kind === 'tank' ? 'shell' : enemy.kind === 'anti-air' ? 'missile' : 'rocket'
         const speed = PROJECTILE_SPEED[kind]
-        const damage = kind === 'rifle' ? 2 : kind === 'shell' ? (enemy.kind === 'tank' ? 5 : 4) : kind === 'missile' ? 10 : kind === 'rocket' ? 3 : 7
-        aimProjectile(state, enemy, player, playerVelocity, kind, speed, damage, enemy.kind === 'boss' ? 1.1 : enemy.kind === 'anti-air' ? 0.8 : enemy.kind === 'helicopter' ? 0.45 : 0.52)
+        const damage = kind === 'rifle' ? 2 : kind === 'shell' ? (enemy.kind === 'tank' ? 5 : 4) : kind === 'missile' ? 10 : 3
+        aimProjectile(state, enemy, player, playerVelocity, kind, speed, damage, enemy.kind === 'anti-air' ? 0.8 : enemy.kind === 'helicopter' ? 0.45 : 0.52)
       }
     }
   }

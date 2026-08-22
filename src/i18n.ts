@@ -50,6 +50,7 @@ type Strings = {
   massHint: string
   collapseAt: string
   hull: string
+  bossName: string
   repairing: string
   ceiling: string
   overloaded: string
@@ -169,6 +170,7 @@ export const STRINGS: Record<Language, Strings> = {
     massHint: '사람과 고양이를 흡수해 커지세요',
     collapseAt: '붕괴',
     hull: '선체',
+    bossName: '공중전함',
     repairing: '수리 중',
     ceiling: '상승 한계',
     overloaded: '과적',
@@ -229,7 +231,7 @@ export const STRINGS: Record<Language, Strings> = {
       { headline: '전투기 긴급 발진', line: '속보입니다. 공군이 UFO 격추를 위해\n전투기를 긴급 발진시켰습니다.' },
       { headline: '대공 방어망 가동', line: '속보입니다. 도심 전역에 대공 방어망이 가동됐습니다.\n저공 비행체를 요격합니다.' },
       { headline: '기갑 부대 진입', line: '속보입니다. 기갑 부대가\n시내로 진입했습니다.' },
-      { headline: '최종 요격 작전', line: '속보입니다. 정부가 최종 요격 작전을 승인했습니다.\n모든 전력이 UFO를 향합니다.' },
+      { headline: '공중전함 출격', line: '속보입니다. 군이 최종 병기 공중전함을 출격시켰습니다.\n하늘을 뒤덮은 함체가 도심으로 향하고 있습니다.' },
     ],
     upgradeTitle: '강화 선택',
     upgradeLead: '흡수한 만큼 기체가 진화합니다. 하나를 고르세요.',
@@ -267,6 +269,7 @@ export const STRINGS: Record<Language, Strings> = {
     massHint: '人と猫を吸収して大きくなろう',
     collapseAt: '崩壊',
     hull: '船体',
+    bossName: '空中戦艦',
     repairing: '修理中',
     ceiling: '上昇限界',
     overloaded: '過積載',
@@ -327,7 +330,7 @@ export const STRINGS: Record<Language, Strings> = {
       { headline: '戦闘機が緊急発進', line: '速報です。空軍がUFO撃墜のため、\n戦闘機を緊急発進させました。' },
       { headline: '対空防衛網が稼働', line: '速報です。都心全域で対空防衛網が稼働しました。\n低空の飛行体を迎撃します。' },
       { headline: '機甲部隊が市内に進入', line: '速報です。機甲部隊が\n市内に進入しました。' },
-      { headline: '最終迎撃作戦', line: '速報です。政府が最終迎撃作戦を承認しました。\n全戦力がUFOへ向かいます。' },
+      { headline: '空中戦艦が出撃', line: '速報です。軍が最終兵器の空中戦艦を出撃させました。\n空を覆う艦体が都心へ向かっています。' },
     ],
     upgradeTitle: '強化選択',
     upgradeLead: '吸収した分だけ機体が進化します。ひとつ選んでください。',
@@ -365,6 +368,7 @@ export const STRINGS: Record<Language, Strings> = {
     massHint: 'ABSORB PEOPLE AND CATS TO GROW',
     collapseAt: 'COLLAPSE',
     hull: 'HULL',
+    bossName: 'SKY DREADNOUGHT',
     repairing: 'REPAIRING',
     ceiling: 'CEILING',
     overloaded: 'OVERLOADED',
@@ -425,7 +429,7 @@ export const STRINGS: Record<Language, Strings> = {
       { headline: 'FIGHTERS SCRAMBLED', line: 'Breaking news. The air force has scrambled fighters\nto shoot the UFO down.' },
       { headline: 'AIR DEFENCE ONLINE', line: 'Breaking news. The city-wide air defence network is online\nand engaging low-flying craft.' },
       { headline: 'ARMOUR ROLLS IN', line: 'Breaking news. Armoured units\nhave entered the city.' },
-      { headline: 'FINAL INTERCEPT ORDERED', line: 'Breaking news. The government has authorised a final intercept.\nEvery asset is now converging on the UFO.' },
+      { headline: 'SKY DREADNOUGHT LAUNCHED', line: 'Breaking news. The military has launched its last resort.\nA flying battleship is now bearing down on the city centre.' },
     ],
     upgradeTitle: 'UPGRADE',
     upgradeLead: 'What you absorbed has changed the craft. Take one.',

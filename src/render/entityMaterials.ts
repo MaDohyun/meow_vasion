@@ -60,11 +60,16 @@ export const enemyMaterial = Object.fromEntries(
     applyRimLight(
       withGlowRamp(
         new THREE.MeshToonMaterial({ vertexColors: true, emissive: new THREE.Color(ENEMY_GLOW[kind]) }),
-        kind === 'boss' ? 0.09 : 0.04,
-        kind === 'boss' ? 1.2 : 0.74,
+        // The battleship is deliberately the least emissive thing in the
+        // enemy set. Everything else is a small silhouette that has to stay
+        // findable at night by glowing; the ship is enormous and finds itself,
+        // so glow here only erases its panelling, turrets and stripes - the
+        // only reason it reads as a ship at all.
+        kind === 'boss' ? 0.05 : 0.04,
+        kind === 'boss' ? 0.42 : 0.74,
       ),
       ENEMY_GLOW[kind],
-      kind === 'boss' ? 0.48 : 0.3,
+      kind === 'boss' ? 0.34 : 0.3,
       2.8,
     ),
   ]),

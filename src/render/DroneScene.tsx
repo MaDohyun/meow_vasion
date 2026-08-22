@@ -23,7 +23,14 @@ import { BEAM_ABSORB_TIME, beamProfile, beamVisualLength } from '../core/beam'
 import { CAT_MAX, CROWD_ABSORB_TIME, PEDESTRIAN_MAX, type CrowdKind } from '../core/crowds'
 import { HAZARD_MAX } from '../core/hazards'
 import { type DaylightKeyframe, type DaylightSample } from '../core/daylight'
-import { ENEMY_CAPS, isDroneMine, type EnemyKind } from '../core/enemies'
+import {
+  BATTLESHIP_BEAM_WIDTH,
+  BATTLESHIP_LENGTH,
+  BATTLESHIP_TURRETS,
+  ENEMY_CAPS,
+  isDroneMine,
+  type EnemyKind,
+} from '../core/enemies'
 import {
   LASER_MAX_PROJECTILES,
   LASER_MAX_BURSTS,
@@ -177,12 +184,55 @@ function tankGeometry() {
   ])
 }
 
+/**
+ * Earth's last resort - a flying capital ship, built along +Z so the hull's
+ * length lines up with the heading the simulation turns it to.
+ *
+ * It replaces the oversized saucer the final wave used to send. A bigger copy
+ * of the player's own craft says nothing; a warship in the sky says the city
+ * has stopped improvising. Everything here is in service of one silhouette
+ * read at a hundred metres: long hull, raked bow, a tower amidships, engines
+ * aft, and a row of turrets down each flank - the same six positions the
+ * broadside walks along, so the shots visibly come from the guns.
+ */
 function bossGeometry() {
+  const half = BATTLESHIP_LENGTH / 2
+  const width = BATTLESHIP_BEAM_WIDTH
   return mergeModel([
-    coloredPart(new THREE.SphereGeometry(6.3, 18, 10).scale(1.25, 0.42, 1.25), '#4c5561'),
-    coloredPart(new THREE.SphereGeometry(3.1, 14, 8).scale(1.05, 0.72, 1.05).translate(0, 1.8, 0), '#a65c67'),
-    coloredPart(new THREE.CylinderGeometry(4.4, 3.4, 0.62, 18).translate(0, -0.8, 0), '#252e3a'),
-    coloredPart(new THREE.BoxGeometry(0.22, 0.22, 8).translate(0, -0.48, 0), '#f3b24d'),
+    // Hull: a slab, a chamfered underside, and a bow wedge.
+    coloredPart(new RoundedBoxGeometry(width, 6.2, BATTLESHIP_LENGTH * 0.86, 2, 0.9), '#5a6572'),
+    coloredPart(new RoundedBoxGeometry(width * 0.74, 3.4, BATTLESHIP_LENGTH * 0.8, 2, 0.7).translate(0, -3.6, -1), '#3d4652'),
+    coloredPart(new THREE.ConeGeometry(width * 0.5, 15, 4).rotateX(Math.PI / 2).rotateZ(Math.PI / 4).scale(1, 0.42, 1).translate(0, -0.3, half * 0.86 + 5.4), '#5a6572'),
+    // Deck line, so the hull has a top edge instead of reading as one block.
+    coloredPart(new THREE.BoxGeometry(width * 0.9, 0.5, BATTLESHIP_LENGTH * 0.84).translate(0, 3.2, 0), '#6e7a88'),
+    // Tower amidships: bridge, mast, and a sensor drum.
+    coloredPart(new RoundedBoxGeometry(width * 0.42, 7, 12, 2, 0.5).translate(0, 6.4, -3), '#4a5462'),
+    coloredPart(new RoundedBoxGeometry(width * 0.3, 4.2, 7.4, 2, 0.4).translate(0, 11.4, -2), '#59636f'),
+    coloredPart(new THREE.CylinderGeometry(0.5, 0.7, 9, 6).translate(0, 17, -2), '#2b3340'),
+    coloredPart(new THREE.SphereGeometry(1.7, 10, 7).translate(0, 14.4, -2), '#8fa6b8'),
+    // Engines aft: nozzles plus the glow bar that keeps it visible at night.
+    ...[-1, 1].map((side) =>
+      coloredPart(new THREE.CylinderGeometry(2.5, 2.9, 5, 10).rotateX(Math.PI / 2).translate(side * width * 0.26, -0.6, -half * 0.86 - 1.6), '#333c49'),
+    ),
+    coloredPart(new THREE.BoxGeometry(width * 0.66, 1, 0.8).translate(0, -0.6, -half * 0.86 - 4.1), '#7ad4ff'),
+    // Anti-gravity strip down the keel. The ship has to be legible from
+    // underneath - that is the angle the player spends the fight at.
+    coloredPart(new THREE.BoxGeometry(2.2, 0.5, BATTLESHIP_LENGTH * 0.7).translate(0, -5.2, 0), '#7ad4ff'),
+    // Turrets, at exactly the positions the guns fire from.
+    ...BATTLESHIP_TURRETS.flatMap((along, index) => {
+      const z = along * half
+      const side = index % 2 === 0 ? -1 : 1
+      const barrel = index === BATTLESHIP_TURRETS.length - 1 ? 9 : 6
+      return [
+        coloredPart(new THREE.CylinderGeometry(2.1, 2.4, 1.8, 10).translate(side * width * 0.26, 3.9, z), '#6b7a8a'),
+        coloredPart(new THREE.BoxGeometry(2.6, 1.9, 3).translate(side * width * 0.26, 5, z), '#48525f'),
+        coloredPart(new THREE.CylinderGeometry(0.42, 0.5, barrel, 7).rotateZ(Math.PI / 2).translate(side * (width * 0.26 + barrel * 0.5), 5.2, z), '#2b3340'),
+      ]
+    }),
+    // Hazard stripes along the flanks, the one warm colour on the ship.
+    ...[-1, 1].map((side) =>
+      coloredPart(new THREE.BoxGeometry(0.4, 0.7, BATTLESHIP_LENGTH * 0.6).translate(side * width * 0.5, 1.4, 0), '#f3b24d'),
+    ),
   ])
 }
 
@@ -820,15 +870,28 @@ function EnemyPool({ kind }: { kind: EnemyKind }) {
       const groundUnit = kind === 'police' || kind === 'police-car' || kind === 'soldier' || kind === 'tank'
       const lookUp = groundUnit && player.y > 5.5 && horizontalDistance < 60
       const pitch = lookUp ? -Math.atan2(Math.max(0, player.y - enemy.position.y), Math.max(0.1, horizontalDistance)) : 0
-      if (enemy.inBeam || enemy.tether > 0.02 || enemy.absorbing) rotation.set(enemy.rotation.x, enemy.rotation.y, enemy.rotation.z)
+      // The battleship steers itself: its heading is its course, not a stare
+      // at the player. Facing the player would put a seventy-metre hull
+      // bow-on and hide the whole broadside.
+      if (kind === 'boss') rotation.set(0, enemy.rotation.y, enemy.rotation.z)
+      else if (enemy.inBeam || enemy.tether > 0.02 || enemy.absorbing) rotation.set(enemy.rotation.x, enemy.rotation.y, enemy.rotation.z)
       else rotation.set(pitch, yaw, kind === 'fighter' ? Math.sin(enemy.phase) * 0.22 : 0)
       quaternion.setFromEuler(rotation)
-      const size = kind === 'drone' ? 0.45 : kind === 'police' ? 0.82 : kind === 'police-car' ? 1.05 : kind === 'soldier' ? 1.08 : kind === 'helicopter' ? 0.82 : kind === 'fighter' ? 1.18 : kind === 'tank' ? 1.45 : kind === 'anti-air' ? 2.35 : 1.8
+      // The battleship's geometry is authored at true scale, so it is the one
+      // pool that must not be scaled - the turret positions the guns fire from
+      // are in world metres.
+      const size = kind === 'boss' ? 1 : kind === 'drone' ? 0.45 : kind === 'police' ? 0.82 : kind === 'police-car' ? 1.05 : kind === 'soldier' ? 1.08 : kind === 'helicopter' ? 0.82 : kind === 'fighter' ? 1.18 : kind === 'tank' ? 1.45 : kind === 'anti-air' ? 2.35 : 1.8
       const absorbScale = enemy.absorbing ? Math.max(0.04, enemy.absorbTimer / BEAM_ABSORB_TIME) : 1
       scale.setScalar(size * absorbScale)
       matrix.compose(position, quaternion, scale)
       mesh.setMatrixAt(count, matrix)
-      if (enemy.aiming) color.set('#ff6573')
+      // The battleship is exempt from the aiming tint. On a small enemy a red
+      // flash is a useful "about to shoot"; on a seventy-metre hull it floods
+      // every panel, turret and stripe with one colour and the silhouette -
+      // the whole reason the ship is shaped like a ship - disappears. It fires
+      // almost continuously, so it would be red for the entire fight. Its
+      // warning is the turret ring and the aim line instead.
+      if (enemy.aiming && kind !== 'boss') color.set('#ff6573')
       else if (kind === 'drone') {
         // A motionless mine is only fair if it announces itself. Passing drones
         // stay cyan; mines pulse red so the sky can be read before entering it.
@@ -839,7 +902,7 @@ function EnemyPool({ kind }: { kind: EnemyKind }) {
       }
       else if (kind === 'police' || kind === 'police-car') color.set('#e9edf0')
       else if (kind === 'tank' || kind === 'anti-air') color.set('#7f8765')
-      else if (kind === 'boss') color.set('#a85d69')
+      else if (kind === 'boss') color.set('#eef2f6')
       else color.setRGB(0.84 + (enemy.slot % 3) * 0.07, 0.84 + (enemy.slot % 3) * 0.07, 0.84 + (enemy.slot % 3) * 0.07)
       mesh.setColorAt(count, color)
       count += 1
@@ -885,9 +948,13 @@ function EnemyWarnings() {
     let count = 0
     for (const enemy of runtime.current.enemies.slots) {
       if (!enemy.active || enemy.telegraph <= 0) continue
-      position.set(enemy.position.x, Math.max(0.08, enemy.position.y - 0.6), enemy.position.z)
+      // Everyone else gets a ring on the ground beneath them. The battleship
+      // gets one around the turret that is charging: a mark on the street
+      // ninety metres below the ship points at nothing the player can act on.
+      if (enemy.kind === 'boss') position.set(enemy.muzzle.x, enemy.muzzle.y, enemy.muzzle.z)
+      else position.set(enemy.position.x, Math.max(0.08, enemy.position.y - 0.6), enemy.position.z)
       const pulse = 1 + Math.sin(clock.elapsedTime * 18) * 0.12
-      scale.setScalar((enemy.kind === 'boss' ? 4 : enemy.kind === 'anti-air' ? 2.2 : 1.25) * pulse)
+      scale.setScalar((enemy.kind === 'boss' ? 3.4 : enemy.kind === 'anti-air' ? 2.2 : 1.25) * pulse)
       matrix.compose(position, quaternion, scale)
       mesh.setMatrixAt(count, matrix)
       color.set(enemy.kind === 'anti-air' ? '#ffdf5c' : enemy.kind === 'boss' ? '#ff5f7c' : '#fff3a3')
@@ -957,9 +1024,10 @@ function EnemyAimLines() {
         enemy.muzzle.z + direction.z * length * 0.5,
       )
       // Thickens as the telegraph runs out, so "about to fire" is legible
-      // without reading a number.
-      const heat = enemy.kind === 'boss' ? 1.1 : enemy.kind === 'anti-air' ? 0.8 : 0.52
-      const charge = Math.min(1, Math.max(0, 1 - enemy.telegraph / heat))
+      // without reading a number. Measured against this shot's own telegraph -
+      // the battleship's bow gun waits four times as long as its turrets, and
+      // a fixed per-kind figure would show both as the same warning.
+      const charge = Math.min(1, Math.max(0, 1 - enemy.telegraph / enemy.telegraphLength))
       scale.set(0.09 + charge * 0.16, length, 0.09 + charge * 0.16)
       matrix.compose(position, quaternion, scale)
       mesh.setMatrixAt(count, matrix)

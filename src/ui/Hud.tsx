@@ -300,6 +300,17 @@ export function Hud() {
           <time>{t.run} {formatTime(snapshot.survivalTime)}</time>
         </section>
 
+        {/* The battleship's health, across the top of the screen.
+            Sixty-four laser hits is a long time to shoot at something with no
+            sign of progress - without this the fight reads as an invulnerable
+            set piece and the player stops firing. */}
+        {snapshot.bossHealth !== null && (
+          <div className="boss-bar" role="progressbar" aria-valuenow={Math.round(snapshot.bossHealth * 100)} aria-valuemin={0} aria-valuemax={100}>
+            <span className="eyebrow">{t.bossName}</span>
+            <div className="boss-bar-track"><i style={{ width: `${snapshot.bossHealth * 100}%` }} /></div>
+          </div>
+        )}
+
         <div className="hud-center">
           {(snapshot.messageKey || snapshot.message) && (
             <div className="message">
