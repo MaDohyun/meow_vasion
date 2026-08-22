@@ -275,9 +275,17 @@ const BRIEFING_STEPS: BriefingStep[] = [
  * advance on their own so they never block the player's hands.
  */
 function BossBriefing() {
-  const { snapshot } = useGame()
+  const { snapshot, unlockTutorialBeam } = useGame()
   const [step, setStep] = useState(0)
   const [done, setDone] = useState(false)
+
+  useEffect(() => {
+    // E is inert in the simulation until this fires (see beamUnlocked in
+    // GameContext's advance()) - otherwise a tap on E while an earlier line
+    // is still showing would finish the tutorial in the background and let
+    // the ship take off mid-briefing.
+    if (step === 4) unlockTutorialBeam()
+  }, [step, unlockTutorialBeam])
 
   useEffect(() => {
     if (step === 4 && snapshot.beamActive) setStep(5)
@@ -541,8 +549,10 @@ export function Hud() {
           style={{ left: `${50 + snapshot.aimX * 50}%`, top: `${50 + snapshot.aimY * 50}%` }}
         ><i /><i /></div>
         {/* Flight, laser, turbo and drop are all inert during the tutorial -
-            this is the one thing left to try, so it has to name itself. */}
-        {snapshot.tutorial && !snapshot.beamActive && (
+            this is the one thing left to try, so it has to name itself.
+            Held back until the briefing actually reaches that instruction -
+            E does nothing before then, so the prompt shouldn't invite it. */}
+        {snapshot.tutorial && snapshot.tutorialBriefingReady && !snapshot.beamActive && (
           <div
             className="tutorial-e-prompt"
             style={{ left: `${50 + snapshot.aimX * 50}%`, top: `${50 + snapshot.aimY * 50}%` }}
