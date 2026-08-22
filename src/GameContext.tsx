@@ -80,6 +80,12 @@ export type GameRuntime = {
   world: ActiveWorld
   worldColliders: Aabb[]
   sessionTime: number
+  /** Same shape as sessionTime but never frozen, including during the
+   *  tutorial - the pilot expression hold timer needs a clock that always
+   *  moves, or a hit taken before the tutorial's first cat holds the
+   *  expression exactly as long as sessionTime stays paused, which is to say
+   *  forever. See updatePilotStatus. */
+  pilotClock: number
   remainingTime: number
   score: number
   waveStage: number
@@ -373,6 +379,7 @@ function makeRuntime(): GameRuntime {
     world,
     worldColliders: activeWorldColliders(world),
     sessionTime: 0,
+    pilotClock: 0,
     remainingTime: RUN_SECONDS,
     score: 0,
     waveStage: 0,
@@ -1065,7 +1072,7 @@ function snapshotOf(game: GameRuntime): GameSnapshot {
 
 function updatePilotStatus(game: GameRuntime) {
   const next = requestedPilotExpression({
-    elapsed: game.sessionTime,
+    elapsed: game.pilotClock,
     impact: game.impactFlash > 0,
     threatLevel: game.waveStage,
     threatIncreased: game.waveStage > game.pilotPreviousThreat,
@@ -1076,7 +1083,7 @@ function updatePilotStatus(game: GameRuntime) {
     beam: game.beamActive,
     laser: game.laserActive,
   })
-  const state = updatePilotExpression({ expression: game.pilotExpression, holdUntil: game.pilotHoldUntil }, next, game.sessionTime)
+  const state = updatePilotExpression({ expression: game.pilotExpression, holdUntil: game.pilotHoldUntil }, next, game.pilotClock)
   game.pilotExpression = state.expression
   game.pilotHoldUntil = state.holdUntil
   game.pilotPreviousCars = game.loadedCars
@@ -1206,6 +1213,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       game.sessionTime += d
       game.remainingTime = Math.max(0, game.remainingTime - d)
     }
+    game.pilotClock += d
     game.messageTime = Math.max(0, game.messageTime - d)
     game.impactFlash = Math.max(0, game.impactFlash - d * 5)
     game.pickupPulse = Math.max(0, game.pickupPulse - d * 3.2)
