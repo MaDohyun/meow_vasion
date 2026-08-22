@@ -147,6 +147,10 @@ button { font: inherit; }
 .reticle i:last-child::before { top:0; left:0; width:2px; height:8px; }
 .reticle i:last-child::after { top:0; right:0; width:2px; height:8px; }
 
+.tutorial-e-prompt { position:absolute; display:flex; align-items:center; gap:6px; transform:translate(-50%, 24px); pointer-events:none; animation: warning-pulse .6s steps(2) infinite; }
+.tutorial-e-prompt b { display:flex; align-items:center; justify-content:center; width:26px; height:26px; background:var(--cream); color:var(--ink); border:2px solid var(--ink); border-radius:6px; font-size:14px; font-weight:1000; box-shadow:2px 2px 0 rgba(0,0,0,.4); }
+.tutorial-e-prompt span { padding:4px 9px; background:rgba(20,16,32,.88); color:var(--cream); border:2px solid var(--cream); font-size:9px; font-weight:1000; letter-spacing:.5px; white-space:nowrap; }
+
 .overlay { position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center; flex-direction: column; pointer-events: auto; }
 .overlay, .loading-overlay { cursor: auto; }
 /* Morning, because that is where the run opens. The sky darkens as the run

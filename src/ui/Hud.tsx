@@ -413,6 +413,17 @@ export function Hud() {
           className="reticle"
           style={{ left: `${50 + snapshot.aimX * 50}%`, top: `${50 + snapshot.aimY * 50}%` }}
         ><i /><i /></div>
+        {/* Flight, laser, turbo and drop are all inert during the tutorial -
+            this is the one thing left to try, so it has to name itself. */}
+        {snapshot.tutorial && !snapshot.beamActive && (
+          <div
+            className="tutorial-e-prompt"
+            style={{ left: `${50 + snapshot.aimX * 50}%`, top: `${50 + snapshot.aimY * 50}%` }}
+          >
+            <b>E</b>
+            <span>{t.tutorialPressE}</span>
+          </div>
+        )}
       </div>
       <MobileControls />
       {snapshot.phase === 'upgrade' && <UpgradeCards />}

@@ -1218,8 +1218,14 @@ export function GameProvider({ children }: { children: ReactNode }) {
       return
     }
     const d = Math.min(dt, 0.05)
-    const input = readInput()
+    const rawInput = readInput()
     const tutorialAtStart = game.mission.stage === 0
+    // The tutorial teaches one control at a time: until the beam actually
+    // lands on the cat, flight, laser, turbo and cargo-drop are all inert, so
+    // the only thing left to try is the one the prompt names.
+    const input: PlayerInput = tutorialAtStart
+      ? { ...rawInput, throttle: 0, strafe: 0, vertical: 0, special: false, laser: false, laserContinuous: false, drop: false }
+      : rawInput
     game.aimX = pointer.current.x
     game.aimY = pointer.current.y
     if (!tutorialAtStart) {

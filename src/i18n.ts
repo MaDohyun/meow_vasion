@@ -78,6 +78,7 @@ type Strings = {
   altitude: string
   threats: string
   pilotCam: string
+  tutorialPressE: string
   radar: string
   survivedTitle: string
   collapsedTitle: string
@@ -201,6 +202,7 @@ export const STRINGS: Record<Language, Strings> = {
     altitude: '고도',
     threats: '위협',
     pilotCam: '파일럿',
+    tutorialPressE: '눌러서 구출',
     radar: '주변 탐지 · 실시간',
     survivedTitle: '지구 정찰 완료',
     collapsedTitle: '지구가 좀 치네?',
@@ -304,6 +306,7 @@ export const STRINGS: Record<Language, Strings> = {
     altitude: '高度',
     threats: '脅威',
     pilotCam: 'パイロット',
+    tutorialPressE: '押して救出',
     radar: '周辺探知・リアルタイム',
     survivedTitle: '地球偵察完了',
     collapsedTitle: '地球、意外とやるな',
@@ -407,6 +410,7 @@ export const STRINGS: Record<Language, Strings> = {
     altitude: 'ALT',
     threats: 'THREATS',
     pilotCam: 'PILOT CAM',
+    tutorialPressE: 'HOLD TO RESCUE',
     radar: 'LOCAL GRID · LIVE',
     survivedTitle: 'EARTH RECON COMPLETE',
     collapsedTitle: 'EARTH HAD NOTES',
