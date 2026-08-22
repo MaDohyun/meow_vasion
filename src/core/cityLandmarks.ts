@@ -1,11 +1,10 @@
 import type { Vec3 } from './drone'
 import {
   buildingMass,
-  isTutorialCell,
+  getProceduralCell,
   lakeClusterForCell,
+  parkClusterForCell,
   PARKED_CAR_COLORS,
-  TUTORIAL_CELL_X,
-  TUTORIAL_CELL_Z,
   WORLD_CELL_SIZE,
   groundCellsAround,
   seedForWorldCell,
@@ -16,6 +15,7 @@ import {
 
 export type GroundLandmark = 'park' | 'subway' | 'parking-lot' | 'power-pylon' | 'gas-station' | 'communications' | 'lake' | null
 export type CrowdSpawnZone = { x: number; z: number; radius: number; kind: 'park' | 'parking-lot' }
+export type LakeShoreTree = { x: number; z: number; height: number; crown: number }
 
 /**
  * Deterministic landmark selection shared by simulation and rendering. The
@@ -23,8 +23,7 @@ export type CrowdSpawnZone = { x: number; z: number; radius: number; kind: 'park
  * returns exactly the same result after leaving and revisiting a district.
  */
 export function groundLandmarkForCell(cell: ProceduralCell): GroundLandmark {
-  if (cell.cellX === TUTORIAL_CELL_X && cell.cellZ === TUTORIAL_CELL_Z) return 'park'
-  if (isTutorialCell(cell.cellX, cell.cellZ)) return null
+  if (parkClusterForCell(cell.cellX, cell.cellZ)) return 'park'
   if (lakeClusterForCell(cell.cellX, cell.cellZ)) return 'lake'
   const roll = seedForWorldCell(cell.cellX, cell.cellZ, 0x1a4d6a7) % 1000
 
@@ -125,6 +124,62 @@ export function crowdSpawnZonesAround(position: Pick<Vec3, 'x' | 'z'>, radius = 
     })
   }
   return zones
+}
+
+/**
+ * Small trees on the dry edge of a lake.
+ *
+ * Every candidate is inset well inside an empty neighbouring cell: the road
+ * strip remains clear, water remains clear, and the result is deterministic
+ * wherever the city streams back in.
+ */
+export function lakeShoreTreesAround(position: Pick<Vec3, 'x' | 'z'>, radius = 6): LakeShoreTree[] {
+  const trees: LakeShoreTree[] = []
+  const occupied = new Set<string>()
+  const inset = 9.5
+  const edges = [
+    { x: -1, z: 0, side: 'west' },
+    { x: 1, z: 0, side: 'east' },
+    { x: 0, z: -1, side: 'south' },
+    { x: 0, z: 1, side: 'north' },
+  ] as const
+  for (const cell of groundCellsAround(position, radius)) {
+    if (!lakeClusterForCell(cell.cellX, cell.cellZ)) continue
+    for (const [edgeIndex, edge] of edges.entries()) {
+      const neighbourX = cell.cellX + edge.x
+      const neighbourZ = cell.cellZ + edge.z
+      if (lakeClusterForCell(neighbourX, neighbourZ)) continue
+      const neighbour = getProceduralCell(neighbourX, neighbourZ)
+      // Keep the shore vegetation on genuinely open ground. Landmark lots and
+      // buildings already have their own authored dressing.
+      if (neighbour.building || neighbour.car || groundLandmarkForCell(neighbour)) continue
+      const seed = seedForWorldCell(cell.cellX, cell.cellZ, 0x1a6e700 + edgeIndex)
+      if (seed % 100 >= 82) continue
+      const centreX = (cell.cellX + 0.5) * WORLD_CELL_SIZE
+      const centreZ = (cell.cellZ + 0.5) * WORLD_CELL_SIZE
+      const jitter = ((seed >>> 11) % 101) / 100 * 10 - 5
+      const x = edge.side === 'west'
+        ? cell.cellX * WORLD_CELL_SIZE - inset
+        : edge.side === 'east'
+          ? (cell.cellX + 1) * WORLD_CELL_SIZE + inset
+          : centreX + jitter
+      const z = edge.side === 'south'
+        ? cell.cellZ * WORLD_CELL_SIZE - inset
+        : edge.side === 'north'
+          ? (cell.cellZ + 1) * WORLD_CELL_SIZE + inset
+          : centreZ + jitter
+      const key = `${Math.round(x * 10)}:${Math.round(z * 10)}`
+      if (occupied.has(key)) continue
+      occupied.add(key)
+      trees.push({
+        x,
+        z,
+        height: 1.8 + ((seed >>> 19) % 8) * 0.11,
+        crown: 1.45 + ((seed >>> 23) % 6) * 0.1,
+      })
+    }
+  }
+  return trees
 }
 
 /**

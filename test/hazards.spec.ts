@@ -13,6 +13,7 @@ import {
   TRUCK_MASS,
   HAZARD_MASS,
 } from '../src/core/hazards'
+import { trafficPositionIsDriveable } from '../src/core/traffic'
 
 const view = (elapsed: number, x = 0, z = 0) => ({ position: { x, y: 6, z }, heading: 0, elapsed })
 
@@ -49,6 +50,26 @@ describe('ground explosives', () => {
     for (let frame = 0; frame < 20 * 60; frame += 1) stepHazards(state, view(10), 1 / 60)
     expect(activeHazardCount(state, 'truck')).toBeGreaterThan(0)
     expect(activeHazardCount(state, 'explosive')).toBe(0)
+    for (const hazard of state.objects.filter((item) => item.active)) {
+      expect(trafficPositionIsDriveable(hazard.position, hazard.roadAxis)).toBe(true)
+    }
+  })
+
+  it('moves only a portion of road-safe freight slots', () => {
+    const state = createHazardState(41)
+    for (let frame = 0; frame < 180; frame += 1) stepHazards(state, view(40), 1 / 60)
+    const moving = state.objects.find((hazard) => hazard.active && hazard.speed > 0)
+    const stopped = state.objects.find((hazard) => hazard.active && hazard.speed === 0)
+    expect(moving).toBeDefined()
+    expect(stopped).toBeDefined()
+    const before = { ...moving!.position }
+    stepHazards(state, view(40), 1 / 30)
+    expect(Math.hypot(moving!.position.x - before.x, moving!.position.z - before.z)).toBeGreaterThan(0)
+    expect(trafficPositionIsDriveable(moving!.position, moving!.roadAxis)).toBe(true)
+    const expectedRotation = moving!.roadAxis === 'x'
+      ? moving!.roadDirection > 0 ? -Math.PI / 2 : Math.PI / 2
+      : moving!.roadDirection > 0 ? Math.PI : 0
+    expect(moving!.rotation.y).toBeCloseTo(expectedRotation)
   })
 
   it('gives a truck weight worth feeling but nothing to set off', () => {

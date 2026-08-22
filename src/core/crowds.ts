@@ -1,7 +1,7 @@
 import { BEAM_ABSORB_TIME, beginNearbyBeamObjectAbsorption, type BeamObject } from './beam'
 import type { CrowdSpawnZone } from './cityLandmarks'
 import type { Aabb, Vec3 } from './drone'
-import { WORLD_CELL_SIZE } from './world'
+import { isLakeAt, WORLD_CELL_SIZE } from './world'
 
 export type CrowdKind = 'pedestrian' | 'cat'
 /**
@@ -13,8 +13,8 @@ export type CrowdKind = 'pedestrian' | 'cat'
  * so a body only ever tests against the craft and the handful of real threats,
  * and each of them draws from one instanced pool regardless of count.
  */
-export const PEDESTRIAN_MAX = 64
-export const CAT_MAX = 16
+export const PEDESTRIAN_MAX = 80
+export const CAT_MAX = 24
 // Fill the existing pedestrian pool from the opening. The old seed left too
 // much empty pavement between targets; the fuller, dispersed seed makes the
 // city read much busier without creating another render pool.
@@ -36,7 +36,10 @@ export const INITIAL_CATS = CAT_MAX
 export const CAT_MASS = 1
 export const PEDESTRIAN_MASS = 2
 
-export const CROWD_REMOVE_DISTANCE = 185
+/** Only genuinely distant actors leave the fixed pool; turning the camera is never a cull. */
+export const CROWD_REMOVE_DISTANCE = 300
+/** Mid-run replacements cannot appear within this player safety ring. */
+export const CROWD_SPAWN_MIN_DISTANCE = 110
 export const CROWD_ABSORB_DISTANCE = 3.35
 export const CROWD_ABSORB_TIME = BEAM_ABSORB_TIME
 
@@ -57,29 +60,27 @@ const SPAWN_CLEARANCE = 0.9
 // several body widths between them without wasting the visible street space.
 const SPAWN_CROWD_CLEARANCE = 3.2
 const SPAWN_ATTEMPTS = 24
-// Respawns land in the arc the player is flying into.
-//
-// They used to appear directly behind, so a player flying a straight line
-// outran the entire crowd supply and never met a new body. Ringing them evenly
-// was no better: only about three percent of a full circle falls inside the
-// beam corridor, which measured out at four catches per pass - exactly what the
-// geometry predicts.
-//
-// Keep the refreshed crowd close enough to populate the streets already in
-// view, while still far enough away not to materialise at the craft's feet.
-const RESPAWN_MIN_DISTANCE = 38
+// Replacements are prepared behind the current camera cone. The player meets
+// them naturally after changing street or turning around; they never blink
+// into a road already on screen.
+const RESPAWN_MIN_DISTANCE = 130
 /**
  * How far a park or car park has to be before it may be used as a respawn.
  *
  * Just inside the forward arc's own minimum, so the two branches agree about
  * what "not on top of the player" means.
  */
-const ZONE_MIN_DISTANCE = 34
-/** How far round toward the front a zone has to sit. Zero would be the whole
- *  half-plane ahead; this trims it to a generous cone. */
+const ZONE_MIN_DISTANCE = CROWD_SPAWN_MIN_DISTANCE
+/** How far round toward the back a zone has to sit before it can host a
+ * replacement. Zero would be the whole rear half-plane. */
 const ZONE_FORWARD_BIAS = 0.25
-const RESPAWN_RANGE = 48
+const RESPAWN_RANGE = 120
 const RESPAWN_ARC = 1.8
+// Loading may place the initial district one block away; normal replacements
+// use the wider safety ring above, so this is the only time actors begin
+// closer to the player.
+const OPENING_MIN_DISTANCE = 48
+const OPENING_MAX_DISTANCE = 180
 /**
  * Respawns are deliberately single-body placements. A denser city only reads
  * alive when the bodies occupy different stretches of pavement; filling a
@@ -175,6 +176,11 @@ export function crowdObjectIsVisible(position: Pick<Vec3, 'x' | 'y' | 'z'>, view
   // without letting it pile up behind the craft.
   const halfFov = (view.horizontalFov ?? 118) * Math.PI / 360
   return dot >= Math.cos(halfFov) && Math.abs(position.y - view.position.y) <= Math.max(18, distance * 0.8)
+}
+
+/** Living crowd may use parks and pavements, but never the lake surface. */
+export function crowdPositionIsWalkable(position: Pick<Vec3, 'x' | 'z'>) {
+  return !isLakeAt(position)
 }
 
 function makeCrowdObject(kind: CrowdKind, slot: number): CrowdObject {
@@ -316,9 +322,15 @@ function crowdedAt(state: CrowdState, x: number, z: number) {
 type CrowdPlacement = { angle: number; distance: number } | { x: number; z: number; radius: number }
 
 // The run-start seed and the steady-state respawn want different placements:
-// seeding scatters the whole ring around the player so the city looks alive in
-// every direction, while respawns stay behind the view so nothing pops in.
-function spawnCrowdObject(state: CrowdState, view: CrowdView, kind: CrowdKind, placement?: CrowdPlacement) {
+// loading pre-populates a distant, visible district, while replacements never
+// enter the player safety ring during play.
+function spawnCrowdObject(
+  state: CrowdState,
+  view: CrowdView,
+  kind: CrowdKind,
+  placement?: CrowdPlacement,
+  openingPreload = false,
+) {
   let object: CrowdObject | null = null
   for (const candidate of state.objects) {
     if (!candidate.active && candidate.kind === kind) { object = candidate; break }
@@ -347,7 +359,7 @@ function spawnCrowdObject(state: CrowdState, view: CrowdView, kind: CrowdKind, p
         const wantedKind = zoneRoll < 0.68 ? 'park' : zoneRoll < 0.82 ? 'parking-lot' : null
         let zone: CrowdSpawnZone | undefined
         if (wantedKind && zones?.length) {
-          // Only zones far enough away, and preferably ahead.
+          // Only zones outside the safety ring and behind the current view.
           //
           // The zone branch used to take any park within range, including the
           // one directly underneath - so hovering over a park respawned food
@@ -356,16 +368,14 @@ function spawnCrowdObject(state: CrowdState, view: CrowdView, kind: CrowdKind, p
           // arc below always had a minimum distance; this branch simply never
           // got one.
           //
-          // Distance alone would only mean flying back and forth. Weighting
-          // the choice forward is what turns "keep moving" from a rule into
-          // the shape of the map: go forward and there is food, stop and it
-          // dries up.
+          // Preloading behind the player makes the approach into a new street
+          // continuous rather than creating a pedestrian in an open view.
           const matches = zones.filter((candidate) => {
             const dx = candidate.x - view.position.x
             const dz = candidate.z - view.position.z
             if (Math.hypot(dx, dz) < ZONE_MIN_DISTANCE) return false
             const forward = (dx * Math.sin(view.heading) + dz * Math.cos(view.heading)) / Math.max(0.001, Math.hypot(dx, dz))
-            return forward > ZONE_FORWARD_BIAS
+            return forward < -ZONE_FORWARD_BIAS
           })
           zone = matches[Math.floor(random(state) * matches.length)]
         }
@@ -375,7 +385,7 @@ function spawnCrowdObject(state: CrowdState, view: CrowdView, kind: CrowdKind, p
           state.clusterKind = zone.kind
           state.clusterLeft = zone.kind === 'park' ? PARK_CLUSTER_SIZE : 3
         } else {
-          const angle = view.heading + (random(state) - 0.5) * RESPAWN_ARC
+          const angle = view.heading + Math.PI + (random(state) - 0.5) * RESPAWN_ARC
           const distance = RESPAWN_MIN_DISTANCE + random(state) * RESPAWN_RANGE
           state.clusterX = view.position.x + Math.sin(angle) * distance
           state.clusterZ = view.position.z + Math.cos(angle) * distance
@@ -399,9 +409,15 @@ function spawnCrowdObject(state: CrowdState, view: CrowdView, kind: CrowdKind, p
       }
     }
     const candidatePosition = { x, y: 0.65, z }
+    const playerDistance = Math.hypot(x - view.position.x, z - view.position.z)
     if (!blockedAt(view, x, z, SPAWN_CLEARANCE)
+      && crowdPositionIsWalkable(candidatePosition)
       && !crowdedAt(state, x, z)
-      && crowdObjectIsVisible(candidatePosition, view)) {
+      && playerDistance >= (openingPreload ? OPENING_MIN_DISTANCE : CROWD_SPAWN_MIN_DISTANCE)
+      // A normal replacement does not need to be in the current view. The
+      // opening preload is allowed there because it is complete before the
+      // first frame rather than popping in during play.
+      && (openingPreload || !crowdObjectIsVisible(candidatePosition, view))) {
       placed = true
       break
     }
@@ -462,13 +478,23 @@ function seedInitialCrowd(state: CrowdState, view: CrowdView, catsEnabled = true
     // streets while most of the pool exists behind it.
     const fraction = (index + 0.5) / total
     const radialFraction = ((index * 37) % total + 0.5) / total
-    const distance = Math.sqrt(16 ** 2 + radialFraction * (64 ** 2 - 16 ** 2))
-    const groupAngle = view.heading + (fraction - 0.5) * RESPAWN_ARC
+    const distance = Math.sqrt(
+      OPENING_MIN_DISTANCE ** 2 + radialFraction * (OPENING_MAX_DISTANCE ** 2 - OPENING_MIN_DISTANCE ** 2),
+    )
+    // Keep a sparse, central travel lane as well as the wide scatter. This is
+    // not a cluster (its members still span several city blocks), but it
+    // means a pilot who simply flies forward reaches a living street instead
+    // of needing a turn before seeing their first target.
+    const centralLane = index % 3 === 0
+    const laneFraction = centralLane
+      ? ((Math.floor(index / 3) + 0.5) / Math.ceil(total / 3) - 0.5) * 0.38
+      : (fraction - 0.5) * RESPAWN_ARC
+    const groupAngle = view.heading + laneFraction
     state.seedAngle = groupAngle
     const groupX = view.position.x + Math.sin(groupAngle) * distance
     const groupZ = view.position.z + Math.cos(groupAngle) * distance
     const placement = { x: groupX, z: groupZ, radius: CLUSTER_SPREAD }
-    let placed = spawnCrowdObject(state, view, kind, placement)
+    let placed = spawnCrowdObject(state, view, kind, placement, true)
     // Dense city blocks occasionally reject every jitter around one particular
     // point. Keep the same kind and look along nearby visible road space so a
     // bad block never leaves a fixed pool slot empty at run start.
@@ -477,9 +503,18 @@ function seedInitialCrowd(state: CrowdState, view: CrowdView, catsEnabled = true
       placed = spawnCrowdObject(state, view, kind, {
         angle: groupAngle + side * retry * 0.2,
         distance: Math.min(96, distance + retry * 8),
-      })
+      }, true)
     }
   }
+}
+
+/** Fill the opening's distant crowd slots before the first rendered frame. */
+export function primeCrowds(state: CrowdState, view: CrowdView) {
+  if (state.initialSpawnDone) return state
+  state.initialSpawnDone = true
+  seedInitialCrowd(state, view, !view.tutorialCatOnly)
+  state.spawnTimer = 0.16
+  return state
 }
 
 export function stepCrowds(state: CrowdState, view: CrowdView, dt: number) {
@@ -489,9 +524,7 @@ export function stepCrowds(state: CrowdState, view: CrowdView, dt: number) {
     // Seed a healthy recovery supply immediately. Any supplied object (the
     // tutorial cat or a restored save) is retained and the missing slots fill
     // around it instead of making the opening city wait for an absorption.
-    state.initialSpawnDone = true
-    seedInitialCrowd(state, view, !view.tutorialCatOnly)
-    state.spawnTimer = 0.16
+    primeCrowds(state, view)
   }
   let pedestrians = 0
   let cats = 0
@@ -499,6 +532,17 @@ export function stepCrowds(state: CrowdState, view: CrowdView, dt: number) {
   let recycled = 0
   for (const object of state.objects) {
     if (!object.active) continue
+    // Hot reloads and saved runs can contain a crowd slot that was created
+    // before the lake boundary existed. Remove it before movement so a stale
+    // actor cannot remain stranded on a water tile or keep walking along an
+    // internal lake seam.
+    if (!crowdPositionIsWalkable(object.position)) {
+      object.active = false
+      object.inBeam = false
+      object.tether = 0
+      recycled += 1
+      continue
+    }
     if (object.absorbing) {
       object.absorbTimer = Math.max(0, object.absorbTimer - d)
       if (object.absorbTimer <= 0) {
@@ -508,15 +552,7 @@ export function stepCrowds(state: CrowdState, view: CrowdView, dt: number) {
       }
       continue
     }
-    const visible = crowdObjectIsVisible(object.position, view)
-    object.wasVisible ||= visible
-    // Slots first appear in view. Once they leave it, recycle them promptly;
-    // hand-authored/test actors that have never entered view remain intact.
-    if (!visible && object.wasVisible && !object.id.startsWith('tutorial-cat')) {
-      object.active = false
-      recycled += 1
-      continue
-    }
+    object.wasVisible ||= crowdObjectIsVisible(object.position, view)
     // The opening target is deliberately the one quiet cat in the city. It
     // must not panic and wander away before the player gets the first beam
     // prompt, while every later cat uses the normal movement simulation.
@@ -612,6 +648,17 @@ export function stepCrowds(state: CrowdState, view: CrowdView, dt: number) {
       // local street band are still simulated, but defer wall checks until
       // they approach the player; this keeps the larger crowd pool from
       // turning every frame into a full pool × collider sweep.
+      // Water is a real movement boundary for pedestrians and cats. Resolving
+      // each axis independently lets them follow the shore instead of walking
+      // diagonally across a lake or vibrating at its edge.
+      if (!crowdPositionIsWalkable({ x: nextX, z: object.position.z })) blockedX = true
+      if (!crowdPositionIsWalkable({ x: object.position.x, z: nextZ })) blockedZ = true
+      // Axis checks alone allow a diagonal corner cut when both intermediate
+      // points are dry but the combined next point enters a lake tile.
+      if (!crowdPositionIsWalkable({ x: nextX, z: nextZ }) && !blockedX && !blockedZ) {
+        blockedX = true
+        blockedZ = true
+      }
       if (view.colliders && distance < 120) {
         for (const collider of view.colliders) {
           const spanX = object.position.x > collider.minX - COLLIDER_MARGIN && object.position.x < collider.maxX + COLLIDER_MARGIN
@@ -650,7 +697,10 @@ export function stepCrowds(state: CrowdState, view: CrowdView, dt: number) {
         object.wanderTimer = Math.min(object.wanderTimer, 0.4)
       }
     }
-    if (!object.inBeam && object.tether <= 0.02 && distance > CROWD_REMOVE_DISTANCE) object.active = false
+    if (!object.inBeam && object.tether <= 0.02 && distance > CROWD_REMOVE_DISTANCE) {
+      object.active = false
+      recycled += 1
+    }
   }
   state.nearbyPedestrians = nearbyPedestrians
 

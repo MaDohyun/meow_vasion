@@ -10,6 +10,7 @@ import {
   hasBusStop,
   isNewsTower,
   isConvenienceStore,
+  lakeShoreTreesAround,
   landmarkId,
   newsScreenMount,
   NEWS_SCREEN_HEIGHT,
@@ -30,6 +31,7 @@ anchorImage.src = '/broadcast/anchor.png'
 const LANDMARK_RADIUS_CELLS = 6
 const LANDMARK_CELL_COUNT = (LANDMARK_RADIUS_CELLS * 2 + 1) ** 2
 const PARK_TREE_COUNT = 3
+const LAKE_SHORE_TREE_CAPACITY = LANDMARK_CELL_COUNT * 2
 
 function canvasTexture(
   draw: (context: CanvasRenderingContext2D, width: number, height: number) => void,
@@ -578,6 +580,21 @@ function ParkPool() {
       benches.current.setMatrixAt(parkCount, matrix)
       parkCount += 1
     }
+    // The lake is no longer an abrupt sheet of water in a dense city. These
+    // small dry-bank trees reuse the same fixed instanced meshes as park trees
+    // and stay inset from all road strips.
+    for (const tree of lakeShoreTreesAround(runtime.current.drone.position, LANDMARK_RADIUS_CELLS)) {
+      if (treeCount >= LANDMARK_CELL_COUNT * PARK_TREE_COUNT + LAKE_SHORE_TREE_CAPACITY) break
+      position.set(tree.x, tree.height / 2, tree.z)
+      scale.set(0.5, tree.height, 0.5)
+      matrix.compose(position, rotation, scale)
+      trunks.current.setMatrixAt(treeCount, matrix)
+      position.set(tree.x, tree.height + 0.92, tree.z)
+      scale.setScalar(tree.crown)
+      matrix.compose(position, rotation, scale)
+      crowns.current.setMatrixAt(treeCount, matrix)
+      treeCount += 1
+    }
     setPoolCount(trunks.current, treeCount)
     setPoolCount(crowns.current, treeCount)
     setPoolCount(benches.current, parkCount)
@@ -585,11 +602,11 @@ function ParkPool() {
 
   return (
     <group>
-      <instancedMesh ref={trunks} args={[undefined, undefined, LANDMARK_CELL_COUNT * PARK_TREE_COUNT]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }}>
+      <instancedMesh ref={trunks} args={[undefined, undefined, LANDMARK_CELL_COUNT * PARK_TREE_COUNT + LAKE_SHORE_TREE_CAPACITY]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }}>
         <cylinderGeometry args={[0.5, 0.62, 1, 7]} />
         <meshToonMaterial color={BUILDING.PARK_TRUNK} />
       </instancedMesh>
-      <instancedMesh ref={crowns} args={[undefined, undefined, LANDMARK_CELL_COUNT * PARK_TREE_COUNT]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }}>
+      <instancedMesh ref={crowns} args={[undefined, undefined, LANDMARK_CELL_COUNT * PARK_TREE_COUNT + LAKE_SHORE_TREE_CAPACITY]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }}>
         <icosahedronGeometry args={[1, 1]} />
         <meshToonMaterial color={BUILDING.PARK_LEAF} />
       </instancedMesh>

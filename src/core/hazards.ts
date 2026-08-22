@@ -1,6 +1,7 @@
 import type { BeamObject } from './beam'
 import { gasStationsAround } from './cityLandmarks'
-import { seedForWorldCell, WORLD_CELL_SIZE } from './world'
+import { trafficPositionIsDriveable, type TrafficAxis } from './traffic'
+import { WORLD_CELL_SIZE } from './world'
 
 /**
  * Heavy road vehicles - tankers and box trucks.
@@ -45,6 +46,10 @@ export type Hazard = BeamObject & {
   generation: number
   cellX: number
   cellZ: number
+  /** A portion of the heavy-vehicle pool follows the same road rules as cars. */
+  roadAxis: TrafficAxis
+  roadDirection: -1 | 1
+  speed: number
   /** Rises as it is pulled in, so the warning gets louder the worse it gets. */
   alarm: number
   detonated: boolean
@@ -94,6 +99,9 @@ function makeHazard(slot: number): Hazard {
     generation: 0,
     cellX: 0,
     cellZ: 0,
+    roadAxis: 'z',
+    roadDirection: 1,
+    speed: 0,
     mass: HAZARD_MASS,
     color: '#ff4a3d',
     position: { x: 0, y: 1.25, z: 0 },
@@ -142,47 +150,75 @@ export function activeHazardCount(state: HazardState, kind?: HeavyVehicleKind) {
 function spawnHazard(state: HazardState, view: HazardView, kind: HeavyVehicleKind) {
   const hazard = state.objects.find((item) => !item.active)
   if (!hazard) return false
-  // Placed in the arc the player is flying into, like crowds, so they are
-  // actually encountered rather than left behind.
-  const angle = view.heading + (random(state) - 0.5) * 2.1
-  const distance = 60 + random(state) * 46
-  let x = view.position.x + Math.sin(angle) * distance
-  let z = view.position.z + Math.cos(angle) * distance
-  // A tanker prefers a forecourt it could have pulled out of. Gas stations are
-  // already placed as the tankers' explanation; before this they were scenery
-  // and the tankers appeared anywhere, so the two never met.
-  if (kind === 'explosive') {
-    const stations = gasStationsAround(view.position, 5).filter((station) => {
-      const dx = station.x - view.position.x
-      const dz = station.z - view.position.z
-      const range = Math.hypot(dx, dz)
-      if (range < 45 || range > 150) return false
-      return (dx * Math.sin(view.heading) + dz * Math.cos(view.heading)) / range > 0.1
-    })
-    const station = stations[Math.floor(random(state) * stations.length)]
-    if (station) {
-      x = station.x + (random(state) - 0.5) * 16
-      z = station.z + (random(state) - 0.5) * 16
+  let x = 0
+  let z = 0
+  let roadAxis: TrafficAxis = 'z'
+  let roadDirection: -1 | 1 = 1
+  let placed = false
+  for (let attempt = 0; attempt < 18; attempt += 1) {
+    // Placed in the arc the player is flying into, like crowds, so they are
+    // actually encountered rather than left behind.
+    const angle = view.heading + (random(state) - 0.5) * 2.1
+    const distance = 140 + random(state) * 110
+    x = view.position.x + Math.sin(angle) * distance
+    z = view.position.z + Math.cos(angle) * distance
+    // A tanker prefers a forecourt it could have pulled out of. Gas stations
+    // provide the origin, while the lane snap below keeps it on the adjacent
+    // road rather than inside a lot or on a lake.
+    if (kind === 'explosive') {
+      const stations = gasStationsAround(view.position, 5).filter((station) => {
+        const dx = station.x - view.position.x
+        const dz = station.z - view.position.z
+        const range = Math.hypot(dx, dz)
+        if (range < 45 || range > 150) return false
+        return (dx * Math.sin(view.heading) + dz * Math.cos(view.heading)) / range > 0.1
+      })
+      const station = stations[Math.floor(random(state) * stations.length)]
+      if (station) {
+        x = station.x + (random(state) - 0.5) * 16
+        z = station.z + (random(state) - 0.5) * 16
+      }
     }
+    roadAxis = random(state) < 0.5 ? 'x' : 'z'
+    roadDirection = random(state) < 0.5 ? -1 : 1
+    const lane = roadDirection * 1.5
+    if (roadAxis === 'x') z = Math.round(z / WORLD_CELL_SIZE) * WORLD_CELL_SIZE + lane
+    else x = Math.round(x / WORLD_CELL_SIZE) * WORLD_CELL_SIZE + lane
+    if (!trafficPositionIsDriveable({ x, z }, roadAxis)) continue
+    placed = true
+    break
   }
+  if (!placed) return false
   hazard.kind = kind
   hazard.mass = kind === 'truck' ? TRUCK_MASS : HAZARD_MASS
   hazard.diameter = kind === 'truck' ? TRUCK_DIAMETER : 5.1
   hazard.scoreValue = kind === 'truck' ? 160 : 240
   hazard.color = kind === 'truck' ? '#7f93b8' : '#ff4a3d'
-  hazard.cellX = Math.round(x / WORLD_CELL_SIZE)
-  hazard.cellZ = Math.round(z / WORLD_CELL_SIZE)
+  hazard.cellX = Math.floor(x / WORLD_CELL_SIZE)
+  hazard.cellZ = Math.floor(z / WORLD_CELL_SIZE)
+  hazard.roadAxis = roadAxis
+  hazard.roadDirection = roadDirection
+  // Some heavy vehicles remain stopped hazards; the rest use the normal road
+  // flow so the city has moving freight without a separate behaviour system.
+  hazard.speed = random(state) < (kind === 'truck' ? 0.48 : 0.36)
+    ? kind === 'truck' ? 6.5 + random(state) * 2.5 : 5.2 + random(state) * 2.2
+    : 0
   hazard.generation += 1
   hazard.id = `hazard:${hazard.slot}:${hazard.generation}`
   hazard.position.x = x
   hazard.position.y = 1.25
   hazard.position.z = z
   hazard.rotation.x = 0
-  hazard.rotation.y = seedForWorldCell(hazard.cellX, hazard.cellZ, 0x4a2d) % 360 / 180 * Math.PI
+  // The model's cab is built toward local -Z. Rotate that nose into the
+  // actual velocity vector; the previous mapping made every truck and tanker
+  // visually face backward along its lane.
+  hazard.rotation.y = roadAxis === 'x'
+    ? roadDirection > 0 ? -Math.PI / 2 : Math.PI / 2
+    : roadDirection > 0 ? Math.PI : 0
   hazard.rotation.z = 0
-  hazard.velocity.x = 0
+  hazard.velocity.x = roadAxis === 'x' ? hazard.speed * roadDirection : 0
   hazard.velocity.y = 0
-  hazard.velocity.z = 0
+  hazard.velocity.z = roadAxis === 'z' ? hazard.speed * roadDirection : 0
   hazard.angularVelocity.x = 0
   hazard.angularVelocity.y = 0
   hazard.angularVelocity.z = 0
@@ -200,7 +236,33 @@ function spawnHazard(state: HazardState, view: HazardView, kind: HeavyVehicleKin
   return true
 }
 
-export const HAZARD_REMOVE_DISTANCE = 130
+export const HAZARD_REMOVE_DISTANCE = 300
+
+function turnHeavyVehicleAtIntersection(state: HazardState, hazard: Hazard, previousCoordinate: number) {
+  if (hazard.speed <= 0) return
+  const coordinate = hazard.roadAxis === 'x' ? hazard.position.x : hazard.position.z
+  if (Math.floor(previousCoordinate / WORLD_CELL_SIZE) === Math.floor(coordinate / WORLD_CELL_SIZE)) return
+  if (random(state) >= 0.28) return
+  const crossing = Math.round(coordinate / WORLD_CELL_SIZE) * WORLD_CELL_SIZE
+  if (hazard.roadAxis === 'x') {
+    hazard.position.x = crossing + hazard.roadDirection * 1.5
+    hazard.position.z = Math.round(hazard.position.z / WORLD_CELL_SIZE) * WORLD_CELL_SIZE
+    hazard.roadAxis = 'z'
+  } else {
+    hazard.position.z = crossing + hazard.roadDirection * 1.5
+    hazard.position.x = Math.round(hazard.position.x / WORLD_CELL_SIZE) * WORLD_CELL_SIZE
+    hazard.roadAxis = 'x'
+  }
+  if (random(state) < 0.5) hazard.roadDirection = hazard.roadDirection === 1 ? -1 : 1
+  // Keep the lane paired with the final travel direction after a turn or
+  // reversal. Without this, a reversal leaves the model on the wrong strip.
+  const laneOffset = hazard.roadDirection * 1.5
+  if (hazard.roadAxis === 'x') hazard.position.z = crossing + laneOffset
+  else hazard.position.x = crossing + laneOffset
+  hazard.rotation.y = hazard.roadAxis === 'x'
+    ? hazard.roadDirection > 0 ? -Math.PI / 2 : Math.PI / 2
+    : hazard.roadDirection > 0 ? Math.PI : 0
+}
 
 export function stepHazards(state: HazardState, view: HazardView, dt: number) {
   const d = Math.min(Math.max(0, dt), 0.05)
@@ -216,6 +278,28 @@ export function stepHazards(state: HazardState, view: HazardView, dt: number) {
       ? Math.min(1, hazard.alarm + d * 1.9)
       : Math.max(0, hazard.alarm - d * 1.4)
     if (held) continue
+    // Clear any slot created by an older build as well as rejecting new road
+    // snaps, so hot-reloading this fix removes a tanker already sitting in a
+    // lake or park instead of waiting for the player to restart.
+    if (!trafficPositionIsDriveable(hazard.position, hazard.roadAxis)) {
+      hazard.active = false
+      continue
+    }
+    if (hazard.speed > 0) {
+      const previousCoordinate = hazard.roadAxis === 'x' ? hazard.position.x : hazard.position.z
+      hazard.position[hazard.roadAxis] += hazard.speed * hazard.roadDirection * d
+      if (!trafficPositionIsDriveable(hazard.position, hazard.roadAxis)) {
+        hazard.active = false
+        continue
+      }
+      turnHeavyVehicleAtIntersection(state, hazard, previousCoordinate)
+      if (!trafficPositionIsDriveable(hazard.position, hazard.roadAxis)) {
+        hazard.active = false
+        continue
+      }
+      hazard.velocity.x = hazard.roadAxis === 'x' ? hazard.speed * hazard.roadDirection : 0
+      hazard.velocity.z = hazard.roadAxis === 'z' ? hazard.speed * hazard.roadDirection : 0
+    }
     const distance = Math.hypot(hazard.position.x - view.position.x, hazard.position.z - view.position.z)
     if (distance > HAZARD_REMOVE_DISTANCE) hazard.active = false
   }

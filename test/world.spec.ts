@@ -19,6 +19,8 @@ import {
   WORLD_SPAWN_RADIUS,
   isTutorialCell,
   lakeClusterForCell,
+  parkClusterForCell,
+  sameLandmarkCluster,
 } from '../src/core/world'
 
 describe('deterministic infinite city', () => {
@@ -100,6 +102,38 @@ describe('deterministic infinite city', () => {
       const connected = cells.every(([x, z], index) => index === 0 || cells.some(([ox, oz]) => Math.abs(ox - x) + Math.abs(oz - z) === 1))
       expect(connected).toBe(true)
     }
+  })
+
+  it('generates deterministic one-to-nine tile parks with no internal roads', () => {
+    const clusters = new Map<string, Array<[number, number]>>()
+    for (let z = -80; z <= 80; z += 1) {
+      for (let x = -80; x <= 80; x += 1) {
+        const id = parkClusterForCell(x, z)
+        if (!id || id === 'park:tutorial') continue
+        const cells = clusters.get(id) ?? []
+        cells.push([x, z])
+        clusters.set(id, cells)
+      }
+    }
+    expect(clusters.size).toBeGreaterThan(30)
+    const sizes = new Set<number>()
+    for (const cells of clusters.values()) {
+      sizes.add(cells.length)
+      expect(cells.length).toBeGreaterThanOrEqual(1)
+      expect(cells.length).toBeLessThanOrEqual(9)
+      for (const [x, z] of cells) {
+        const cell = getProceduralCell(x, z)
+        expect(cell.building).toBeUndefined()
+        expect(cell.car).toBeUndefined()
+        expect(lakeClusterForCell(x, z)).toBeNull()
+      }
+      const [firstX, firstZ] = cells[0]!
+      const neighbour = cells.find(([x, z]) => Math.abs(x - firstX) + Math.abs(z - firstZ) === 1)
+      if (neighbour) expect(sameLandmarkCluster(firstX, firstZ, neighbour[0], neighbour[1])).toBe(true)
+    }
+    // The sector table deliberately includes every footprint size, not only
+    // squares, so a distant city has pocket gardens and full-block parks.
+    for (let size = 1; size <= 9; size += 1) expect(sizes.has(size)).toBe(true)
   })
 
   it('keeps a sparser city active even thousands of units away', () => {

@@ -27,8 +27,8 @@ import {
   WORLD_REMOVE_RADIUS,
   seedForWorldCell,
   lakeClusterForCell,
+  parkClusterForCell,
   sameLandmarkCluster,
-  isTutorialCell,
   type BuildingHeightTier,
   type GroundVariant,
 } from '../core/world'
@@ -1247,10 +1247,10 @@ function StreetLightPool() {
       for (let dx = -STREETLIGHT_RADIUS_CELLS; dx <= STREETLIGHT_RADIUS_CELLS; dx += 1) {
         const cellX = world.cellX + dx
         const cellZ = world.cellZ + dz
-        // The tutorial clearing and lake surfaces deliberately have no road;
+        // Park clearings and lake surfaces deliberately have no road;
         // placing a lamp pool there was the source of the floating beige patch
         // beside the opening UFO.
-        if (isTutorialCell(cellX, cellZ) || lakeClusterForCell(cellX, cellZ)) continue
+        if (parkClusterForCell(cellX, cellZ) || lakeClusterForCell(cellX, cellZ)) continue
         // One lamp on each of the cell's two roads, set back to the kerb. The
         // angle points its small arm toward the carriageway.
         const spots: [number, number, number][] = [
@@ -1342,9 +1342,9 @@ function CrosswalkPool() {
         if (slot >= CROSSWALK_CELLS) break
         const cellX = world.cellX + dx
         const cellZ = world.cellZ + dz
-        // The tutorial park and lake tiles carry no road strip underneath,
+        // Park and lake tiles carry no road strip underneath,
         // so a crossing here would paint stripes straight onto open grass/water.
-        if (isTutorialCell(cellX, cellZ) || lakeClusterForCell(cellX, cellZ)) continue
+        if (parkClusterForCell(cellX, cellZ) || lakeClusterForCell(cellX, cellZ)) continue
         const seed = seedForWorldCell(cellX, cellZ, 0xc7085)
         if (seed % 100 >= CROSSWALK_SHARE * 4) continue
         const acrossX = seed % 2 === 0

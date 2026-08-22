@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { getProceduralCell, type ProceduralBuilding } from '../src/core/world'
+import { getProceduralCell, isLakeAt, WORLD_CELL_SIZE, type ProceduralBuilding } from '../src/core/world'
 import {
   groundLandmarkForCell,
   hasBusStop,
@@ -8,6 +8,7 @@ import {
   NEWS_TOWER_MIN_HEIGHT,
   isNewsTower,
   isConvenienceStore,
+  lakeShoreTreesAround,
   newsScreenMount,
   parkingCarsAround,
 } from '../src/core/cityLandmarks'
@@ -97,6 +98,26 @@ describe('render-only city landmarks', () => {
     }
     expect(lots.size).toBeGreaterThan(0)
     for (const count of lots.values()) expect(count).toBeGreaterThanOrEqual(3)
+  })
+
+  it('places lake shore trees only on clear dry lots, beyond the road strip', () => {
+    // Search a number of deterministic lake sectors rather than tying the
+    // test to one particular lake layout.
+    const trees = lakeShoreTreesAround({ x: 0, z: 0 }, 48)
+
+    expect(trees.length).toBeGreaterThan(0)
+    for (const tree of trees) {
+      expect(isLakeAt(tree)).toBe(false)
+      const cellX = Math.floor(tree.x / WORLD_CELL_SIZE)
+      const cellZ = Math.floor(tree.z / WORLD_CELL_SIZE)
+      const cell = getProceduralCell(cellX, cellZ)
+      expect(cell.building).toBeUndefined()
+      expect(cell.car).toBeUndefined()
+      expect(groundLandmarkForCell(cell)).toBeNull()
+      const localX = tree.x - cellX * WORLD_CELL_SIZE
+      const localZ = tree.z - cellZ * WORLD_CELL_SIZE
+      expect(Math.min(localX, WORLD_CELL_SIZE - localX, localZ, WORLD_CELL_SIZE - localZ)).toBeGreaterThan(4.5)
+    }
   })
 })
 

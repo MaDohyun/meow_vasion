@@ -172,6 +172,40 @@ const LAKE_SHAPES = [
   [[0, 0], [1, 0], [2, 0], [3, 0]],
 ] as const
 
+// Parks use the same deterministic-sector pattern as lakes, but cover a wider
+// range of connected footprints: a pocket lawn through a full 3x3 city block.
+// They are generated from coordinates only, so leaving and returning to a
+// district reconstructs exactly the same green space without storing it.
+const PARK_SECTOR_SIZE = 8
+const PARK_SHAPES = [
+  [[0, 0]],
+  [[0, 0], [1, 0]],
+  [[0, 0], [1, 0], [0, 1]],
+  [[0, 0], [1, 0], [0, 1], [1, 1]],
+  [[0, 0], [1, 0], [2, 0], [1, 1], [1, 2]],
+  [[0, 0], [1, 0], [2, 0], [0, 1], [1, 1], [2, 1]],
+  [[0, 0], [1, 0], [2, 0], [0, 1], [1, 1], [2, 1], [1, 2]],
+  [[0, 0], [1, 0], [2, 0], [0, 1], [1, 1], [2, 1], [0, 2], [1, 2]],
+  [[0, 0], [1, 0], [2, 0], [0, 1], [1, 1], [2, 1], [0, 2], [1, 2], [2, 2]],
+] as const
+
+/** Returns the deterministic 1–9 tile park cluster that owns a cell. */
+export function parkClusterForCell(cellX: number, cellZ: number) {
+  if (isTutorialCell(cellX, cellZ)) return 'park:tutorial'
+  const sectorX = Math.floor(cellX / PARK_SECTOR_SIZE)
+  const sectorZ = Math.floor(cellZ / PARK_SECTOR_SIZE)
+  const seed = seedForWorldCell(sectorX, sectorZ, 0x7061726b)
+  if (seed % 100 >= 18) return null
+  // A two-cell margin prevents a 3x3 footprint in neighbouring sectors from
+  // touching or overlapping, which keeps every generated park unambiguous.
+  const anchorX = sectorX * PARK_SECTOR_SIZE + 2 + ((seed >>> 9) % 3)
+  const anchorZ = sectorZ * PARK_SECTOR_SIZE + 2 + ((seed >>> 13) % 3)
+  const shape = PARK_SHAPES[(seed >>> 17) % PARK_SHAPES.length]!
+  if (shape.some(([dx, dz]) => isTutorialCell(anchorX + dx, anchorZ + dz) || lakeClusterForCell(anchorX + dx, anchorZ + dz))) return null
+  const member = shape.some(([dx, dz]) => cellX === anchorX + dx && cellZ === anchorZ + dz)
+  return member ? `park:${sectorX}:${sectorZ}` : null
+}
+
 /**
  * Returns a stable cluster id for the two-to-four joined cells of a lake.
  * Clusters stay inside a six-cell sector, so checking membership is constant
@@ -193,13 +227,18 @@ export function lakeClusterForCell(cellX: number, cellZ: number) {
 
 /** Adjacent cells in one landmark cluster do not need an internal road seam. */
 export function sameLandmarkCluster(aX: number, aZ: number, bX: number, bZ: number) {
-  if (isTutorialCell(aX, aZ) && isTutorialCell(bX, bZ)) return true
+  const park = parkClusterForCell(aX, aZ)
+  if (park !== null && park === parkClusterForCell(bX, bZ)) return true
   const left = lakeClusterForCell(aX, aZ)
   return left !== null && left === lakeClusterForCell(bX, bZ)
 }
 
 export function isLakeAt(position: Pick<Vec3, 'x' | 'z'>) {
   return lakeClusterForCell(worldCellCoord(position.x), worldCellCoord(position.z)) !== null
+}
+
+export function isParkAt(position: Pick<Vec3, 'x' | 'z'>) {
+  return parkClusterForCell(worldCellCoord(position.x), worldCellCoord(position.z)) !== null
 }
 
 /**
@@ -234,7 +273,8 @@ export function lakeDepthAt(position: Pick<Vec3, 'x' | 'z'>) {
 export function getProceduralCell(cellX: number, cellZ: number, worldSeed = WORLD_SEED): ProceduralCell {
   const seed = seedForWorldCell(cellX, cellZ, worldSeed)
   const roll = seed % 100
-  const forcedOpen = isTutorialCell(cellX, cellZ)
+  const park = parkClusterForCell(cellX, cellZ)
+  const forcedOpen = park !== null
   const lake = lakeClusterForCell(cellX, cellZ)
   // Bands: building 48%, parked car 10%, intersection 12%, empty 30%.
   const kind: WorldCellKind = forcedOpen || lake

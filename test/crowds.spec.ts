@@ -3,6 +3,7 @@ import { type BeamObject, CAR_MASS, beginCarDestruction, stepBeamObjects } from 
 import {
   CAT_MAX,
   CROWD_ABSORB_TIME,
+  crowdPositionIsWalkable,
   crowdObjectIsVisible,
   INITIAL_CATS,
   INITIAL_PEDESTRIANS,
@@ -13,6 +14,7 @@ import {
   prepareTutorialCrowd,
   stepCrowds,
 } from '../src/core/crowds'
+import { lakeClusterForCell, WORLD_CELL_SIZE } from '../src/core/world'
 
 const inactiveBeam = {
   active: false,
@@ -46,8 +48,8 @@ describe('pooled city crowds and destructible cars', () => {
     expect(seeded.every((object) => crowdObjectIsVisible(object.position, view))).toBe(true)
     for (const object of seeded) {
       const distance = Math.hypot(object.position.x, object.position.z)
-      expect(distance).toBeGreaterThan(12)
-      expect(distance).toBeLessThan(110)
+      expect(distance).toBeGreaterThanOrEqual(48)
+      expect(distance).toBeLessThan(190)
     }
     for (let index = 0; index < seeded.length; index += 1) {
       for (let otherIndex = index + 1; otherIndex < seeded.length; otherIndex += 1) {
@@ -94,6 +96,66 @@ describe('pooled city crowds and destructible cars', () => {
     const tutorialCat = state.objects.find((object) => object.id.startsWith('tutorial-cat'))!
     expect(tutorialCat.position).toMatchObject({ x: 0, z: 8 })
     expect(tutorialCat.pauseTimer).toBeGreaterThan(100)
+  })
+
+  it('keeps a crowd slot alive when only the camera direction changes', () => {
+    const state = createCrowdState(202)
+    state.initialSpawnDone = true
+    state.spawnTimer = 999
+    const pedestrian = state.objects.find((object) => object.kind === 'pedestrian')!
+    pedestrian.active = true
+    pedestrian.position = { x: 0, y: 0.65, z: 60 }
+    pedestrian.velocity = { x: 0, y: 0, z: 0 }
+    // This faces away from the actor. It is still close enough to remain a
+    // real city resident rather than disappearing when the UFO turns around.
+    stepCrowds(state, { position: { x: 0, y: 3, z: 0 }, heading: Math.PI }, 1 / 60)
+    expect(pedestrian.active).toBe(true)
+    pedestrian.position.z = 320
+    stepCrowds(state, { position: { x: 0, y: 3, z: 0 }, heading: Math.PI }, 1 / 60)
+    expect(pedestrian.active).toBe(false)
+  })
+
+  it('keeps pedestrians and cats off the lake surface', () => {
+    let lake: { x: number; z: number } | null = null
+    let shore: { x: number; z: number } | null = null
+    for (let z = -20; z <= 20 && !shore; z += 1) {
+      for (let x = -20; x <= 20; x += 1) {
+        if (!lakeClusterForCell(x, z) || lakeClusterForCell(x - 1, z)) continue
+        lake = { x, z }
+        shore = { x: x * WORLD_CELL_SIZE - 0.08, z: (z + 0.5) * WORLD_CELL_SIZE }
+        break
+      }
+    }
+    expect(lake).not.toBeNull()
+    expect(shore).not.toBeNull()
+    expect(crowdPositionIsWalkable({ x: (lake!.x + 0.5) * WORLD_CELL_SIZE, z: (lake!.z + 0.5) * WORLD_CELL_SIZE })).toBe(false)
+    for (const kind of ['pedestrian', 'cat'] as const) {
+      const state = createCrowdState(kind === 'pedestrian' ? 88 : 89)
+      state.initialSpawnDone = true
+      state.spawnTimer = 999
+      const object = state.objects.find((item) => item.kind === kind)!
+      object.active = true
+      object.position = { x: shore!.x, y: 0.65, z: shore!.z }
+      object.heading = Math.PI / 2
+      object.rotation.y = object.heading
+      object.velocity = { x: kind === 'cat' ? 2.35 : 1.7, y: 0, z: 0 }
+      object.roams = true
+      object.wanderTimer = 999
+      stepCrowds(state, { position: { x: shore!.x - 30, y: 3, z: shore!.z }, heading: 0 }, 1 / 30)
+      expect(crowdPositionIsWalkable(object.position)).toBe(true)
+      expect(object.position.x).toBeLessThan(lake!.x * WORLD_CELL_SIZE)
+    }
+
+    // A slot from a pre-boundary run may already be in the lake. It must be
+    // recycled instead of being left stranded at an internal tile seam.
+    const stale = createCrowdState(90)
+    stale.initialSpawnDone = true
+    stale.spawnTimer = 999
+    const staleObject = stale.objects.find((item) => item.kind === 'pedestrian')!
+    staleObject.active = true
+    staleObject.position = { x: (lake!.x + 0.5) * WORLD_CELL_SIZE, y: 0.65, z: (lake!.z + 0.5) * WORLD_CELL_SIZE }
+    stepCrowds(stale, { position: { x: 0, y: 3, z: 0 }, heading: 0 }, 1 / 60)
+    expect(staleObject.active).toBe(false)
   })
 
   it('walks most pedestrians to a destination instead of pacing on the spot', () => {

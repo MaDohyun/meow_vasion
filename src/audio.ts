@@ -5,6 +5,7 @@ let laserPlaybackQueued = false
 let laserLoadFailed = false
 let lobbyMusic: HTMLAudioElement | null = null
 let gameplayMusic: HTMLAudioElement | null = null
+let beamSound: HTMLAudioElement | null = null
 let gameplayFadeFrame: number | null = null
 
 const GAMEPLAY_MUSIC_START_VOLUME = 0.025
@@ -40,6 +41,17 @@ function gameplayTrack() {
     gameplayMusic.preload = 'auto'
   }
   return gameplayMusic
+}
+
+function beamTrack() {
+  if (typeof Audio === 'undefined') return null
+  if (!beamSound) {
+    beamSound = new Audio('/audio/ufo-beam.wav')
+    beamSound.loop = true
+    beamSound.preload = 'auto'
+    beamSound.volume = 0.42
+  }
+  return beamSound
 }
 
 /** Best effort on initial load; browsers that block autoplay retry on the
@@ -90,6 +102,20 @@ export function stopGameplayMusic() {
   if (!gameplayMusic) return
   gameplayMusic.pause()
   gameplayMusic.currentTime = 0
+}
+
+/** Loop the supplied beam sample for exactly as long as the tractor beam is held. */
+export function startBeamSound() {
+  const track = beamTrack()
+  if (!track || !track.paused) return
+  track.currentTime = 0
+  void track.play().catch(() => undefined)
+}
+
+export function stopBeamSound() {
+  if (!beamSound) return
+  beamSound.pause()
+  beamSound.currentTime = 0
 }
 
 export function unlockAudio() {

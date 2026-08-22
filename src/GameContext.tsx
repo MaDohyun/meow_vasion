@@ -12,7 +12,7 @@ import {
   isInsideBeam,
   stepBeamObjects,
 } from './core/beam'
-import { createCrowdState, finishTutorialCrowd, prepareTutorialCrowd, stepCrowds, type CrowdState } from './core/crowds'
+import { createCrowdState, finishTutorialCrowd, prepareTutorialCrowd, primeCrowds, stepCrowds, type CrowdState } from './core/crowds'
 import { type CrowdSpawnZone, canAbsorbBuilding, crowdSpawnZonesAround, destructibleLandmarksAround, nearestDestructibleLandmark, parkingCarsAround, type DestructibleLandmark } from './core/cityLandmarks'
 import { STRINGS, readStoredLanguage, storeLanguage, type Language, type MessageKey } from './i18n'
 import { createDaylightSample, daylightClock, sampleDaylight, type DaylightSample } from './core/daylight'
@@ -55,7 +55,7 @@ import {
   TUTORIAL_SPAWN,
   updateActiveWorld,
 } from './core/world'
-import { captureTrafficCar, createTrafficState, releaseTrafficSlot, stepTraffic, TRAFFIC_MAX_CARS, type TrafficCar, type TrafficState } from './core/traffic'
+import { captureTrafficCar, createTrafficState, primeTraffic, releaseTrafficSlot, stepTraffic, TRAFFIC_MAX_CARS, type TrafficCar, type TrafficState } from './core/traffic'
 import { BROADCAST_OPENING_AT, BROADCAST_SECONDS } from './core/broadcast'
 import { applyUpgrade, createUpgradeState, isUpgradeDue, rollUpgradeChoices, upgradeBonus, upgradeMultiplier, type UpgradeId, type UpgradeState } from './core/upgrades'
 import { createBuildingRuin, damageBuilding, ruinCollider, type BuildingRuin } from './core/buildings'
@@ -63,7 +63,7 @@ import { stepLakeAbsorption } from './core/lakes'
 import { createMissionState, missionHasQuest, recordMissionEvent, startMissionOne, syncMissionState, type MissionQuest, type MissionState } from './core/missions'
 import { absorbShieldDamage, createShieldState, isShieldRegenerating, setShieldCapacity, shieldRatio, stepShield, type ShieldState } from './core/shield'
 import { shouldCrashFromOverload } from './core/overload'
-import { playLaserSound, startGameplayMusic, stopGameplayMusic, stopLobbyMusic, tone, unlockAudio } from './audio'
+import { playLaserSound, startBeamSound, startGameplayMusic, stopBeamSound, stopGameplayMusic, stopLobbyMusic, tone, unlockAudio } from './audio'
 
 export type GamePhase = 'intro' | 'playing' | 'upgrade' | 'results'
 
@@ -95,9 +95,8 @@ export type GameRuntime = {
   broadcastStage: number
   broadcastTime: number
   /** 0 until the load starts to matter, 1 at the point the craft cannot hold
-   *  altitude. Drives the HUD and the beeping. */
+   *  altitude. Drives the visual overload meter. */
   overloadWarn: number
-  overloadBeep: number
   upgrades: UpgradeState
   /** The opening sighting report is time-triggered rather than raised by a
    *  wave boundary, so it needs its own one-shot latch. */
@@ -373,6 +372,18 @@ function makeRuntime(): GameRuntime {
   prepareTutorialCrowd(crowds, { x: TUTORIAL_SPAWN.x, z: 51 })
   const traffic = createTrafficState((Math.random() * 0xffffffff) >>> 0)
   const enemies = createEnemyState()
+  // Populate the first district while the intro is loading. The tutorial cat
+  // remains the sole stationary cat, but the rest of city life already exists
+  // at a safe distance before the player sees the first rendered frame.
+  const openingView = {
+    position: drone.position,
+    heading: drone.heading,
+    colliders: activeWorldColliders(world),
+    spawnZones: crowdSpawnZones,
+    tutorialCatOnly: true,
+  }
+  primeTraffic(traffic, openingView)
+  primeCrowds(crowds, openingView)
   const crowdThreats = [{ ...drone.position }, ...traffic.cars.map((car) => ({ ...car.position })), ...enemies.slots.map((enemy) => ({ ...enemy.position })), ...crowds.objects.map((object) => ({ ...object.position }))]
   const runtime: GameRuntime = {
     drone,
@@ -386,7 +397,6 @@ function makeRuntime(): GameRuntime {
     broadcastStage: 0,
     broadcastTime: 0,
     overloadWarn: 0,
-    overloadBeep: 1,
     upgrades: createUpgradeState((Math.random() * 0xffffffff) >>> 0),
     openingBroadcastDone: false,
     loadedCars: 0,
@@ -899,6 +909,8 @@ function offerUpgradeIfDue(game: GameRuntime) {
   if (game.phase !== 'playing') return
   if (!isUpgradeDue(game.upgrades, game.absorbedCount)) return
   rollUpgradeChoices(game.upgrades)
+  stopBeamSound()
+  game.beamActive = false
   game.phase = 'upgrade'
   tone('upgrade')
 }
@@ -1111,6 +1123,7 @@ function setMessage(game: GameRuntime, key: MessageKey, seconds: number, arg = 0
 
 function endRun(game: GameRuntime, title: string, victory: boolean) {
   stopGameplayMusic()
+  stopBeamSound()
   game.phase = 'results'
   game.resultTitle = title
   game.victory = victory
@@ -1266,7 +1279,11 @@ export function GameProvider({ children }: { children: ReactNode }) {
     } else game.turbo = Math.min(1, game.turbo + d * 0.13 * upgradeMultiplier(game.upgrades, 'turbo-recharge'))
 
     const flightInput: DroneInput = { ...input, special: false }
+    const beamStarted = input.beam && !game.beamActive
+    const beamStopped = !input.beam && game.beamActive
     game.beamActive = input.beam
+    if (beamStarted) startBeamSound()
+    if (beamStopped) stopBeamSound()
     const lake = stepLakeAbsorption(game.waterAbsorbed, d, game.beamActive, lakeDepthAt(game.drone.position))
     game.waterAbsorbed = lake.litres
     game.waterAnchored = lake.anchored
@@ -1303,14 +1320,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     game.overloadWarn = game.ballast <= warningAt
       ? 0
       : Math.min(1, (game.ballast - warningAt) / Math.max(1, capacity - warningAt))
-    if (game.overloadWarn > 0) {
-      // Faster as it gets worse, so the sound itself carries the urgency.
-      game.overloadBeep -= d * (0.9 + game.overloadWarn * 3.4)
-      if (game.overloadBeep <= 0) {
-        game.overloadBeep = 1
-        tone('warning')
-      }
-    } else game.overloadBeep = 1
+    // Keep the visual overload meter, but do not repeat an audio warning.
     const stepped = stepDrone(game.drone, flightInput, d, game.ballast * BALLAST_DRAG + (game.daze > 0 ? DAZE_DRAG : 0), {
       ...UFO_UPGRADES,
       speed: upgradeBonus(game.upgrades, 'speed') / 0.12,
@@ -1548,6 +1558,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   }, [publish, readInput])
 
   const start = useCallback(() => {
+    stopBeamSound()
     unlockAudio()
     stopLobbyMusic()
     startGameplayMusic()
@@ -1584,6 +1595,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   }, [publish])
 
   const restart = useCallback(() => {
+    stopBeamSound()
     unlockAudio()
     stopLobbyMusic()
     startGameplayMusic()
