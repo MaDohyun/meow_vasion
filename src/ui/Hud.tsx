@@ -218,6 +218,119 @@ function Intro() {
   )
 }
 
+type BriefingStep = {
+  lines: string[]
+  /** Steps without `wait` and without `auto` advance on click. */
+  wait?: 'beam'
+  auto?: number
+}
+
+const BRIEFING_STEPS: BriefingStep[] = [
+  {
+    lines: [
+      '대원, 작전에 들어간다. 대원의 임무는 지구라는 별의 정찰대 임무다.',
+      '지구에서 많은 샘플을 가지고 돌아오도록!',
+    ],
+  },
+  {
+    lines: [
+      'E버튼을 누르면 빔 조작을 통해 고양이 동무를 구출하거나 물체를 흡수할 수 있다.',
+      '우리 우주선은 물체를 흡수할수록 몸집이 커지니 가능한 많은 물체를 흡수하도록!',
+    ],
+  },
+  {
+    lines: ['Q버튼을 누르면 레이저를 쏘아 적을 무찌를 수 있다!', '위급할 때 쓰도록!'],
+  },
+  {
+    lines: [
+      '스페이스 버튼을 누르면 우주선의 터보를 쓸 수 있다!',
+      '하지만 쓸 수 있는 시간은 정해져 있으니 주의해서 쓰도록!',
+    ],
+  },
+  {
+    lines: ['대원, 첫 임무다. 저 고양이를 구출해봐. E키를 꾹 누르고 있으면 돼.'],
+    wait: 'beam',
+  },
+  {
+    lines: ['대원, 너무 많은 물건을 흡수하려고 하면 우주선이 추락하고 만다.', '많은 욕심은 금물이다!'],
+    auto: 4.6,
+  },
+  {
+    lines: [
+      '아참, 대원을 위해 우리 동지들의 표식을 지구 곳곳에 준비했으니 발견하면 지나가보도록!',
+      '그럼 행운을 빈다.',
+    ],
+    auto: 5.2,
+  },
+]
+
+/**
+ * The general's briefing, run once at the start of a tutorial.
+ *
+ * Steps 1-4 wait for a click. Step 5 is the actual "hold E" instruction, so it
+ * can only be cleared by pressing E - a click would let a player skip past the
+ * one control the tutorial is teaching. Steps 6-7 fire after the beam has
+ * already started the tutorial pickup, so gameplay is already moving; they
+ * advance on their own so they never block the player's hands.
+ */
+function BossBriefing() {
+  const { snapshot } = useGame()
+  const [step, setStep] = useState(0)
+  const [done, setDone] = useState(false)
+
+  useEffect(() => {
+    if (step === 4 && snapshot.beamActive) setStep(5)
+  }, [step, snapshot.beamActive])
+
+  useEffect(() => {
+    if (done) return
+    const auto = BRIEFING_STEPS[step]?.auto
+    if (!auto) return
+    const timer = window.setTimeout(() => {
+      setStep((current) => {
+        if (current >= BRIEFING_STEPS.length - 1) {
+          setDone(true)
+          return current
+        }
+        return current + 1
+      })
+    }, auto * 1000)
+    return () => window.clearTimeout(timer)
+  }, [step, done])
+
+  if (done) return null
+  const current = BRIEFING_STEPS[step]
+  if (!current) return null
+
+  const clickable = !current.wait && !current.auto
+  const advance = () => {
+    if (!clickable) return
+    setStep((s) => Math.min(s + 1, BRIEFING_STEPS.length - 1))
+  }
+  const skip = (event: { stopPropagation: () => void }) => {
+    event.stopPropagation()
+    setStep(4)
+  }
+
+  return (
+    <div className={`briefing-box ${clickable ? 'clickable' : ''}`} onClick={advance}>
+      <div className="briefing-portrait" aria-hidden="true" />
+      <div className="briefing-panel">
+        <span className="eyebrow">장군의 무전</span>
+        {current.lines.map((line, index) => (
+          <p key={index}>{line}</p>
+        ))}
+        {clickable && <span className="briefing-hint">클릭해서 계속</span>}
+        {step === 0 && (
+          <button type="button" className="briefing-skip" onClick={skip}>
+            건너뛰기
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function Results() {
   const { snapshot, restart, t } = useGame()
   const survived = snapshot.victory
@@ -322,6 +435,17 @@ function UpgradeCards() {
 
 export function Hud() {
   const { snapshot, t } = useGame()
+  const [briefingRun, setBriefingRun] = useState(0)
+  const prevPhase = useRef(snapshot.phase)
+  useEffect(() => {
+    // A fresh run (from the intro or a restart) gets a new briefing. Passing
+    // through 'upgrade' and back does not - that would replay the whole
+    // sequence from the top if a card happened to land mid-briefing.
+    if (snapshot.phase === 'playing' && prevPhase.current !== 'playing' && prevPhase.current !== 'upgrade') {
+      setBriefingRun((run) => run + 1)
+    }
+    prevPhase.current = snapshot.phase
+  }, [snapshot.phase])
   if (snapshot.phase === 'intro') return <Intro />
   return (
     <>
@@ -424,6 +548,7 @@ export function Hud() {
             <span>{t.tutorialPressE}</span>
           </div>
         )}
+        {(snapshot.phase === 'playing' || snapshot.phase === 'upgrade') && <BossBriefing key={briefingRun} />}
       </div>
       <MobileControls />
       {snapshot.phase === 'upgrade' && <UpgradeCards />}

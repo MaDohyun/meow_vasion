@@ -151,6 +151,26 @@ button { font: inherit; }
 .tutorial-e-prompt b { display:flex; align-items:center; justify-content:center; width:26px; height:26px; background:var(--cream); color:var(--ink); border:2px solid var(--ink); border-radius:6px; font-size:14px; font-weight:1000; box-shadow:2px 2px 0 rgba(0,0,0,.4); }
 .tutorial-e-prompt span { padding:4px 9px; background:rgba(20,16,32,.88); color:var(--cream); border:2px solid var(--cream); font-size:9px; font-weight:1000; letter-spacing:.5px; white-space:nowrap; }
 
+/* The general's tutorial briefing: a portrait plus a VN-style text box,
+   parked at the bottom so the park and the tutorial cat stay visible behind
+   it. Clickable steps get pointer-events back (the .hud shell turns them off
+   by default); the waiting-on-E and auto-advancing steps stay click-through
+   so they never trap the mouse. */
+.briefing-box { position:absolute; left:50%; bottom:26px; z-index:8; display:flex; align-items:flex-end; gap:14px; width:min(700px,88vw); pointer-events:none; transform:translateX(-50%); animation:message-pop .18s steps(2); }
+.briefing-box.clickable { pointer-events:auto; cursor:pointer; }
+.briefing-portrait { flex:0 0 auto; width:96px; height:96px; background:#11162a url(/boss/commander.png) center/cover no-repeat; border:4px solid var(--cream); box-shadow:5px 5px 0 var(--ink); }
+.briefing-panel { position:relative; flex:1 1 auto; min-width:0; padding:11px 16px; background:rgba(20,16,32,.94); border:4px solid var(--cream); box-shadow:6px 6px 0 var(--ink); }
+.briefing-panel .eyebrow { display:block; margin-bottom:6px; }
+.briefing-panel p { margin:0 0 4px; color:var(--cream); font-size:11px; font-weight:900; line-height:1.5; }
+.briefing-panel p:last-of-type { margin-bottom:0; }
+.briefing-hint { display:block; margin-top:8px; color:var(--yellow); font-size:8px; font-weight:1000; letter-spacing:1px; text-align:right; animation: warning-pulse .8s steps(2) infinite; }
+.briefing-skip { position:absolute; top:-16px; right:-8px; padding:6px 10px; color:var(--ink); background:var(--yellow); border:3px solid var(--cream); box-shadow:3px 3px 0 var(--ink); font-size:9px; font-weight:1000; letter-spacing:1px; cursor:pointer; pointer-events:auto; }
+@media (max-width: 760px) {
+  .briefing-box { bottom:auto; top:14px; width:calc(100vw - 28px); }
+  .briefing-portrait { width:64px; height:64px; }
+  .briefing-panel p { font-size:10px; }
+}
+
 .overlay { position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center; flex-direction: column; pointer-events: auto; }
 .overlay, .loading-overlay { cursor: auto; }
 /* Morning, because that is where the run opens. The sky darkens as the run

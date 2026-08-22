@@ -448,9 +448,9 @@ function makeRuntime(): GameRuntime {
     crowdSpawnZones,
     phase: 'intro',
     message: '',
-    messageKey: 'msgRunStart',
+    messageKey: null,
     messageArg: 0,
-    messageTime: 6,
+    messageTime: 0,
     impactFlash: 0,
     impactKind: 'contact',
     hitstop: 0,
@@ -1588,7 +1588,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
     pointer.current = { x: 0, y: 0 }
     const game = runtime.current
     game.phase = 'playing'
-    setMessage(game, 'msgRunStart', 5)
     publish()
   }, [publish])
 
@@ -1625,9 +1624,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
     pointer.current = { x: 0, y: 0 }
     runtime.current = makeRuntime()
     runtime.current.phase = 'playing'
-    runtime.current.message = ''
-    runtime.current.messageKey = 'msgRunStart'
-    runtime.current.messageTime = 5
     publish()
   }, [publish])
 
