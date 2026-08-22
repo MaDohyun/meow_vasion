@@ -71,6 +71,12 @@ export const MISSION_TWO_POOL: readonly MissionQuestId[] = [
   'air-checkpoints',
 ]
 
+/** Only one rare landmark hunt may be drawn into a single mission. */
+export const MISSION_QUEST_GROUPS: Partial<Record<MissionQuestId, string>> = {
+  'destroy-gas-station': 'rare-landmark',
+  'destroy-comms': 'rare-landmark',
+}
+
 export const MISSION_THREE_QUESTS: readonly MissionQuestId[] = [
   'destroy-battleship',
   'reach-score',
@@ -113,7 +119,10 @@ export function pickDistinctMissionQuests(
   const picked: MissionQuestId[] = []
   while (picked.length < count && available.length > 0) {
     const index = Math.floor(random(state) * available.length) % available.length
-    picked.push(available.splice(index, 1)[0]!)
+    const candidate = available.splice(index, 1)[0]!
+    const group = MISSION_QUEST_GROUPS[candidate]
+    if (group && picked.some((id) => MISSION_QUEST_GROUPS[id] === group)) continue
+    picked.push(candidate)
   }
   return picked
 }

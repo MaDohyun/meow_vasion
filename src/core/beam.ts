@@ -272,8 +272,11 @@ export type BeamLiftBand = 'fast' | 'strained' | 'marginal' | 'blocked'
 
 /** The visible, teachable weight-vs-strength rule. */
 export function beamLiftBand(weight: number, strength: number): BeamLiftBand {
+  // Excess grip above two points is intentionally not converted into more
+  // speed. It only makes a heavier integer rung available to the player.
+  const excess = Math.min(2, Math.max(0, strength - weight))
+  if (excess >= 2) return 'fast'
   const delta = weight - strength
-  if (delta <= -2) return 'fast'
   if (delta <= 0) return 'strained'
   if (delta <= 1) return 'marginal'
   return 'blocked'

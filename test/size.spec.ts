@@ -5,11 +5,13 @@ import {
   SIZE_MAX,
   SIZE_MIN,
   SIZE_START,
+  ABSORB_DISTANCE_MAX,
   clampSize,
   growSize,
   growSizeBy,
   maxAltitude,
   sizeProfile,
+  sizeCameraLift,
   ufoDiameter,
 } from '../src/core/size'
 
@@ -61,6 +63,7 @@ describe('craft size as growth, not as health', () => {
     expect(big.beamStrength).toBe(7)
     expect(big.liftCapacity).toBe(26)
     expect(big.absorbDistance).toBeGreaterThan(start.absorbDistance)
+    expect(big.absorbDistance).toBe(ABSORB_DISTANCE_MAX)
     expect(big.scoreMultiplier).toBeGreaterThan(start.scoreMultiplier)
     // ...and pays only by being a bigger target. Speed is deliberately not a
     // cost of growth; that tax belongs to beam ballast instead.
@@ -93,6 +96,24 @@ describe('craft size as growth, not as health', () => {
     expect(sizeProfile(1).cameraDistance).toBeCloseTo(CAMERA_REST_DISTANCE)
     expect(sizeProfile(SIZE_START).cameraDistance).toBeLessThan(CAMERA_REST_DISTANCE)
     expect(ufoDiameter(SIZE_MAX) / 3).toBeGreaterThan(5)
+  })
+
+  it('raises the camera gently at first and more at the largest hull', () => {
+    expect(sizeCameraLift(SIZE_START)).toBe(0)
+    expect(sizeCameraLift(4)).toBeGreaterThan(sizeCameraLift(1))
+    expect(sizeCameraLift(SIZE_MAX)).toBeGreaterThan(sizeCameraLift(4))
+    expect(sizeCameraLift(SIZE_MAX)).toBeLessThan(8)
+  })
+
+  it('keeps the absorption window inside the fixed beam cone at every size', () => {
+    let previous = 0
+    for (let size = SIZE_START; size <= SIZE_MAX; size += 0.2) {
+      const distance = sizeProfile(size).absorbDistance
+      expect(distance).toBeGreaterThan(0)
+      expect(distance).toBeLessThanOrEqual(ABSORB_DISTANCE_MAX)
+      expect(distance).toBeGreaterThanOrEqual(previous)
+      previous = distance
+    }
   })
 
 

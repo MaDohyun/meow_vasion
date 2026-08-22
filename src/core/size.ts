@@ -43,6 +43,13 @@ export const SIZE_MIN = 0.3
 export const SIZE_MAX = 15
 /** Visible width of the saucer at size 1. */
 export const UFO_BASE_DIAMETER = 5.4
+/**
+ * The normal beam's ground radius is 5.8m. Absorption must happen well inside
+ * that cone, otherwise a large craft eats a load on the same frame it catches
+ * it and the weight animation has no time to read.
+ */
+export const ABSORB_DISTANCE_MAX = 3.48
+export const SIZE_CAMERA_LIFT_MAX = 7.5
 
 /**
  * Growth per absorbed body, as a **fraction of current size**.
@@ -150,13 +157,23 @@ export function sizeProfile(size: number): SizeProfile {
     beamPower: beamStrength,
     beamStrength,
     liftCapacity: liftCapacityForSize(clamped),
-    absorbDistance: 2.1 + clamped * 1.5,
+    absorbDistance: Math.min(2.1 + clamped * 1.5, ABSORB_DISTANCE_MAX),
     hitRadius: 1.05 * clamped,
     maxAltitude: maxAltitude(clamped),
     viewDistance: viewDistanceScale(clamped),
     cameraDistance: CAMERA_REST_DISTANCE * Math.pow(clamped, CAMERA_SIZE_EXPONENT),
     scoreMultiplier: clamped,
   }
+}
+
+/**
+ * Raises the chase camera as the hull grows. The eased curve is intentionally
+ * quiet at the opening size and spends most of its travel in the upper half
+ * of the run, where the saucer would otherwise cover the aiming point.
+ */
+export function sizeCameraLift(size: number) {
+  const progress = Math.max(0, Math.min(1, (clampSize(size) - SIZE_START) / (SIZE_MAX - SIZE_START)))
+  return SIZE_CAMERA_LIFT_MAX * Math.pow(progress, 0.6)
 }
 
 export function growSize(size: number, kind: SizeGainKind) {

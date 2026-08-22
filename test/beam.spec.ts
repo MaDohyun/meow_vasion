@@ -255,4 +255,34 @@ describe('integer lifting ladder', () => {
     expect(objects[0]!.position.y).toBeGreaterThan(objects[1]!.position.y)
     expect(objects[1]!.position.y).toBeGreaterThan(objects[2]!.position.y)
   })
+
+  it('caps fast-band speed even when grip strength is far above the load', () => {
+    expect(beamLiftScale(1, 3)).toBe(beamLiftScale(1, 13))
+    expect(beamLiftBand(1, 3)).toBe('fast')
+    expect(beamLiftBand(1, 13)).toBe('fast')
+  })
+
+  it('leaves a readable haul window instead of instant-eating heavy loads', () => {
+    for (const size of [SIZE_MIN, 1, 2, 4, 8, SIZE_MAX]) {
+      const profile = sizeProfile(size)
+      for (const mass of [1, 2, 3, 4, 5, 6, 7, 8, 11]) {
+        const object = makeCar(`lift-${size}-${mass}`)
+        object.mass = mass
+        const beam = field()
+        beam.gripStrength = profile.beamStrength
+        beam.radiusScale = profile.beamScale
+        let caught = false
+        let absorbSeconds = Number.POSITIVE_INFINITY
+        for (let tick = 0; tick < 60 * 20; tick += 1) {
+          stepBeamObjects([object], beam, 1 / 60)
+          caught ||= object.inBeam
+          if (caught && Math.hypot(object.position.x - beam.position.x, object.position.y - beam.position.y, object.position.z - beam.position.z) <= profile.absorbDistance) {
+            absorbSeconds = tick / 60
+            break
+          }
+        }
+        if (Number.isFinite(absorbSeconds)) expect(absorbSeconds).toBeGreaterThan(0.05)
+      }
+    }
+  })
 })
