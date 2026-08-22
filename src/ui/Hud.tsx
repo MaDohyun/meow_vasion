@@ -252,11 +252,12 @@ const BRIEFING_STEPS: BriefingStep[] = [
     wait: 'beam',
   },
   {
-    lines: ['대원, 너무 많은 물건을 흡수하려고 하면 우주선이 추락하고 만다.', '많은 욕심은 금물이다!'],
+    lines: ['좋아 합격이다.', '명심해라 대원, 너무 많은 물건을 흡수하려고 하면 우주선이 추락하고 만다.'],
     auto: 4.6,
   },
   {
     lines: [
+      '왼쪽에 대원이 달성해야할 임무들을 표시해두었다.',
       '아참, 대원을 위해 우리 동지들의 표식을 지구 곳곳에 준비했으니 발견하면 지나가보도록!',
       '그럼 행운을 빈다.',
     ],
@@ -313,19 +314,21 @@ function BossBriefing() {
   }
 
   return (
-    <div className={`briefing-box ${clickable ? 'clickable' : ''}`} onClick={advance}>
-      <div className="briefing-portrait" aria-hidden="true" />
-      <div className="briefing-panel">
-        <span className="eyebrow">장군의 무전</span>
-        {current.lines.map((line, index) => (
-          <p key={index}>{line}</p>
-        ))}
-        {clickable && <span className="briefing-hint">클릭해서 계속</span>}
-        {step === 0 && (
-          <button type="button" className="briefing-skip" onClick={skip}>
-            건너뛰기
-          </button>
-        )}
+    <div className={`briefing-touch ${clickable ? 'clickable' : ''}`} onClick={clickable ? advance : undefined}>
+      <div className="briefing-box">
+        <div className="briefing-portrait" aria-hidden="true" />
+        <div className="briefing-panel">
+          <span className="eyebrow">장군의 무전</span>
+          {current.lines.map((line, index) => (
+            <p key={index}>{line}</p>
+          ))}
+          {clickable && <span className="briefing-hint">화면을 클릭해서 계속</span>}
+          {step === 0 && (
+            <button type="button" className="briefing-skip" onClick={skip}>
+              건너뛰기
+            </button>
+          )}
+        </div>
       </div>
     </div>
   )
