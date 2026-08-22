@@ -65,7 +65,7 @@ describe('time-based enemy waves', () => {
     const { state } = fillWave(LAST_WAVE_AT)
     const boss = state.slots.find((enemy) => enemy.kind === 'boss' && enemy.active)!
     expect(boss.hp).toBe(ENEMY_MAX_HP.boss)
-    for (let hit = 0; hit < 24; hit += 1) expect(hitEnemy(state, boss.id).destroyed).toBe(false)
+    for (let hit = 0; hit < ENEMY_MAX_HP.boss - 1; hit += 1) expect(hitEnemy(state, boss.id).destroyed).toBe(false)
     expect(boss.hp).toBe(1)
     expect(hitEnemy(state, boss.id).destroyed).toBe(true)
   })

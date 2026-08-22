@@ -24,7 +24,7 @@ import {
 } from './core/hazards'
 import { SIZE_MIN, SIZE_START, type SizeGainKind, type SizeProfile, clampSize, growSize, growSizeBy, sizeProfile, ufoDiameter } from './core/size'
 import { createHealthState, damageHealth, healHealth, healthRatio, isDead, isRegenerating, stepHealth, type HealthLossKind, type HealthState } from './core/health'
-import { activeEnemyCount, createEnemyState, hitEnemy, resolveEnemyContacts, stepEnemies, stepEnemyProjectiles, syncAntiAirEnemies, syncEnemyTiers, waveLabelForTime, waveStageForTime, type EnemyState } from './core/enemies'
+import { BATTLESHIP_TURRETS, activeEnemyCount, battleshipTurretPoint, createEnemyState, hitEnemy, resolveEnemyContacts, stepEnemies, stepEnemyProjectiles, syncAntiAirEnemies, syncEnemyTiers, waveLabelForTime, waveStageForTime, type EnemyState } from './core/enemies'
 import {
   createLaserPool,
   createLaserBurstPool,
@@ -197,6 +197,9 @@ export type GameSnapshot = {
   laserFlash: number
   activeEnemies: number
   enemiesDown: number
+  /** Battleship health as a fraction, or null when no ship is up. Nobody
+   *  keeps shooting something with no visible progress. */
+  bossHealth: number | null
   beamObjectCount: number
   message: string
   messageKey: MessageKey | null
@@ -492,9 +495,34 @@ function writeLaserSphereTarget(targets: LaserSphereTarget[], slot: number, id: 
   return slot + 1
 }
 
+const BATTLESHIP_HIT_POINT: Vec3 = { x: 0, y: 0, z: 0 }
+
+function battleshipHealth(game: GameRuntime) {
+  for (const enemy of game.enemies.slots) {
+    if (enemy.kind !== 'boss' || !enemy.active) continue
+    return Math.max(0, Math.min(1, enemy.hp / enemy.maxHp))
+  }
+  return null
+}
+
 function laserSphereTargets(game: GameRuntime) {
   let slot = 0
-  for (const enemy of game.enemies.slots) if (enemy.active && !enemy.absorbing) slot = writeLaserSphereTarget(game.laserTargets, slot, enemy.id, enemy.position, enemy.kind === 'boss' ? 7 : enemy.hitRadius)
+  for (const enemy of game.enemies.slots) {
+    if (!enemy.active || enemy.absorbing) continue
+    if (enemy.kind === 'boss') {
+      // The laser only knows how to hit spheres, and the battleship is a
+      // seventy-metre slab. One sphere big enough to cover it would swallow
+      // half the sky; one sized to the hull's width would only be hittable
+      // amidships. A sphere per turret station, all carrying the ship's id,
+      // traces the hull instead - so a shot anywhere along the length counts.
+      for (let station = 0; station < BATTLESHIP_TURRETS.length; station += 1) {
+        battleshipTurretPoint(enemy, station, BATTLESHIP_HIT_POINT)
+        slot = writeLaserSphereTarget(game.laserTargets, slot, enemy.id, BATTLESHIP_HIT_POINT, 8)
+      }
+      continue
+    }
+    slot = writeLaserSphereTarget(game.laserTargets, slot, enemy.id, enemy.position, enemy.hitRadius)
+  }
   for (const object of game.beamObjects) if (object.active && !object.destroying && !object.absorbing) slot = writeLaserSphereTarget(game.laserTargets, slot, object.id, object.position, 1.7)
   for (const car of game.traffic.cars) if (car.active) slot = writeLaserSphereTarget(game.laserTargets, slot, car.id, car.position, 1.7)
   game.laserTargets.length = slot
@@ -575,8 +603,25 @@ function dropCars(game: GameRuntime) {
 
 function registerEnemyHit(game: GameRuntime, id: string, damage: number) {
   const result = hitEnemy(game.enemies, id, damage)
+  if (result.hit && result.enemy && result.enemy.kind === 'boss') {
+    // Sparks where the shot landed, so a hull that takes sixty-four hits still
+    // answers each one.
+    triggerLaserBurst(game.laserBursts, 'impact', result.enemy.position, '#ffd27a')
+  }
   if (!result.destroyed || !result.kind) return
-  const reward = result.kind === 'boss' ? 1200 : result.kind === 'tank' ? 260 : result.kind === 'anti-air' ? 180 : result.kind === 'fighter' ? 140 : result.kind === 'helicopter' ? 80 : result.kind === 'police-car' ? 55 : 35
+  if (result.kind === 'boss' && result.enemy) {
+    // Seventy-four metres of ship does not go up in one puff. A burst at every
+    // gun station breaks along the whole length.
+    for (let station = 0; station < BATTLESHIP_TURRETS.length; station += 1) {
+      battleshipTurretPoint(result.enemy, station, BATTLESHIP_HIT_POINT)
+      triggerLaserBurst(game.laserBursts, 'impact', BATTLESHIP_HIT_POINT, station % 2 === 0 ? '#ff8a45' : '#ffe07a')
+    }
+    game.impactFlash = 1
+  }
+  // The ship is worth about two and a half times what it was: it now takes
+  // sixty-four laser hits instead of twenty-five, and a reward that did not
+  // move with that would make the fight cost more than it pays.
+  const reward = result.kind === 'boss' ? 3200 : result.kind === 'tank' ? 260 : result.kind === 'anti-air' ? 180 : result.kind === 'fighter' ? 140 : result.kind === 'helicopter' ? 80 : result.kind === 'police-car' ? 55 : 35
   game.enemiesDown += 1
   game.score += reward
   setMessage(game, 'msgEnemyDown', 1.4, reward)
@@ -768,6 +813,7 @@ function snapshotOf(game: GameRuntime): GameSnapshot {
     laserFlash: game.laserFlash,
     activeEnemies: activeEnemyCount(game.enemies),
     enemiesDown: game.enemiesDown,
+    bossHealth: battleshipHealth(game),
     beamObjectCount: game.loadedCars,
     message: game.messageTime > 0 ? game.message : '',
     messageKey: game.messageTime > 0 ? game.messageKey : null,

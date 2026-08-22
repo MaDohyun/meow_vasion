@@ -111,7 +111,11 @@ export const ENTITY = {
   FIGHTER_GLOW: '#d98958',
   ANTI_AIR_GLOW: '#d96070',
   TANK_GLOW: '#7dbb8d',
-  BOSS_GLOW: '#d96f9f',
+  /* The battleship's running lights. Cool and steely rather than the old
+     saucer's pink: on a hull this size the emissive is most of what the eye
+     gets, and a warm glow turned seventy metres of grey warship into one flat
+     pink shape. */
+  BOSS_GLOW: '#8fb6d8',
 } as const
 
 export const FX = {
