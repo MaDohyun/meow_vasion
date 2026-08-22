@@ -151,13 +151,18 @@ button { font: inherit; }
 .tutorial-e-prompt b { display:flex; align-items:center; justify-content:center; width:26px; height:26px; background:var(--cream); color:var(--ink); border:2px solid var(--ink); border-radius:6px; font-size:14px; font-weight:1000; box-shadow:2px 2px 0 rgba(0,0,0,.4); }
 .tutorial-e-prompt span { padding:4px 9px; background:rgba(20,16,32,.88); color:var(--cream); border:2px solid var(--cream); font-size:9px; font-weight:1000; letter-spacing:.5px; white-space:nowrap; }
 
-/* The general's tutorial briefing: a portrait plus a VN-style text box,
-   parked at the bottom so the park and the tutorial cat stay visible behind
-   it. Clickable steps get pointer-events back (the .hud shell turns them off
-   by default); the waiting-on-E and auto-advancing steps stay click-through
-   so they never trap the mouse. */
-.briefing-box { position:absolute; left:50%; bottom:26px; z-index:8; display:flex; align-items:flex-end; gap:14px; width:min(700px,88vw); pointer-events:none; transform:translateX(-50%); animation:message-pop .18s steps(2); }
-.briefing-box.clickable { pointer-events:auto; cursor:pointer; }
+/* The general's tutorial briefing: a portrait plus a VN-style text box, sat
+   where the old mission-banner/message pair used to (the same upper-center
+   slot as .hud-center) rather than pinned to the bottom edge, where the
+   systems/pilot cards crowd it and it reads as cut off. .briefing-touch is
+   the click target - on a clickable step it covers the whole screen (the
+   .hud shell turns pointer-events off by default, so this opts back in) so
+   a tap anywhere advances, not just a tap on the box itself. The
+   waiting-on-E and auto-advancing steps leave it click-through so they never
+   trap the mouse. */
+.briefing-touch { position:fixed; inset:0; z-index:8; pointer-events:none; }
+.briefing-touch.clickable { pointer-events:auto; cursor:pointer; }
+.briefing-box { position:absolute; left:50%; top:12.5%; display:flex; align-items:flex-start; gap:14px; width:min(700px,88vw); transform:translate(-50%, 0); animation:message-pop .18s steps(2); }
 .briefing-portrait { flex:0 0 auto; width:96px; height:96px; background:#11162a url(/boss/commander.png) center/cover no-repeat; border:4px solid var(--cream); box-shadow:5px 5px 0 var(--ink); }
 .briefing-panel { position:relative; flex:1 1 auto; min-width:0; padding:11px 16px; background:rgba(20,16,32,.94); border:4px solid var(--cream); box-shadow:6px 6px 0 var(--ink); }
 .briefing-panel .eyebrow { display:block; margin-bottom:6px; }

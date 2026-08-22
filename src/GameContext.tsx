@@ -536,10 +536,10 @@ function presentMissionChange(game: GameRuntime, previousStage: number, previous
   if (game.mission.revision === previousRevision) return
   game.missionPulse = 1
   if (game.mission.stage !== previousStage) {
-    if (game.mission.stage >= 1 && game.mission.stage <= 3) {
-      game.missionBanner = previousStage >= 1
-        ? `미션 ${previousStage} 완료 · 미션 ${game.mission.stage}, 골라서 해!`
-        : `미션 ${game.mission.stage} 개시 · 골라서 해, 순서는 자유야!`
+    // The tutorial's own hand-off to mission 1 is narrated by the general's
+    // briefing instead, so this banner only fires between real missions.
+    if (previousStage >= 1 && game.mission.stage >= 1 && game.mission.stage <= 3) {
+      game.missionBanner = `미션 ${previousStage} 완료 · 미션 ${game.mission.stage}, 골라서 해!`
       game.missionBannerTime = 4.4
     } else if (game.mission.stage === 4) {
       game.missionBanner = '지구 정찰 완료 · 장군님 퇴근 준비 끝!'
@@ -910,9 +910,8 @@ function absorbCrowd(game: GameRuntime, kind: 'cat' | 'pedestrian') {
     startMissionOne(game.mission, 0)
     finishTutorialCrowd(game.crowds)
     presentMissionChange(game, 0, previousRevision)
-    game.message = '좋아, 고양이는 합격. 이제 도시를 좀 어질러 보자고.'
-    game.messageKey = null
-    game.messageTime = 4.8
+    // No hud-center flavor text here - the general's briefing (BossBriefing)
+    // covers the tutorial hand-off with its own step 6/7 lines.
   } else {
     reportMissionEvent(game, { type: kind === 'cat' ? 'capture-cat' : 'capture-person' })
   }
