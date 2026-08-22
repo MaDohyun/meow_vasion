@@ -442,7 +442,7 @@ function makeRuntime(): GameRuntime {
     message: '',
     messageKey: 'msgRunStart',
     messageArg: 0,
-    messageTime: 4,
+    messageTime: 6,
     impactFlash: 0,
     impactKind: 'contact',
     hitstop: 0,
@@ -532,10 +532,10 @@ function presentMissionChange(game: GameRuntime, previousStage: number, previous
       game.missionBanner = previousStage >= 1
         ? `미션 ${previousStage} 완료 · 미션 ${game.mission.stage}, 골라서 해!`
         : `미션 ${game.mission.stage} 개시 · 골라서 해, 순서는 자유야!`
-      game.missionBannerTime = 2.4
+      game.missionBannerTime = 4.4
     } else if (game.mission.stage === 4) {
       game.missionBanner = '지구 정찰 완료 · 장군님 퇴근 준비 끝!'
-      game.missionBannerTime = 4
+      game.missionBannerTime = 6
     }
   }
   if (missionHasQuest(game.mission, 'air-checkpoints') && !game.checkpoint) spawnCheckpoint(game)
@@ -902,7 +902,7 @@ function absorbCrowd(game: GameRuntime, kind: 'cat' | 'pedestrian') {
     presentMissionChange(game, 0, previousRevision)
     game.message = '좋아, 고양이는 합격. 이제 도시를 좀 어질러 보자고.'
     game.messageKey = null
-    game.messageTime = 2.8
+    game.messageTime = 4.8
   } else {
     reportMissionEvent(game, { type: kind === 'cat' ? 'capture-cat' : 'capture-person' })
   }
@@ -1553,7 +1553,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     pointer.current = { x: 0, y: 0 }
     const game = runtime.current
     game.phase = 'playing'
-    setMessage(game, 'msgRunStart', 3)
+    setMessage(game, 'msgRunStart', 5)
     publish()
   }, [publish])
 
@@ -1592,7 +1592,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     runtime.current.phase = 'playing'
     runtime.current.message = ''
     runtime.current.messageKey = 'msgRunStart'
-    runtime.current.messageTime = 3
+    runtime.current.messageTime = 5
     publish()
   }, [publish])
 

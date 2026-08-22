@@ -28,6 +28,13 @@ import {
 const anchorImage = new Image()
 anchorImage.src = '/broadcast/anchor.png'
 
+// The sighting footage in the inset - also the player-supplied art, not
+// code-drawn. A still frame rather than the old animated saucer, same
+// reasoning as the anchor photo: it cannot be redrawn into new poses, so it
+// is dropped in as-is instead of half-animated.
+const ufoSightingImage = new Image()
+ufoSightingImage.src = '/broadcast/ufo-sighting.webp'
+
 const LANDMARK_RADIUS_CELLS = 6
 const LANDMARK_CELL_COUNT = (LANDMARK_RADIUS_CELLS * 2 + 1) ** 2
 const PARK_TREE_COUNT = 3
@@ -171,49 +178,29 @@ function drawUfoNewsFrame(
   context.beginPath(); context.arc(width * 0.06, height * 0.07, 12, 0, Math.PI * 2); context.fill()
 }
 
-/** The sighting footage, drawn into whatever rectangle it is given. */
+/**
+ * The sighting footage, drawn into whatever rectangle it is given - the
+ * reference art, cover-fit so it fills the inset without stretching. The
+ * caller already clips to this rectangle, so overflow from the fit is cut
+ * off there rather than needing a second clip here.
+ */
 function drawUfoFootage(
   context: CanvasRenderingContext2D,
   x: number,
   y: number,
   w: number,
   h: number,
-  time: number,
+  _time: number,
 ) {
-  const sky = context.createLinearGradient(0, y, 0, y + h)
-  sky.addColorStop(0, '#16234a')
-  sky.addColorStop(1, '#31406b')
-  context.fillStyle = sky
-  context.fillRect(x, y, w, h)
-  // Rooftops along the bottom, so the footage reads as shot over a city.
-  context.fillStyle = '#0b1024'
-  for (let index = 0; index < 7; index += 1) {
-    const bw = w / 7
-    const bh = h * (0.16 + ((index * 37) % 11) / 40)
-    context.fillRect(x + index * bw, y + h - bh, bw - 3, bh)
+  if (!ufoSightingImage.complete || ufoSightingImage.naturalWidth === 0) {
+    context.fillStyle = '#16234a'
+    context.fillRect(x, y, w, h)
+    return
   }
-  const ufoX = x + w * (0.3 + (0.5 + Math.sin(time * 0.82) * 0.5) * 0.4)
-  const ufoY = y + h * 0.42 + Math.sin(time * 2.8) * h * 0.05
-  const scale = w / 420
-  context.save()
-  context.translate(ufoX, ufoY)
-  context.scale(scale, scale)
-  context.rotate(Math.sin(time * 2.2) * 0.08)
-  context.fillStyle = 'rgba(100,225,235,.22)'
-  context.beginPath(); context.ellipse(0, 16, 92, 30, 0, 0, Math.PI * 2); context.fill()
-  context.fillStyle = '#f4d69c'
-  context.beginPath(); context.ellipse(0, 0, 72, 24, 0, 0, Math.PI * 2); context.fill()
-  context.fillStyle = '#78d6df'
-  context.beginPath(); context.ellipse(0, -13, 31, 22, 0, Math.PI, Math.PI * 2); context.fill()
-  context.strokeStyle = '#6b527e'
-  context.lineWidth = 6
-  context.beginPath(); context.ellipse(0, 0, 72, 24, 0, 0, Math.PI * 2); context.stroke()
-  for (let index = 0; index < 7; index += 1) {
-    const angle = index / 7 * Math.PI * 2
-    context.fillStyle = index % 2 ? '#66e8ee' : '#f6779f'
-    context.beginPath(); context.arc(Math.cos(angle) * 53, 7 + Math.sin(angle) * 13, 5, 0, Math.PI * 2); context.fill()
-  }
-  context.restore()
+  const scale = Math.max(w / ufoSightingImage.naturalWidth, h / ufoSightingImage.naturalHeight)
+  const drawW = ufoSightingImage.naturalWidth * scale
+  const drawH = ufoSightingImage.naturalHeight * scale
+  context.drawImage(ufoSightingImage, x + (w - drawW) / 2, y + (h - drawH) / 2, drawW, drawH)
 }
 
 /**
