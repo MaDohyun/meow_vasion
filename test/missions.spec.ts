@@ -7,6 +7,7 @@ import {
   recordMissionEvent,
   startMissionOne,
   syncMissionState,
+  type MissionQuest,
   type MissionQuestId,
 } from '../src/core/missions'
 
@@ -25,6 +26,16 @@ function completeEvent(id: MissionQuestId, target: number) {
   throw new Error(`No stage-one/two event for ${id}`)
 }
 
+function completeQuest(state: ReturnType<typeof createMissionState>, quest: MissionQuest, elapsed: number) {
+  if (quest.id === 'pass-mystery-circles') {
+    for (let index = 0; index < quest.target; index += 1) {
+      recordMissionEvent(state, { type: 'pass-mystery-circle', id: `test-circle:${state.stage}:${index}` }, elapsed)
+    }
+    return
+  }
+  recordMissionEvent(state, completeEvent(quest.id, quest.target), elapsed)
+}
+
 describe('three-stage reconnaissance missions', () => {
   it('waits for the tutorial cat before assigning three distinct quests', () => {
     const state = createMissionState(17)
@@ -41,12 +52,12 @@ describe('three-stage reconnaissance missions', () => {
     const state = createMissionState(23)
     startMissionOne(state, 0)
     const [first, second, third] = [...state.quests]
-    recordMissionEvent(state, completeEvent(second!.id, second!.target), 20)
+    completeQuest(state, second!, 20)
     expect(state.stage).toBe(1)
     expect(second!.complete).toBe(true)
-    recordMissionEvent(state, completeEvent(first!.id, first!.target), 30)
+    completeQuest(state, first!, 30)
     expect(state.stage).toBe(1)
-    recordMissionEvent(state, completeEvent(third!.id, third!.target), 40)
+    completeQuest(state, third!, 40)
     expect(state.stage).toBe(2)
     expect(state.quests).toHaveLength(3)
     expect(new Set(state.quests.map((quest) => quest.id)).size).toBe(3)
@@ -57,8 +68,8 @@ describe('three-stage reconnaissance missions', () => {
   it('uses the fixed final trio and wins only when the clock and other goals are done', () => {
     const state = createMissionState(31)
     startMissionOne(state, 0)
-    for (const quest of [...state.quests]) recordMissionEvent(state, completeEvent(quest.id, quest.target), 60)
-    for (const quest of [...state.quests]) recordMissionEvent(state, completeEvent(quest.id, quest.target), 150)
+    for (const quest of [...state.quests]) completeQuest(state, quest, 60)
+    for (const quest of [...state.quests]) completeQuest(state, quest, 150)
     expect(state.stage).toBe(3)
     expect(state.quests.map((quest) => quest.id)).toEqual(MISSION_THREE_QUESTS)
     recordMissionEvent(state, { type: 'destroy-enemy', kind: 'boss' }, 220)
@@ -66,5 +77,43 @@ describe('three-stage reconnaissance missions', () => {
     expect(state.stage).toBe(3)
     expect(syncMissionState(state, 300, 99999)).toBe(true)
     expect(state.stage).toBe(4)
+  })
+
+  it('counts only different circles and uses the stage-specific target', () => {
+    const state = createMissionState(41)
+    startMissionOne(state, 0)
+    const first = state.quests.find((quest) => quest.id === 'pass-mystery-circles')!
+    expect(first.target).toBe(3)
+    recordMissionEvent(state, { type: 'pass-mystery-circle', id: 'circle:a' }, 3)
+    recordMissionEvent(state, { type: 'pass-mystery-circle', id: 'circle:a' }, 6)
+    expect(first.progress).toBe(1)
+    recordMissionEvent(state, { type: 'pass-mystery-circle', id: 'circle:b' }, 9)
+    recordMissionEvent(state, { type: 'pass-mystery-circle', id: 'circle:c' }, 12)
+    expect(first.progress).toBe(3)
+
+    // Complete the other two stage-one quests to open mission two.
+    for (const quest of [...state.quests]) if (!quest.complete) completeQuest(state, quest, 20)
+    const second = state.quests.find((quest) => quest.id === 'pass-mystery-circles')!
+    expect(second.target).toBe(5)
+  })
+
+  it('randomizes the quest order in missions one and two', () => {
+    const firstStageSlots = new Set<MissionQuestId>()
+    const secondStageSlots = new Set<MissionQuestId>()
+
+    for (let seed = 1; seed <= 12; seed += 1) {
+      const state = createMissionState(seed)
+      startMissionOne(state, 0)
+      expect(state.quests.some((quest) => quest.id === 'pass-mystery-circles')).toBe(true)
+      firstStageSlots.add(state.quests[0]!.id)
+
+      for (const quest of [...state.quests]) completeQuest(state, quest, 20)
+      expect(state.stage).toBe(2)
+      expect(state.quests.some((quest) => quest.id === 'pass-mystery-circles')).toBe(true)
+      secondStageSlots.add(state.quests[0]!.id)
+    }
+
+    expect(firstStageSlots.size).toBeGreaterThan(1)
+    expect(secondStageSlots.size).toBeGreaterThan(1)
   })
 })

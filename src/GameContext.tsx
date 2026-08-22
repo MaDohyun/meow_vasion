@@ -76,6 +76,7 @@ export type GamePhase = 'intro' | 'playing' | 'upgrade' | 'results'
  *  slot rather than to fit the game. */
 export const RUN_SECONDS = 300
 export const SURVIVAL_TARGET_TIME = RUN_SECONDS
+const CHECKPOINT_WAIT_SECONDS = 3
 
 export type GameRuntime = {
   drone: DroneState
@@ -175,6 +176,7 @@ export type GameRuntime = {
   missionBannerTime: number
   checkpoint: Vec3 | null
   checkpointGeneration: number
+  checkpointHoldTime: number
   missionTarget: Vec3 | null
   hazards: HazardState
   daze: number
@@ -469,6 +471,7 @@ function makeRuntime(): GameRuntime {
     missionBannerTime: 0,
     checkpoint: null,
     checkpointGeneration: 0,
+    checkpointHoldTime: 0,
     missionTarget: null,
     hazards: createHazardState(),
     daze: 0,
@@ -505,6 +508,7 @@ function refreshWorldGeometry(game: GameRuntime) {
 
 function spawnCheckpoint(game: GameRuntime) {
   game.checkpointGeneration += 1
+  game.checkpointHoldTime = 0
   const seed = Math.imul(game.checkpointGeneration + game.mission.randomState, 0x45d9f3b) >>> 0
   const angle = seed % 360 / 180 * Math.PI
   const distance = 44 + ((seed >>> 9) % 28)
@@ -1280,6 +1284,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     if (mysteryCircle) {
       if (game.mysteryCircleId !== mysteryCircle.id) {
         game.mysteryCircleId = mysteryCircle.id
+        reportMissionEvent(game, { type: 'pass-mystery-circle', id: mysteryCircle.id })
         game.mysteryBoostRemaining = MYSTERY_BOOST_DURATION
         game.mysteryFlash = 0.65
         game.turbo = 1
@@ -1365,14 +1370,23 @@ export function GameProvider({ children }: { children: ReactNode }) {
     }
     const collision = collideDrone(stepped, game.worldColliders)
     game.drone = collision.state
-    if (game.checkpoint && Math.hypot(
-      game.drone.position.x - game.checkpoint.x,
-      game.drone.position.y - game.checkpoint.y,
-      game.drone.position.z - game.checkpoint.z,
-    ) <= 5) {
-      reportMissionEvent(game, { type: 'pass-checkpoint' })
-      if (missionHasQuest(game.mission, 'air-checkpoints')) spawnCheckpoint(game)
-      else game.checkpoint = null
+    if (game.checkpoint) {
+      const checkpointDistance = Math.hypot(
+        game.drone.position.x - game.checkpoint.x,
+        game.drone.position.y - game.checkpoint.y,
+        game.drone.position.z - game.checkpoint.z,
+      )
+      if (checkpointDistance <= 5) {
+        game.checkpointHoldTime += d
+        if (game.checkpointHoldTime >= CHECKPOINT_WAIT_SECONDS) {
+          reportMissionEvent(game, { type: 'pass-checkpoint' })
+          if (missionHasQuest(game.mission, 'air-checkpoints')) spawnCheckpoint(game)
+          else {
+            game.checkpoint = null
+            game.checkpointHoldTime = 0
+          }
+        }
+      } else game.checkpointHoldTime = 0
     }
     // One sample per tick, written into the runtime's own object so the render
     // layer can read it without sampling again or allocating.
