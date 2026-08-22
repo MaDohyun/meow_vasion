@@ -116,6 +116,13 @@ export type GameRuntime = {
   laserAimDirection: Vec3
   beamActive: boolean
   beamTargetId: string | null
+  /** Set the moment E is first pressed during the tutorial, and forces the
+   *  beam on for the rest of it regardless of the key's actual state. A tap
+   *  that releases mid-pull used to let the cat go with whatever swing
+   *  velocity it had picked up orbiting the craft, flinging it away and
+   *  leaving the tutorial impossible to clear - holding the beam on until
+   *  the cat is actually absorbed is the fix. */
+  tutorialBeamLatched: boolean
   laserActive: boolean
   laserInputHeld: boolean
   boostInputHeld: boolean
@@ -408,6 +415,7 @@ function makeRuntime(): GameRuntime {
     laserAimDirection: laserDirection(drone.heading, drone.pitch),
     beamActive: false,
     beamTargetId: null,
+    tutorialBeamLatched: false,
     laserActive: false,
     laserInputHeld: false,
     boostInputHeld: false,
@@ -1182,11 +1190,14 @@ export function GameProvider({ children }: { children: ReactNode }) {
     const d = Math.min(dt, 0.05)
     const rawInput = readInput()
     const tutorialAtStart = game.mission.stage === 0
+    if (tutorialAtStart && rawInput.beam) game.tutorialBeamLatched = true
     // The tutorial teaches one control at a time: until the beam actually
     // lands on the cat, flight, laser and turbo are all inert, so the only
-    // thing left to try is the one the prompt names.
+    // thing left to try is the one the prompt names. Once E has been pressed
+    // once, the beam latches on for the rest of the tutorial - see
+    // tutorialBeamLatched - so tapping it does not let the cat go mid-pull.
     const input: PlayerInput = tutorialAtStart
-      ? { ...rawInput, throttle: 0, strafe: 0, vertical: 0, special: false, laser: false, laserContinuous: false }
+      ? { ...rawInput, throttle: 0, strafe: 0, vertical: 0, special: false, laser: false, laserContinuous: false, beam: rawInput.beam || game.tutorialBeamLatched }
       : rawInput
     game.aimX = pointer.current.x
     game.aimY = pointer.current.y

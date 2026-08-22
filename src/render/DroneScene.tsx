@@ -906,6 +906,33 @@ function CrowdPools() {
   return <group><CrowdPool kind="pedestrian" /><CrowdPool kind="cat" /></group>
 }
 
+/**
+ * A bobbing arrow over the tutorial's one cat. The opening park fills in with
+ * ordinary crowd members almost immediately, and without a marker the cat the
+ * mission text refers to was one indistinguishable body among many.
+ */
+function TutorialCatMarker() {
+  const { runtime, snapshot } = useGame()
+  const group = useRef<THREE.Group>(null)
+  useFrame(({ clock }) => {
+    if (!group.current) return
+    const cat = runtime.current.crowds.objects.find((object) => object.active && object.id.startsWith('tutorial-cat'))
+    if (!cat) { group.current.visible = false; return }
+    group.current.visible = true
+    group.current.position.set(cat.position.x, cat.position.y + 2.1 + Math.sin(clock.elapsedTime * 3) * 0.18, cat.position.z)
+  })
+  if (!snapshot.tutorial) return null
+  return (
+    <group ref={group}>
+      <mesh rotation-x={Math.PI}>
+        <coneGeometry args={[0.32, 0.6, 4]} />
+        <meshBasicMaterial color="#ffe05f" toneMapped={false} />
+        <Edges threshold={15} color="#2b243f" />
+      </mesh>
+    </group>
+  )
+}
+
 function MinePool() {
   const { runtime } = useGame()
   const ref = useRef<THREE.InstancedMesh>(null)
@@ -1791,6 +1818,7 @@ export function DroneScene() {
       <PullableCars />
       <DrivingTraffic />
       <CrowdPools />
+      <TutorialCatMarker />
       <HazardPool />
       <EnemyPools />
       <EnemyWarnings />
