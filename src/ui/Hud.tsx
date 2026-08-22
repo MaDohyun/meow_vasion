@@ -199,8 +199,8 @@ function Intro() {
       <div className="ufo-poster" aria-hidden="true">
         <i className="ufo-dome" /><i className="ufo-saucer" /><i className="poster-beam" />
       </div>
-      <div className="title-kicker">UFO ATTACK SURVIVAL</div>
-      <h1><span>UFO</span><span>어택 서바이벌</span></h1>
+      <div className="title-kicker">{t.titleKicker}</div>
+      <h1><span>{t.titleLine1}</span><span>{t.titleLine2}</span></h1>
       <p className="tagline">{t.tagline}</p>
       <div className="intro-actions">
         <button className="primary-button" onClick={start}>{t.start}</button>

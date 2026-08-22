@@ -663,9 +663,38 @@ function Ufo() {
           <meshToonMaterial ref={domeMaterial} color={ENTITY.UFO_DOME} emissive={ENTITY.UFO_DOME} emissiveIntensity={0.36} transparent opacity={0.9} />
           <Edges threshold={15} color="#432f6b" />
         </mesh>
+        {/* Cat ears - the one silhouette change the "침략할거냥" (Meowvasion)
+            redesign actually needs to read as the pilot's ship rather than a
+            generic saucer. Two-part like the pilot's own ears: an outer shell
+            cone and a smaller inset pink one. */}
+        {[-1, 1].map((side) => (
+          <group key={side} position={[side * 0.62, 0.62, 0.15]} rotation={[0.5, 0, side * -0.35]}>
+            <mesh>
+              <coneGeometry args={[0.26, 0.5, 3]} />
+              <meshToonMaterial color={ENTITY.UFO_HULL} emissive={ENTITY.UFO_HULL} emissiveIntensity={0.15} />
+              <Edges threshold={15} color="#123245" />
+            </mesh>
+            <mesh position={[0, -0.02, 0.06]} scale={0.55}>
+              <coneGeometry args={[0.26, 0.5, 3]} />
+              <meshBasicMaterial color={ENTITY.UFO_EAR_INNER} />
+            </mesh>
+          </group>
+        ))}
+        {/* Antenna: a thin stalk with a small gold star-like tip, echoing the
+            pilot portrait's own antenna so the ship reads as the same craft. */}
+        <group position={[0, 0.92, -0.1]}>
+          <mesh position-y={0.14}>
+            <cylinderGeometry args={[0.02, 0.02, 0.28, 5]} />
+            <meshBasicMaterial color="#123245" />
+          </mesh>
+          <mesh position-y={0.3} rotation-y={Math.PI / 4}>
+            <octahedronGeometry args={[0.09, 0]} />
+            <meshBasicMaterial color={ENTITY.UFO_ACCENT} toneMapped={false} />
+          </mesh>
+        </group>
         <mesh position-y={-0.2}>
           <cylinderGeometry args={[1.35, 1.03, 0.32, 18]} />
-          <meshToonMaterial color="#5d4a83" emissive="#38215d" emissiveIntensity={0.12} />
+          <meshToonMaterial color={ENTITY.UFO_TRIM} emissive="#8a7638" emissiveIntensity={0.12} />
           <Edges color="#2b243f" />
         </mesh>
         <mesh position-y={-0.39} rotation-x={Math.PI / 2}>

@@ -31,6 +31,9 @@ export const LANGUAGE_LABELS: Record<Language, string> = {
 export const DEFAULT_LANGUAGE: Language = 'ko'
 
 type Strings = {
+  titleKicker: string
+  titleLine1: string
+  titleLine2: string
   tagline: string
   start: string
   options: string
@@ -151,6 +154,9 @@ export function formatMessage(strings: Strings, key: MessageKey, arg: number) {
 
 export const STRINGS: Record<Language, Strings> = {
   ko: {
+    titleKicker: 'MEOWVASION',
+    titleLine1: '침략할',
+    titleLine2: '거냥',
     tagline: '5분 안에 지구 정찰을 끝내고 유유히 튀세요',
     start: '게임 시작',
     options: '옵션',
@@ -251,6 +257,9 @@ export const STRINGS: Record<Language, Strings> = {
     },
   },
   ja: {
+    titleKicker: 'MEOWVASION',
+    titleLine1: 'しんりゃく',
+    titleLine2: 'するにゃん',
     tagline: 'できるだけ長く生き延びて街を破壊しよう',
     start: 'ゲーム開始',
     options: 'オプション',
@@ -351,6 +360,9 @@ export const STRINGS: Record<Language, Strings> = {
     },
   },
   en: {
+    titleKicker: 'ALIEN RECON CAT-BOT',
+    titleLine1: 'MEOW',
+    titleLine2: 'VASION',
     tagline: 'Survive as long as you can and tear the city apart',
     start: 'START SURVIVAL',
     options: 'OPTIONS',

@@ -97,8 +97,11 @@ export const BUILDING = {
 /** Emissive tints per entity family. Kept distinct on purpose: a single enemy
  *  colour would erase the type read the wave design depends on. */
 export const ENTITY = {
-  UFO_HULL: '#e3d3bf',
+  UFO_HULL: '#69c7bf',
   UFO_DOME: '#88d6df',
+  UFO_EAR_INNER: '#f2a49a',
+  UFO_TRIM: '#e6d9b8',
+  UFO_ACCENT: '#f4c04a',
   UFO_RIM: '#9cd8c6',
   UFO_POOL: '#8fcdb6',
   PEDESTRIAN_GLOW: '#e887aa',
