@@ -39,6 +39,11 @@ const LANDMARK_RADIUS_CELLS = 6
 const LANDMARK_CELL_COUNT = (LANDMARK_RADIUS_CELLS * 2 + 1) ** 2
 const PARK_TREE_COUNT = 3
 const LAKE_SHORE_TREE_CAPACITY = LANDMARK_CELL_COUNT * 2
+const MYSTERY_MARK_WIDTH = 25.5
+const MYSTERY_MARK_DEPTH = 23.3
+const MYSTERY_BEACON_HEIGHT = 68
+const MYSTERY_PARTICLES_PER_CIRCLE = 88
+const MYSTERY_PARTICLE_CAPACITY = LANDMARK_CELL_COUNT * MYSTERY_PARTICLES_PER_CIRCLE
 
 function canvasTexture(
   draw: (context: CanvasRenderingContext2D, width: number, height: number) => void,
@@ -285,6 +290,44 @@ function withLandmarkGlow(material: THREE.MeshToonMaterial, day: number, night: 
   landmarkGlowRamps.push({ material, day, night })
   return material
 }
+
+const mysteryCircleTexture = new THREE.TextureLoader().load('/landmarks/mystery-circle.png')
+mysteryCircleTexture.colorSpace = THREE.SRGBColorSpace
+mysteryCircleTexture.magFilter = THREE.LinearFilter
+mysteryCircleTexture.minFilter = THREE.LinearMipmapLinearFilter
+
+const mysteryCircleMaterial = withLandmarkGlow(new THREE.MeshToonMaterial({
+  color: '#fff7d5',
+  map: mysteryCircleTexture,
+  emissive: new THREE.Color('#fff0a4'),
+  emissiveMap: mysteryCircleTexture,
+  transparent: true,
+  opacity: 0.74,
+  depthWrite: false,
+  side: THREE.DoubleSide,
+}), 0.04, 1.3)
+
+const mysteryParticlePositions = new Float32Array(MYSTERY_PARTICLE_CAPACITY * 3)
+const mysteryParticleColors = new Float32Array(MYSTERY_PARTICLE_CAPACITY * 3)
+const mysteryParticleGeometry = new THREE.BufferGeometry()
+const mysteryParticlePositionAttribute = new THREE.BufferAttribute(mysteryParticlePositions, 3)
+const mysteryParticleColorAttribute = new THREE.BufferAttribute(mysteryParticleColors, 3)
+mysteryParticlePositionAttribute.setUsage(THREE.DynamicDrawUsage)
+mysteryParticleColorAttribute.setUsage(THREE.DynamicDrawUsage)
+mysteryParticleGeometry.setAttribute('position', mysteryParticlePositionAttribute)
+mysteryParticleGeometry.setAttribute('color', mysteryParticleColorAttribute)
+mysteryParticleGeometry.setDrawRange(0, 0)
+
+const mysteryParticleMaterial = new THREE.PointsMaterial({
+  color: '#ffe7a2',
+  size: 0.28,
+  vertexColors: true,
+  transparent: true,
+  opacity: 0.14,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+  sizeAttenuation: true,
+})
 
 const storeBandMaterial = withLandmarkGlow(new THREE.MeshToonMaterial({
   color: BUILDING.STORE_BAND,
@@ -604,6 +647,90 @@ function ParkPool() {
   )
 }
 
+function MysteryCirclePool() {
+  const { runtime } = useGame()
+  const ref = useRef<THREE.InstancedMesh>(null)
+  const lastKey = useRef('')
+  const matrix = useMemo(() => new THREE.Matrix4(), [])
+  const position = useMemo(() => new THREE.Vector3(), [])
+  const scale = useMemo(() => new THREE.Vector3(), [])
+  const rotation = useMemo(() => new THREE.Quaternion(), [])
+  const euler = useMemo(() => new THREE.Euler(), [])
+
+  useFrame(() => {
+    const mesh = ref.current
+    if (!mesh) return
+    const world = runtime.current.world
+    const key = `${world.cellX}:${world.cellZ}`
+    if (key === lastKey.current) return
+    lastKey.current = key
+    let count = 0
+    for (const cell of groundCellsAround(runtime.current.drone.position, LANDMARK_RADIUS_CELLS)) {
+      if (groundLandmarkForCell(cell) !== 'mystery-circle') continue
+      const centerX = (cell.cellX + 0.5) * WORLD_CELL_SIZE
+      const centerZ = (cell.cellZ + 0.5) * WORLD_CELL_SIZE
+      const seed = seedForWorldCell(cell.cellX, cell.cellZ, 0x6d797374)
+      const yaw = ((seed >>> 11) % 360) / 180 * Math.PI
+      euler.set(-Math.PI / 2, 0, yaw)
+      rotation.setFromEuler(euler)
+      position.set(centerX, 0.075, centerZ)
+      scale.set(MYSTERY_MARK_WIDTH, MYSTERY_MARK_DEPTH, 1)
+      matrix.compose(position, rotation, scale)
+      mesh.setMatrixAt(count, matrix)
+      count += 1
+      if (count >= LANDMARK_CELL_COUNT) break
+    }
+    setPoolCount(mesh, count)
+  })
+
+  return (
+    <instancedMesh ref={ref} args={[undefined, mysteryCircleMaterial, LANDMARK_CELL_COUNT]} frustumCulled={false} renderOrder={3} onUpdate={(mesh) => { mesh.count = 0 }}>
+      <planeGeometry args={[1, 1]} />
+    </instancedMesh>
+  )
+}
+
+function MysterySignalPool() {
+  const { runtime } = useGame()
+
+  useFrame(({ clock }) => {
+    const game = runtime.current
+    const night = game.daylight.nightFactor
+    mysteryParticleMaterial.opacity = 0.12 + night * 0.88
+    mysteryParticleMaterial.size = 0.2 + night * 0.32
+
+    let count = 0
+    for (const cell of groundCellsAround(game.drone.position, LANDMARK_RADIUS_CELLS)) {
+      if (groundLandmarkForCell(cell) !== 'mystery-circle') continue
+      const centerX = (cell.cellX + 0.5) * WORLD_CELL_SIZE
+      const centerZ = (cell.cellZ + 0.5) * WORLD_CELL_SIZE
+      const seed = seedForWorldCell(cell.cellX, cell.cellZ, 0x6d797374)
+      const seedPhase = (seed % 997) * 0.013
+      for (let particle = 0; particle < MYSTERY_PARTICLES_PER_CIRCLE; particle += 1) {
+        const t = (particle + 0.5) / MYSTERY_PARTICLES_PER_CIRCLE
+        const height = 0.8 + t * MYSTERY_BEACON_HEIGHT
+        const pulse = 0.82 + Math.sin(clock.elapsedTime * 1.8 + seedPhase + particle * 0.63) * 0.18
+        const radius = (1.8 + (1 - t) * 10.8) * pulse
+        const angle = seedPhase + particle * 2.399963 + clock.elapsedTime * (0.08 + (1 - t) * 0.08)
+        const slot = count * 3
+        mysteryParticlePositions[slot] = centerX + Math.cos(angle) * radius
+        mysteryParticlePositions[slot + 1] = height
+        mysteryParticlePositions[slot + 2] = centerZ + Math.sin(angle) * radius
+        const shimmer = 0.62 + 0.38 * (0.5 + 0.5 * Math.sin(clock.elapsedTime * 3.2 + seedPhase + particle))
+        mysteryParticleColors[slot] = shimmer
+        mysteryParticleColors[slot + 1] = shimmer * 0.72
+        mysteryParticleColors[slot + 2] = shimmer * 0.32
+        count += 1
+      }
+    }
+    mysteryParticleGeometry.setDrawRange(0, count)
+    mysteryParticlePositionAttribute.needsUpdate = true
+    mysteryParticleColorAttribute.needsUpdate = true
+  })
+
+  return <points geometry={mysteryParticleGeometry} material={mysteryParticleMaterial} frustumCulled={false} renderOrder={4} />
+}
+
 function mergedBoxes(parts: [number, number, number, number, number, number][]) {
   return mergeGeometries(parts.map(([sx, sy, sz, x, y, z]) => new THREE.BoxGeometry(sx, sy, sz).translate(x, y, z)), false)!
 }
@@ -852,6 +979,8 @@ export const CityLandmarks = memo(function CityLandmarks() {
     <group>
       <BuildingFeaturePool />
       <ParkPool />
+      <MysteryCirclePool />
+      <MysterySignalPool />
       <TransitUtilityPool />
       <ParkingLotPool />
     </group>

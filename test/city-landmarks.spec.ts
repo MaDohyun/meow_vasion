@@ -37,7 +37,7 @@ describe('render-only city landmarks', () => {
         if (landmark) counts.set(landmark, (counts.get(landmark) ?? 0) + 1)
       }
     }
-    for (const kind of ['park', 'subway', 'parking-lot', 'power-pylon', 'gas-station', 'communications', 'lake']) {
+    for (const kind of ['park', 'subway', 'parking-lot', 'power-pylon', 'gas-station', 'communications', 'lake', 'mystery-circle']) {
       expect(counts.get(kind) ?? 0).toBeGreaterThan(20)
     }
     // Car parks are the exception, and deliberately so: they are the densest

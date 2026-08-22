@@ -189,6 +189,11 @@ const PARK_SHAPES = [
   [[0, 0], [1, 0], [2, 0], [0, 1], [1, 1], [2, 1], [0, 2], [1, 2], [2, 2]],
 ] as const
 
+// Mystery circles occupy one otherwise-empty tile. Their sector roll matches
+// the lake roll, so the signal is a rare city discovery rather than street
+// furniture; the one-tile footprint keeps the mark readable from the air.
+const MYSTERY_SECTOR_SIZE = 6
+
 /** Returns the deterministic 1–9 tile park cluster that owns a cell. */
 export function parkClusterForCell(cellX: number, cellZ: number) {
   if (isTutorialCell(cellX, cellZ)) return 'park:tutorial'
@@ -225,6 +230,19 @@ export function lakeClusterForCell(cellX: number, cellZ: number) {
   return member ? `lake:${sectorX}:${sectorZ}` : null
 }
 
+/** Returns the deterministic empty tile carrying a mystery-circle signal. */
+export function mysteryCircleForCell(cellX: number, cellZ: number) {
+  if (isTutorialCell(cellX, cellZ)) return null
+  if (parkClusterForCell(cellX, cellZ) || lakeClusterForCell(cellX, cellZ)) return null
+  const sectorX = Math.floor(cellX / MYSTERY_SECTOR_SIZE)
+  const sectorZ = Math.floor(cellZ / MYSTERY_SECTOR_SIZE)
+  const seed = seedForWorldCell(sectorX, sectorZ, 0x6d797374)
+  if (seed % 100 >= 24) return null
+  const anchorX = sectorX * MYSTERY_SECTOR_SIZE + 1 + ((seed >>> 9) % (MYSTERY_SECTOR_SIZE - 2))
+  const anchorZ = sectorZ * MYSTERY_SECTOR_SIZE + 1 + ((seed >>> 13) % (MYSTERY_SECTOR_SIZE - 2))
+  return cellX === anchorX && cellZ === anchorZ ? `mystery:${sectorX}:${sectorZ}` : null
+}
+
 /** Adjacent cells in one landmark cluster do not need an internal road seam. */
 export function sameLandmarkCluster(aX: number, aZ: number, bX: number, bZ: number) {
   const park = parkClusterForCell(aX, aZ)
@@ -239,6 +257,10 @@ export function isLakeAt(position: Pick<Vec3, 'x' | 'z'>) {
 
 export function isParkAt(position: Pick<Vec3, 'x' | 'z'>) {
   return parkClusterForCell(worldCellCoord(position.x), worldCellCoord(position.z)) !== null
+}
+
+export function isMysteryCircleAt(position: Pick<Vec3, 'x' | 'z'>) {
+  return mysteryCircleForCell(worldCellCoord(position.x), worldCellCoord(position.z)) !== null
 }
 
 /**
@@ -274,7 +296,8 @@ export function getProceduralCell(cellX: number, cellZ: number, worldSeed = WORL
   const seed = seedForWorldCell(cellX, cellZ, worldSeed)
   const roll = seed % 100
   const park = parkClusterForCell(cellX, cellZ)
-  const forcedOpen = park !== null
+  const mystery = mysteryCircleForCell(cellX, cellZ)
+  const forcedOpen = park !== null || mystery !== null
   const lake = lakeClusterForCell(cellX, cellZ)
   // Bands: building 48%, parked car 10%, intersection 12%, empty 30%.
   const kind: WorldCellKind = forcedOpen || lake
@@ -290,7 +313,11 @@ export function getProceduralCell(cellX: number, cellZ: number, worldSeed = WORL
   const centerX = worldCellCenter(cellX)
   const centerZ = worldCellCenter(cellZ)
   const groundVariants: GroundVariant[] = ['grass', 'parking', 'sand', 'plaza', 'pond', 'vacant']
-  const ground = lake ? 'pond' : groundVariants[Math.floor(saltedUnit(seed, 19) * groundVariants.length)] ?? 'vacant'
+  const ground = lake
+    ? 'pond'
+    : mystery
+      ? 'vacant'
+      : groundVariants[Math.floor(saltedUnit(seed, 19) * groundVariants.length)] ?? 'vacant'
 
   if (kind === 'building') {
     const largeFootprint = seed % 100 < 3

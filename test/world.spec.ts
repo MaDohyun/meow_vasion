@@ -19,6 +19,7 @@ import {
   WORLD_SPAWN_RADIUS,
   isTutorialCell,
   lakeClusterForCell,
+  mysteryCircleForCell,
   parkClusterForCell,
   sameLandmarkCluster,
 } from '../src/core/world'
@@ -102,6 +103,22 @@ describe('deterministic infinite city', () => {
       const connected = cells.every(([x, z], index) => index === 0 || cells.some(([ox, oz]) => Math.abs(ox - x) + Math.abs(oz - z) === 1))
       expect(connected).toBe(true)
     }
+  })
+
+  it('places rare mystery circles on empty tiles only', () => {
+    const circles: Array<[number, number]> = []
+    for (let z = -80; z <= 80; z += 1) {
+      for (let x = -80; x <= 80; x += 1) {
+        if (!mysteryCircleForCell(x, z)) continue
+        circles.push([x, z])
+        const cell = getProceduralCell(x, z)
+        expect(cell.kind).toBe('empty')
+        expect(cell.building).toBeUndefined()
+        expect(cell.car).toBeUndefined()
+      }
+    }
+    expect(circles.length).toBeGreaterThan(20)
+    expect(new Set(circles.map(([x, z]) => mysteryCircleForCell(x, z))).size).toBe(circles.length)
   })
 
   it('generates deterministic one-to-nine tile parks with no internal roads', () => {

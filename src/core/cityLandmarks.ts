@@ -3,6 +3,7 @@ import {
   buildingMass,
   getProceduralCell,
   lakeClusterForCell,
+  mysteryCircleForCell,
   parkClusterForCell,
   PARKED_CAR_COLORS,
   WORLD_CELL_SIZE,
@@ -13,7 +14,7 @@ import {
   type ProceduralCell,
 } from './world'
 
-export type GroundLandmark = 'park' | 'subway' | 'parking-lot' | 'power-pylon' | 'gas-station' | 'communications' | 'lake' | null
+export type GroundLandmark = 'park' | 'subway' | 'parking-lot' | 'power-pylon' | 'gas-station' | 'communications' | 'lake' | 'mystery-circle' | null
 export type CrowdSpawnZone = { x: number; z: number; radius: number; kind: 'park' | 'parking-lot' }
 export type LakeShoreTree = { x: number; z: number; height: number; crown: number }
 
@@ -25,6 +26,7 @@ export type LakeShoreTree = { x: number; z: number; height: number; crown: numbe
 export function groundLandmarkForCell(cell: ProceduralCell): GroundLandmark {
   if (parkClusterForCell(cell.cellX, cell.cellZ)) return 'park'
   if (lakeClusterForCell(cell.cellX, cell.cellZ)) return 'lake'
+  if (mysteryCircleForCell(cell.cellX, cell.cellZ)) return 'mystery-circle'
   const roll = seedForWorldCell(cell.cellX, cell.cellZ, 0x1a4d6a7) % 1000
 
   // Car parks were 45 in a thousand of the cells that already hold a parked
