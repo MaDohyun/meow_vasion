@@ -158,6 +158,26 @@ function droneGeometry() {
   ])
 }
 
+// A fixed drone is a proximity mine, not a recon saucer. The cross-frame and
+// four propellers make its silhouette readable before the red fuse pulse; the
+// suspended bomb gives the armed state a clear centre of mass.
+const mineGeometry = mergeModel([
+  coloredPart(new THREE.BoxGeometry(2.1, 0.12, 0.18), '#596273'),
+  coloredPart(new THREE.BoxGeometry(0.18, 0.12, 2.1), '#596273'),
+  coloredPart(new THREE.CylinderGeometry(0.18, 0.18, 0.12, 8).translate(-1.18, 0.02, 0), '#d4a24b'),
+  coloredPart(new THREE.CylinderGeometry(0.18, 0.18, 0.12, 8).translate(1.18, 0.02, 0), '#d4a24b'),
+  coloredPart(new THREE.CylinderGeometry(0.18, 0.18, 0.12, 8).translate(0, 0.02, -1.18), '#d4a24b'),
+  coloredPart(new THREE.CylinderGeometry(0.18, 0.18, 0.12, 8).translate(0, 0.02, 1.18), '#d4a24b'),
+  coloredPart(new THREE.CylinderGeometry(0.38, 0.48, 0.76, 8).translate(0, -0.62, 0), '#7e3a4b'),
+  coloredPart(new THREE.SphereGeometry(0.12, 6, 4).translate(0, -0.18, 0), '#ff5869'),
+])
+
+const mineMaterial = new THREE.MeshToonMaterial({
+  vertexColors: true,
+  emissive: new THREE.Color('#6d1e34'),
+  emissiveIntensity: 0.35,
+})
+
 function policeGeometry() {
   return mergeModel([
     coloredPart(new THREE.CapsuleGeometry(0.28, 0.62, 4, 7), '#4670a0'),
@@ -696,6 +716,11 @@ const crowdGeometry: Record<CrowdKind, THREE.BufferGeometry> = {
   cat: catGeometry(),
 }
 
+// Four instance tints give the single pedestrian pool readable silhouettes
+// (commuter, workwear, warm coat, green jacket) without splitting it into four
+// draw calls or changing the low-poly assembled body.
+const pedestrianStyleColors = ['#d45c78', '#5d6c9b', '#e6a43d', '#72b995'] as const
+
 function CrowdPool({ kind }: { kind: CrowdKind }) {
   const { runtime, snapshot } = useGame()
   const ref = useRef<THREE.InstancedMesh>(null)
@@ -715,13 +740,14 @@ function CrowdPool({ kind }: { kind: CrowdKind }) {
       rotation.set(object.rotation.x, object.rotation.y, object.rotation.z)
       quaternion.setFromEuler(rotation)
       const bounce = object.inBeam ? 1 : 1 + Math.sin(clock.elapsedTime * 8 + object.slot) * 0.04
-      const targetScale = snapshot.beamTargetId === object.id ? 1.38 : 1.16
+      const style = kind === 'pedestrian' ? object.slot % pedestrianStyleColors.length : 0
+      const targetScale = (snapshot.beamTargetId === object.id ? 1.38 : 1.16) * (kind === 'pedestrian' ? 0.94 + style * 0.035 : 1)
       const absorbScale = object.absorbing ? Math.max(0.04, object.absorbTimer / CROWD_ABSORB_TIME) : 1
       scale.set(targetScale * absorbScale, targetScale * bounce * absorbScale, targetScale * absorbScale)
       matrix.compose(position, quaternion, scale)
       ref.current.setMatrixAt(count, matrix)
       if (snapshot.beamTargetId === object.id) color.set('#fff36d')
-      else color.set(object.color).lerp(pale, 0.72)
+      else color.set(kind === 'pedestrian' ? pedestrianStyleColors[style]! : object.color).lerp(pale, 0.72)
       ref.current.setColorAt(count, color)
       count += 1
     }
@@ -848,6 +874,40 @@ function CrowdPools() {
   return <group><CrowdPool kind="pedestrian" /><CrowdPool kind="cat" /></group>
 }
 
+function MinePool() {
+  const { runtime } = useGame()
+  const ref = useRef<THREE.InstancedMesh>(null)
+  const matrix = useMemo(() => new THREE.Matrix4(), [])
+  const position = useMemo(() => new THREE.Vector3(), [])
+  const quaternion = useMemo(() => new THREE.Quaternion(), [])
+  const rotation = useMemo(() => new THREE.Euler(), [])
+  const scale = useMemo(() => new THREE.Vector3(), [])
+  const color = useMemo(() => new THREE.Color(), [])
+  useFrame(({ clock }) => {
+    const mesh = ref.current
+    if (!mesh) return
+    let count = 0
+    for (const enemy of runtime.current.enemies.slots) {
+      if (!enemy.active || !isDroneMine(enemy)) continue
+      position.set(enemy.position.x, enemy.position.y, enemy.position.z)
+      rotation.set(0, enemy.phase + clock.elapsedTime * 0.15, Math.sin(clock.elapsedTime * 1.3 + enemy.phase) * 0.04)
+      quaternion.setFromEuler(rotation)
+      const pulse = enemy.mineArmed ? 1 + Math.sin(clock.elapsedTime * 15) * 0.1 : 1
+      scale.setScalar(0.62 * pulse)
+      matrix.compose(position, quaternion, scale)
+      mesh.setMatrixAt(count, matrix)
+      const glow = enemy.mineArmed ? 0.55 + 0.45 * Math.sin(clock.elapsedTime * 15) ** 2 : 0.28
+      color.setRGB(0.82 + glow * 0.18, 0.16 + glow * 0.32, 0.22 + glow * 0.2)
+      mesh.setColorAt(count, color)
+      count += 1
+    }
+    mesh.count = count
+    mesh.instanceMatrix.needsUpdate = true
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
+  })
+  return <instancedMesh ref={ref} args={[mineGeometry, mineMaterial, ENEMY_CAPS.drone]} frustumCulled={false} />
+}
+
 const enemyGeometry: Record<EnemyKind, THREE.BufferGeometry> = {
   drone: droneGeometry(),
   police: policeGeometry(),
@@ -876,6 +936,7 @@ function EnemyPool({ kind }: { kind: EnemyKind }) {
     let count = 0
     for (const enemy of runtime.current.enemies.slots) {
       if (!enemy.active || enemy.kind !== kind) continue
+      if (kind === 'drone' && isDroneMine(enemy)) continue
       position.set(enemy.position.x, enemy.position.y, enemy.position.z)
       const yaw = Math.atan2(player.x - enemy.position.x, player.z - enemy.position.z)
       const horizontalDistance = Math.hypot(player.x - enemy.position.x, player.z - enemy.position.z)
@@ -940,6 +1001,7 @@ function EnemyPools() {
       <EnemyPool kind="fighter" />
       <EnemyPool kind="tank" />
       <EnemyPool kind="boss" />
+      <MinePool />
     </group>
   )
 }
@@ -1371,6 +1433,7 @@ const skyUniforms = {
   uStar: { value: new THREE.Color(SKY.STAR) },
   uStarIntensity: { value: 1 },
   uTime: { value: 0 },
+  uNightFactor: { value: 0 },
 }
 
 const skyVertexShader = `
@@ -1392,6 +1455,7 @@ const skyFragmentShader = `
   uniform vec3 uStar;
   uniform float uStarIntensity;
   uniform float uTime;
+  uniform float uNightFactor;
   varying vec3 vPosition;
 
   float hash(vec2 p) {
@@ -1403,6 +1467,14 @@ const skyFragmentShader = `
     float h = direction.y;
     vec3 color = mix(uHorizon, uMiddle, smoothstep(-0.10, 0.28, h));
     color = mix(color, uTop, smoothstep(0.28, 0.88, h));
+
+    // A restrained aurora keeps the night sky alive without becoming another
+    // object or light. It is sinusoidal in the dome direction and fades out
+    // completely through the daylight factor.
+    float band = smoothstep(0.18, 0.72, h) * (1.0 - smoothstep(0.72, 0.96, h));
+    float wave = 0.5 + 0.5 * sin(direction.x * 5.0 + sin(direction.z * 3.0 + uTime * 0.05) * 2.0 + uTime * 0.12);
+    vec3 auroraColor = mix(vec3(0.12, 0.78, 0.62), vec3(0.52, 0.30, 0.88), smoothstep(0.22, 0.8, wave));
+    color += auroraColor * band * wave * uNightFactor * 0.16;
 
     // Cell the dome, keep one candidate star per cell, and only light the few
     // that clear the threshold. Fades out near the horizon so the city glow
@@ -1505,12 +1577,15 @@ function Sky() {
     mixDaylight(skyUniforms.uMiddle.value, sample, 'middle')
     mixDaylight(skyUniforms.uTop.value, sample, 'top')
     skyUniforms.uStarIntensity.value = sample.starIntensity * 0.32
+    skyUniforms.uNightFactor.value = sample.nightFactor
 
     if (scene.background instanceof THREE.Color) {
       scene.background.copy(mixDaylight(daylightScratch.background, sample, 'background'))
     }
     if (scene.fog instanceof THREE.Fog) {
-      scene.fog.color.copy(mixDaylight(daylightScratch.fog, sample, 'fog'))
+      // Fog is the final pixel of the horizon, so use the same mixed horizon
+      // colour as the sky instead of letting the keyframe fog drift apart.
+      scene.fog.color.copy(mixDaylight(daylightScratch.fog, sample, 'horizon'))
       // The horizon opens up with the craft. Free at the shader level, and the
       // extra skyline it uncovers is one instanced draw.
       const reach = runtime.current.sizeProfile.viewDistance
@@ -1520,12 +1595,12 @@ function Sky() {
 
     if (ambient.current) {
       ambient.current.color.copy(mixDaylight(daylightScratch.ambient, sample, 'ambient'))
-      ambient.current.intensity = Math.max(0.54, sample.ambientIntensity)
+      ambient.current.intensity = Math.max(0.38, sample.ambientIntensity * (1 - sample.nightFactor * 0.25))
     }
     if (hemisphere.current) {
       hemisphere.current.color.copy(mixDaylight(daylightScratch.hemiSky, sample, 'hemiSky'))
       hemisphere.current.groundColor.copy(mixDaylight(daylightScratch.hemiGround, sample, 'hemiGround'))
-      hemisphere.current.intensity = Math.max(0.68, sample.hemiIntensity)
+      hemisphere.current.intensity = Math.max(0.56, sample.hemiIntensity)
     }
 
     // One directional light for the whole cycle: it is the sun while the sun is
@@ -1534,7 +1609,7 @@ function Sky() {
     const bodyAltitude = sample.sunOpacity >= sample.moonOpacity ? sample.sunAltitude : sample.moonAltitude
     if (keyLight.current) {
       keyLight.current.color.copy(mixDaylight(daylightScratch.sun, sample, 'sun'))
-      keyLight.current.intensity = Math.max(0.68, sample.sunIntensity)
+      keyLight.current.intensity = Math.max(0.96, sample.sunIntensity + sample.nightFactor * 0.16)
       keyLight.current.position.set(
         camera.position.x - Math.cos(bodyAltitude) * 90,
         Math.max(12, Math.sin(bodyAltitude) * 120 + 40),
@@ -1694,7 +1769,7 @@ export function DroneScene() {
       <TractorBeam />
       <UfoGroundPool />
       <Ufo />
-      <PostFx speed={snapshot.speed} impact={snapshot.impactFlash} quality={quality} />
+      <PostFx speed={snapshot.speed} impact={snapshot.impactFlash} impactKind={snapshot.impactKind} quality={quality} />
     </>
   )
 }

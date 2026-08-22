@@ -136,6 +136,7 @@ export type GameRuntime = {
   messageArg: number
   messageTime: number
   impactFlash: number
+  impactKind: HealthLossKind
   hitstop: number
   size: number
   sizeProfile: SizeProfile
@@ -239,6 +240,7 @@ export type GameSnapshot = {
   messageKey: MessageKey | null
   messageArg: number
   impactFlash: number
+  impactKind: HealthLossKind
   pickupPulse: number
   timeBonusPulse: number
   timeBonusAmount: number
@@ -418,6 +420,7 @@ function makeRuntime(): GameRuntime {
     messageArg: 0,
     messageTime: 4,
     impactFlash: 0,
+    impactKind: 'contact',
     hitstop: 0,
     size: SIZE_START,
     sizeProfile: sizeProfile(SIZE_START),
@@ -867,6 +870,8 @@ function growBy(game: GameRuntime, amount: number) {
  * one place. Size is not touched - it never falls.
  */
 function wound(game: GameRuntime, kind: HealthLossKind) {
+  game.impactKind = kind
+  game.impactFlash = 1
   const hullDamage = absorbShieldDamage(game.shield, HEALTH_LOSS[kind])
   if (hullDamage > 0) {
     game.health.current = Math.max(0, game.health.current - hullDamage)
@@ -1048,6 +1053,7 @@ function snapshotOf(game: GameRuntime): GameSnapshot {
     messageKey: game.messageTime > 0 ? game.messageKey : null,
     messageArg: game.messageArg,
     impactFlash: game.impactFlash,
+    impactKind: game.impactKind,
     pickupPulse: game.pickupPulse,
     timeBonusPulse: game.timeBonusPulse,
     timeBonusAmount: game.timeBonusAmount,
@@ -1343,6 +1349,17 @@ export function GameProvider({ children }: { children: ReactNode }) {
     // The craft's velocity goes in with its position: enemies lead the shot,
     // and the lead is computed from how it is actually moving.
     if (!tutorialAtStart) stepEnemies(game.enemies, game.drone.position, d, game.drone.velocity)
+    const mineExplosion = game.enemies.mineExplosion
+    if (mineExplosion) {
+      triggerLaserBurst(game.laserBursts, 'impact', mineExplosion.position, '#ff4f62')
+      game.impactFlash = 1
+      const distance = Math.hypot(
+        mineExplosion.position.x - game.drone.position.x,
+        mineExplosion.position.y - game.drone.position.y,
+        mineExplosion.position.z - game.drone.position.z,
+      )
+      if (distance <= mineExplosion.radius) registerImpact(game, 'ENEMY', 'contact')
+    }
     if (collision.hit && collision.impulse > 2.5 && game.collisionCooldown <= 0) { game.collisionCooldown = 0.45; registerImpact(game, 'BUILDING') }
 
     if (!tutorialAtStart) stepTraffic(game.traffic, { position: game.drone.position, heading: game.drone.heading }, d)

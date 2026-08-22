@@ -13,10 +13,10 @@ export type CrowdKind = 'pedestrian' | 'cat'
  * so a body only ever tests against the craft and the handful of real threats,
  * and each of them draws from one instanced pool regardless of count.
  */
-export const PEDESTRIAN_MAX = 28
-export const CAT_MAX = 7
-export const INITIAL_PEDESTRIANS = 20
-export const INITIAL_CATS = 6
+export const PEDESTRIAN_MAX = 64
+export const CAT_MAX = 16
+export const INITIAL_PEDESTRIANS = 40
+export const INITIAL_CATS = 10
 // Tight on purpose. The pool is fixed size, so stragglers left alive far behind
 // the player squat in every slot and block respawns near the path: the pool
 // saturated at 53 bodies while only two or three were ever within reach.
@@ -84,6 +84,12 @@ const RESPAWN_ARC = 1.75
  */
 const CLUSTER_SIZE = 5
 const CLUSTER_SPREAD = 11
+const PARK_CLUSTER_SIZE = 8
+const PARK_CLUSTER_OFFSETS = [
+  { x: -9.2, z: -6.2 },
+  { x: 9.0, z: -2.0 },
+  { x: 0, z: 9.5 },
+] as const
 const GOLDEN_ANGLE = 2.399963
 
 /**
@@ -135,6 +141,7 @@ export type CrowdState = {
   clusterX: number
   clusterZ: number
   clusterLeft: number
+  clusterKind: 'park' | 'parking-lot' | 'road' | null
 }
 
 export type CrowdView = {
@@ -195,6 +202,7 @@ export function createCrowdState(seed = 0xc47cafe): CrowdState {
     clusterX: 0,
     clusterZ: 0,
     clusterLeft: 0,
+    clusterKind: null,
   }
 }
 
@@ -227,6 +235,7 @@ export function prepareTutorialCrowd(state: CrowdState, position: Pick<Vec3, 'x'
 export function finishTutorialCrowd(state: CrowdState) {
   state.spawnTimer = 0
   state.clusterLeft = 0
+  state.clusterKind = null
 }
 
 function random(state: CrowdState) {
@@ -327,18 +336,31 @@ function spawnCrowdObject(state: CrowdState, view: CrowdView, kind: CrowdKind, p
         if (zone) {
           state.clusterX = zone.x
           state.clusterZ = zone.z
-          state.clusterLeft = zone.kind === 'park' ? 8 : 3
+          state.clusterKind = zone.kind
+          state.clusterLeft = zone.kind === 'park' ? PARK_CLUSTER_SIZE : 3
         } else {
           const angle = view.heading + (random(state) - 0.5) * RESPAWN_ARC
           const distance = RESPAWN_MIN_DISTANCE + random(state) * RESPAWN_RANGE
           state.clusterX = view.position.x + Math.sin(angle) * distance
           state.clusterZ = view.position.z + Math.cos(angle) * distance
           state.clusterLeft = CLUSTER_SIZE
+          state.clusterKind = 'road'
         }
       }
-      const jitter = CLUSTER_SPREAD * (0.4 + attempt * 0.5)
-      x = state.clusterX + (random(state) - 0.5) * jitter
-      z = state.clusterZ + (random(state) - 0.5) * jitter
+      if (state.clusterKind === 'park') {
+        const groupIndex = Math.min(
+          PARK_CLUSTER_OFFSETS.length - 1,
+          Math.floor((PARK_CLUSTER_SIZE - state.clusterLeft) / 3),
+        )
+        const offset = PARK_CLUSTER_OFFSETS[groupIndex]
+        const jitter = 2.4 + attempt * 1.2
+        x = state.clusterX + offset.x + (random(state) - 0.5) * jitter
+        z = state.clusterZ + offset.z + (random(state) - 0.5) * jitter
+      } else {
+        const jitter = CLUSTER_SPREAD * (0.4 + attempt * 0.5)
+        x = state.clusterX + (random(state) - 0.5) * jitter
+        z = state.clusterZ + (random(state) - 0.5) * jitter
+      }
     }
     if (!blockedAt(view, x, z, SPAWN_CLEARANCE)) { placed = true; break }
   }
@@ -389,17 +411,25 @@ function seedInitialCrowd(state: CrowdState, view: CrowdView) {
   let seededPeople = 0
   for (let index = 0; index < total; index += 1) {
     const kind: CrowdKind = index % 3 === 2 && index / 3 < INITIAL_CATS ? 'cat' : 'pedestrian'
-    state.seedAngle += GOLDEN_ANGLE
-    const distance = 20 + (index / Math.max(1, total - 1)) * 70
-    const facility = kind === 'pedestrian' && parks.length > 0 && seededPeople < 16
-      ? parks[seededPeople % parks.length]
+    const memberIndex = index % CLUSTER_SIZE
+    if (memberIndex === 0) state.seedAngle += GOLDEN_ANGLE
+    const groupIndex = Math.floor(index / CLUSTER_SIZE)
+    const groupCount = Math.ceil(total / CLUSTER_SIZE)
+    const distance = 26 + (groupIndex / Math.max(1, groupCount - 1)) * 64
+    const parkMember = kind === 'pedestrian' && parks.length > 0 && seededPeople < 16
+    const facility = parkMember
+      ? parks[Math.floor(seededPeople / 8) % parks.length]
       : kind === 'pedestrian' && parkingLots.length > 0 && seededPeople < 20
         ? parkingLots[seededPeople % parkingLots.length]
         : null
     if (kind === 'pedestrian') seededPeople += 1
+    const parkGroup = parkMember ? PARK_CLUSTER_OFFSETS[Math.min(PARK_CLUSTER_OFFSETS.length - 1, Math.floor((seededPeople % 8) / 3))] : null
+    const groupAngle = state.seedAngle
+    const groupX = view.position.x + Math.sin(groupAngle) * distance
+    const groupZ = view.position.z + Math.cos(groupAngle) * distance
     const placement = facility
-      ? { x: facility.x, z: facility.z, radius: facility.kind === 'park' ? 12 : 7 }
-      : { angle: state.seedAngle, distance }
+      ? { x: facility.x + (parkGroup?.x ?? 0), z: facility.z + (parkGroup?.z ?? 0), radius: facility.kind === 'park' ? 3.4 : 7 }
+      : { x: groupX, z: groupZ, radius: CLUSTER_SPREAD * 0.85 }
     if (!spawnCrowdObject(state, view, kind, placement)) {
       spawnCrowdObject(state, view, kind === 'cat' ? 'pedestrian' : 'cat', { angle: state.seedAngle, distance })
     }
@@ -442,7 +472,10 @@ export function stepCrowds(state: CrowdState, view: CrowdView, dt: number) {
       let threatDistance = distance
       let fleeDx = dx
       let fleeDz = dz
-      if (view.threats) {
+      // Threats only affect the short flee rings. Far bodies keep their calm
+      // destination walk without paying an O(objects × threats) scan every
+      // frame now that the fixed pool is 80 actors.
+      if (view.threats && distance < 42) {
         // Crowd entries sit at the tail of the shared threat array. Skipping
         // them stops two pedestrians from panicking each other forever.
         const threatCount = view.crowdThreatStart ?? view.threats.length
@@ -513,7 +546,11 @@ export function stepCrowds(state: CrowdState, view: CrowdView, dt: number) {
       const nextZ = object.position.z + object.velocity.z * d
       let blockedX = false
       let blockedZ = false
-      if (view.colliders) {
+      // The city collider list is capped at 128 buildings. Bodies outside the
+      // local street band are still simulated, but defer wall checks until
+      // they approach the player; this keeps the larger crowd pool from
+      // turning every frame into a full pool × collider sweep.
+      if (view.colliders && distance < 120) {
         for (const collider of view.colliders) {
           const spanX = object.position.x > collider.minX - COLLIDER_MARGIN && object.position.x < collider.maxX + COLLIDER_MARGIN
           const spanZ = object.position.z > collider.minZ - COLLIDER_MARGIN && object.position.z < collider.maxZ + COLLIDER_MARGIN

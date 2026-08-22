@@ -26,6 +26,8 @@ import {
   WORLD_LOD_RADIUS,
   WORLD_REMOVE_RADIUS,
   seedForWorldCell,
+  lakeClusterForCell,
+  sameLandmarkCluster,
   type BuildingHeightTier,
   type GroundVariant,
 } from '../core/world'
@@ -596,16 +598,25 @@ function GroundPool() {
         parkSlot += 1
       }
 
-      position.set(centerX, 0.018, cell.cellZ * WORLD_CELL_SIZE)
-      scale.set(WORLD_CELL_SIZE + 0.2, ROAD_STRIP_WIDTH, 1)
-      matrix.compose(position, planeRotation, scale)
-      roads.current!.setMatrixAt(roadSlot, matrix)
-      roadSlot += 1
-      position.set(cell.cellX * WORLD_CELL_SIZE, 0.02, centerZ)
-      scale.set(WORLD_CELL_SIZE + 0.2, ROAD_STRIP_WIDTH, 1)
-      matrix.compose(position, verticalRoadRotation, scale)
-      roads.current!.setMatrixAt(roadSlot, matrix)
-      roadSlot += 1
+      // A lake/park cluster is one continuous landmark, not a row of tiles.
+      // Suppress only its internal seams; outer boundaries still keep their
+      // normal road edge so the landmark reads as a deliberate block.
+      const southInternal = sameLandmarkCluster(cell.cellX, cell.cellZ, cell.cellX, cell.cellZ - 1)
+      const westInternal = sameLandmarkCluster(cell.cellX, cell.cellZ, cell.cellX - 1, cell.cellZ)
+      if (!southInternal) {
+        position.set(centerX, 0.018, cell.cellZ * WORLD_CELL_SIZE)
+        scale.set(WORLD_CELL_SIZE + 0.2, ROAD_STRIP_WIDTH, 1)
+        matrix.compose(position, planeRotation, scale)
+        roads.current!.setMatrixAt(roadSlot, matrix)
+        roadSlot += 1
+      }
+      if (!westInternal) {
+        position.set(cell.cellX * WORLD_CELL_SIZE, 0.02, centerZ)
+        scale.set(WORLD_CELL_SIZE + 0.2, ROAD_STRIP_WIDTH, 1)
+        matrix.compose(position, verticalRoadRotation, scale)
+        roads.current!.setMatrixAt(roadSlot, matrix)
+        roadSlot += 1
+      }
     })
     lots.current.count = lotSlot
     roads.current.count = roadSlot
@@ -674,10 +685,22 @@ function WaterPool() {
     if (lastKey.current === key) return
     lastKey.current = key
     let slot = 0
+    const clusters = new Map<string, { minX: number; maxX: number; minZ: number; maxZ: number }>()
     for (const cell of groundCellsAround(runtime.current.drone.position)) {
-      if (groundLandmarkForCell(cell) !== 'lake') continue
-      position.set((cell.cellX + 0.5) * WORLD_CELL_SIZE, 0.055, (cell.cellZ + 0.5) * WORLD_CELL_SIZE)
-      scale.set(WORLD_CELL_SIZE - 8.5, WORLD_CELL_SIZE - 8.5, 1)
+      const cluster = lakeClusterForCell(cell.cellX, cell.cellZ)
+      if (!cluster) continue
+      const bounds = clusters.get(cluster) ?? { minX: cell.cellX, maxX: cell.cellX, minZ: cell.cellZ, maxZ: cell.cellZ }
+      bounds.minX = Math.min(bounds.minX, cell.cellX)
+      bounds.maxX = Math.max(bounds.maxX, cell.cellX)
+      bounds.minZ = Math.min(bounds.minZ, cell.cellZ)
+      bounds.maxZ = Math.max(bounds.maxZ, cell.cellZ)
+      clusters.set(cluster, bounds)
+    }
+    for (const bounds of clusters.values()) {
+      const width = (bounds.maxX - bounds.minX + 1) * WORLD_CELL_SIZE - 8.5
+      const depth = (bounds.maxZ - bounds.minZ + 1) * WORLD_CELL_SIZE - 8.5
+      position.set((bounds.minX + bounds.maxX + 1) * WORLD_CELL_SIZE * 0.5, 0.055, (bounds.minZ + bounds.maxZ + 1) * WORLD_CELL_SIZE * 0.5)
+      scale.set(width, depth, 1)
       matrix.compose(position, rotation, scale)
       mesh.setMatrixAt(slot, matrix)
       slot += 1
@@ -1382,7 +1405,10 @@ function roofStructureGeometry(variant: number) {
 
 const roofStructureGeometries = Array.from({ length: ROOF_STRUCTURE_VARIANTS }, (_, index) => roofStructureGeometry(index))
 
-const ROOF_STRUCTURE_MIN_HEIGHT = 14
+// Low-rise roofs (including the rare mega-mart/hotel) now carry the same
+// compact prop kit; the extra silhouette detail matters most from the top-down
+// camera and costs no additional pool beyond the four existing variants.
+const ROOF_STRUCTURE_MIN_HEIGHT = 10
 
 function RoofStructurePool({ variant }: { variant: number }) {
   const { runtime } = useGame()
@@ -1490,7 +1516,7 @@ function RuinPool() {
     <group>
       {RUIN_TIERS.map((tier, index) => (
         <instancedMesh key={tier} ref={refs[index]} args={[ruinGeometries[index], undefined, WORLD_MAX_BUILDINGS]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }}>
-          <meshToonMaterial gradientMap={toonGradient} />
+          <meshToonMaterial gradientMap={toonGradient} vertexColors />
         </instancedMesh>
       ))}
     </group>

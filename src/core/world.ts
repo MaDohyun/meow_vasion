@@ -27,11 +27,13 @@ export const BUILDING_STYLES = [
   { color: '#efd29b', roof: '#d9a879' },
   { color: '#e4a5bc', roof: '#be829f' },
   { color: '#a4d1e2', roof: '#7daabd' },
+  { color: '#e2b36f', roof: '#b97d50' },
 ] as const
 
 export const BUILDING_SIGN_LABELS = [
   'RAMEN', 'HOTEL', 'ARCADE', 'CAFE 24', 'MARKET',
   'DINER', 'VIDEO', 'SKY', 'CLINIC', 'DEPOT',
+  'MEGA MART',
 ] as const
 
 export const BUILDING_SIGN_COLORS = ['#ffe66b', '#ff7bbf', '#78ffcf', '#ffdb5d', '#81ffd1'] as const
@@ -93,6 +95,8 @@ export type ProceduralBuilding = {
   /** Roof slab proportions, so the cornice line is not identical everywhere. */
   roofOverhang: number
   roofThickness: number
+  /** A rare low, wide anchor building that breaks up the repeated towers. */
+  largeFootprint?: boolean
 }
 
 export type ProceduralCar = {
@@ -187,6 +191,13 @@ export function lakeClusterForCell(cellX: number, cellZ: number) {
   return member ? `lake:${sectorX}:${sectorZ}` : null
 }
 
+/** Adjacent cells in one landmark cluster do not need an internal road seam. */
+export function sameLandmarkCluster(aX: number, aZ: number, bX: number, bZ: number) {
+  if (isTutorialCell(aX, aZ) && isTutorialCell(bX, bZ)) return true
+  const left = lakeClusterForCell(aX, aZ)
+  return left !== null && left === lakeClusterForCell(bX, bZ)
+}
+
 export function isLakeAt(position: Pick<Vec3, 'x' | 'z'>) {
   return lakeClusterForCell(worldCellCoord(position.x), worldCellCoord(position.z)) !== null
 }
@@ -213,26 +224,29 @@ export function getProceduralCell(cellX: number, cellZ: number, worldSeed = WORL
   const ground = lake ? 'pond' : groundVariants[Math.floor(saltedUnit(seed, 19) * groundVariants.length)] ?? 'vacant'
 
   if (kind === 'building') {
-    const styleIndex = (seed >>> 8) % BUILDING_STYLES.length
+    const largeFootprint = seed % 100 < 3
+    const styleIndex = largeFootprint ? BUILDING_STYLES.length - 1 : (seed >>> 8) % (BUILDING_STYLES.length - 1)
     const style = BUILDING_STYLES[styleIndex]!
-    const sizeX = 16 + saltedUnit(seed, 1) * 6
-    const sizeZ = 16 + saltedUnit(seed, 2) * 6
+    const sizeX = largeFootprint ? 23.5 + saltedUnit(seed, 1) * 1.2 : 16 + saltedUnit(seed, 1) * 6
+    const sizeZ = largeFootprint ? 23.5 + saltedUnit(seed, 2) * 1.2 : 16 + saltedUnit(seed, 2) * 6
     const heightBand = saltedUnit(seed, 3)
     const heightVariation = saltedUnit(seed, 4)
-    const sizeY = heightBand < 0.6
-      ? 7 + heightVariation * 13
-      : heightBand < 0.9
-        ? 20 + heightVariation * 20
-        : heightBand < 0.98
-          ? 40 + heightVariation * 25
-          : 65 + heightVariation * 25
+    const sizeY = largeFootprint
+      ? 10 + heightVariation * 5
+      : heightBand < 0.6
+        ? 7 + heightVariation * 13
+        : heightBand < 0.9
+          ? 20 + heightVariation * 20
+          : heightBand < 0.98
+            ? 40 + heightVariation * 25
+            : 65 + heightVariation * 25
     const roadInset = 4.5
     const minX = cellX * WORLD_CELL_SIZE + roadInset + sizeX / 2
     const maxX = (cellX + 1) * WORLD_CELL_SIZE - roadInset - sizeX / 2
     const minZ = cellZ * WORLD_CELL_SIZE + roadInset + sizeZ / 2
     const maxZ = (cellZ + 1) * WORLD_CELL_SIZE - roadInset - sizeZ / 2
-    const desiredX = centerX + (saltedUnit(seed, 5) - 0.5) * 9
-    const desiredZ = centerZ + (saltedUnit(seed, 6) - 0.5) * 9
+    const desiredX = centerX + (saltedUnit(seed, 5) - 0.5) * (largeFootprint ? 5 : 15)
+    const desiredZ = centerZ + (saltedUnit(seed, 6) - 0.5) * (largeFootprint ? 5 : 15)
     // A podium needs a building tall enough to have something above it, and a
     // setback needs enough height for the step to be visible rather than a lip.
     const formRoll = saltedUnit(seed, 31)
@@ -254,7 +268,7 @@ export function getProceduralCell(cellX: number, cellZ: number, worldSeed = WORL
       color: style.color,
       roof: style.roof,
       sign: {
-        text: BUILDING_SIGN_LABELS[(seed >>> 19) % BUILDING_SIGN_LABELS.length]!,
+        text: largeFootprint ? 'MEGA MART' : BUILDING_SIGN_LABELS[(seed >>> 19) % (BUILDING_SIGN_LABELS.length - 1)]!,
         color: BUILDING_SIGN_COLORS[(seed >>> 23) % BUILDING_SIGN_COLORS.length]!,
         side: (seed & 0x40000000) === 0 ? 'z' : 'x',
       },
@@ -264,6 +278,7 @@ export function getProceduralCell(cellX: number, cellZ: number, worldSeed = WORL
       form,
       roofOverhang: 0.87 + saltedUnit(seed, 33) * 0.17,
       roofThickness: 0.5 + saltedUnit(seed, 35) * 0.75,
+      largeFootprint,
     }
     return { id, cellX, cellZ, seed, kind, ground, building }
   }
