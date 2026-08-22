@@ -206,13 +206,9 @@ button { font: inherit; }
 @keyframes breaking-in-flat { 0% { opacity:0; transform:translateY(64px); } 100% { opacity:1; transform:translateY(0); } }
 @keyframes breaking-out-flat { 0% { opacity:1; transform:translateY(0); } 100% { opacity:0; transform:translateY(64px); } }
 
-/* The same anchor as the one on the city's news screens, in the same colours,
-   so the words on the HUD and the face on the buildings read as one broadcast. */
-.breaking-anchor { position:relative; flex:0 0 74px; overflow:hidden; background:#1b2450; border-right:3px solid var(--cream); }
-.breaking-anchor i { position:absolute; left:50%; bottom:-16px; width:64px; height:42px; background:#2f3a63; border-radius:32px 32px 0 0; transform:translateX(-50%); }
-.breaking-anchor i::before { content:''; position:absolute; left:50%; top:-4px; width:22px; height:22px; background:#e7ecf7; transform:translateX(-50%) rotate(45deg); }
-.breaking-anchor i::after { content:''; position:absolute; left:50%; top:6px; width:8px; height:24px; background:#ef5265; transform:translateX(-50%); }
-.breaking-anchor b { position:absolute; left:50%; bottom:22px; width:31px; height:36px; background:#e8b48c; border-radius:50%; box-shadow:inset 0 12px 0 -1px #2a2036; transform:translateX(-50%); }
+/* The same anchor as the one on the city's news screens, so the words on the
+   HUD and the face on the buildings read as one broadcast. */
+.breaking-anchor { flex:0 0 74px; align-self:stretch; background:#1b2450 url(/broadcast/anchor.png) center/cover; border-right:3px solid var(--cream); }
 
 .breaking-body { display:flex; flex:1; flex-direction:column; justify-content:center; min-width:0; padding:11px 15px 13px; }
 .breaking-head { display:flex; align-items:center; gap:9px; }
@@ -277,8 +273,6 @@ button { font: inherit; }
   .breaking-band[data-phase="opening"] { animation:breaking-in-flat .45s steps(4) both; }
   .breaking-band[data-phase="closing"] { animation:breaking-out-flat .55s steps(4) both; }
   .breaking-anchor { flex-basis:56px; }
-  .breaking-anchor i { width:48px; height:32px; bottom:-13px; border-radius:24px 24px 0 0; }
-  .breaking-anchor b { width:24px; height:28px; bottom:17px; box-shadow:inset 0 9px 0 -1px #2a2036; }
   .breaking-body { padding:8px 11px 10px; }
   .breaking-head strong { font-size:10px; }
   .breaking-body p { margin-top:7px; font-size:9px; line-height:1.6; }

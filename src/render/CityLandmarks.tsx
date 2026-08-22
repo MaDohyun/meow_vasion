@@ -21,6 +21,12 @@ import {
   WORLD_MAX_BUILDINGS,
 } from '../core/world'
 
+// The news anchor is the player-supplied portrait (public/broadcast/anchor.png),
+// not code-drawn - see drawAnchor below. Loaded once at module scope since
+// every news tower screen shares the one texture already.
+const anchorImage = new Image()
+anchorImage.src = '/broadcast/anchor.png'
+
 const LANDMARK_RADIUS_CELLS = 6
 const LANDMARK_CELL_COUNT = (LANDMARK_RADIUS_CELLS * 2 + 1) ** 2
 const PARK_TREE_COUNT = 3
@@ -208,66 +214,23 @@ function drawUfoFootage(
   context.restore()
 }
 
-/** Head and shoulders, lower left. Silhouette only - features would fight the
- *  pixel scale this is seen at. */
-function drawAnchor(context: CanvasRenderingContext2D, width: number, height: number, time: number, talking = false) {
+/**
+ * Head and shoulders, lower left - the reference photo drawn straight in.
+ * A live photo cannot blink or open its mouth the way the old silhouette
+ * drawing did, so this keeps only the sway: enough that the screen still
+ * reads as live video rather than a poster, without inventing motion the
+ * source art does not have.
+ */
+function drawAnchor(context: CanvasRenderingContext2D, width: number, height: number, time: number, _talking = false) {
+  if (!anchorImage.complete || anchorImage.naturalWidth === 0) return
   const sway = Math.sin(time * 0.9) * width * 0.006
-  // Reading the news is more animated than sitting through a quiet segment.
-  const nod = Math.sin(time * (talking ? 3.4 : 1.4)) * height * (talking ? 0.008 : 0.004)
   const cx = width * 0.3 + sway
   // Shoulders have to clear the caption bar - 0.74 normally, 0.715 while a
-  // bulletin is on air - or only a floating head shows above it and the figure
-  // stops reading as a person at a desk.
+  // bulletin is on air - or the figure gets swallowed by it.
   const shoulderY = height * 0.72
-  context.save()
-
-  // Shoulders, cut off by the caption bar. Dark against the light set - on the
-  // old navy backdrop the suit was nearly the backdrop's own value.
-  context.fillStyle = '#2b3357'
-  context.beginPath()
-  context.ellipse(cx, shoulderY, width * 0.235, height * 0.2, 0, Math.PI, Math.PI * 2)
-  context.fill()
-  // Collar and tie, which is most of what says "presenter".
-  context.fillStyle = '#e7ecf7'
-  context.beginPath()
-  context.moveTo(cx - width * 0.062, shoulderY - height * 0.115)
-  context.lineTo(cx, shoulderY - height * 0.01)
-  context.lineTo(cx + width * 0.062, shoulderY - height * 0.115)
-  context.closePath()
-  context.fill()
-  context.fillStyle = '#ef5265'
-  context.fillRect(cx - width * 0.013, shoulderY - height * 0.1, width * 0.026, height * 0.1)
-
-  // Head.
-  const headY = shoulderY - height * 0.185 + nod
-  context.fillStyle = '#e8b48c'
-  context.beginPath()
-  context.ellipse(cx, headY, width * 0.085, height * 0.105, 0, 0, Math.PI * 2)
-  context.fill()
-  context.fillStyle = '#2a2036'
-  context.beginPath()
-  context.ellipse(cx, headY - height * 0.05, width * 0.092, height * 0.066, 0, Math.PI, Math.PI * 2)
-  context.fill()
-  // Eyes close briefly on a slow cycle, which is what keeps it from reading as
-  // a still image.
-  const blink = Math.sin(time * 0.7) > 0.965 ? 0.18 : 1
-  context.fillStyle = '#2a2036'
-  for (const side of [-1, 1]) {
-    context.beginPath()
-    context.ellipse(cx + side * width * 0.031, headY + height * 0.005, width * 0.011, height * 0.014 * blink, 0, 0, Math.PI * 2)
-    context.fill()
-  }
-  // A mouth only while reading a bulletin. The rest of the time the face is a
-  // silhouette, and a permanently drawn mouth at this pixel scale reads as a
-  // smudge rather than as a feature.
-  if (talking) {
-    const open = 0.35 + (0.5 + Math.sin(time * 13) * 0.5) * 0.65
-    context.fillStyle = '#7a3f45'
-    context.beginPath()
-    context.ellipse(cx, headY + height * 0.05, width * 0.019, height * 0.016 * open, 0, 0, Math.PI * 2)
-    context.fill()
-  }
-  context.restore()
+  const bustW = width * 0.46
+  const bustH = bustW * (anchorImage.naturalHeight / anchorImage.naturalWidth)
+  context.drawImage(anchorImage, cx - bustW / 2, shoulderY - bustH * 0.94, bustW, bustH)
 }
 
 const ufoWarningTexture = canvasTexture((context, width, height) => drawUfoNewsFrame(context, width, height, 0), 512, 512)

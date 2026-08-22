@@ -14,7 +14,7 @@ const formatTime = (seconds: number) => {
 }
 
 const MISSION_COPY: Record<MissionQuestId, string> = {
-  'capture-cats': '고양이 포획! (실험체가 더 필요해)',
+  'capture-cats': '동포 고양이 구출! (아직 지구에 남은 동료가 있어)',
   'capture-people': '지구인 표본 챙기기',
   'destroy-cars': '승용차를 깡통으로 만들기',
   'destroy-trucks': '트럭 해체 쇼',
@@ -36,8 +36,8 @@ function MissionPanel() {
     return (
       <section className="mission-panel panel tutorial-mission">
         <span className="eyebrow">장군의 첫 무전</span>
-        <strong>“대원, 공원 고양이부터 빨아들여 봐.”</strong>
-        <p><b>E</b> 트랙터 빔으로 고양이 포획</p>
+        <strong>“대원, 공원에 남은 동포 고양이부터 구출해 봐.”</strong>
+        <p><b>E</b> 트랙터 빔으로 고양이 구출</p>
       </section>
     )
   }
@@ -262,7 +262,7 @@ function BreakingNews() {
   const phase = broadcastPhase(snapshot.broadcastRemaining)
   return (
     <aside className="breaking-band" data-phase={phase} role="status" aria-live="polite">
-      <div className="breaking-anchor" aria-hidden="true"><i /><b /></div>
+      <div className="breaking-anchor" aria-hidden="true" />
       <div className="breaking-body">
         <div className="breaking-head">
           <span className="breaking-flag">{t.breakingFlag}</span>
