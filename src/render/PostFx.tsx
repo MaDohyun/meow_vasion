@@ -1,7 +1,6 @@
 import { useFrame, useThree } from '@react-three/fiber'
 import { useEffect, useMemo } from 'react'
 import * as THREE from 'three'
-import { useGame } from '../GameContext'
 import type { HealthLossKind } from '../core/health'
 
 const vertexShader = `
@@ -15,16 +14,22 @@ const vertexShader = `
 // A single, soft comfort pass. It deliberately avoids motion blur, chromatic
 // aberration, speed lines and hard flashes: all four make a fast 3D game more
 // tiring to track even when the underlying camera is stable.
+//
+// This pass used to also carry a depth-texture edge outline and a
+// camera-projected light-shaft effect. Both were reverted: the light shaft
+// projected a fixed-world-bearing point that regularly landed behind the
+// camera, and the depth texture attachment had to be kept in lockstep with
+// the render target by hand on every resize. Both kept reproducing as
+// screen corruption ("static") on hardware this sandbox's software renderer
+// doesn't share, across two rounds of targeted fixes - simple bloom/vignette
+// carries no such risk, so that is what stays.
 const fragmentShader = `
   uniform sampler2D tDiffuse;
-  uniform sampler2D tDepth;
   uniform sampler2D tSplashLight;
   uniform sampler2D tSplashGuided;
   uniform sampler2D tSplashExplosive;
   uniform sampler2D tSplashImpact;
   uniform vec2 texel;
-  uniform vec2 sunPosition;
-  uniform float sunOpacity;
   uniform float speed;
   uniform float impact;
   uniform float bloom;
@@ -64,27 +69,6 @@ const fragmentShader = `
     return sum / (quality > 0.5 ? 16.0 : 8.0);
   }
 
-  float depthEdge(vec2 uv) {
-    float center = texture2D(tDepth, uv).r;
-    if (center > 0.9999) return 0.0;
-    float left = texture2D(tDepth, uv - vec2(texel.x, 0.0)).r;
-    float right = texture2D(tDepth, uv + vec2(texel.x, 0.0)).r;
-    float down = texture2D(tDepth, uv - vec2(0.0, texel.y)).r;
-    float up = texture2D(tDepth, uv + vec2(0.0, texel.y)).r;
-    return abs(center - left) + abs(center - right) + abs(center - down) + abs(center - up);
-  }
-
-  vec3 gatherShafts(vec2 uv) {
-    vec3 sum = vec3(0.0);
-    vec2 towardSun = sunPosition - uv;
-    for (int i = 1; i <= 6; i++) {
-      float stepAmount = float(i) / 6.0;
-      vec2 sampleUv = uv + towardSun * stepAmount * 0.34;
-      sum += brightPass(sampleUv) * (1.0 - stepAmount * 0.65);
-    }
-    return sum / 6.0;
-  }
-
   vec4 splashTexture(vec2 uv) {
     if (splashKind < 0.5) return texture2D(tSplashLight, uv);
     if (splashKind < 1.5) return texture2D(tSplashGuided, uv);
@@ -96,10 +80,7 @@ const fragmentShader = `
     vec2 centered = vUv - 0.5;
     float radius = length(centered);
     vec3 color = texture2D(tDiffuse, vUv).rgb;
-    float edge = smoothstep(0.004, 0.035, depthEdge(vUv));
-    color = mix(color, vec3(0.08, 0.07, 0.13), edge * 0.32);
     color += gatherBloom(vUv) * bloom;
-    color += gatherShafts(vUv) * sunOpacity * 0.14;
     float luma = dot(color, vec3(0.2126, 0.7152, 0.0722));
     color = mix(vec3(luma), color, 0.84);
     color = pow(max(color, 0.0), vec3(0.84));
@@ -160,42 +141,29 @@ function splashIndex(kind: HealthLossKind) {
 }
 
 export function PostFx({ speed, impact, impactKind, quality }: { speed: number; impact: number; impactKind: HealthLossKind; quality: RenderQuality }) {
-  const { runtime } = useGame()
   const { gl, scene, camera, size } = useThree()
-  const sunWorld = useMemo(() => new THREE.Vector3(), [])
-  const sunViewSpace = useMemo(() => new THREE.Vector3(), [])
   const splashTextures = useMemo(() => ({
     light: splashTexture('light'),
     guided: splashTexture('guided'),
     explosive: splashTexture('explosive'),
     impact: splashTexture('impact'),
   }), [])
-  const depthTexture = useMemo(() => {
-    const depth = new THREE.DepthTexture(640, 360)
-    depth.type = THREE.UnsignedShortType
-    depth.format = THREE.DepthFormat
-    return depth
-  }, [])
   const target = useMemo(() => new THREE.WebGLRenderTarget(640, 360, {
     minFilter: THREE.LinearFilter,
     magFilter: THREE.LinearFilter,
     depthBuffer: true,
-    depthTexture,
-  }), [depthTexture])
+  }), [])
   const post = useMemo(() => {
     const postScene = new THREE.Scene()
     const postCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1)
     const material = new THREE.ShaderMaterial({
       uniforms: {
         tDiffuse: { value: target.texture },
-        tDepth: { value: depthTexture },
         tSplashLight: { value: splashTextures.light },
         tSplashGuided: { value: splashTextures.guided },
         tSplashExplosive: { value: splashTextures.explosive },
         tSplashImpact: { value: splashTextures.impact },
         texel: { value: new THREE.Vector2(1 / 640, 1 / 360) },
-        sunPosition: { value: new THREE.Vector2(0.72, 0.78) },
-        sunOpacity: { value: 0 },
         speed: { value: 0 },
         impact: { value: 0 },
         bloom: { value: 1 },
@@ -207,76 +175,29 @@ export function PostFx({ speed, impact, impactKind, quality }: { speed: number; 
     })
     postScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material))
     return { postScene, postCamera, material }
-  }, [depthTexture, splashTextures, target])
+  }, [splashTextures, target])
 
   useEffect(() => () => {
     target.dispose()
     post.material.dispose()
-    depthTexture.dispose()
     splashTextures.light.dispose()
     splashTextures.guided.dispose()
     splashTextures.explosive.dispose()
     splashTextures.impact.dispose()
-  }, [depthTexture, post.material, splashTextures, target])
+  }, [post.material, splashTextures, target])
 
   useEffect(() => {
     const aspect = size.width / Math.max(1, size.height)
     // Low quality drops the internal buffer as well as the bloom taps, which is
     // where most of the fill-rate saving actually comes from.
-    // A compact internal buffer keeps the fixed-depth/outline pass affordable
-    // on integrated GPUs; the final canvas still presents at full viewport
-    // resolution and the six-tap shafts retain their soft silhouette.
     const longEdge = (aspect >= 1 ? 512 : 360) * (quality === 'high' ? 1 : 0.7)
     const width = aspect >= 1 ? longEdge : Math.max(190, Math.round(longEdge * aspect))
     const height = aspect >= 1 ? Math.max(240, Math.round(longEdge / aspect)) : longEdge
-    const targetWidth = Math.round(width)
-    const targetHeight = Math.round(height)
-    target.setSize(targetWidth, targetHeight)
-    // WebGLRenderTarget.setSize resizes the colour attachment but leaves an
-    // explicitly attached DepthTexture at whatever size it was created with.
-    // Once the two attachments disagree the framebuffer is incomplete, and
-    // the result (garbled colour, or specific draws falling back to flat
-    // white with no depth test) changes with every resize - exactly the
-    // "screen looks corrupted whenever the window changes" symptom. The
-    // depth texture has to be kept in lockstep by hand.
-    depthTexture.image.width = targetWidth
-    depthTexture.image.height = targetHeight
-    depthTexture.needsUpdate = true
-    post.material.uniforms.texel!.value.set(1 / targetWidth, 1 / targetHeight)
-  }, [depthTexture, post.material, quality, size.height, size.width, target])
+    target.setSize(Math.round(width), Math.round(height))
+    post.material.uniforms.texel!.value.set(1 / Math.round(width), 1 / Math.round(height))
+  }, [post.material, quality, size.height, size.width, target])
 
   useFrame(() => {
-    const sample = runtime.current.daylight
-    const altitude = sample.sunOpacity >= sample.moonOpacity ? sample.sunAltitude : sample.moonAltitude
-    const side = sample.sunOpacity >= sample.moonOpacity ? -1 : 1
-    sunWorld.set(
-      camera.position.x + Math.cos(altitude) * 330 * side,
-      Math.sin(altitude) * 330,
-      camera.position.z - 330 * 0.55,
-    )
-    // The light source sits at a fixed world bearing, not one relative to
-    // where the camera is looking - as the craft turns, that point swings
-    // behind the camera on every ordinary heading change. Vector3.project()
-    // does not clip that case: a point behind the camera divides by a
-    // near-zero or negative w and comes back at an extreme or sign-flipped
-    // screen position, which is exactly what a "corrupts whenever you move"
-    // symptom looks like once it lands in a texture-sampling shader. Check
-    // the view-space depth before trusting the projection, and drop the
-    // shaft contribution to zero for the frame instead of feeding it a
-    // point that was never in view.
-    sunViewSpace.copy(sunWorld).applyMatrix4(camera.matrixWorldInverse)
-    const sunInFrontOfCamera = sunViewSpace.z < 0
-    sunWorld.project(camera)
-    const rawSunOpacity = sample.sunOpacity * 0.76 + sample.moonOpacity * 0.1
-    if (sunInFrontOfCamera && Number.isFinite(sunWorld.x) && Number.isFinite(sunWorld.y)) {
-      post.material.uniforms.sunPosition!.value.set(
-        THREE.MathUtils.clamp(sunWorld.x * 0.5 + 0.5, -1, 2),
-        THREE.MathUtils.clamp(sunWorld.y * 0.5 + 0.5, -1, 2),
-      )
-      post.material.uniforms.sunOpacity!.value = rawSunOpacity
-    } else {
-      post.material.uniforms.sunOpacity!.value = 0
-    }
     post.material.uniforms.speed!.value = 0
     post.material.uniforms.impact!.value = impact
     post.material.uniforms.quality!.value = quality === 'high' ? 1 : 0
