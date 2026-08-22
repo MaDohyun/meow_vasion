@@ -188,11 +188,17 @@ export function PostFx({ speed, impact, impactKind, quality }: { speed: number; 
 
   useEffect(() => {
     const aspect = size.width / Math.max(1, size.height)
-    // Low quality drops the internal buffer as well as the bloom taps, which is
-    // where most of the fill-rate saving actually comes from.
-    const longEdge = (aspect >= 1 ? 512 : 360) * (quality === 'high' ? 1 : 0.7)
-    const width = aspect >= 1 ? longEdge : Math.max(190, Math.round(longEdge * aspect))
-    const height = aspect >= 1 ? Math.max(240, Math.round(longEdge / aspect)) : longEdge
+    // The internal buffer used to be capped at a fixed ~512px long edge
+    // regardless of the actual window size, so on anything past a small
+    // laptop viewport the post pass was upscaling a much smaller image than
+    // the canvas it filled - the "everything is blurry" symptom. Matching
+    // the cap to the real viewport (still capped, so a huge/high-DPI window
+    // does not push fill-rate back to full native res) keeps typical windows
+    // rendering at their own resolution instead of a fixed low one.
+    const cap = quality === 'high' ? 1600 : 1100
+    const longEdge = Math.min(cap, aspect >= 1 ? size.width : size.height)
+    const width = aspect >= 1 ? longEdge : Math.max(320, Math.round(longEdge * aspect))
+    const height = aspect >= 1 ? Math.max(320, Math.round(longEdge / aspect)) : longEdge
     target.setSize(Math.round(width), Math.round(height))
     post.material.uniforms.texel!.value.set(1 / Math.round(width), 1 / Math.round(height))
   }, [post.material, quality, size.height, size.width, target])

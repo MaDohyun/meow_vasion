@@ -502,7 +502,12 @@ function GroundBase() {
 }
 
 const lotMaterial = (() => {
-  const material = new THREE.MeshToonMaterial({ color: '#ffffff', map: lotTexture, gradientMap: toonGradient, vertexColors: true })
+  // No vertexColors: this plane geometry carries no per-vertex colour
+  // attribute, and turning the flag on makes the shader multiply by one that
+  // isn't there - every lot came out solid black instead of tinted. Instance
+  // tinting from setColorAt below works on its own; see RoofStructurePool
+  // for the same pitfall documented in more detail.
+  const material = new THREE.MeshToonMaterial({ color: '#ffffff', map: lotTexture, gradientMap: toonGradient })
   cityDaylightMaterials.lot = material
   return material
 })()
@@ -1258,7 +1263,10 @@ function StreetLightPool() {
 }
 
 const beaconMaterial = (() => {
-  const material = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 1, toneMapped: false })
+  // No vertexColors - same pitfall as the lot/ruin materials above: this
+  // sphere geometry carries no per-vertex colour attribute, so the flag
+  // would zero out the pulsing setColorAt tint instead of applying it.
+  const material = new THREE.MeshBasicMaterial({ transparent: true, opacity: 1, toneMapped: false })
   cityDaylightMaterials.beacon = material
   return material
 })()
@@ -1524,7 +1532,11 @@ function RuinPool() {
     <group>
       {RUIN_TIERS.map((tier, index) => (
         <instancedMesh key={tier} ref={refs[index]} args={[ruinGeometries[index], undefined, WORLD_MAX_BUILDINGS]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }}>
-          <meshToonMaterial gradientMap={toonGradient} vertexColors />
+          {/* No vertexColors - same pitfall as RoofStructurePool below: these
+              merged box geometries carry no per-vertex colour attribute, so
+              the flag zeroes the shader's colour instead of tinting it.
+              setColorAt's instance colour applies on its own. */}
+          <meshToonMaterial gradientMap={toonGradient} />
         </instancedMesh>
       ))}
     </group>
