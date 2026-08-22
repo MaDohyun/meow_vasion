@@ -6,6 +6,7 @@ let laserLoadFailed = false
 let lobbyMusic: HTMLAudioElement | null = null
 let gameplayMusic: HTMLAudioElement | null = null
 let beamSound: HTMLAudioElement | null = null
+let boosterSound: HTMLAudioElement | null = null
 let gameplayFadeFrame: number | null = null
 
 const GAMEPLAY_MUSIC_START_VOLUME = 0.025
@@ -46,12 +47,23 @@ function gameplayTrack() {
 function beamTrack() {
   if (typeof Audio === 'undefined') return null
   if (!beamSound) {
-    beamSound = new Audio('/audio/ufo-beam.wav')
+    beamSound = new Audio('/audio/ufo-beam.mp3')
     beamSound.loop = true
     beamSound.preload = 'auto'
-    beamSound.volume = 0.42
+    beamSound.volume = 0.2
   }
   return beamSound
+}
+
+function boosterTrack() {
+  if (typeof Audio === 'undefined') return null
+  if (!boosterSound) {
+    boosterSound = new Audio('/audio/ufo-booster.wav')
+    boosterSound.loop = false
+    boosterSound.preload = 'auto'
+    boosterSound.volume = 0.4
+  }
+  return boosterSound
 }
 
 /** Best effort on initial load; browsers that block autoplay retry on the
@@ -118,6 +130,14 @@ export function stopBeamSound() {
   beamSound.currentTime = 0
 }
 
+/** Play the booster sample once for each fresh boost activation. */
+export function playBoosterSound() {
+  const track = boosterTrack()
+  if (!track) return
+  track.currentTime = 0
+  void track.play().catch(() => undefined)
+}
+
 export function unlockAudio() {
   if (!context) context = new AudioContext()
   if (context.state === 'suspended') void context.resume()
@@ -159,7 +179,7 @@ export function playLaserSound() {
   source.buffer = laserBuffer
   // Laser sits above the deliberately restrained music bed, while still
   // leaving enough headroom for rapid-fire overlap.
-  gain.gain.setValueAtTime(0.52, context.currentTime)
+  gain.gain.setValueAtTime(0.92, context.currentTime)
   gain.gain.exponentialRampToValueAtTime(0.001, context.currentTime + Math.min(0.42, laserBuffer.duration))
   source.connect(gain)
   gain.connect(context.destination)

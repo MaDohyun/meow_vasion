@@ -63,7 +63,7 @@ import { stepLakeAbsorption } from './core/lakes'
 import { createMissionState, missionHasQuest, recordMissionEvent, startMissionOne, syncMissionState, type MissionQuest, type MissionState } from './core/missions'
 import { absorbShieldDamage, createShieldState, isShieldRegenerating, setShieldCapacity, shieldRatio, stepShield, type ShieldState } from './core/shield'
 import { shouldCrashFromOverload } from './core/overload'
-import { playLaserSound, startBeamSound, startGameplayMusic, stopBeamSound, stopGameplayMusic, stopLobbyMusic, tone, unlockAudio } from './audio'
+import { playBoosterSound, playLaserSound, startBeamSound, startGameplayMusic, stopBeamSound, stopGameplayMusic, stopLobbyMusic, tone, unlockAudio } from './audio'
 
 export type GamePhase = 'intro' | 'playing' | 'upgrade' | 'results'
 
@@ -113,6 +113,7 @@ export type GameRuntime = {
   beamTargetId: string | null
   laserActive: boolean
   laserInputHeld: boolean
+  boostInputHeld: boolean
   dropInputHeld: boolean
   laserFlash: number
   laserCooldown: number
@@ -411,6 +412,7 @@ function makeRuntime(): GameRuntime {
     beamTargetId: null,
     laserActive: false,
     laserInputHeld: false,
+    boostInputHeld: false,
     dropInputHeld: false,
     laserFlash: 0,
     laserCooldown: 0,
@@ -1276,8 +1278,11 @@ export function GameProvider({ children }: { children: ReactNode }) {
       dropCars(game)
       game.dumpLockout = DUMP_LOCKOUT
     }
+    const boostPressed = input.special && !game.boostInputHeld
+    game.boostInputHeld = input.special
     const turboActive = input.special && game.turbo > 0.02
     if (turboActive) {
+      if (boostPressed) playBoosterSound()
       if (game.drone.boostRemaining <= 0) { setMessage(game, 'msgTurbo', 1.2); tone('upgrade') }
       const duration = 5 + upgradeBonus(game.upgrades, 'turbo-capacity')
       game.turbo = Math.max(0, game.turbo - d / duration)
