@@ -685,22 +685,26 @@ function WaterPool() {
     if (lastKey.current === key) return
     lastKey.current = key
     let slot = 0
-    const clusters = new Map<string, { minX: number; maxX: number; minZ: number; maxZ: number }>()
+    // One tile per actual lake cell, not the cluster's bounding box - a
+    // bounding box fills in corners an L-shaped cluster never claims, and
+    // flattens the four-in-a-row shape into a long rectangle that reads as a
+    // river instead of a lake. Each tile keeps the usual margin on any edge
+    // that faces open ground, but drops to zero on edges that face another
+    // cell in the same cluster, so neighbouring tiles butt up with no seam.
+    const margin = 4.25
     for (const cell of groundCellsAround(runtime.current.drone.position)) {
-      const cluster = lakeClusterForCell(cell.cellX, cell.cellZ)
-      if (!cluster) continue
-      const bounds = clusters.get(cluster) ?? { minX: cell.cellX, maxX: cell.cellX, minZ: cell.cellZ, maxZ: cell.cellZ }
-      bounds.minX = Math.min(bounds.minX, cell.cellX)
-      bounds.maxX = Math.max(bounds.maxX, cell.cellX)
-      bounds.minZ = Math.min(bounds.minZ, cell.cellZ)
-      bounds.maxZ = Math.max(bounds.maxZ, cell.cellZ)
-      clusters.set(cluster, bounds)
-    }
-    for (const bounds of clusters.values()) {
-      const width = (bounds.maxX - bounds.minX + 1) * WORLD_CELL_SIZE - 8.5
-      const depth = (bounds.maxZ - bounds.minZ + 1) * WORLD_CELL_SIZE - 8.5
-      position.set((bounds.minX + bounds.maxX + 1) * WORLD_CELL_SIZE * 0.5, 0.055, (bounds.minZ + bounds.maxZ + 1) * WORLD_CELL_SIZE * 0.5)
-      scale.set(width, depth, 1)
+      if (!lakeClusterForCell(cell.cellX, cell.cellZ)) continue
+      if (slot >= GROUND_CELL_COUNT) break
+      const westOpen = !sameLandmarkCluster(cell.cellX, cell.cellZ, cell.cellX - 1, cell.cellZ)
+      const eastOpen = !sameLandmarkCluster(cell.cellX, cell.cellZ, cell.cellX + 1, cell.cellZ)
+      const southOpen = !sameLandmarkCluster(cell.cellX, cell.cellZ, cell.cellX, cell.cellZ - 1)
+      const northOpen = !sameLandmarkCluster(cell.cellX, cell.cellZ, cell.cellX, cell.cellZ + 1)
+      const minX = cell.cellX * WORLD_CELL_SIZE + (westOpen ? margin : 0)
+      const maxX = (cell.cellX + 1) * WORLD_CELL_SIZE - (eastOpen ? margin : 0)
+      const minZ = cell.cellZ * WORLD_CELL_SIZE + (southOpen ? margin : 0)
+      const maxZ = (cell.cellZ + 1) * WORLD_CELL_SIZE - (northOpen ? margin : 0)
+      position.set((minX + maxX) * 0.5, 0.055, (minZ + maxZ) * 0.5)
+      scale.set(maxX - minX, maxZ - minZ, 1)
       matrix.compose(position, rotation, scale)
       mesh.setMatrixAt(slot, matrix)
       slot += 1

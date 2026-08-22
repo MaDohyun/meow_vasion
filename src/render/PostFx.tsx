@@ -228,9 +228,21 @@ export function PostFx({ speed, impact, impactKind, quality }: { speed: number; 
     const longEdge = (aspect >= 1 ? 512 : 360) * (quality === 'high' ? 1 : 0.7)
     const width = aspect >= 1 ? longEdge : Math.max(190, Math.round(longEdge * aspect))
     const height = aspect >= 1 ? Math.max(240, Math.round(longEdge / aspect)) : longEdge
-    target.setSize(Math.round(width), Math.round(height))
-    post.material.uniforms.texel!.value.set(1 / Math.round(width), 1 / Math.round(height))
-  }, [post.material, quality, size.height, size.width, target])
+    const targetWidth = Math.round(width)
+    const targetHeight = Math.round(height)
+    target.setSize(targetWidth, targetHeight)
+    // WebGLRenderTarget.setSize resizes the colour attachment but leaves an
+    // explicitly attached DepthTexture at whatever size it was created with.
+    // Once the two attachments disagree the framebuffer is incomplete, and
+    // the result (garbled colour, or specific draws falling back to flat
+    // white with no depth test) changes with every resize - exactly the
+    // "screen looks corrupted whenever the window changes" symptom. The
+    // depth texture has to be kept in lockstep by hand.
+    depthTexture.image.width = targetWidth
+    depthTexture.image.height = targetHeight
+    depthTexture.needsUpdate = true
+    post.material.uniforms.texel!.value.set(1 / targetWidth, 1 / targetHeight)
+  }, [depthTexture, post.material, quality, size.height, size.width, target])
 
   useFrame(() => {
     const sample = runtime.current.daylight
