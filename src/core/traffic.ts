@@ -1,10 +1,11 @@
 import type { Vec3 } from './drone'
-import { PARKED_CAR_COLORS, WORLD_CELL_SIZE } from './world'
+import { isLakeAt, PARKED_CAR_COLORS, WORLD_CELL_SIZE } from './world'
 
 export const TRAFFIC_MAX_CARS = 32
-export const TRAFFIC_SPAWN_MIN_DISTANCE = 60
-export const TRAFFIC_SPAWN_MAX_DISTANCE = 140
-export const TRAFFIC_REMOVE_DISTANCE = 180
+export const TRAFFIC_SPAWN_MIN_DISTANCE = 22
+export const TRAFFIC_SPAWN_MAX_DISTANCE = 78
+export const TRAFFIC_REMOVE_DISTANCE = 115
+const TRAFFIC_SPAWN_INTERVAL = 0.08
 
 export type TrafficAxis = 'x' | 'z'
 
@@ -75,8 +76,14 @@ export function trafficCarIsVisible(carPosition: Vec3, view: TrafficView) {
   const forwardX = Math.sin(view.heading)
   const forwardZ = Math.cos(view.heading)
   const dot = (dx * forwardX + dz * forwardZ) / distance
-  const halfFov = (view.horizontalFov ?? 82) * Math.PI / 360
+  const halfFov = (view.horizontalFov ?? 118) * Math.PI / 360
   return dot >= Math.cos(halfFov) && Math.abs(carPosition.y - view.position.y) <= Math.max(18, distance * 0.8)
+}
+
+/** The same deterministic lake test used by the world surface keeps cars from
+ * continuing down a grid line after that line becomes water. */
+export function trafficPositionIsDriveable(position: Pick<Vec3, 'x' | 'z'>) {
+  return !isLakeAt(position)
 }
 
 function updateRotation(car: TrafficCar) {
@@ -89,9 +96,11 @@ function spawnTrafficCar(state: TrafficState, view: TrafficView) {
   const car = state.cars.find((item) => !item.active && !item.captured)
   if (!car) return false
 
-  for (let attempt = 0; attempt < 8; attempt += 1) {
+  for (let attempt = 0; attempt < 24; attempt += 1) {
     const distance = TRAFFIC_SPAWN_MIN_DISTANCE + random(state) * (TRAFFIC_SPAWN_MAX_DISTANCE - TRAFFIC_SPAWN_MIN_DISTANCE)
-    const angle = view.heading + Math.PI + (random(state) - 0.5) * 1.7
+    // Fill nearby roads in every direction. Very close in-view positions are
+    // still rejected so a car never blinks in directly in front of the UFO.
+    const angle = view.heading + (random(state) - 0.5) * Math.PI * 2
     const candidateX = view.position.x + Math.sin(angle) * distance
     const candidateZ = view.position.z + Math.cos(angle) * distance
     const axis: TrafficAxis = random(state) < 0.5 ? 'x' : 'z'
@@ -100,7 +109,8 @@ function spawnTrafficCar(state: TrafficState, view: TrafficView) {
     const position = axis === 'x'
       ? { x: candidateX, y: 0.65, z: Math.round(candidateZ / WORLD_CELL_SIZE) * WORLD_CELL_SIZE + laneOffset }
       : { x: Math.round(candidateX / WORLD_CELL_SIZE) * WORLD_CELL_SIZE + laneOffset, y: 0.65, z: candidateZ }
-    if (trafficCarIsVisible(position, view)) continue
+    if (!trafficPositionIsDriveable(position)) continue
+    if (!trafficCarIsVisible(position, view) || distance < 30) continue
     if (state.cars.some((other) => other.active && Math.hypot(other.position.x - position.x, other.position.z - position.z) < 5.5)) continue
 
     car.generation += 1
@@ -110,6 +120,9 @@ function spawnTrafficCar(state: TrafficState, view: TrafficView) {
     car.axis = axis
     car.direction = direction
     car.laneOffset = laneOffset
+    // These are traffic-pool cars, not parking props. Every slot enters an
+    // actual lane with a positive speed so nothing newly spawned on a road
+    // reads as a stalled vehicle.
     car.speed = 8 + random(state) * 6
     car.position = position
     car.color = PARKED_CAR_COLORS[Math.floor(random(state) * PARKED_CAR_COLORS.length)]!
@@ -146,16 +159,24 @@ export function stepTraffic(state: TrafficState, view: TrafficView, dt: number) 
     if (!car.active) continue
     const previousCoordinate = car.axis === 'x' ? car.position.x : car.position.z
     car.position[car.axis] += car.speed * car.direction * d
+    if (!trafficPositionIsDriveable(car.position)) {
+      car.active = false
+      continue
+    }
     driveThroughIntersection(state, car, previousCoordinate)
+    if (!trafficPositionIsDriveable(car.position)) {
+      car.active = false
+      continue
+    }
     const distance = Math.hypot(car.position.x - view.position.x, car.position.z - view.position.z)
     const visible = trafficCarIsVisible(car.position, view)
     car.wasVisible ||= visible
-    if (distance > TRAFFIC_REMOVE_DISTANCE || (car.wasVisible && !visible && distance > 90)) car.active = false
+    if (distance > TRAFFIC_REMOVE_DISTANCE || !visible) car.active = false
     if (car.active) activeCount += 1
   }
 
   if (state.spawnTimer <= 0 && activeCount < TRAFFIC_MAX_CARS) {
-    state.spawnTimer = spawnTrafficCar(state, view) ? 0.24 : 0.12
+    state.spawnTimer = spawnTrafficCar(state, view) ? TRAFFIC_SPAWN_INTERVAL : TRAFFIC_SPAWN_INTERVAL * 0.5
   }
   return state
 }

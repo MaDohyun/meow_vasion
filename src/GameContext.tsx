@@ -249,7 +249,7 @@ export type GameSnapshot = {
   pilotExpression: PilotExpression
 }
 
-export type PlayerInput = DroneInput & { beam: boolean; laser: boolean; drop: boolean }
+export type PlayerInput = DroneInput & { beam: boolean; laser: boolean; laserContinuous?: boolean; drop: boolean }
 type MobileInput = PlayerInput & { active: boolean }
 export type RenderQuality = 'high' | 'low'
 
@@ -1171,7 +1171,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
       vertical: 0,
       special: Boolean(keys.current.Space),
       beam: Boolean(keys.current.KeyE),
+      // E remains the tractor beam. Holding Q keeps the laser firing on its
+      // normal cooldown cadence instead of requiring repeated key presses.
       laser: Boolean(keys.current.KeyQ),
+      laserContinuous: Boolean(keys.current.KeyQ),
       drop: Boolean(keys.current.KeyR),
     }
     if (!mobile.current.active) return keyboard
@@ -1363,9 +1366,20 @@ export function GameProvider({ children }: { children: ReactNode }) {
     }
     if (collision.hit && collision.impulse > 2.5 && game.collisionCooldown <= 0) { game.collisionCooldown = 0.45; registerImpact(game, 'BUILDING') }
 
-    if (!tutorialAtStart) stepTraffic(game.traffic, { position: game.drone.position, heading: game.drone.heading }, d)
+    // The opening cat is still the tutorial target, but the city itself does
+    // not wait for it: people and moving road traffic are present from frame
+    // one rather than materialising only after the first absorption.
+    stepTraffic(game.traffic, { position: game.drone.position, heading: game.drone.heading }, d)
     syncCrowdThreats(game)
-    if (!tutorialAtStart) stepCrowds(game.crowds, { position: game.drone.position, heading: game.drone.heading, colliders: game.worldColliders, threats: game.crowdThreats, crowdThreatStart: 1 + game.traffic.cars.length + game.enemies.slots.length, spawnZones: game.crowdSpawnZones }, d)
+    stepCrowds(game.crowds, {
+      position: game.drone.position,
+      heading: game.drone.heading,
+      colliders: game.worldColliders,
+      threats: game.crowdThreats,
+      crowdThreatStart: 1 + game.traffic.cars.length + game.enemies.slots.length,
+      spawnZones: game.crowdSpawnZones,
+      tutorialCatOnly: tutorialAtStart,
+    }, d)
     const beamField: BeamField = {
       active: game.beamActive,
       boosting: turboActive,
@@ -1476,7 +1490,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
     const laserPressed = laserRisingEdge(input.laser, game.laserInputHeld)
     game.laserInputHeld = input.laser
-    if (laserPressed && game.laserCooldown <= 0) {
+    const laserContinuous = Boolean(input.laserContinuous)
+    if ((laserPressed || laserContinuous) && game.laserCooldown <= 0) {
       game.laserCooldown = 0.27
       game.laserFlash = 0.12
       const aim = resolveLaserAim({ origin: game.laserAimOrigin, direction: game.laserAimDirection }, game.worldColliders, laserSphereTargets(game))

@@ -3,12 +3,14 @@ import { type BeamObject, CAR_MASS, beginCarDestruction, stepBeamObjects } from 
 import {
   CAT_MAX,
   CROWD_ABSORB_TIME,
+  crowdObjectIsVisible,
   INITIAL_CATS,
   INITIAL_PEDESTRIANS,
   PEDESTRIAN_MAX,
   activeCrowdCount,
   beginNearbyCrowdAbsorption,
   createCrowdState,
+  prepareTutorialCrowd,
   stepCrowds,
 } from '../src/core/crowds'
 
@@ -39,14 +41,20 @@ describe('pooled city crowds and destructible cars', () => {
     expect(activeCrowdCount(state, 'pedestrian')).toBe(INITIAL_PEDESTRIANS)
     expect(activeCrowdCount(state, 'cat')).toBe(INITIAL_CATS)
     const seeded = state.objects.filter((object) => object.active)
-    // The seed used to land entirely in a cone behind the view, which read as a
-    // crowd stuck to the player's back. Every quadrant should be occupied now.
-    const quadrants = new Set(seeded.map((object) => `${object.position.x >= 0}:${object.position.z >= 0}`))
-    expect(quadrants.size).toBe(4)
+    // Density is now kept in the current view instead of living on the far
+    // side of the city where it cannot make the streets feel occupied.
+    expect(seeded.every((object) => crowdObjectIsVisible(object.position, view))).toBe(true)
     for (const object of seeded) {
       const distance = Math.hypot(object.position.x, object.position.z)
       expect(distance).toBeGreaterThan(12)
       expect(distance).toBeLessThan(110)
+    }
+    for (let index = 0; index < seeded.length; index += 1) {
+      for (let otherIndex = index + 1; otherIndex < seeded.length; otherIndex += 1) {
+        const left = seeded[index]!
+        const right = seeded[otherIndex]!
+        expect(Math.hypot(left.position.x - right.position.x, left.position.z - right.position.z)).toBeGreaterThanOrEqual(3.2)
+      }
     }
     for (let frame = 0; frame < 420; frame += 1) {
       stepCrowds(state, view, 0.05)
@@ -74,6 +82,18 @@ describe('pooled city crowds and destructible cars', () => {
         object.position.z > collider.minZ && object.position.z < collider.maxZ)
       expect(inside).toBe(false)
     }
+  })
+
+  it('starts the opening with moving people and one stationary tutorial cat', () => {
+    const state = createCrowdState(101)
+    prepareTutorialCrowd(state, { x: 0, z: 8 })
+    const view = { position: { x: 0, y: 3, z: 0 }, heading: 0, tutorialCatOnly: true }
+    stepCrowds(state, view, 0)
+    expect(activeCrowdCount(state, 'pedestrian')).toBe(INITIAL_PEDESTRIANS)
+    expect(activeCrowdCount(state, 'cat')).toBe(1)
+    const tutorialCat = state.objects.find((object) => object.id.startsWith('tutorial-cat'))!
+    expect(tutorialCat.position).toMatchObject({ x: 0, z: 8 })
+    expect(tutorialCat.pauseTimer).toBeGreaterThan(100)
   })
 
   it('walks most pedestrians to a destination instead of pacing on the spot', () => {

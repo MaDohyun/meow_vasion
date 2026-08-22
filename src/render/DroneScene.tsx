@@ -741,7 +741,10 @@ function CrowdPool({ kind }: { kind: CrowdKind }) {
       quaternion.setFromEuler(rotation)
       const bounce = object.inBeam ? 1 : 1 + Math.sin(clock.elapsedTime * 8 + object.slot) * 0.04
       const style = kind === 'pedestrian' ? object.slot % pedestrianStyleColors.length : 0
-      const targetScale = (snapshot.beamTargetId === object.id ? 1.38 : 1.16) * (kind === 'pedestrian' ? 0.94 + style * 0.035 : 1)
+      // Crowds read as a city only when an intersection contains many small
+      // bodies, rather than a few oversized figures competing with the UFO.
+      const targetScale = (snapshot.beamTargetId === object.id ? 1.38 : 1.16)
+        * (kind === 'pedestrian' ? (0.94 + style * 0.035) * 0.5 : 1)
       const absorbScale = object.absorbing ? Math.max(0.04, object.absorbTimer / CROWD_ABSORB_TIME) : 1
       scale.set(targetScale * absorbScale, targetScale * bounce * absorbScale, targetScale * absorbScale)
       matrix.compose(position, quaternion, scale)

@@ -22,7 +22,7 @@ const MISSION_COPY: Record<MissionQuestId, string> = {
   'ruin-buildings': '건물을 폐허로 리모델링',
   'destroy-gas-station': '주유소 불꽃놀이',
   'destroy-comms': '지구 통신 끊어놓기',
-  'destroy-drones': '드론은 Q로 톡톡',
+  'destroy-drones': '드론은 Q 연속 레이저로 톡톡',
   'destroy-fighters': '전투기 격추하기',
   'air-checkpoints': '상공 고리 통과',
   'destroy-battleship': '저 큰 전함 치우기',
@@ -110,10 +110,10 @@ function HoldButton({
   return (
     <button
       className={`round-button ${className}`}
-      onPointerDown={() => setMobileInput({ active: true, [field]: true })}
-      onPointerUp={() => setMobileInput({ [field]: false })}
-      onPointerCancel={() => setMobileInput({ [field]: false })}
-      onPointerLeave={() => setMobileInput({ [field]: false })}
+      onPointerDown={() => setMobileInput({ active: true, [field]: true, ...(field === 'laser' ? { laserContinuous: true } : {}) })}
+      onPointerUp={() => setMobileInput({ [field]: false, ...(field === 'laser' ? { laserContinuous: false } : {}) })}
+      onPointerCancel={() => setMobileInput({ [field]: false, ...(field === 'laser' ? { laserContinuous: false } : {}) })}
+      onPointerLeave={() => setMobileInput({ [field]: false, ...(field === 'laser' ? { laserContinuous: false } : {}) })}
     >{label}</button>
   )
 }
@@ -211,7 +211,7 @@ function Intro() {
         <span><b>A/D</b> {t.controlStrafe}</span>
         <span><b>MOUSE</b> {t.controlAim}</span>
         <span><b>E</b> {t.controlBeam}</span>
-        <span><b>Q</b> {t.controlLaser}</span>
+        <span><b>Q</b> {t.controlLaser} · HOLD</span>
         <span><b>R</b> {t.controlDump}</span>
         <span><b>SPACE</b> {t.controlBoost}</span>
       </div>

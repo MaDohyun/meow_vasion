@@ -340,6 +340,7 @@ const cityDaylightMaterials = {
   distant: null as THREE.MeshToonMaterial | null,
   lot: null as THREE.MeshToonMaterial | null,
   groundBase: null as THREE.MeshToonMaterial | null,
+  streetPole: null as THREE.MeshToonMaterial | null,
   streetlight: null as THREE.MeshBasicMaterial | null,
   streetPool: null as THREE.MeshBasicMaterial | null,
   beacon: null as THREE.MeshBasicMaterial | null,
@@ -362,8 +363,9 @@ export function applyCityDaylight(nightFactor: number) {
   if (materials.road) materials.road.color.setScalar(1 - nightFactor * 0.16)
   if (materials.facade) materials.facade.emissiveIntensity = 0.02 + 1.12 * nightFactor
   if (materials.distant) materials.distant.emissiveIntensity = 0.01 + 0.78 * nightFactor
-  if (materials.streetlight) materials.streetlight.opacity = 0.18 + nightFactor * 0.74
-  if (materials.streetPool) materials.streetPool.opacity = 0.025 + 0.26 * nightFactor
+  if (materials.streetPole) materials.streetPole.emissiveIntensity = 0.015 + nightFactor * 0.08
+  if (materials.streetlight) materials.streetlight.opacity = 0.1 + Math.pow(nightFactor, 1.25) * 0.9
+  if (materials.streetPool) materials.streetPool.opacity = 0.012 + Math.pow(nightFactor, 1.35) * 0.42
   if (materials.beacon) materials.beacon.opacity = 0.2 + nightFactor * 0.78
   applyLandmarkDaylight(nightFactor)
 }
@@ -1174,12 +1176,32 @@ function BuildingPool() {
 }
 
 
-// Streetlights and roof beacons are emissive geometry, not lights. Adding real
-// point lights would change the scene light count and force a full material
-// recompile, which is a visible stall.
+// Streetlights and roof beacons use emissive geometry rather than individual
+// point lights. Their fixed pools keep the light count stable, while the pole,
+// glowing fixture, and ground falloff still make each lamp read as a source.
 const STREETLIGHT_RADIUS_CELLS = 5
 const STREETLIGHT_CELLS = (STREETLIGHT_RADIUS_CELLS * 2 + 1) ** 2
 const STREETLIGHT_COUNT = STREETLIGHT_CELLS * 2
+
+const streetLightPoleGeometry = (() => mergeGeometries([
+  new THREE.CylinderGeometry(0.16, 0.24, 4.95, 7).translate(0, 2.48, 0),
+  new THREE.CylinderGeometry(0.44, 0.5, 0.16, 8).translate(0, 0.08, 0),
+  // The short arm reaches over the carriageway, so the lit fixture no longer
+  // appears as an unexplained floating square above its own pool.
+  new THREE.BoxGeometry(0.15, 0.15, 1.12).translate(0, 4.92, 0.56),
+  new THREE.BoxGeometry(0.48, 0.28, 0.62).translate(0, 4.78, 1.16),
+], false)!)()
+
+const streetLightPoleMaterial = (() => {
+  const material = new THREE.MeshToonMaterial({
+    color: '#55606b',
+    emissive: '#1b2430',
+    emissiveIntensity: 0.02,
+    gradientMap: toonGradient,
+  })
+  cityDaylightMaterials.streetPole = material
+  return material
+})()
 
 const streetLightHeadMaterial = (() => {
   const material = new THREE.MeshBasicMaterial({ color: FX.STREETLIGHT, transparent: true, opacity: 1, toneMapped: false })
@@ -1203,17 +1225,19 @@ const streetLightPoolMaterial = (() => {
 
 function StreetLightPool() {
   const { runtime } = useGame()
+  const poles = useRef<THREE.InstancedMesh>(null)
   const heads = useRef<THREE.InstancedMesh>(null)
   const pools = useRef<THREE.InstancedMesh>(null)
   const lastKey = useRef('')
   const matrix = useMemo(() => new THREE.Matrix4(), [])
   const position = useMemo(() => new THREE.Vector3(), [])
+  const fixturePosition = useMemo(() => new THREE.Vector3(), [])
   const scale = useMemo(() => new THREE.Vector3(), [])
   const rotation = useMemo(() => new THREE.Quaternion(), [])
   const planeRotation = useMemo(() => new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0)), [])
 
   useFrame(() => {
-    if (!heads.current || !pools.current) return
+    if (!poles.current || !heads.current || !pools.current) return
     const world = runtime.current.world
     const key = `${world.cellX}:${world.cellZ}`
     if (key === lastKey.current) return
@@ -1223,39 +1247,57 @@ function StreetLightPool() {
       for (let dx = -STREETLIGHT_RADIUS_CELLS; dx <= STREETLIGHT_RADIUS_CELLS; dx += 1) {
         const cellX = world.cellX + dx
         const cellZ = world.cellZ + dz
-        // One lamp on each of the cell's two roads, set back to the kerb.
-        const spots: [number, number][] = [
-          [cellX * WORLD_CELL_SIZE + 4.6, (cellZ + 0.5) * WORLD_CELL_SIZE],
-          [(cellX + 0.5) * WORLD_CELL_SIZE, cellZ * WORLD_CELL_SIZE + 4.6],
+        // The tutorial clearing and lake surfaces deliberately have no road;
+        // placing a lamp pool there was the source of the floating beige patch
+        // beside the opening UFO.
+        if (isTutorialCell(cellX, cellZ) || lakeClusterForCell(cellX, cellZ)) continue
+        // One lamp on each of the cell's two roads, set back to the kerb. The
+        // angle points its small arm toward the carriageway.
+        const spots: [number, number, number][] = [
+          [cellX * WORLD_CELL_SIZE + 4.6, (cellZ + 0.5) * WORLD_CELL_SIZE, -Math.PI / 2],
+          [(cellX + 0.5) * WORLD_CELL_SIZE, cellZ * WORLD_CELL_SIZE + 4.6, Math.PI],
         ]
-        for (const [x, z] of spots) {
+        for (const [spotIndex, [x, z, yaw]] of spots.entries()) {
           if (slot >= STREETLIGHT_COUNT) break
-          position.set(x, 6.2, z)
-          scale.set(0.9, 0.34, 0.9)
+          // Keep one third of the former lamp density. The hash keeps the
+          // thinning stable while avoiding a visibly regular every-third-cell
+          // pattern as the world streams.
+          if (seedForWorldCell(cellX, cellZ, 0x51a9 + spotIndex) % 3 !== 0) continue
+          rotation.setFromAxisAngle(THREE.Object3D.DEFAULT_UP, yaw)
+          position.set(x, 0, z)
+          scale.setScalar(1)
           matrix.compose(position, rotation, scale)
+          poles.current!.setMatrixAt(slot, matrix)
+
+          fixturePosition.set(0, 4.78, 1.16).applyQuaternion(rotation).add(position)
+          scale.setScalar(1)
+          matrix.compose(fixturePosition, rotation, scale)
           heads.current!.setMatrixAt(slot, matrix)
           position.set(x, 0.045, z)
-          scale.set(11, 11, 1)
+          scale.set(9.5, 9.5, 1)
           matrix.compose(position, planeRotation, scale)
           pools.current!.setMatrixAt(slot, matrix)
           slot += 1
         }
       }
     }
+    poles.current.count = slot
     heads.current.count = slot
     pools.current.count = slot
+    poles.current.instanceMatrix.needsUpdate = true
     heads.current.instanceMatrix.needsUpdate = true
     pools.current.instanceMatrix.needsUpdate = true
   })
 
   return (
     <group>
+      <instancedMesh ref={poles} args={[streetLightPoleGeometry, streetLightPoleMaterial, STREETLIGHT_COUNT]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }} />
       <instancedMesh ref={heads} args={[undefined, undefined, STREETLIGHT_COUNT]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }}>
-        <boxGeometry args={[1, 1, 1]} />
+        <boxGeometry args={[0.52, 0.26, 0.62]} />
         <primitive object={streetLightHeadMaterial} attach="material" />
       </instancedMesh>
       <instancedMesh ref={pools} args={[undefined, undefined, STREETLIGHT_COUNT]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }}>
-        <circleGeometry args={[0.5, 14]} />
+        <circleGeometry args={[0.5, 24]} />
         <primitive object={streetLightPoolMaterial} attach="material" />
       </instancedMesh>
     </group>

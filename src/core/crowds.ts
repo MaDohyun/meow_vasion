@@ -15,8 +15,11 @@ export type CrowdKind = 'pedestrian' | 'cat'
  */
 export const PEDESTRIAN_MAX = 64
 export const CAT_MAX = 16
-export const INITIAL_PEDESTRIANS = 40
-export const INITIAL_CATS = 10
+// Fill the existing pedestrian pool from the opening. The old seed left too
+// much empty pavement between targets; the fuller, dispersed seed makes the
+// city read much busier without creating another render pool.
+export const INITIAL_PEDESTRIANS = PEDESTRIAN_MAX
+export const INITIAL_CATS = CAT_MAX
 // Tight on purpose. The pool is fixed size, so stragglers left alive far behind
 // the player squat in every slot and block respawns near the path: the pool
 // saturated at 53 bodies while only two or three were ever within reach.
@@ -50,7 +53,10 @@ const WANDER_BLEND = 4
 const TURN_COOLDOWN = 0.35
 const COLLIDER_MARGIN = 0.55
 const SPAWN_CLEARANCE = 0.9
-const SPAWN_ATTEMPTS = 6
+// Pedestrians render at half their former height, so three metres still leaves
+// several body widths between them without wasting the visible street space.
+const SPAWN_CROWD_CLEARANCE = 3.2
+const SPAWN_ATTEMPTS = 24
 // Respawns land in the arc the player is flying into.
 //
 // They used to appear directly behind, so a player flying a straight line
@@ -59,38 +65,34 @@ const SPAWN_ATTEMPTS = 6
 // beam corridor, which measured out at four catches per pass - exactly what the
 // geometry predicts.
 //
-// The arc is wide enough that people still arrive from the flanks and steering
-// toward them beats flying straight, and far enough out that arrivals are
-// masked by the city rather than popping in.
-const RESPAWN_MIN_DISTANCE = 92
+// Keep the refreshed crowd close enough to populate the streets already in
+// view, while still far enough away not to materialise at the craft's feet.
+const RESPAWN_MIN_DISTANCE = 38
 /**
  * How far a park or car park has to be before it may be used as a respawn.
  *
  * Just inside the forward arc's own minimum, so the two branches agree about
  * what "not on top of the player" means.
  */
-const ZONE_MIN_DISTANCE = 86
+const ZONE_MIN_DISTANCE = 34
 /** How far round toward the front a zone has to sit. Zero would be the whole
  *  half-plane ahead; this trims it to a generous cone. */
 const ZONE_FORWARD_BIAS = 0.25
-const RESPAWN_RANGE = 62
-const RESPAWN_ARC = 1.75
+const RESPAWN_RANGE = 48
+const RESPAWN_ARC = 1.8
 /**
- * Bodies arrive in knots rather than evenly sprinkled.
- *
- * Spread evenly, a crowd is background texture: there is nowhere better to fly
- * than anywhere else. Clustered, a gathering is visible from a distance and on
- * the radar, so choosing where to go becomes a decision instead of drifting.
+ * Respawns are deliberately single-body placements. A denser city only reads
+ * alive when the bodies occupy different stretches of pavement; filling a
+ * small number of knots makes a large pool look like the same few people.
  */
-const CLUSTER_SIZE = 5
-const CLUSTER_SPREAD = 11
-const PARK_CLUSTER_SIZE = 8
+const CLUSTER_SIZE = 1
+const CLUSTER_SPREAD = 4
+const PARK_CLUSTER_SIZE = 1
 const PARK_CLUSTER_OFFSETS = [
   { x: -9.2, z: -6.2 },
   { x: 9.0, z: -2.0 },
   { x: 0, z: 9.5 },
 ] as const
-const GOLDEN_ANGLE = 2.399963
 
 /**
  * People walk somewhere instead of turning at random.
@@ -129,6 +131,8 @@ export type CrowdObject = BeamObject & {
   fleeTimer: number
   turnCooldown: number
   slideDirection: number
+  /** A spawned slot only becomes disposable after it has actually entered view. */
+  wasVisible: boolean
 }
 
 export type CrowdState = {
@@ -147,10 +151,30 @@ export type CrowdState = {
 export type CrowdView = {
   position: Vec3
   heading: number
+  horizontalFov?: number
+  /** Keep the opening's single cat as the only feline until it is absorbed. */
+  tutorialCatOnly?: boolean
   colliders?: readonly Aabb[]
   threats?: readonly Vec3[]
   crowdThreatStart?: number
   spawnZones?: readonly CrowdSpawnZone[]
+}
+
+/** Matches the chase camera's horizontal view so disposable crowd slots can
+ * stay focused on the streets the player is currently looking at. */
+export function crowdObjectIsVisible(position: Pick<Vec3, 'x' | 'y' | 'z'>, view: CrowdView) {
+  const dx = position.x - view.position.x
+  const dz = position.z - view.position.z
+  const distance = Math.hypot(dx, dz)
+  if (distance < 0.001) return true
+  const forwardX = Math.sin(view.heading)
+  const forwardZ = Math.cos(view.heading)
+  const dot = (dx * forwardX + dz * forwardZ) / distance
+  // The chase camera sees a generous slice of the road grid; keeping the
+  // disposable pool inside that slice gives the player a city to fly through
+  // without letting it pile up behind the craft.
+  const halfFov = (view.horizontalFov ?? 118) * Math.PI / 360
+  return dot >= Math.cos(halfFov) && Math.abs(position.y - view.position.y) <= Math.max(18, distance * 0.8)
 }
 
 function makeCrowdObject(kind: CrowdKind, slot: number): CrowdObject {
@@ -185,6 +209,7 @@ function makeCrowdObject(kind: CrowdKind, slot: number): CrowdObject {
     fleeTimer: 0,
     turnCooldown: 0,
     slideDirection: 0,
+    wasVisible: false,
   }
 }
 
@@ -223,11 +248,14 @@ export function prepareTutorialCrowd(state: CrowdState, position: Pick<Vec3, 'x'
   cat.tether = 0
   cat.absorbing = false
   cat.absorbTimer = 0
+  cat.wasVisible = false
   cat.roams = false
   cat.targetX = position.x
   cat.targetZ = position.z
   cat.pauseTimer = 999
-  state.initialSpawnDone = true
+  // The opening cat is the only stationary crowd member. The game can still
+  // populate moving people immediately around it on its first simulation tick.
+  state.initialSpawnDone = false
   state.spawnTimer = Number.POSITIVE_INFINITY
   return cat
 }
@@ -273,6 +301,14 @@ function blockedAt(view: CrowdView, x: number, z: number, margin: number) {
   if (!view.colliders) return false
   for (const collider of view.colliders) {
     if (x > collider.minX - margin && x < collider.maxX + margin && z > collider.minZ - margin && z < collider.maxZ + margin) return true
+  }
+  return false
+}
+
+function crowdedAt(state: CrowdState, x: number, z: number) {
+  for (const candidate of state.objects) {
+    if (!candidate.active || candidate.absorbing) continue
+    if (Math.hypot(candidate.position.x - x, candidate.position.z - z) < SPAWN_CROWD_CLEARANCE) return true
   }
   return false
 }
@@ -362,7 +398,13 @@ function spawnCrowdObject(state: CrowdState, view: CrowdView, kind: CrowdKind, p
         z = state.clusterZ + (random(state) - 0.5) * jitter
       }
     }
-    if (!blockedAt(view, x, z, SPAWN_CLEARANCE)) { placed = true; break }
+    const candidatePosition = { x, y: 0.65, z }
+    if (!blockedAt(view, x, z, SPAWN_CLEARANCE)
+      && !crowdedAt(state, x, z)
+      && crowdObjectIsVisible(candidatePosition, view)) {
+      placed = true
+      break
+    }
   }
   if (!placed) return false
   if (!placement) state.clusterLeft -= 1
@@ -390,6 +432,7 @@ function spawnCrowdObject(state: CrowdState, view: CrowdView, kind: CrowdKind, p
   object.fleeTimer = 0
   object.turnCooldown = 0
   object.slideDirection = 0
+  object.wasVisible = false
   object.active = true
   object.inBeam = false
   object.tether = 0
@@ -402,36 +445,39 @@ function spawnCrowdObject(state: CrowdState, view: CrowdView, kind: CrowdKind, p
   return true
 }
 
-// Golden-angle stepping spreads the seed evenly over the full circle; plain
-// random angles clump badly at these counts.
-function seedInitialCrowd(state: CrowdState, view: CrowdView) {
-  const total = INITIAL_PEDESTRIANS + INITIAL_CATS
-  const parks = view.spawnZones?.filter((zone) => zone.kind === 'park') ?? []
-  const parkingLots = view.spawnZones?.filter((zone) => zone.kind === 'parking-lot') ?? []
-  let seededPeople = 0
+// A shuffled radial pattern fills the current camera wedge without bunching
+// several people into the same stretch of pavement.
+function seedInitialCrowd(state: CrowdState, view: CrowdView, catsEnabled = true) {
+  const existingPedestrians = activeCrowdCount(state, 'pedestrian')
+  const existingCats = activeCrowdCount(state, 'cat')
+  const pedestrianCount = Math.max(0, INITIAL_PEDESTRIANS - existingPedestrians)
+  const catCount = catsEnabled ? Math.max(0, INITIAL_CATS - existingCats) : 0
+  const total = pedestrianCount + catCount
   for (let index = 0; index < total; index += 1) {
-    const kind: CrowdKind = index % 3 === 2 && index / 3 < INITIAL_CATS ? 'cat' : 'pedestrian'
-    const memberIndex = index % CLUSTER_SIZE
-    if (memberIndex === 0) state.seedAngle += GOLDEN_ANGLE
-    const groupIndex = Math.floor(index / CLUSTER_SIZE)
-    const groupCount = Math.ceil(total / CLUSTER_SIZE)
-    const distance = 26 + (groupIndex / Math.max(1, groupCount - 1)) * 64
-    const parkMember = kind === 'pedestrian' && parks.length > 0 && seededPeople < 16
-    const facility = parkMember
-      ? parks[Math.floor(seededPeople / 8) % parks.length]
-      : kind === 'pedestrian' && parkingLots.length > 0 && seededPeople < 20
-        ? parkingLots[seededPeople % parkingLots.length]
-        : null
-    if (kind === 'pedestrian') seededPeople += 1
-    const parkGroup = parkMember ? PARK_CLUSTER_OFFSETS[Math.min(PARK_CLUSTER_OFFSETS.length - 1, Math.floor((seededPeople % 8) / 3))] : null
-    const groupAngle = state.seedAngle
+    // Interleave cats between pedestrians where they are enabled, while the
+    // tutorial keeps its one stationary cat as the sole feline target.
+    const kind: CrowdKind = catsEnabled && index % 3 === 2 && index / 3 < catCount ? 'cat' : 'pedestrian'
+    // A shuffled radial sequence fills the current view wedge evenly. A full
+    // ring looks statistically dense, but leaves the camera staring at empty
+    // streets while most of the pool exists behind it.
+    const fraction = (index + 0.5) / total
+    const radialFraction = ((index * 37) % total + 0.5) / total
+    const distance = Math.sqrt(16 ** 2 + radialFraction * (64 ** 2 - 16 ** 2))
+    const groupAngle = view.heading + (fraction - 0.5) * RESPAWN_ARC
+    state.seedAngle = groupAngle
     const groupX = view.position.x + Math.sin(groupAngle) * distance
     const groupZ = view.position.z + Math.cos(groupAngle) * distance
-    const placement = facility
-      ? { x: facility.x + (parkGroup?.x ?? 0), z: facility.z + (parkGroup?.z ?? 0), radius: facility.kind === 'park' ? 3.4 : 7 }
-      : { x: groupX, z: groupZ, radius: CLUSTER_SPREAD * 0.85 }
-    if (!spawnCrowdObject(state, view, kind, placement)) {
-      spawnCrowdObject(state, view, kind === 'cat' ? 'pedestrian' : 'cat', { angle: state.seedAngle, distance })
+    const placement = { x: groupX, z: groupZ, radius: CLUSTER_SPREAD }
+    let placed = spawnCrowdObject(state, view, kind, placement)
+    // Dense city blocks occasionally reject every jitter around one particular
+    // point. Keep the same kind and look along nearby visible road space so a
+    // bad block never leaves a fixed pool slot empty at run start.
+    for (let retry = 1; retry <= 3 && !placed; retry += 1) {
+      const side = retry % 2 === 0 ? -1 : 1
+      placed = spawnCrowdObject(state, view, kind, {
+        angle: groupAngle + side * retry * 0.2,
+        distance: Math.min(96, distance + retry * 8),
+      })
     }
   }
 }
@@ -440,17 +486,17 @@ export function stepCrowds(state: CrowdState, view: CrowdView, dt: number) {
   const d = Math.min(Math.max(0, dt), 0.05)
   state.spawnTimer -= d
   if (!state.initialSpawnDone) {
-    // Seed a healthy recovery supply immediately. If a caller already supplied
-    // an active object (for example while restoring a save), preserve it and
-    // let the normal cadence take over instead of doubling the crowd.
-    const hasActiveCrowd = state.objects.some((object) => object.active)
+    // Seed a healthy recovery supply immediately. Any supplied object (the
+    // tutorial cat or a restored save) is retained and the missing slots fill
+    // around it instead of making the opening city wait for an absorption.
     state.initialSpawnDone = true
-    if (!hasActiveCrowd) seedInitialCrowd(state, view)
+    seedInitialCrowd(state, view, !view.tutorialCatOnly)
     state.spawnTimer = 0.16
   }
   let pedestrians = 0
   let cats = 0
   let nearbyPedestrians = 0
+  let recycled = 0
   for (const object of state.objects) {
     if (!object.active) continue
     if (object.absorbing) {
@@ -460,6 +506,22 @@ export function stepCrowds(state: CrowdState, view: CrowdView, dt: number) {
         object.absorbing = false
         state.spawnTimer = Math.max(state.spawnTimer, 0.16)
       }
+      continue
+    }
+    const visible = crowdObjectIsVisible(object.position, view)
+    object.wasVisible ||= visible
+    // Slots first appear in view. Once they leave it, recycle them promptly;
+    // hand-authored/test actors that have never entered view remain intact.
+    if (!visible && object.wasVisible && !object.id.startsWith('tutorial-cat')) {
+      object.active = false
+      recycled += 1
+      continue
+    }
+    // The opening target is deliberately the one quiet cat in the city. It
+    // must not panic and wander away before the player gets the first beam
+    // prompt, while every later cat uses the normal movement simulation.
+    if (object.id.startsWith('tutorial-cat')) {
+      cats += 1
       continue
     }
     if (object.kind === 'pedestrian') pedestrians += 1
@@ -593,9 +655,16 @@ export function stepCrowds(state: CrowdState, view: CrowdView, dt: number) {
   state.nearbyPedestrians = nearbyPedestrians
 
   if (state.spawnTimer <= 0) {
-    const preferPedestrian = pedestrians < PEDESTRIAN_MAX && (cats >= CAT_MAX || random(state) < 0.84)
-    const spawned = spawnCrowdObject(state, view, preferPedestrian ? 'pedestrian' : 'cat')
-    state.spawnTimer = spawned ? 0.16 : 0.35
+    let spawned = 0
+    const refill = Math.max(1, Math.min(3, recycled + 1))
+    for (let attempt = 0; attempt < refill; attempt += 1) {
+      const preferPedestrian = pedestrians < PEDESTRIAN_MAX && (cats >= CAT_MAX || random(state) < 0.8)
+      if (!spawnCrowdObject(state, view, preferPedestrian ? 'pedestrian' : 'cat')) break
+      if (preferPedestrian) pedestrians += 1
+      else cats += 1
+      spawned += 1
+    }
+    state.spawnTimer = spawned > 0 ? 0.05 : 0.14
   }
   return state
 }
