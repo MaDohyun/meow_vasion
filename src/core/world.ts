@@ -28,6 +28,22 @@ export const BUILDING_STYLES = [
   { color: '#e4a5bc', roof: '#be829f' },
   { color: '#a4d1e2', roof: '#7daabd' },
   { color: '#e2b36f', roof: '#b97d50' },
+  // Urban neutrals: concrete white, slate, charcoal and weathered steel.
+  { color: '#34495E', roof: '#273746' },
+  { color: '#F5F5F5', roof: '#D5D8DC' },
+  { color: '#1F2833', roof: '#151B22' },
+  { color: '#7F8C8D', roof: '#626E70' },
+] as const
+
+// Keep the city colourful, but make the slate facade the most common choice.
+// The old warm colours remain available while their combined share is reduced
+// so the skyline reads more like concrete, steel and glass than brown clay.
+const BUILDING_STYLE_PICK_ORDER = [
+  11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11,
+  12, 12, 12, 12, 12, 12, 12,
+  13, 13, 13, 13, 13,
+  14, 14, 14, 14, 14, 14,
+  0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
 ] as const
 
 export const BUILDING_SIGN_LABELS = [
@@ -352,7 +368,7 @@ export function getProceduralCell(cellX: number, cellZ: number, worldSeed = WORL
 
   if (kind === 'building') {
     const largeFootprint = seed % 100 < 3
-    const styleIndex = largeFootprint ? BUILDING_STYLES.length - 1 : (seed >>> 8) % (BUILDING_STYLES.length - 1)
+    const styleIndex = BUILDING_STYLE_PICK_ORDER[(seed >>> 8) % BUILDING_STYLE_PICK_ORDER.length]!
     const style = BUILDING_STYLES[styleIndex]!
     const sizeX = largeFootprint ? 23.5 + saltedUnit(seed, 1) * 1.2 : 16 + saltedUnit(seed, 1) * 6
     const sizeZ = largeFootprint ? 23.5 + saltedUnit(seed, 2) * 1.2 : 16 + saltedUnit(seed, 2) * 6

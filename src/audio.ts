@@ -3,10 +3,6 @@ let laserBuffer: AudioBuffer | null = null
 let laserLoad: Promise<AudioBuffer | null> | null = null
 let laserPlaybackQueued = false
 let laserLoadFailed = false
-let enemyLaserHitBuffer: AudioBuffer | null = null
-let enemyLaserHitLoad: Promise<AudioBuffer | null> | null = null
-let enemyLaserHitPlaybackQueued = false
-let enemyLaserHitLoadFailed = false
 let lobbyMusic: HTMLAudioElement | null = null
 let gameplayMusic: HTMLAudioElement | null = null
 let beamSound: HTMLAudioElement | null = null
@@ -166,7 +162,6 @@ export function unlockAudio() {
   if (!context) context = new AudioContext()
   if (context.state === 'suspended') void context.resume()
   void loadLaserSound()
-  void loadEnemyLaserHitSound()
 }
 
 /** Load the supplied laser sample once, then fan out short overlapping buffer
@@ -206,47 +201,6 @@ export function playLaserSound() {
   // leaving enough headroom for rapid-fire overlap.
   gain.gain.setValueAtTime(0.92, context.currentTime)
   gain.gain.exponentialRampToValueAtTime(0.001, context.currentTime + Math.min(0.42, laserBuffer.duration))
-  source.connect(gain)
-  gain.connect(context.destination)
-  source.start()
-}
-
-/** Load the supplied impact sample once. It is kept separate from the laser
- * fire sample so a rapid Q stream can overlap cleanly with enemy hit cues. */
-function loadEnemyLaserHitSound() {
-  if (!context || enemyLaserHitBuffer || enemyLaserHitLoadFailed) return Promise.resolve(enemyLaserHitBuffer)
-  if (enemyLaserHitLoad) return enemyLaserHitLoad
-  enemyLaserHitLoad = fetch('/audio/enemy-laser-hit.wav')
-    .then((response) => response.arrayBuffer())
-    .then((data) => context ? context.decodeAudioData(data) : null)
-    .then((buffer) => {
-      enemyLaserHitBuffer = buffer
-      return buffer
-    })
-    .catch(() => {
-      enemyLaserHitLoadFailed = true
-      return null
-    })
-  return enemyLaserHitLoad
-}
-
-/** Play once for every confirmed enemy laser hit, including non-lethal hits. */
-export function playEnemyLaserHitSound() {
-  if (!context || context.state !== 'running' || enemyLaserHitLoadFailed) return
-  if (!enemyLaserHitBuffer) {
-    if (enemyLaserHitPlaybackQueued) return
-    enemyLaserHitPlaybackQueued = true
-    void loadEnemyLaserHitSound().then(() => {
-      enemyLaserHitPlaybackQueued = false
-      playEnemyLaserHitSound()
-    })
-    return
-  }
-  const source = context.createBufferSource()
-  const gain = context.createGain()
-  source.buffer = enemyLaserHitBuffer
-  gain.gain.setValueAtTime(0.66, context.currentTime)
-  gain.gain.exponentialRampToValueAtTime(0.001, context.currentTime + Math.min(0.72, enemyLaserHitBuffer.duration))
   source.connect(gain)
   gain.connect(context.destination)
   source.start()

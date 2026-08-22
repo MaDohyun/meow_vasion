@@ -65,7 +65,7 @@ import { createMissionState, missionHasQuest, recordMissionEvent, startMissionOn
 import { MYSTERY_BOOST_DURATION, MYSTERY_BOOST_MAX_MULTIPLIER, mysteryBoostMultiplier } from './core/mysteryCircles'
 import { absorbShieldDamage, createShieldState, isShieldRegenerating, setShieldCapacity, shieldRatio, stepShield, type ShieldState } from './core/shield'
 import { shouldCrashFromOverload } from './core/overload'
-import { playBoosterSound, playEnemyLaserHitSound, playLaserSound, playMysteryCircleSound, startBeamSound, startGameplayMusic, stopBeamSound, stopGameplayMusic, stopLobbyMusic, tone, unlockAudio } from './audio'
+import { playBoosterSound, playLaserSound, playMysteryCircleSound, startBeamSound, startGameplayMusic, stopBeamSound, stopGameplayMusic, stopLobbyMusic, tone, unlockAudio } from './audio'
 
 export type GamePhase = 'intro' | 'playing' | 'upgrade' | 'results'
 
@@ -739,7 +739,7 @@ function registerEnemyHit(game: GameRuntime, id: string, damage: number) {
     // answers each one.
     triggerLaserBurst(game.laserBursts, 'impact', result.enemy.position, '#ffd27a')
   }
-  if (!result.destroyed || !result.kind) return result
+  if (!result.destroyed || !result.kind) return
   if (result.kind === 'boss') game.bossDestroyed = true
   if (result.kind === 'boss' && result.enemy) {
     // Seventy-four metres of ship does not go up in one puff. A burst at every
@@ -759,12 +759,10 @@ function registerEnemyHit(game: GameRuntime, id: string, damage: number) {
   reportMissionEvent(game, { type: 'destroy-enemy', kind: result.kind })
   setMessage(game, 'msgEnemyDown', 1.4, reward)
   tone('upgrade')
-  return result
 }
 
 function registerEnemyLaserHit(game: GameRuntime, id: string) {
-  const result = registerEnemyHit(game, id, upgradeMultiplier(game.upgrades, 'laser-power'))
-  if (result.hit) playEnemyLaserHitSound()
+  registerEnemyHit(game, id, upgradeMultiplier(game.upgrades, 'laser-power'))
 }
 
 function destroyCar(game: GameRuntime, id: string, direction: Vec3) {

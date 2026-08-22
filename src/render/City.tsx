@@ -895,7 +895,13 @@ function EntrancePool() {
 // multiplication. The four tints deliberately mix dark bronze, off-white,
 // light brown and muted gold across the city.
 const massingMaterial = new THREE.MeshToonMaterial({ color: '#ffffff', gradientMap: toonGradient })
-const MASSING_TINTS = ['#705b4e', '#ece9e1', '#b58b6b', '#d1b06b'] as const
+const MASSING_TINTS = [
+  '#34495E', '#34495E', '#34495E',
+  '#F5F5F5', '#F5F5F5',
+  '#1F2833', '#1F2833',
+  '#7F8C8D', '#7F8C8D',
+  '#705b4e', '#ece9e1', '#b58b6b', '#d1b06b',
+] as const
 
 function MassingPool({ form }: { form: 'podium' | 'setback' }) {
   const { runtime } = useGame()
@@ -1637,7 +1643,13 @@ function RoofStructurePool({ variant }: { variant: number }) {
   const rotation = useMemo(() => new THREE.Quaternion(), [])
   const euler = useMemo(() => new THREE.Euler(), [])
   const color = useMemo(() => new THREE.Color(), [])
-  const structureTints = ['#705b4e', '#ece9e1', '#b58b6b', '#d1b06b'] as const
+  const structureTints = [
+    '#34495E', '#34495E', '#34495E',
+    '#F5F5F5', '#F5F5F5',
+    '#1F2833', '#1F2833',
+    '#7F8C8D', '#7F8C8D',
+    '#705b4e', '#ece9e1', '#b58b6b', '#d1b06b',
+  ] as const
 
   useFrame(() => {
     const mesh = ref.current
@@ -1661,7 +1673,7 @@ function RoofStructurePool({ variant }: { variant: number }) {
       mesh.setMatrixAt(slot, matrix)
       // Roof props get a light metal/stone tint independent of the building's
       // facade palette, so no cyan roof variant can leak into the skyline.
-      mesh.setColorAt(slot, color.set(structureTints[variant]!))
+      mesh.setColorAt(slot, color.set(structureTints[seed % structureTints.length]!))
       slot += 1
     }
     mesh.count = slot

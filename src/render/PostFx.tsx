@@ -94,7 +94,11 @@ const fragmentShader = `
       : splashKind < 1.5 ? vec3(1.0, 0.34, 0.2)
       : splashKind < 2.5 ? vec3(1.0, 0.15, 0.06)
       : vec3(0.95, 0.7, 0.38);
-    color += splashColor * splash.a * impact * 0.34;
+    // Building/contact damage keeps the UFO's red hull flash, but the old
+    // white double-ring splash made the whole world look like it was under a
+    // giant targeting reticle. Keep the projectile-specific splashes and
+    // suppress only the generic impact texture (splashKind 3).
+    if (splashKind < 2.5) color += splashColor * splash.a * impact * 0.34;
     gl_FragColor = vec4(color, 1.0);
   }
 `
