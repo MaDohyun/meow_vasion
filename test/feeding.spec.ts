@@ -24,9 +24,11 @@ function flyAndFeed(seconds: number, startSize = SIZE_START, seed = 4242, steer 
   let size = startSize
   let absorbed = 0
   const input: DroneInput = { throttle: park ? 0 : 1, steer: 0, strafe: 0, lookPitch: 0, vertical: 0, special: false }
-  // A steering pilot points at the nearest gathering, the way a player reading
-  // the radar would. Crowds arrive in knots, so this is the intended play - the
-  // blind pass below is the floor, not the target.
+  // A steering pilot points at the nearest target ahead, the way a player
+  // reading the radar would. The city is populated in every direction now, so
+  // greedily chasing the nearest body regardless of bearing degenerates into
+  // U-turns after whatever is directly behind; a player sweeps forward and
+  // takes what is on the way instead.
   const aimAtNearest = (position: { x: number; z: number }, heading: number) => {
     let best = Number.POSITIVE_INFINITY
     let bearing = heading
@@ -34,10 +36,13 @@ function flyAndFeed(seconds: number, startSize = SIZE_START, seed = 4242, steer 
       if (!object.active) continue
       const dx = object.position.x - position.x
       const dz = object.position.z - position.z
+      const targetBearing = Math.atan2(dx, dz)
+      const offset = Math.abs(Math.atan2(Math.sin(targetBearing - heading), Math.cos(targetBearing - heading)))
+      if (offset > Math.PI * 0.55) continue
       const distance = Math.hypot(dx, dz)
       if (distance >= best) continue
       best = distance
-      bearing = Math.atan2(dx, dz)
+      bearing = targetBearing
     }
     if (!Number.isFinite(best)) return 0
     const delta = Math.atan2(Math.sin(bearing - heading), Math.cos(bearing - heading))
@@ -97,13 +102,18 @@ describe('feeding is the core loop', () => {
     expect(parked).toBeLessThan(2)
   })
 
-  it('rewards steering toward a gathering over flying straight', () => {
+  it('feeds any heading in the populated city without punishing steering', () => {
     const blind = averageFeed(25)
     const steered = averageFeed(25, SIZE_START, true)
     console.log('absorbed per 25s — blind:', blind, 'steered:', steered)
-    // Visible street density gives a blind pass useful targets too; steering
-    // still needs to be meaningfully better than simply holding a heading.
-    expect(steered).toBeGreaterThan(blind * 1.2)
+    // The district layer populates every direction, so a straight pass through
+    // the city is a real meal on its own - that is the point of the change:
+    // resources are the game, and leaving the spawn must not mean starving.
+    expect(blind).toBeGreaterThan(12)
+    // Chasing individual fleeing bodies is allowed to trail a straight sweep
+    // through uniform density, but steering must stay competitive rather than
+    // becoming a trap.
+    expect(steered).toBeGreaterThan(blind * 0.55)
   })
 
   it('keeps even a blind pass above starvation', () => {

@@ -3,6 +3,7 @@ import { type BeamObject, CAR_MASS, beginCarDestruction, stepBeamObjects } from 
 import {
   CAT_MAX,
   CROWD_ABSORB_TIME,
+  CROWD_CELL_ACTIVATE_RADIUS,
   crowdPositionIsWalkable,
   crowdObjectIsVisible,
   INITIAL_CATS,
@@ -35,21 +36,23 @@ function car(): BeamObject {
 }
 
 describe('pooled city crowds and destructible cars', () => {
-  it('keeps fixed pools and scatters the run-start seed all around the player', () => {
+  it('keeps fixed pools and seeds a city-wide population at run start', () => {
     const state = createCrowdState(42)
     expect(state.objects).toHaveLength(PEDESTRIAN_MAX + CAT_MAX)
     const view = { position: { x: 0, y: 3, z: 0 }, heading: 0 }
     stepCrowds(state, view, 0)
-    expect(activeCrowdCount(state, 'pedestrian')).toBe(INITIAL_PEDESTRIANS)
-    expect(activeCrowdCount(state, 'cat')).toBe(INITIAL_CATS)
+    // The camera wedge is dressed by the opening seed, and the district layer
+    // fills the rest of the activation ring on top of it.
+    expect(activeCrowdCount(state, 'pedestrian')).toBeGreaterThanOrEqual(INITIAL_PEDESTRIANS)
+    expect(activeCrowdCount(state, 'cat')).toBeGreaterThanOrEqual(INITIAL_CATS)
     const seeded = state.objects.filter((object) => object.active)
-    // Density is now kept in the current view instead of living on the far
-    // side of the city where it cannot make the streets feel occupied.
-    expect(seeded.every((object) => crowdObjectIsVisible(object.position, view))).toBe(true)
+    // The population is city-wide now: turning around at spawn, or flying out
+    // in any direction, must find residents rather than empty pavement.
+    expect(seeded.some((object) => !crowdObjectIsVisible(object.position, view))).toBe(true)
     for (const object of seeded) {
-      const distance = Math.hypot(object.position.x, object.position.z)
-      expect(distance).toBeGreaterThanOrEqual(48)
-      expect(distance).toBeLessThan(190)
+      // A cell's centre gates activation, so a resident can stand up to half a
+      // cell diagonal (plus placement jitter) beyond the ring itself.
+      expect(Math.hypot(object.position.x, object.position.z)).toBeLessThan(CROWD_CELL_ACTIVATE_RADIUS + 40)
     }
     for (let index = 0; index < seeded.length; index += 1) {
       for (let otherIndex = index + 1; otherIndex < seeded.length; otherIndex += 1) {
@@ -64,6 +67,23 @@ describe('pooled city crowds and destructible cars', () => {
     }
     expect(activeCrowdCount(state, 'pedestrian')).toBeGreaterThan(activeCrowdCount(state, 'cat'))
     expect(activeCrowdCount(state, 'cat')).toBeGreaterThan(0)
+  })
+
+  it('repopulates a district after the player leaves and returns', () => {
+    const state = createCrowdState(2024)
+    const home = { position: { x: 0, y: 3, z: 0 }, heading: 0 }
+    stepCrowds(state, home, 0)
+    const homeCount = state.objects.filter((object) => object.active && Math.hypot(object.position.x, object.position.z) < 150).length
+    expect(homeCount).toBeGreaterThan(10)
+    // Fly far away: residents cull at the remove distance and the activation
+    // marks are forgotten past the forget radius.
+    const away = { position: { x: 2000, y: 3, z: 0 }, heading: 0 }
+    for (let frame = 0; frame < 40; frame += 1) stepCrowds(state, away, 0.05)
+    expect(state.objects.filter((object) => object.active && Math.hypot(object.position.x, object.position.z) < 150).length).toBe(0)
+    // Coming back re-creates the district census instead of empty streets.
+    for (let frame = 0; frame < 40; frame += 1) stepCrowds(state, home, 0.05)
+    const backCount = state.objects.filter((object) => object.active && Math.hypot(object.position.x, object.position.z) < 150).length
+    expect(backCount).toBeGreaterThan(10)
   })
 
   it('still seeds the crowd inside a dense block of buildings', () => {
@@ -91,7 +111,7 @@ describe('pooled city crowds and destructible cars', () => {
     prepareTutorialCrowd(state, { x: 0, z: 8 })
     const view = { position: { x: 0, y: 3, z: 0 }, heading: 0, tutorialCatOnly: true }
     stepCrowds(state, view, 0)
-    expect(activeCrowdCount(state, 'pedestrian')).toBe(INITIAL_PEDESTRIANS)
+    expect(activeCrowdCount(state, 'pedestrian')).toBeGreaterThanOrEqual(INITIAL_PEDESTRIANS)
     expect(activeCrowdCount(state, 'cat')).toBe(1)
     const tutorialCat = state.objects.find((object) => object.id.startsWith('tutorial-cat'))!
     expect(tutorialCat.position).toMatchObject({ x: 0, z: 8 })

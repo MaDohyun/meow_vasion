@@ -1,7 +1,7 @@
 import { BEAM_ABSORB_TIME, beginNearbyBeamObjectAbsorption, type BeamObject } from './beam'
 import type { CrowdSpawnZone } from './cityLandmarks'
 import type { Aabb, Vec3 } from './drone'
-import { isLakeAt, WORLD_CELL_SIZE } from './world'
+import { isLakeAt, isTutorialCell, parkClusterForCell, seedForWorldCell, WORLD_CELL_SIZE, worldCellCenter, worldCellCoord } from './world'
 
 export type CrowdKind = 'pedestrian' | 'cat'
 /**
@@ -12,14 +12,19 @@ export type CrowdKind = 'pedestrian' | 'cat'
  * crowd members are skipped in each other's threat checks (see crowdThreatStart),
  * so a body only ever tests against the craft and the handful of real threats,
  * and each of them draws from one instanced pool regardless of count.
+ *
+ * Raised again for the district-population layer: the pool now has to hold the
+ * residents of every street cell within the activation ring at once, not just
+ * a camera wedge's worth of extras.
  */
-export const PEDESTRIAN_MAX = 80
-export const CAT_MAX = 24
-// Fill the existing pedestrian pool from the opening. The old seed left too
-// much empty pavement between targets; the fuller, dispersed seed makes the
-// city read much busier without creating another render pool.
-export const INITIAL_PEDESTRIANS = PEDESTRIAN_MAX
-export const INITIAL_CATS = CAT_MAX
+export const PEDESTRIAN_MAX = 160
+export const CAT_MAX = 48
+// The opening wedge seed is deliberately smaller than the pool now: it only
+// dresses the streets the camera opens on, while the district layer below
+// fills the rest of the ring in every direction. Overfilling the wedge left
+// no free slots for the districts, which is what made every other block empty.
+export const INITIAL_PEDESTRIANS = 56
+export const INITIAL_CATS = 14
 // Tight on purpose. The pool is fixed size, so stragglers left alive far behind
 // the player squat in every slot and block respawns near the path: the pool
 // saturated at 53 bodies while only two or three were ever within reach.
@@ -40,6 +45,32 @@ export const PEDESTRIAN_MASS = 2
 export const CROWD_REMOVE_DISTANCE = 300
 /** Mid-run replacements cannot appear within this player safety ring. */
 export const CROWD_SPAWN_MIN_DISTANCE = 110
+
+/**
+ * The district-population layer.
+ *
+ * Every world cell deterministically houses a handful of residents, the same
+ * way a cell deterministically owns a building: the census is a pure function
+ * of the coordinates (see crowdCellResidents), so a district the player is not
+ * in costs nothing - no objects, no simulation, not even stored numbers. When
+ * a cell comes inside the activation ring its residents are placed into free
+ * pool slots; when the player leaves, the ordinary distance cull returns the
+ * slots and the forget radius clears the cell's activation mark, so coming
+ * back re-creates the same-sized population instead of finding empty streets.
+ */
+export const CROWD_CELL_ACTIVATE_RADIUS = 190
+/** Mid-run activations stay out past this ring, so a cell that could not be
+ *  filled earlier (pool briefly full) never pops a resident in the player's
+ *  face when it is retried. The opening scan ignores it - it completes before
+ *  the first rendered frame. */
+const CROWD_CELL_MIN_ACTIVATE_DISTANCE = 100
+/** Past this, an activation mark is dropped so a return visit repopulates.
+ *  Kept beyond CROWD_REMOVE_DISTANCE so residents cull before their cell
+ *  forgets them - the reverse order would double-place. */
+const CROWD_CELL_FORGET_RADIUS = 320
+/** Placement attempts per scan tick, so streaming in a new district costs a
+ *  bounded slice of a frame instead of a spike. */
+const CROWD_CELL_SCAN_BUDGET = 16
 export const CROWD_ABSORB_DISTANCE = 3.35
 export const CROWD_ABSORB_TIME = BEAM_ABSORB_TIME
 
@@ -147,6 +178,9 @@ export type CrowdState = {
   clusterZ: number
   clusterLeft: number
   clusterKind: 'park' | 'parking-lot' | 'road' | null
+  /** Cells whose residents are currently placed (or were absorbed while the
+   *  player stayed close). Dropped again past the forget radius. */
+  activatedCells: Set<string>
 }
 
 export type CrowdView = {
@@ -234,6 +268,7 @@ export function createCrowdState(seed = 0xc47cafe): CrowdState {
     clusterZ: 0,
     clusterLeft: 0,
     clusterKind: null,
+    activatedCells: new Set(),
   }
 }
 
@@ -321,6 +356,53 @@ function crowdedAt(state: CrowdState, x: number, z: number) {
 
 type CrowdPlacement = { angle: number; distance: number } | { x: number; z: number; radius: number }
 
+function takeFreeSlot(state: CrowdState, kind: CrowdKind) {
+  for (const candidate of state.objects) {
+    if (!candidate.active && candidate.kind === kind) return candidate
+  }
+  return null
+}
+
+/** The shared tail of every spawn path: give the slot a fresh identity and a
+ *  live simulation state at (x, z). The slot only becomes active here, so a
+ *  taken-but-unplaced slot simply stays free. */
+function finalizeCrowdSlot(state: CrowdState, object: CrowdObject, kind: CrowdKind, x: number, z: number) {
+  object.generation += 1
+  object.id = `crowd:${kind}:${object.slot}:${object.generation}`
+  object.position.x = x
+  object.position.y = 0.65
+  object.position.z = z
+  object.heading = kind === 'pedestrian'
+    ? Math.round(random(state) * 4) * Math.PI / 2
+    : random(state) * Math.PI * 2
+  object.rotation.x = 0
+  object.rotation.y = object.heading
+  object.rotation.z = 0
+  object.velocity.x = Math.sin(object.heading) * WANDER_SPEED[kind]
+  object.velocity.y = 0
+  object.velocity.z = Math.cos(object.heading) * WANDER_SPEED[kind]
+  object.angularVelocity.x = 0
+  object.angularVelocity.y = 0
+  object.angularVelocity.z = 0
+  object.roams = kind === 'cat' || random(state) < ROAMER_SHARE
+  object.wanderTimer = 1 + random(state) * 3
+  if (!object.roams) pickDestination(state, object)
+  object.pauseTimer = 0
+  object.fleeTimer = 0
+  object.turnCooldown = 0
+  object.slideDirection = 0
+  object.wasVisible = false
+  object.active = true
+  object.inBeam = false
+  object.tether = 0
+  object.playerTouched = false
+  object.destroying = false
+  object.destroyTimer = 0
+  object.explosionPending = false
+  object.absorbing = false
+  object.absorbTimer = 0
+}
+
 // The run-start seed and the steady-state respawn want different placements:
 // loading pre-populates a distant, visible district, while replacements never
 // enter the player safety ring during play.
@@ -331,10 +413,7 @@ function spawnCrowdObject(
   placement?: CrowdPlacement,
   openingPreload = false,
 ) {
-  let object: CrowdObject | null = null
-  for (const candidate of state.objects) {
-    if (!candidate.active && candidate.kind === kind) { object = candidate; break }
-  }
+  const object = takeFreeSlot(state, kind)
   if (!object) return false
   let x = 0
   let z = 0
@@ -424,41 +503,132 @@ function spawnCrowdObject(
   }
   if (!placed) return false
   if (!placement) state.clusterLeft -= 1
-  object.generation += 1
-  object.id = `crowd:${kind}:${object.slot}:${object.generation}`
-  object.position.x = x
-  object.position.y = 0.65
-  object.position.z = z
-  object.heading = kind === 'pedestrian'
-    ? Math.round(random(state) * 4) * Math.PI / 2
-    : random(state) * Math.PI * 2
-  object.rotation.x = 0
-  object.rotation.y = object.heading
-  object.rotation.z = 0
-  object.velocity.x = Math.sin(object.heading) * WANDER_SPEED[kind]
-  object.velocity.y = 0
-  object.velocity.z = Math.cos(object.heading) * WANDER_SPEED[kind]
-  object.angularVelocity.x = 0
-  object.angularVelocity.y = 0
-  object.angularVelocity.z = 0
-  object.roams = kind === 'cat' || random(state) < ROAMER_SHARE
-  object.wanderTimer = 1 + random(state) * 3
-  if (!object.roams) pickDestination(state, object)
-  object.pauseTimer = 0
-  object.fleeTimer = 0
-  object.turnCooldown = 0
-  object.slideDirection = 0
-  object.wasVisible = false
-  object.active = true
-  object.inBeam = false
-  object.tether = 0
-  object.playerTouched = false
-  object.destroying = false
-  object.destroyTimer = 0
-  object.explosionPending = false
-  object.absorbing = false
-  object.absorbTimer = 0
+  finalizeCrowdSlot(state, object, kind, x, z)
   return true
+}
+
+/**
+ * The deterministic census of one street cell.
+ *
+ * A pure function of the coordinates, like getProceduralCell: no storage, so a
+ * district the player has never visited (or has left) costs nothing at all.
+ * Street residents stand on the pavement lanes along the cell's edge roads;
+ * park cells hold a small knot on the lawn instead, plus better odds of a cat.
+ */
+export function crowdCellResidents(cellX: number, cellZ: number): { x: number; z: number; kind: CrowdKind }[] {
+  // The tutorial park stays one quiet cat; the lake has no pavement.
+  if (isTutorialCell(cellX, cellZ)) return []
+  const seed = seedForWorldCell(cellX, cellZ, 0x70656f70)
+  const park = parkClusterForCell(cellX, cellZ) !== null
+  const roll = seed % 100
+  const pedestrians = park ? 2 : roll < 40 ? 1 : roll < 62 ? 2 : 0
+  const cats = ((seed >>> 7) % 100) < (park ? 55 : 22) ? 1 : 0
+  const spots: { x: number; z: number; kind: CrowdKind }[] = []
+  // A tiny private xorshift keeps the layout deterministic without touching
+  // the shared state RNG (which would make the census depend on visit order).
+  let bits = seed || 1
+  const next = () => {
+    bits ^= bits << 13
+    bits ^= bits >>> 17
+    bits ^= bits << 5
+    bits >>>= 0
+    return bits / 0xffffffff
+  }
+  const margin = 4
+  for (let index = 0; index < pedestrians + cats; index += 1) {
+    const kind: CrowdKind = index < pedestrians ? 'pedestrian' : 'cat'
+    let x: number
+    let z: number
+    if (park) {
+      x = cellX * WORLD_CELL_SIZE + margin + next() * (WORLD_CELL_SIZE - margin * 2)
+      z = cellZ * WORLD_CELL_SIZE + margin + next() * (WORLD_CELL_SIZE - margin * 2)
+    } else {
+      // Pin one axis to a pavement lane just off an edge road, walk the other.
+      const lane = next() < 0.5 ? PAVEMENT_LANE : WORLD_CELL_SIZE - PAVEMENT_LANE
+      const along = margin + next() * (WORLD_CELL_SIZE - margin * 2)
+      if (next() < 0.5) {
+        x = cellX * WORLD_CELL_SIZE + lane
+        z = cellZ * WORLD_CELL_SIZE + along
+      } else {
+        x = cellX * WORLD_CELL_SIZE + along
+        z = cellZ * WORLD_CELL_SIZE + lane
+      }
+    }
+    spots.push({ x, z, kind })
+  }
+  return spots
+}
+
+function placeCellResident(state: CrowdState, view: CrowdView, spot: { x: number; z: number; kind: CrowdKind }): 'placed' | 'blocked' | 'full' {
+  const object = takeFreeSlot(state, spot.kind)
+  if (!object) return 'full'
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const x = spot.x + (attempt === 0 ? 0 : (random(state) - 0.5) * 6)
+    const z = spot.z + (attempt === 0 ? 0 : (random(state) - 0.5) * 6)
+    if (blockedAt(view, x, z, SPAWN_CLEARANCE)) continue
+    if (!crowdPositionIsWalkable({ x, z })) continue
+    if (crowdedAt(state, x, z)) continue
+    finalizeCrowdSlot(state, object, spot.kind, x, z)
+    return 'placed'
+  }
+  return 'blocked'
+}
+
+/**
+ * Streams district residents in as their cells enter the activation ring.
+ *
+ * Nearest cells first, on a per-tick attempt budget, so crossing into a new
+ * district costs a bounded slice of each frame. A cell whose residents cannot
+ * be placed because the pool is momentarily full stays unmarked and is simply
+ * retried on a later tick; one whose spots are merely blocked by buildings is
+ * accepted as placed-as-far-as-possible rather than retried forever.
+ */
+function activateCrowdCells(state: CrowdState, view: CrowdView, opening = false) {
+  const centerX = worldCellCoord(view.position.x)
+  const centerZ = worldCellCoord(view.position.z)
+  const cellRange = Math.ceil(CROWD_CELL_ACTIVATE_RADIUS / WORLD_CELL_SIZE)
+  const minDistance = opening ? 0 : CROWD_CELL_MIN_ACTIVATE_DISTANCE
+  const candidates: { cellX: number; cellZ: number; key: string; distance: number }[] = []
+  for (let dz = -cellRange; dz <= cellRange; dz += 1) {
+    for (let dx = -cellRange; dx <= cellRange; dx += 1) {
+      const cellX = centerX + dx
+      const cellZ = centerZ + dz
+      const key = `${cellX}:${cellZ}`
+      if (state.activatedCells.has(key)) continue
+      const distance = Math.hypot(worldCellCenter(cellX) - view.position.x, worldCellCenter(cellZ) - view.position.z)
+      if (distance > CROWD_CELL_ACTIVATE_RADIUS || distance < minDistance) continue
+      candidates.push({ cellX, cellZ, key, distance })
+    }
+  }
+  candidates.sort((left, right) => left.distance - right.distance)
+  let attempts = 0
+  const budget = opening ? Number.POSITIVE_INFINITY : CROWD_CELL_SCAN_BUDGET
+  for (const candidate of candidates) {
+    if (attempts >= budget) break
+    state.activatedCells.add(candidate.key)
+    for (const spot of crowdCellResidents(candidate.cellX, candidate.cellZ)) {
+      // The tutorial keeps its single cat as the only feline in the city.
+      if (spot.kind === 'cat' && view.tutorialCatOnly) continue
+      attempts += 1
+      if (placeCellResident(state, view, spot) === 'full') {
+        state.activatedCells.delete(candidate.key)
+        return
+      }
+    }
+  }
+}
+
+/** Forgets activation marks the player has left far behind, so a return visit
+ *  finds the district repopulated. Residents themselves were already recycled
+ *  by the ordinary distance cull. */
+function releaseFarCrowdCells(state: CrowdState, view: CrowdView) {
+  for (const key of state.activatedCells) {
+    const split = key.indexOf(':')
+    const cellX = Number(key.slice(0, split))
+    const cellZ = Number(key.slice(split + 1))
+    const distance = Math.hypot(worldCellCenter(cellX) - view.position.x, worldCellCenter(cellZ) - view.position.z)
+    if (distance > CROWD_CELL_FORGET_RADIUS) state.activatedCells.delete(key)
+  }
 }
 
 // A shuffled radial pattern fills the current camera wedge without bunching
@@ -513,6 +683,9 @@ export function primeCrowds(state: CrowdState, view: CrowdView) {
   if (state.initialSpawnDone) return state
   state.initialSpawnDone = true
   seedInitialCrowd(state, view, !view.tutorialCatOnly)
+  // Populate every district in the activation ring at once - this runs before
+  // the first rendered frame, so nothing pops into an open view.
+  activateCrowdCells(state, view, true)
   state.spawnTimer = 0.16
   return state
 }
@@ -705,6 +878,12 @@ export function stepCrowds(state: CrowdState, view: CrowdView, dt: number) {
   state.nearbyPedestrians = nearbyPedestrians
 
   if (state.spawnTimer <= 0) {
+    // District streaming shares the trickle's cadence: activation marks are
+    // dropped for far-behind cells, then any cell newly inside the ring gets
+    // its residents. Sharing the timer also keeps focused unit tests (which
+    // park spawnTimer at 999) free of surprise extras.
+    releaseFarCrowdCells(state, view)
+    activateCrowdCells(state, view)
     let spawned = 0
     const refill = Math.max(1, Math.min(3, recycled + 1))
     for (let attempt = 0; attempt < refill; attempt += 1) {
