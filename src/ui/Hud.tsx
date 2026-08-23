@@ -5,7 +5,7 @@ import { broadcastPhase, broadcastProgress } from '../core/broadcast'
 import { UPGRADE_DEFINITIONS, type UpgradeId } from '../core/upgrades'
 import { Radar } from './Radar'
 import { pilotFrameStyle } from '../render/pilotArt'
-import { startLobbyMusic, unlockAudio } from '../audio'
+import { getAudioVolumes, setBgmVolume, setSfxVolume, startLobbyMusic, unlockAudio } from '../audio'
 
 const formatTime = (seconds: number) => {
   const safe = Math.max(0, Math.ceil(seconds))
@@ -126,6 +126,31 @@ function MobileControls() {
 
 function Options({ onClose }: { onClose: () => void }) {
   const { quality, setQuality, language, setLanguage, t } = useGame()
+  const initialVolumes = useRef(getAudioVolumes())
+  const [bgmVolume, setBgmVolumeState] = useState(initialVolumes.current.bgm)
+  const [sfxVolume, setSfxVolumeState] = useState(initialVolumes.current.sfx)
+
+  const volumeRow = (label: string, value: number, setVolume: (volume: number) => void) => {
+    const percent = Math.round(value * 100)
+    return (
+      <label className="option-row audio-option">
+        <span>{label}</span>
+        <span className="volume-control">
+          <input
+            type="range"
+            min="0"
+            max="100"
+            step="1"
+            value={percent}
+            aria-label={label}
+            onChange={(event) => setVolume(Number(event.currentTarget.value) / 100)}
+          />
+          <output>{percent}%</output>
+        </span>
+      </label>
+    )
+  }
+
   return (
     <div className="overlay options-overlay">
       <div className="options-card panel">
@@ -150,6 +175,14 @@ function Options({ onClose }: { onClose: () => void }) {
             ))}
           </div>
         </div>
+        {volumeRow(t.bgmVolume, bgmVolume, (volume) => {
+          setBgmVolumeState(volume)
+          setBgmVolume(volume)
+        })}
+        {volumeRow(t.sfxVolume, sfxVolume, (volume) => {
+          setSfxVolumeState(volume)
+          setSfxVolume(volume)
+        })}
         <button className="primary-button" onClick={onClose}>{t.close}</button>
       </div>
     </div>

@@ -43,6 +43,8 @@ type Strings = {
   qualityHigh: string
   qualityLow: string
   language: string
+  bgmVolume: string
+  sfxVolume: string
   controlFly: string
   controlStrafe: string
   controlAim: string
@@ -183,6 +185,8 @@ export const STRINGS: Record<Language, Strings> = {
     qualityHigh: '높음',
     qualityLow: '낮음',
     language: '언어',
+    bgmVolume: 'BGM',
+    sfxVolume: '효과음',
     controlFly: '보는 방향으로 비행',
     controlStrafe: '좌우 이동',
     controlAim: '조종 · 조준',
@@ -321,6 +325,8 @@ export const STRINGS: Record<Language, Strings> = {
     qualityHigh: '高',
     qualityLow: '低',
     language: '言語',
+    bgmVolume: 'BGM',
+    sfxVolume: '効果音',
     controlFly: '見ている方向へ飛行',
     controlStrafe: '左右移動',
     controlAim: '操縦・照準',
@@ -459,6 +465,8 @@ export const STRINGS: Record<Language, Strings> = {
     qualityHigh: 'HIGH',
     qualityLow: 'LOW',
     language: 'LANGUAGE',
+    bgmVolume: 'BGM',
+    sfxVolume: 'SOUND EFFECTS',
     controlFly: 'FLY WHERE YOU LOOK',
     controlStrafe: 'RIGHT / LEFT',
     controlAim: 'STEER / AIM',

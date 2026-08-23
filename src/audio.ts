@@ -9,10 +9,81 @@ let beamSound: HTMLAudioElement | null = null
 let boosterSound: HTMLAudioElement | null = null
 let mysteryCircleSound: HTMLAudioElement | null = null
 let gameplayFadeFrame: number | null = null
+let effectsMasterGain: GainNode | null = null
 
+const LOBBY_MUSIC_VOLUME = 0.28
 const GAMEPLAY_MUSIC_START_VOLUME = 0.025
 const GAMEPLAY_MUSIC_MAX_VOLUME = 0.18
 const GAMEPLAY_MUSIC_FADE_SECONDS = 8
+const BEAM_VOLUME = 0.2
+const BOOSTER_VOLUME = 0.4
+const MYSTERY_CIRCLE_VOLUME = 0.7
+const BGM_VOLUME_STORAGE_KEY = 'beam-bandit-bgm-volume'
+const SFX_VOLUME_STORAGE_KEY = 'beam-bandit-sfx-volume'
+
+function clampVolume(value: number) {
+  return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 1
+}
+
+function storedVolume(key: string) {
+  if (typeof window === 'undefined') return 1
+  try {
+    const stored = window.localStorage.getItem(key)
+    return stored === null ? 1 : clampVolume(Number(stored))
+  } catch {
+    return 1
+  }
+}
+
+function storeVolume(key: string, value: number) {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(key, String(value))
+  } catch {
+    // Audio still works when storage is unavailable (for example, privacy mode).
+  }
+}
+
+let bgmVolume = storedVolume(BGM_VOLUME_STORAGE_KEY)
+let sfxVolume = storedVolume(SFX_VOLUME_STORAGE_KEY)
+let gameplayMusicBaseVolume = GAMEPLAY_MUSIC_START_VOLUME
+
+export type AudioVolumes = {
+  bgm: number
+  sfx: number
+}
+
+export function getAudioVolumes(): AudioVolumes {
+  return { bgm: bgmVolume, sfx: sfxVolume }
+}
+
+export function setBgmVolume(value: number) {
+  bgmVolume = clampVolume(value)
+  storeVolume(BGM_VOLUME_STORAGE_KEY, bgmVolume)
+  if (lobbyMusic) lobbyMusic.volume = LOBBY_MUSIC_VOLUME * bgmVolume
+  if (gameplayMusic) gameplayMusic.volume = gameplayMusicBaseVolume * bgmVolume
+}
+
+export function setSfxVolume(value: number) {
+  sfxVolume = clampVolume(value)
+  storeVolume(SFX_VOLUME_STORAGE_KEY, sfxVolume)
+  if (beamSound) beamSound.volume = BEAM_VOLUME * sfxVolume
+  if (boosterSound) boosterSound.volume = BOOSTER_VOLUME * sfxVolume
+  if (mysteryCircleSound) mysteryCircleSound.volume = MYSTERY_CIRCLE_VOLUME * sfxVolume
+  if (context && effectsMasterGain) {
+    effectsMasterGain.gain.setValueAtTime(sfxVolume, context.currentTime)
+  }
+}
+
+function effectsDestination() {
+  if (!context) return null
+  if (!effectsMasterGain) {
+    effectsMasterGain = context.createGain()
+    effectsMasterGain.gain.setValueAtTime(sfxVolume, context.currentTime)
+    effectsMasterGain.connect(context.destination)
+  }
+  return effectsMasterGain
+}
 
 /**
  * Supplied looping tracks live separately from the Web Audio effects, so the
@@ -35,7 +106,7 @@ function lobbyTrack() {
     lobbyMusic.setAttribute('playsinline', 'true')
     lobbyMusic.loop = true
     lobbyMusic.preload = 'auto'
-    lobbyMusic.volume = 0.28
+    lobbyMusic.volume = LOBBY_MUSIC_VOLUME * bgmVolume
   }
   return lobbyMusic
 }
@@ -56,7 +127,7 @@ function beamTrack() {
     beamSound = new Audio('/audio/ufo-beam.mp3')
     beamSound.loop = true
     beamSound.preload = 'auto'
-    beamSound.volume = 0.2
+    beamSound.volume = BEAM_VOLUME * sfxVolume
   }
   return beamSound
 }
@@ -67,7 +138,7 @@ function boosterTrack() {
     boosterSound = new Audio('/audio/ufo-booster.wav')
     boosterSound.loop = false
     boosterSound.preload = 'auto'
-    boosterSound.volume = 0.4
+    boosterSound.volume = BOOSTER_VOLUME * sfxVolume
   }
   return boosterSound
 }
@@ -78,7 +149,7 @@ function mysteryCircleTrack() {
     mysteryCircleSound = new Audio('/audio/mystery-circle.wav')
     mysteryCircleSound.loop = false
     mysteryCircleSound.preload = 'auto'
-    mysteryCircleSound.volume = 0.7
+    mysteryCircleSound.volume = MYSTERY_CIRCLE_VOLUME * sfxVolume
   }
   return mysteryCircleSound
 }
@@ -124,18 +195,21 @@ export function startGameplayMusic() {
     cancelAnimationFrame(gameplayFadeFrame)
   }
   gameplayFadeFrame = null
-  track.volume = GAMEPLAY_MUSIC_START_VOLUME
+  gameplayMusicBaseVolume = GAMEPLAY_MUSIC_START_VOLUME
+  track.volume = gameplayMusicBaseVolume * bgmVolume
   void track.play().catch(() => undefined)
 
   if (typeof requestAnimationFrame === 'undefined') {
-    track.volume = GAMEPLAY_MUSIC_MAX_VOLUME
+    gameplayMusicBaseVolume = GAMEPLAY_MUSIC_MAX_VOLUME
+    track.volume = gameplayMusicBaseVolume * bgmVolume
     return
   }
   const beganAt = performance.now()
   const fade = (now: number) => {
     const progress = Math.min(1, (now - beganAt) / (GAMEPLAY_MUSIC_FADE_SECONDS * 1000))
-    track.volume = GAMEPLAY_MUSIC_START_VOLUME
+    gameplayMusicBaseVolume = GAMEPLAY_MUSIC_START_VOLUME
       + (GAMEPLAY_MUSIC_MAX_VOLUME - GAMEPLAY_MUSIC_START_VOLUME) * progress
+    track.volume = gameplayMusicBaseVolume * bgmVolume
     if (progress < 1) gameplayFadeFrame = requestAnimationFrame(fade)
     else gameplayFadeFrame = null
   }
@@ -184,6 +258,7 @@ export function playMysteryCircleSound() {
 
 export function unlockAudio() {
   if (!context) context = new AudioContext()
+  effectsDestination()
   if (context.state === 'suspended') void context.resume()
   void loadLaserSound()
 }
@@ -226,7 +301,7 @@ export function playLaserSound() {
   gain.gain.setValueAtTime(0.92, context.currentTime)
   gain.gain.exponentialRampToValueAtTime(0.001, context.currentTime + Math.min(0.42, laserBuffer.duration))
   source.connect(gain)
-  gain.connect(context.destination)
+  gain.connect(effectsDestination() ?? context.destination)
   source.start()
 }
 
@@ -248,7 +323,7 @@ export function tone(kind: 'pickup' | 'delivery' | 'warning' | 'impact' | 'upgra
   gain.gain.setValueAtTime(kind === 'impact' ? 0.11 : 0.07, now)
   gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18)
   oscillator.connect(gain)
-  gain.connect(context.destination)
+  gain.connect(effectsDestination() ?? context.destination)
   oscillator.start(now)
   oscillator.stop(now + 0.19)
 }
