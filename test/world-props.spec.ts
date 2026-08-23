@@ -86,10 +86,13 @@ describe('beam-capable city dressing', () => {
     expect(props.some((prop) => prop.kind === 'bus-stop')).toBe(true)
   })
 
-  it('hands a world prop from the static pool to the lifted pool only while carried', () => {
-    const object = { active: true, inBeam: false, tether: 0, absorbing: false }
+  it('hands a world prop from the static pool to the lifted pool only while actually lifted', () => {
+    const object = { active: true, tether: 0, absorbing: false }
     expect(isWorldPropCarried(object)).toBe(false)
-    expect(isWorldPropCarried({ ...object, inBeam: true })).toBe(true)
+    // Merely touching the beam is not carrying: a prop too heavy for the
+    // craft's current grip sits still with tether at 0 the whole time it is
+    // inside the cone, and must stay on the (correctly lit) static pool
+    // rather than flip to the lifted pool's unlit copy at the same spot.
     expect(isWorldPropCarried({ ...object, tether: 0.5 })).toBe(true)
     expect(isWorldPropCarried({ ...object, absorbing: true })).toBe(true)
     expect(isWorldPropCarried({ ...object, active: false, absorbing: true })).toBe(false)

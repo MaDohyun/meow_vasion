@@ -300,17 +300,30 @@ export function worldPropsAround(world: ActiveWorld, position: Pick<Vec3, 'x' | 
   return props
 }
 
-/** Static pools hide a prop while it is carried, and permanently after absorption. */
+/**
+ * Static pools hide a prop while it is carried, and permanently after absorption.
+ *
+ * "Carried" means actually lifted, not merely touched: `inBeam` goes true the
+ * instant the beam cone reaches a prop, regardless of whether the craft's grip
+ * is strong enough to move it at all (see beamLiftScale in core/beam.ts) - a
+ * tree, bench or bus stop is heavier than an early craft can lift for most of
+ * a run. Keying the swap off `inBeam` used to hide the (correctly lit) static
+ * prop the moment the beam grazed it and show the lifted pool's copy in its
+ * place - same spot, unmoving, but a flatter, unlit material - which read as
+ * the object darkening or a double spawning every time the player merely flew
+ * past. `tether` only rises while the object is actually being dragged along
+ * (see stepBeamObjects), so it is the real signal.
+ */
 export function isWorldPropCarried(
-  object: Pick<BeamObject, 'active' | 'inBeam' | 'tether' | 'absorbing'>,
+  object: Pick<BeamObject, 'active' | 'tether' | 'absorbing'>,
 ) {
-  return object.active && (object.inBeam || object.tether > 0.02 || object.absorbing)
+  return object.active && (object.tether > 0.02 || object.absorbing)
 }
 
 export function isWorldPropHidden(
   id: string,
   destroyed: ReadonlySet<string>,
-  objects: ReadonlyArray<Pick<BeamObject, 'id' | 'active' | 'inBeam' | 'tether' | 'absorbing'>>,
+  objects: ReadonlyArray<Pick<BeamObject, 'id' | 'active' | 'tether' | 'absorbing'>>,
 ) {
   if (destroyed.has(id)) return true
   return objects.some((object) => object.id === id && isWorldPropCarried(object))
@@ -318,7 +331,7 @@ export function isWorldPropHidden(
 
 export function worldPropVisibilityKey(
   destroyed: ReadonlySet<string>,
-  objects: ReadonlyArray<Pick<BeamObject, 'id' | 'active' | 'inBeam' | 'tether' | 'absorbing'>>,
+  objects: ReadonlyArray<Pick<BeamObject, 'id' | 'active' | 'tether' | 'absorbing'>>,
 ) {
   const hidden = objects
     .filter(isWorldPropCarried)
