@@ -8,7 +8,6 @@ import { bulletinFor } from '../i18n'
 import { BUILDING, GROUND } from '../constants/palette'
 import {
   groundLandmarkForCell,
-  busStopAnchor,
   isNewsTower,
   isConvenienceStore,
   landmarkId,
@@ -22,7 +21,10 @@ import {
   WORLD_MAX_BUILDINGS,
 } from '../core/world'
 import {
+  busStopsAround,
+  isWorldPropCarried,
   isWorldPropHidden,
+  parkBenchesAround,
   parkTreesAround,
   worldPropVisibilityKey,
   worldPropsAround,
@@ -30,6 +32,7 @@ import {
   LANDMARK_RADIUS_CELLS,
   LAKE_SHORE_TREE_CAPACITY,
   PARK_TREE_COUNT,
+  TREE_VARIANT_SLENDER,
 } from '../core/worldProps'
 
 // The news anchor is the player-supplied portrait (public/broadcast/anchor.png),
@@ -537,10 +540,45 @@ const benchGeometry = (() => {
   return mergeGeometries([seat, back, left, right], false)!
 })()
 
+function LiftedParkBenchPool() {
+  const { runtime } = useGame()
+  const ref = useRef<THREE.InstancedMesh>(null)
+  const matrix = useMemo(() => new THREE.Matrix4(), [])
+  const position = useMemo(() => new THREE.Vector3(), [])
+  const scale = useMemo(() => new THREE.Vector3(), [])
+  const rotation = useMemo(() => new THREE.Quaternion(), [])
+  const euler = useMemo(() => new THREE.Euler(), [])
+
+  useFrame(() => {
+    const mesh = ref.current
+    if (!mesh) return
+    let count = 0
+    for (const object of runtime.current.beamObjects) {
+      if (!isWorldPropCarried(object) || object.kind !== 'park-bench') continue
+      if (count >= LANDMARK_CELL_COUNT) break
+      const swallow = object.absorbing ? Math.max(0.05, object.absorbTimer / BEAM_ABSORB_TIME) : 1
+      position.set(object.position.x, object.position.y, object.position.z)
+      euler.set(object.rotation.x, object.rotation.y, object.rotation.z)
+      rotation.setFromEuler(euler)
+      scale.set(object.scale?.x ?? 1, object.scale?.y ?? 1, object.scale?.z ?? 1).multiplyScalar(swallow)
+      matrix.compose(position, rotation, scale)
+      mesh.setMatrixAt(count, matrix)
+      count += 1
+    }
+    mesh.count = count
+    mesh.instanceMatrix.needsUpdate = true
+  })
+
+  return <instancedMesh ref={ref} args={[benchGeometry, undefined, LANDMARK_CELL_COUNT]} frustumCulled={false} renderOrder={2} onUpdate={(mesh) => { mesh.count = 0 }}>
+    <meshToonMaterial color={BUILDING.PARK_BENCH} />
+  </instancedMesh>
+}
+
 function ParkPool() {
   const { runtime } = useGame()
   const trunks = useRef<THREE.InstancedMesh>(null)
-  const crowns = useRef<THREE.InstancedMesh>(null)
+  const roundCrowns = useRef<THREE.InstancedMesh>(null)
+  const slenderCrowns = useRef<THREE.InstancedMesh>(null)
   const benches = useRef<THREE.InstancedMesh>(null)
   const lastKey = useRef('')
   const matrix = useMemo(() => new THREE.Matrix4(), [])
@@ -550,34 +588,53 @@ function ParkPool() {
   const euler = useMemo(() => new THREE.Euler(), [])
 
   useFrame(() => {
-    if (!trunks.current || !crowns.current || !benches.current) return
+    const trunkMesh = trunks.current
+    const roundCrownMesh = roundCrowns.current
+    const slenderCrownMesh = slenderCrowns.current
+    if (!trunkMesh || !roundCrownMesh || !slenderCrownMesh || !benches.current) return
     const world = runtime.current.world
     const key = `${world.cellX}:${world.cellZ}|${worldPropVisibilityKey(runtime.current.destroyedWorldProps, runtime.current.beamObjects)}`
     if (key === lastKey.current) return
     lastKey.current = key
     let treeCount = 0
+    let roundCrownCount = 0
+    let slenderCrownCount = 0
     let parkCount = 0
-    for (const tree of parkTreesAround(runtime.current.drone.position)) {
-      if (isWorldPropHidden(tree.id, runtime.current.destroyedWorldProps, runtime.current.beamObjects)) continue
-      position.set(tree.position.x, tree.height / 2, tree.position.z)
-      scale.set(0.72, tree.height, 0.72)
+    const writeTree = (tree: ReturnType<typeof parkTreesAround>[number]) => {
+      if (isWorldPropHidden(tree.id, runtime.current.destroyedWorldProps, runtime.current.beamObjects)) return
+      const height = tree.height ?? 2.8
+      const crown = tree.crown ?? 2.2
+      position.set(tree.position.x, height / 2, tree.position.z)
+      scale.set(crown * 0.3, height, crown * 0.3)
       matrix.compose(position, rotation, scale)
-      trunks.current.setMatrixAt(treeCount, matrix)
-      position.set(tree.position.x, tree.height + 1.45, tree.position.z)
-      scale.setScalar(tree.crown)
-      matrix.compose(position, rotation, scale)
-      crowns.current.setMatrixAt(treeCount, matrix)
+      trunkMesh.setMatrixAt(treeCount, matrix)
       treeCount += 1
+
+      const slender = tree.variant === TREE_VARIANT_SLENDER
+      position.set(tree.position.x, height + crown * (slender ? 0.95 : 0.65), tree.position.z)
+      scale.set(
+        crown * (slender ? 0.72 : 1),
+        crown * (slender ? 1.2 : 1),
+        crown * (slender ? 0.72 : 1),
+      )
+      matrix.compose(position, rotation, scale)
+      if (slender) {
+        slenderCrownMesh.setMatrixAt(slenderCrownCount, matrix)
+        slenderCrownCount += 1
+      } else {
+        roundCrownMesh.setMatrixAt(roundCrownCount, matrix)
+        roundCrownCount += 1
+      }
     }
-    for (const cell of groundCellsAround(runtime.current.drone.position, LANDMARK_RADIUS_CELLS)) {
-      if (groundLandmarkForCell(cell) !== 'park') continue
-      const centerX = (cell.cellX + 0.5) * WORLD_CELL_SIZE
-      const centerZ = (cell.cellZ + 0.5) * WORLD_CELL_SIZE
-      const benchSeed = seedForWorldCell(cell.cellX, cell.cellZ, 0xbec44)
-      position.set(centerX, 0, centerZ + 3.5)
-      euler.set(0, (benchSeed % 4) * Math.PI / 2, 0)
+    for (const tree of parkTreesAround(runtime.current.drone.position)) {
+      writeTree(tree)
+    }
+    for (const bench of parkBenchesAround(runtime.current.drone.position)) {
+      if (isWorldPropHidden(bench.id, runtime.current.destroyedWorldProps, runtime.current.beamObjects)) continue
+      position.set(bench.position.x, bench.position.y, bench.position.z)
+      euler.set(0, bench.rotation, 0)
       rotation.setFromEuler(euler)
-      scale.setScalar(1)
+      scale.set(bench.scale.x, bench.scale.y, bench.scale.z)
       matrix.compose(position, rotation, scale)
       benches.current.setMatrixAt(parkCount, matrix)
       parkCount += 1
@@ -587,20 +644,11 @@ function ParkPool() {
     // and stay inset from all road strips.
     for (const tree of worldPropsAround(runtime.current.world, runtime.current.drone.position).filter((prop) => prop.kind === 'tree' && prop.id.startsWith('tree:lake:'))) {
       if (treeCount >= LANDMARK_CELL_COUNT * PARK_TREE_COUNT + LAKE_SHORE_TREE_CAPACITY) break
-      if (isWorldPropHidden(tree.id, runtime.current.destroyedWorldProps, runtime.current.beamObjects)) continue
-      const height = tree.height ?? 1.8
-      position.set(tree.position.x, height / 2, tree.position.z)
-      scale.set(0.5, height, 0.5)
-      matrix.compose(position, rotation, scale)
-      trunks.current.setMatrixAt(treeCount, matrix)
-      position.set(tree.position.x, height + 0.92, tree.position.z)
-      scale.setScalar(tree.crown ?? 1.45)
-      matrix.compose(position, rotation, scale)
-      crowns.current.setMatrixAt(treeCount, matrix)
-      treeCount += 1
+      writeTree(tree as ReturnType<typeof parkTreesAround>[number])
     }
-    setPoolCount(trunks.current, treeCount)
-    setPoolCount(crowns.current, treeCount)
+    setPoolCount(trunkMesh, treeCount)
+    setPoolCount(roundCrownMesh, roundCrownCount)
+    setPoolCount(slenderCrownMesh, slenderCrownCount)
     setPoolCount(benches.current, parkCount)
   })
 
@@ -610,13 +658,18 @@ function ParkPool() {
         <cylinderGeometry args={[0.5, 0.62, 1, 7]} />
         <meshToonMaterial color={BUILDING.PARK_TRUNK} />
       </instancedMesh>
-      <instancedMesh ref={crowns} args={[undefined, undefined, LANDMARK_CELL_COUNT * PARK_TREE_COUNT + LAKE_SHORE_TREE_CAPACITY]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }}>
+      <instancedMesh ref={roundCrowns} args={[undefined, undefined, LANDMARK_CELL_COUNT * PARK_TREE_COUNT + LAKE_SHORE_TREE_CAPACITY]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }}>
         <icosahedronGeometry args={[1, 1]} />
+        <meshToonMaterial color={BUILDING.PARK_LEAF} />
+      </instancedMesh>
+      <instancedMesh ref={slenderCrowns} args={[undefined, undefined, LANDMARK_CELL_COUNT * PARK_TREE_COUNT + LAKE_SHORE_TREE_CAPACITY]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }}>
+        <coneGeometry args={[1, 2, 8]} />
         <meshToonMaterial color={BUILDING.PARK_LEAF} />
       </instancedMesh>
       <instancedMesh ref={benches} args={[benchGeometry, undefined, LANDMARK_CELL_COUNT]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }}>
         <meshToonMaterial color={BUILDING.PARK_BENCH} />
       </instancedMesh>
+      <LiftedParkBenchPool />
     </group>
   )
 }
@@ -730,6 +783,40 @@ const busStopGeometry = mergedBoxes([
   [0.3, 3.1, 0.3, 3.1, 1.6, 1.25],
   [4.8, 0.35, 0.9, 0, 0.9, 0.45],
 ])
+
+function LiftedBusStopPool() {
+  const { runtime } = useGame()
+  const ref = useRef<THREE.InstancedMesh>(null)
+  const matrix = useMemo(() => new THREE.Matrix4(), [])
+  const position = useMemo(() => new THREE.Vector3(), [])
+  const scale = useMemo(() => new THREE.Vector3(), [])
+  const rotation = useMemo(() => new THREE.Quaternion(), [])
+  const euler = useMemo(() => new THREE.Euler(), [])
+
+  useFrame(() => {
+    const mesh = ref.current
+    if (!mesh) return
+    let count = 0
+    for (const object of runtime.current.beamObjects) {
+      if (!isWorldPropCarried(object) || object.kind !== 'bus-stop') continue
+      if (count >= WORLD_MAX_BUILDINGS) break
+      const swallow = object.absorbing ? Math.max(0.05, object.absorbTimer / BEAM_ABSORB_TIME) : 1
+      position.set(object.position.x, object.position.y, object.position.z)
+      euler.set(object.rotation.x, object.rotation.y, object.rotation.z)
+      rotation.setFromEuler(euler)
+      scale.set(object.scale?.x ?? 1, object.scale?.y ?? 1, object.scale?.z ?? 1).multiplyScalar(swallow)
+      matrix.compose(position, rotation, scale)
+      mesh.setMatrixAt(count, matrix)
+      count += 1
+    }
+    mesh.count = count
+    mesh.instanceMatrix.needsUpdate = true
+  })
+
+  return <instancedMesh ref={ref} args={[busStopGeometry, undefined, WORLD_MAX_BUILDINGS]} frustumCulled={false} renderOrder={2} onUpdate={(mesh) => { mesh.count = 0 }}>
+    <meshToonMaterial color={BUILDING.TRANSIT} />
+  </instancedMesh>
+}
 
 function cylinderBetween(start: THREE.Vector3, end: THREE.Vector3, radius: number) {
   const direction = end.clone().sub(start)
@@ -973,17 +1060,15 @@ function TransitUtilityPool() {
         pylonCount += 1
       }
     }
-    for (const building of world.buildings) {
-      // The shared anchor also rejects shelters that would stand in the road
-      // or on the lamp/bin lines - placement and render must agree on both.
-      const anchor = busStopAnchor(building)
-      if (!anchor) continue
-      const { x, z, onX, side } = anchor
-      const yaw = onX ? Math.PI / 2 : 0
-      euler.set(0, yaw, 0)
+    for (const stop of busStopsAround(world)) {
+      if (isWorldPropHidden(stop.id, runtime.current.destroyedWorldProps, runtime.current.beamObjects)) continue
+      const onX = stop.rotation === Math.PI / 2
+      const side = stop.variant === 1 ? 1 : -1
+      const { x, z } = stop.position
+      euler.set(0, stop.rotation, 0)
       rotation.setFromEuler(euler)
       position.set(x, 0, z)
-      scale.set(0.82, 0.82, 0.82)
+      scale.set(stop.scale.x, stop.scale.y, stop.scale.z)
       matrix.compose(position, rotation, scale)
       busStops.current.setMatrixAt(busCount, matrix)
       position.set(x, 3.4, z + (onX ? 1.4 : side * 1.4))
@@ -1029,6 +1114,7 @@ function TransitUtilityPool() {
       <LiftedPowerPylonPool />
       <LiftedCommunicationsPool paint="red" />
       <LiftedCommunicationsPool paint="white" />
+      <LiftedBusStopPool />
     </group>
   )
 }

@@ -66,7 +66,7 @@ import { createMissionState, missionHasQuest, recordMissionEvent, startMissionOn
 import { MYSTERY_BOOST_DURATION, MYSTERY_BOOST_MAX_MULTIPLIER, mysteryBoostMultiplier } from './core/mysteryCircles'
 import { absorbShieldDamage, createShieldState, isShieldRegenerating, setShieldCapacity, shieldRatio, stepShield, type ShieldState } from './core/shield'
 import { shouldCrashFromOverload } from './core/overload'
-import { WORLD_PROP_MASS, worldPropsAround } from './core/worldProps'
+import { worldPropMass, worldPropsAround } from './core/worldProps'
 import { playBoosterSound, playLaserSound, playMysteryCircleSound, startBeamSound, startGameplayMusic, stopBeamSound, stopGameplayMusic, stopLobbyMusic, tone, unlockAudio } from './audio'
 
 export type GamePhase = 'intro' | 'playing' | 'upgrade' | 'results'
@@ -387,12 +387,45 @@ function makeTrafficBeamObject(car: TrafficCar): BeamObject {
   }
 }
 
+const WORLD_PROP_COLORS: Record<BeamWorldProp['kind'], string> = {
+  'rooftop-structure': '#aeb5b8',
+  tree: '#6e914b',
+  'utility-pole': '#aeb5b8',
+  'power-pylon': '#aeb5b8',
+  communications: '#d7d1c5',
+  'trash-bin': '#565d66',
+  'park-bench': '#c58b68',
+  'bus-stop': '#78aebc',
+}
+
+const WORLD_PROP_DIAMETERS: Record<BeamWorldProp['kind'], number> = {
+  'rooftop-structure': 6.2,
+  tree: 4.4,
+  'utility-pole': 2.8,
+  'power-pylon': 7.2,
+  communications: 12,
+  'trash-bin': 1.7,
+  'park-bench': 3.4,
+  'bus-stop': 7.2,
+}
+
+const WORLD_PROP_SCORES: Record<BeamWorldProp['kind'], number> = {
+  'rooftop-structure': 110,
+  tree: 65,
+  'utility-pole': 45,
+  'power-pylon': 180,
+  communications: 520,
+  'trash-bin': 30,
+  'park-bench': 35,
+  'bus-stop': 140,
+}
+
 function makeWorldPropBeamObject(worldProp: BeamWorldProp): BeamObject {
   return {
     id: worldProp.id,
     kind: worldProp.kind,
-    mass: WORLD_PROP_MASS[worldProp.kind],
-    color: worldProp.kind === 'tree' ? '#6e914b' : worldProp.kind === 'communications' ? '#d7d1c5' : worldProp.kind === 'trash-bin' ? '#565d66' : '#aeb5b8',
+    mass: worldPropMass(worldProp),
+    color: WORLD_PROP_COLORS[worldProp.kind],
     position: { ...worldProp.position },
     velocity: { x: 0, y: 0, z: 0 },
     rotation: { x: 0, y: worldProp.rotation, z: 0 },
@@ -407,8 +440,8 @@ function makeWorldPropBeamObject(worldProp: BeamWorldProp): BeamObject {
     explosionPending: false,
     absorbing: false,
     absorbTimer: 0,
-    diameter: worldProp.kind === 'communications' ? 12 : worldProp.kind === 'power-pylon' ? 7.2 : worldProp.kind === 'rooftop-structure' ? 6.2 : worldProp.kind === 'tree' ? 4.4 : worldProp.kind === 'trash-bin' ? 1.7 : 2.8,
-    scoreValue: worldProp.kind === 'communications' ? 520 : worldProp.kind === 'power-pylon' ? 180 : worldProp.kind === 'rooftop-structure' ? 110 : worldProp.kind === 'tree' ? 65 : worldProp.kind === 'trash-bin' ? 30 : 45,
+    diameter: WORLD_PROP_DIAMETERS[worldProp.kind],
+    scoreValue: WORLD_PROP_SCORES[worldProp.kind],
     worldProp,
   }
 }

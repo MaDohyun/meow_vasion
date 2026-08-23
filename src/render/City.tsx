@@ -14,12 +14,15 @@ import {
   isConvenienceStore,
 } from '../core/cityLandmarks'
 import {
+  isWorldPropCarried,
   isWorldPropHidden,
   trashBinsAround,
   utilityPolesAround,
   worldPropVisibilityKey,
   worldPropsAround,
   STREETLIGHT_RADIUS_CELLS,
+  TREE_VARIANT_ROUND,
+  TREE_VARIANT_SLENDER,
 } from '../core/worldProps'
 import {
   BUILDING_SIGN_LABELS,
@@ -1629,12 +1632,31 @@ function roofStructureGeometry(variant: number) {
 
 const roofStructureGeometries = Array.from({ length: ROOF_STRUCTURE_VARIANTS }, (_, index) => roofStructureGeometry(index))
 
-const liftedTreeGeometry = mergeGeometries([
-  // IcosahedronGeometry is non-indexed in Three.js; keep both parts in the
-  // same representation so BufferGeometryUtils can merge the lifted prop.
-  new THREE.CylinderGeometry(0.5, 0.62, 1, 7).toNonIndexed().translate(0, 0.5, 0),
-  new THREE.IcosahedronGeometry(1, 1).translate(0, 1.5, 0),
-], false)!
+const TREE_BASE_HEIGHT = 2.8
+const TREE_BASE_CROWN = 2.2
+
+function liftedTreeGeometry(variant: number) {
+  const trunk = new THREE.CylinderGeometry(
+    TREE_BASE_CROWN * 0.3,
+    TREE_BASE_CROWN * 0.34,
+    TREE_BASE_HEIGHT,
+    7,
+  ).toNonIndexed().translate(0, TREE_BASE_HEIGHT / 2, 0)
+  const crown = variant === TREE_VARIANT_SLENDER
+    ? new THREE.ConeGeometry(
+      TREE_BASE_CROWN * 0.72,
+      TREE_BASE_CROWN * 2.4,
+      8,
+    ).toNonIndexed().translate(0, TREE_BASE_HEIGHT + TREE_BASE_CROWN * 0.95, 0)
+    : new THREE.IcosahedronGeometry(TREE_BASE_CROWN, 1)
+      .translate(0, TREE_BASE_HEIGHT + TREE_BASE_CROWN * 0.65, 0)
+  return mergeGeometries([trunk, crown], false)!
+}
+
+const liftedTreeGeometries = [
+  liftedTreeGeometry(TREE_VARIANT_ROUND),
+  liftedTreeGeometry(TREE_VARIANT_SLENDER),
+]
 const liftedUtilityGeometry = mergeGeometries([
   streetLightPoleGeometry,
   new THREE.BoxGeometry(0.52, 0.26, 0.62).translate(0, 4.78, 1.16),
@@ -1677,7 +1699,7 @@ function LiftedRoofStructurePool({ variant }: { variant: number }) {
   </instancedMesh>
 }
 
-function LiftedTreePool() {
+function LiftedTreePool({ variant }: { variant: number }) {
   const { runtime } = useGame()
   const ref = useRef<THREE.InstancedMesh>(null)
   const matrix = useMemo(() => new THREE.Matrix4(), [])
@@ -1691,7 +1713,7 @@ function LiftedTreePool() {
     if (!mesh) return
     let count = 0
     for (const object of runtime.current.beamObjects) {
-      if (!object.active || object.kind !== 'tree' || !object.worldProp) continue
+      if (!isWorldPropCarried(object) || object.kind !== 'tree' || object.worldProp?.variant !== variant) continue
       if (count >= LIFTED_WORLD_PROP_CAPACITY) break
       const swallow = object.absorbing ? Math.max(0.05, object.absorbTimer / BEAM_ABSORB_TIME) : 1
       position.set(object.position.x, object.position.y, object.position.z)
@@ -1699,7 +1721,7 @@ function LiftedTreePool() {
       rotation.setFromEuler(euler)
       const height = object.worldProp.height ?? 2.8
       const crown = object.worldProp.crown ?? 2.2
-      scale.set(crown / 2.2, height, crown / 2.2).multiplyScalar(swallow)
+      scale.set(crown / TREE_BASE_CROWN, height / TREE_BASE_HEIGHT, crown / TREE_BASE_CROWN).multiplyScalar(swallow)
       matrix.compose(position, rotation, scale)
       mesh.setMatrixAt(count, matrix)
       mesh.setColorAt(count, color.set('#6f9452'))
@@ -1709,7 +1731,7 @@ function LiftedTreePool() {
     mesh.instanceMatrix.needsUpdate = true
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
   })
-  return <instancedMesh ref={ref} args={[liftedTreeGeometry, undefined, LIFTED_WORLD_PROP_CAPACITY]} frustumCulled={false} renderOrder={2} onUpdate={(mesh) => { mesh.count = 0 }}>
+  return <instancedMesh ref={ref} args={[liftedTreeGeometries[variant], undefined, LIFTED_WORLD_PROP_CAPACITY]} frustumCulled={false} renderOrder={2} onUpdate={(mesh) => { mesh.count = 0 }}>
     <meshToonMaterial color="#ffffff" />
   </instancedMesh>
 }
@@ -2067,7 +2089,8 @@ export const City = memo(function City() {
       {Array.from({ length: ROOF_STRUCTURE_VARIANTS }, (_, variant) => (
         <LiftedRoofStructurePool key={`lifted-${variant}`} variant={variant} />
       ))}
-      <LiftedTreePool />
+      <LiftedTreePool variant={TREE_VARIANT_ROUND} />
+      <LiftedTreePool variant={TREE_VARIANT_SLENDER} />
       <LiftedUtilityPolePool />
       <TrashBinPool />
       <LiftedTrashBinPool />

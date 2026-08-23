@@ -1,7 +1,19 @@
 import { describe, expect, it } from 'vitest'
 import { beamLiftScale } from '../src/core/beam'
 import { busStopAnchor } from '../src/core/cityLandmarks'
-import { WORLD_PROP_MASS, parkTreesAround, trashBinsAround, utilityPolesAround, worldPropsAround } from '../src/core/worldProps'
+import {
+  busStopsAround,
+  isWorldPropCarried,
+  TREE_VARIANT_ROUND,
+  TREE_VARIANT_SLENDER,
+  WORLD_PROP_MASS,
+  parkBenchesAround,
+  parkTreesAround,
+  trashBinsAround,
+  utilityPolesAround,
+  worldPropMass,
+  worldPropsAround,
+} from '../src/core/worldProps'
 import { BUILDING_PODIUM_SPREAD, createActiveWorld, getProceduralCell, WORLD_CELL_SIZE, worldCellCoord } from '../src/core/world'
 
 /** Distance from a ground point to the building's rendered ground footprint
@@ -19,7 +31,9 @@ function buildingFootprintDistance(x: number, z: number) {
 describe('beam-capable city dressing', () => {
   it('keeps the requested weight ladder', () => {
     expect(WORLD_PROP_MASS['rooftop-structure']).toBe(5)
-    expect(WORLD_PROP_MASS.tree).toBe(4)
+    expect(WORLD_PROP_MASS.tree).toBe(3)
+    expect(WORLD_PROP_MASS['park-bench']).toBe(3)
+    expect(WORLD_PROP_MASS['bus-stop']).toBe(5)
     expect(WORLD_PROP_MASS['utility-pole']).toBe(3)
     expect(WORLD_PROP_MASS['power-pylon']).toBe(6)
     expect(WORLD_PROP_MASS.communications).toBe(11)
@@ -35,6 +49,50 @@ describe('beam-capable city dressing', () => {
     expect(first.length).toBeGreaterThan(0)
     expect(first.map((tree) => tree.id)).toEqual(second.map((tree) => tree.id))
     expect(first.every((tree) => tree.kind === 'tree' && tree.height > 0 && tree.crown > 0)).toBe(true)
+  })
+
+  it('chooses exactly one round or slender tree per spawn point at even odds', () => {
+    const trees = parkTreesAround({ x: 0, z: 0 }, 40)
+    const ids = new Set(trees.map((tree) => tree.id))
+    const positions = new Set(trees.map((tree) => `${tree.position.x.toFixed(6)}:${tree.position.z.toFixed(6)}`))
+    const round = trees.filter((tree) => tree.variant === TREE_VARIANT_ROUND).length
+    const slender = trees.filter((tree) => tree.variant === TREE_VARIANT_SLENDER).length
+
+    expect(ids.size).toBe(trees.length)
+    expect(positions.size).toBe(trees.length)
+    expect(new Set(trees.map((tree) => tree.variant))).toEqual(new Set([TREE_VARIANT_ROUND, TREE_VARIANT_SLENDER]))
+    expect(round / trees.length).toBeGreaterThan(0.45)
+    expect(slender / trees.length).toBeGreaterThan(0.45)
+    for (const variant of [TREE_VARIANT_ROUND, TREE_VARIANT_SLENDER]) {
+      const tree = trees.find((candidate) => candidate.variant === variant)
+      expect(tree).toBeDefined()
+      expect(worldPropMass(tree!)).toBe(3)
+    }
+  })
+
+  it('registers park benches and bus stops as deterministic beam props', () => {
+    const world = createActiveWorld({ x: 0, z: 0 })
+    const benches = parkBenchesAround({ x: 0, z: 0 })
+    const stops = busStopsAround(world)
+    const props = worldPropsAround(world, { x: 0, z: 0 })
+
+    expect(benches.length).toBeGreaterThan(0)
+    expect(stops.length).toBeGreaterThan(0)
+    expect(parkBenchesAround({ x: 0, z: 0 }).map((bench) => bench.id)).toEqual(benches.map((bench) => bench.id))
+    expect(busStopsAround(world).map((stop) => stop.id)).toEqual(stops.map((stop) => stop.id))
+    expect(benches.every((bench) => bench.kind === 'park-bench' && worldPropMass(bench) === 3)).toBe(true)
+    expect(stops.every((stop) => stop.kind === 'bus-stop' && worldPropMass(stop) === 5)).toBe(true)
+    expect(props.some((prop) => prop.kind === 'park-bench')).toBe(true)
+    expect(props.some((prop) => prop.kind === 'bus-stop')).toBe(true)
+  })
+
+  it('hands a world prop from the static pool to the lifted pool only while carried', () => {
+    const object = { active: true, inBeam: false, tether: 0, absorbing: false }
+    expect(isWorldPropCarried(object)).toBe(false)
+    expect(isWorldPropCarried({ ...object, inBeam: true })).toBe(true)
+    expect(isWorldPropCarried({ ...object, tether: 0.5 })).toBe(true)
+    expect(isWorldPropCarried({ ...object, absorbing: true })).toBe(true)
+    expect(isWorldPropCarried({ ...object, active: false, absorbing: true })).toBe(false)
   })
 
   it('places sparse kerbside trash bins off the carriageway at weight two', () => {

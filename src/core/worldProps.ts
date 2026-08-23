@@ -21,12 +21,18 @@ import {
 /** Integer beam weights for city dressing that is independent of its host lot. */
 export const WORLD_PROP_MASS = {
   'rooftop-structure': 5,
-  tree: 4,
+  tree: 3,
   'utility-pole': 3,
   'power-pylon': 6,
   communications: 11,
   'trash-bin': 2,
+  'park-bench': 3,
+  'bus-stop': 5,
 } as const
+
+export function worldPropMass(worldProp: Pick<BeamWorldProp, 'kind'>) {
+  return WORLD_PROP_MASS[worldProp.kind]
+}
 
 export const ROOF_STRUCTURE_MIN_HEIGHT = 10
 export const LANDMARK_RADIUS_CELLS = 6
@@ -34,6 +40,13 @@ export const LANDMARK_CELL_COUNT = (LANDMARK_RADIUS_CELLS * 2 + 1) ** 2
 export const STREETLIGHT_RADIUS_CELLS = 5
 export const PARK_TREE_COUNT = 3
 export const LAKE_SHORE_TREE_CAPACITY = LANDMARK_CELL_COUNT * 2
+export const TREE_VARIANT_ROUND = 0
+export const TREE_VARIANT_SLENDER = 1
+
+/** One deterministic bit chooses the tree silhouette at each spawn point. */
+function treeVariant(seed: number) {
+  return seed % 2 === 0 ? TREE_VARIANT_ROUND : TREE_VARIANT_SLENDER
+}
 
 function prop(
   value: Omit<BeamWorldProp, 'position' | 'scale'> & { position: Vec3; scale?: Vec3 },
@@ -63,7 +76,10 @@ export function parkTreesAround(position: Pick<Vec3, 'x' | 'z'>, radius = LANDMA
         kind: 'tree',
         position: { x: centerX + Math.cos(angle) * radius, y: 0, z: centerZ + Math.sin(angle) * radius },
         rotation: 0,
-        variant: tree,
+        // A spawn point owns exactly one silhouette. Previously the static
+        // round crown and the lifted proxy were both rendered here, which
+        // looked like two trees occupying the same coordinates.
+        variant: treeVariant(seed),
         }),
         height,
         crown,
@@ -71,6 +87,47 @@ export function parkTreesAround(position: Pick<Vec3, 'x' | 'z'>, radius = LANDMA
     }
   }
   return trees
+}
+
+/** One deterministic, beam-capable bench for every generated park cell. */
+export function parkBenchesAround(position: Pick<Vec3, 'x' | 'z'>, radius = LANDMARK_RADIUS_CELLS) {
+  const benches: BeamWorldProp[] = []
+  for (const cell of groundCellsAround(position, radius)) {
+    if (groundLandmarkForCell(cell) !== 'park') continue
+    const seed = seedForWorldCell(cell.cellX, cell.cellZ, 0xbec44)
+    benches.push(prop({
+      id: `park-bench:${cell.cellX}:${cell.cellZ}`,
+      kind: 'park-bench',
+      position: {
+        x: (cell.cellX + 0.5) * WORLD_CELL_SIZE,
+        y: 0,
+        z: (cell.cellZ + 0.5) * WORLD_CELL_SIZE + 3.5,
+      },
+      rotation: (seed % 4) * Math.PI / 2,
+      variant: 0,
+    }))
+  }
+  return benches
+}
+
+/** Building-attached bus shelters shared by simulation and render pools. */
+export function busStopsAround(world: ActiveWorld) {
+  const stops: BeamWorldProp[] = []
+  for (const building of world.buildings) {
+    const anchor = busStopAnchor(building)
+    if (!anchor) continue
+    stops.push(prop({
+      id: `bus-stop:${building.id}`,
+      kind: 'bus-stop',
+      position: { x: anchor.x, y: 0, z: anchor.z },
+      rotation: anchor.onX ? Math.PI / 2 : 0,
+      scale: { x: 0.82, y: 0.82, z: 0.82 },
+      // Keep the side bit so the separate static route sign follows the same
+      // deterministic side of the shelter as before.
+      variant: anchor.side > 0 ? 1 : 0,
+    }))
+  }
+  return stops
 }
 
 /**
@@ -211,19 +268,25 @@ export function worldPropsAround(world: ActiveWorld, position: Pick<Vec3, 'x' | 
     }))
   }
   props.push(...parkTreesAround(position))
+  props.push(...parkBenchesAround(position))
   for (const [index, tree] of lakeShoreTreesAround(position, LANDMARK_RADIUS_CELLS).entries()) {
     props.push(prop({
       id: `tree:lake:${Math.round(tree.x * 10)}:${Math.round(tree.z * 10)}:${index}`,
       kind: 'tree',
       position: { x: tree.x, y: 0, z: tree.z },
       rotation: 0,
-      variant: index,
+      variant: treeVariant(seedForWorldCell(
+        Math.round(tree.x * 10),
+        Math.round(tree.z * 10),
+        0x7ee00,
+      )),
       height: tree.height,
       crown: tree.crown,
     }))
   }
   props.push(...utilityPolesAround(position))
   props.push(...trashBinsAround(position))
+  props.push(...busStopsAround(world))
   for (const cell of groundCellsAround(position, LANDMARK_RADIUS_CELLS)) {
     const landmark = groundLandmarkForCell(cell)
     const center = { x: (cell.cellX + 0.5) * WORLD_CELL_SIZE, y: 0, z: (cell.cellZ + 0.5) * WORLD_CELL_SIZE }
@@ -238,13 +301,19 @@ export function worldPropsAround(world: ActiveWorld, position: Pick<Vec3, 'x' | 
 }
 
 /** Static pools hide a prop while it is carried, and permanently after absorption. */
+export function isWorldPropCarried(
+  object: Pick<BeamObject, 'active' | 'inBeam' | 'tether' | 'absorbing'>,
+) {
+  return object.active && (object.inBeam || object.tether > 0.02 || object.absorbing)
+}
+
 export function isWorldPropHidden(
   id: string,
   destroyed: ReadonlySet<string>,
   objects: ReadonlyArray<Pick<BeamObject, 'id' | 'active' | 'inBeam' | 'tether' | 'absorbing'>>,
 ) {
   if (destroyed.has(id)) return true
-  return objects.some((object) => object.id === id && object.active && (object.inBeam || object.tether > 0.02 || object.absorbing))
+  return objects.some((object) => object.id === id && isWorldPropCarried(object))
 }
 
 export function worldPropVisibilityKey(
@@ -252,7 +321,7 @@ export function worldPropVisibilityKey(
   objects: ReadonlyArray<Pick<BeamObject, 'id' | 'active' | 'inBeam' | 'tether' | 'absorbing'>>,
 ) {
   const hidden = objects
-    .filter((object) => object.active && (object.inBeam || object.tether > 0.02 || object.absorbing))
+    .filter(isWorldPropCarried)
     .map((object) => object.id)
     .sort()
   return `${[...destroyed].sort().join(',')}|${hidden.join(',')}`
