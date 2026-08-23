@@ -95,18 +95,12 @@ export type GameRuntime = {
   world: ActiveWorld
   worldColliders: Aabb[]
   sessionTime: number
-  /**
-   * Seconds since the run started, never frozen - unlike sessionTime, which
-   * holds at zero until the tutorial cat is rescued.
-   *
-   * Two things need a clock that always moves. The pilot expression hold
-   * timer, or a hit taken before the tutorial's first cat holds the
-   * expression exactly as long as sessionTime stays paused, which is to say
-   * forever (see updatePilotStatus). And the opening sighting report, which
-   * is meant to land ten seconds into the game rather than ten seconds after
-   * whenever the player happens to finish the tutorial.
-   */
-  runClock: number
+  /** Same shape as sessionTime but never frozen, including during the
+   *  tutorial - the pilot expression hold timer needs a clock that always
+   *  moves, or a hit taken before the tutorial's first cat holds the
+   *  expression exactly as long as sessionTime stays paused, which is to say
+   *  forever. See updatePilotStatus. */
+  pilotClock: number
   remainingTime: number
   score: number
   waveStage: number
@@ -549,7 +543,7 @@ function makeRuntime(): GameRuntime {
     world,
     worldColliders: activeWorldColliders(world),
     sessionTime: 0,
-    runClock: 0,
+    pilotClock: 0,
     remainingTime: RUN_SECONDS,
     score: 0,
     waveStage: 0,
@@ -1302,7 +1296,7 @@ function snapshotOf(game: GameRuntime): GameSnapshot {
 
 function updatePilotStatus(game: GameRuntime) {
   const next = requestedPilotExpression({
-    elapsed: game.runClock,
+    elapsed: game.pilotClock,
     impact: game.impactFlash > 0,
     threatLevel: game.waveStage,
     threatIncreased: game.waveStage > game.pilotPreviousThreat,
@@ -1313,7 +1307,7 @@ function updatePilotStatus(game: GameRuntime) {
     beam: game.beamActive,
     laser: game.laserActive,
   })
-  const state = updatePilotExpression({ expression: game.pilotExpression, holdUntil: game.pilotHoldUntil }, next, game.runClock)
+  const state = updatePilotExpression({ expression: game.pilotExpression, holdUntil: game.pilotHoldUntil }, next, game.pilotClock)
   game.pilotExpression = state.expression
   game.pilotHoldUntil = state.holdUntil
   game.pilotPreviousCars = game.loadedCars
@@ -1513,7 +1507,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       game.sessionTime += d
       game.remainingTime = Math.max(0, game.remainingTime - d)
     }
-    game.runClock += d
+    game.pilotClock += d
     game.messageTime = Math.max(0, game.messageTime - d)
     game.impactFlash = Math.max(0, game.impactFlash - d * 5)
     stepShake(game.shake, d)
@@ -1538,11 +1532,11 @@ export function GameProvider({ children }: { children: ReactNode }) {
     game.broadcastTime = Math.max(0, game.broadcastTime - d)
     stepHealth(game.health, d)
     stepShield(game.shield, d)
-    // The city reports the sighting ten seconds into the run, on the clock
-    // that never freezes. Keyed to sessionTime it waited out the tutorial as
-    // well, so the first thing the game says about the player's arrival could
-    // land a minute after they arrived.
-    if (!game.openingBroadcastDone && game.runClock >= BROADCAST_OPENING_AT) {
+    // Ten seconds of game time, which the tutorial holds at zero: the report
+    // is about a craft loose over the city, and during the tutorial the craft
+    // is parked over a cat with its flight controls inert. Nothing has
+    // happened for the anchor to report yet.
+    if (!tutorialAtStart && !game.openingBroadcastDone && game.sessionTime >= BROADCAST_OPENING_AT) {
       game.openingBroadcastDone = true
       raiseBroadcast(game, 0)
     }

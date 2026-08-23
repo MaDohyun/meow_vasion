@@ -22,14 +22,14 @@ import { ENEMY_WAVE_STAGES, waveStageForTime } from './enemies'
  *
  * Not at zero. For the first few seconds the player is still working out
  * which way the craft is pointing, and a band that slides up while they are
- * doing that is text nobody reads. Ten seconds in they have settled, and the
- * sighting report lands as the world noticing them rather than as a title
- * card - which is also the right order for a news programme: the event first,
- * the response after.
+ * doing that is text nobody reads. Ten seconds in they are already flying,
+ * and the sighting report lands as the world noticing them rather than as a
+ * title card - which is also the right order for a news programme: the event
+ * first, the response after.
  *
- * Ten seconds from the start of the run, measured on a clock that does not
- * stop for the tutorial. The player is the event being reported; the report
- * should not wait on them rescuing a cat first.
+ * Measured in game time, which the opening tutorial holds at zero. Ten
+ * seconds of a craft parked over a cat with its flight controls inert is not
+ * a sighting anybody would report.
  */
 export const BROADCAST_OPENING_AT = 10
 

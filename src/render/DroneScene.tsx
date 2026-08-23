@@ -788,7 +788,7 @@ function Ufo() {
     // Keep a small, stable self-light in both daytime and nighttime.
     const impact = Math.max(0, Math.min(1, snapshot.impactFlash))
     const mysteryFlash = Math.max(0, Math.min(1, game.mysteryFlash / 0.65))
-    const goldFlash = mysteryFlash * (0.78 + 0.22 * (0.5 + 0.5 * Math.sin(game.runClock * 24)))
+    const goldFlash = mysteryFlash * (0.78 + 0.22 * (0.5 + 0.5 * Math.sin(game.pilotClock * 24)))
     if (hullMaterial.current) {
       hullColor.copy(hullBaseColor).lerp(hullImpactColor, impact)
       hullColor.lerp(hullMysteryColor, goldFlash)
