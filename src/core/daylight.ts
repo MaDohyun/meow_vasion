@@ -12,10 +12,21 @@
  * forms their impression of the game - under a bright blue sky.
  *
  * And it does not stop. The cycle runs evening, night, dawn, morning, noon,
- * afternoon and back to evening, and then goes round again - a five minute run
- * sees two nights. It used to take the whole run to get round once, which made
- * the sky change too slowly to notice; at half the length the light is always
- * visibly on the move.
+ * afternoon and back to evening, and then goes round again. It used to take
+ * the whole run to get round once, which made the sky change too slowly to
+ * notice; at a fraction of the length the light is always visibly on the move.
+ *
+ * A run is one and three fifths of a lap, which is chosen for where it stops.
+ * Two whole laps put the last frame of the run back on the opening evening -
+ * the brightest sky in the cycle - right as the craft is meant to be slipping
+ * away. At 1.6 laps the run plays evening, night, dawn, morning, noon,
+ * evening, night, and then ends as the second dawn breaks: still dark, stars
+ * still out, the horizon only starting to go warm.
+ *
+ * Night is also the longest phase by some way. A third of the lap is spent
+ * between the NIGHT and LATE NIGHT keyframes, and it is deepening the whole
+ * time rather than arriving dark and sitting there - the sky, the fog and the
+ * fill light all keep dropping until LATE NIGHT bottoms out.
  *
  * The loop closes, which is the part that matters. A cycle that ends at noon
  * has to either stop there - a sky sitting still for half the run - or snap
@@ -79,10 +90,14 @@ export type DaylightKeyframe = {
 }
 
 /**
- * Seconds for one full turn of the sky. Half the run length, so a five minute
- * run sees two nights.
+ * Seconds for one full turn of the sky.
+ *
+ * Five eighths of the three hundred second run, so a run is exactly 1.6 laps:
+ * two nights, and the last one still on screen when the clock runs out. An
+ * even divisor of the run length would land the final frame back on the
+ * opening evening instead.
  */
-export const DAY_CYCLE_SECONDS = 150
+export const DAY_CYCLE_SECONDS = 187.5
 
 /** The hour the run opens on. */
 export const DAYLIGHT_START_HOUR = 18
@@ -178,7 +193,7 @@ export const DAYLIGHT_KEYFRAMES: DaylightKeyframe[] = [
     fogFar: 620,
   },
   {
-    at: 0.24,
+    at: 0.22,
     phase: 'night',
     label: 'NIGHT',
     hour: 3.5,
@@ -209,39 +224,42 @@ export const DAYLIGHT_KEYFRAMES: DaylightKeyframe[] = [
     fogFar: 585,
   },
   {
-    // The deepest point, and the longest stretch on screen. Waves three, four
-    // and five all arrive between here and the keyframe before it.
-    at: 0.53,
+    // The floor of the cycle, and a third of a lap away from NIGHT - the long
+    // stretch the sky spends getting darker rather than being dark. Pushed
+    // well below the old floor so that walk is worth watching: the city's own
+    // lights and the beam are the only bright things left by the time it lands.
+    at: 0.55,
     phase: 'night',
     label: 'LATE NIGHT',
     hour: 9.5,
     colors: {
-      background: '#0a1024',
-      horizon: '#243a63',
-      middle: '#111c3d',
-      top: '#060a18',
-      fog: '#152444',
-      ambient: '#5d74ad',
-      hemiSky: '#41598f',
-      hemiGround: '#161a2c',
+      background: '#05081a',
+      horizon: '#1a2c4e',
+      middle: '#0a1430',
+      top: '#03050f',
+      fog: '#0d1830',
+      ambient: '#495e94',
+      hemiSky: '#32497c',
+      hemiGround: '#0f1220',
       sun: '#b9caff',
-      cloud: '#2a3352',
+      cloud: '#1e2740',
     },
-    ambientIntensity: 0.13,
-    hemiIntensity: 0.2,
-    sunIntensity: 0.3,
+    ambientIntensity: 0.085,
+    hemiIntensity: 0.13,
+    sunIntensity: 0.18,
     sunAltitude: -0.7,
     moonAltitude: 0.8,
     sunOpacity: 0,
     moonOpacity: 1,
     nightFactor: 1,
     starIntensity: 1,
-    fogNear: 150,
-    fogFar: 560,
+    fogNear: 138,
+    fogFar: 515,
   },
   {
-    // Around 144 seconds, which is where the final wave is coming from. The
-    // last assault and the sunrise are meant to land together.
+    // Where the run ends, on its second lap: the boss arrives on the closing
+    // evening and the fight runs the whole way down into the dark, so the last
+    // frame is this sky just after it takes over from LATE NIGHT.
     at: 0.64,
     phase: 'dawn',
     label: 'DAWN',
@@ -300,7 +318,7 @@ export const DAYLIGHT_KEYFRAMES: DaylightKeyframe[] = [
     fogFar: 700,
   },
   {
-    at: 0.8,
+    at: 0.81,
     phase: 'day',
     label: 'MIDDAY',
     hour: 18,

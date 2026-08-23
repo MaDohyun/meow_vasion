@@ -66,7 +66,7 @@ describe('the turning sky', () => {
   })
 
   it('gives a run two nights instead of one slow half-day', () => {
-    // Halved so the light is always visibly on the move. Over a five-minute
+    // Shortened so the light is always visibly on the move. Over a five-minute
     // run the sky goes fully dark twice.
     const nights: number[] = []
     let wasDark = false
@@ -76,7 +76,31 @@ describe('the turning sky', () => {
       wasDark = dark
     }
     expect(nights.length).toBe(2)
-    expect(DAY_CYCLE_SECONDS * 2).toBe(RUN_SECONDS)
+  })
+
+  it('spends the longest stretch of a lap getting darker, not sitting dark', () => {
+    // The ask was for night to have room to deepen. NIGHT already looks like
+    // night, so the walk on to LATE NIGHT has to be the widest span in the
+    // cycle and has to keep dropping the whole way rather than flattening out.
+    const spans = DAYLIGHT_KEYFRAMES.slice(1).map((keyframe, index) => ({
+      label: keyframe.label,
+      width: keyframe.at - DAYLIGHT_KEYFRAMES[index]!.at,
+    }))
+    const widest = spans.reduce((best, span) => (span.width > best.width ? span : best))
+    expect(widest.label).toBe('LATE NIGHT')
+    expect(widest.width).toBeGreaterThan(0.3)
+
+    const night = DAYLIGHT_KEYFRAMES.find((keyframe) => keyframe.label === 'NIGHT')!
+    const late = DAYLIGHT_KEYFRAMES.find((keyframe) => keyframe.label === 'LATE NIGHT')!
+    expect(late.ambientIntensity).toBeLessThan(night.ambientIntensity * 0.6)
+    expect(late.hemiIntensity).toBeLessThan(night.hemiIntensity * 0.6)
+    expect(late.fogFar).toBeLessThan(night.fogFar)
+    let previous = Number.POSITIVE_INFINITY
+    for (let at = night.at; at <= late.at + 1e-9; at += 0.01) {
+      const ambient = sampleDaylight(at * DAY_CYCLE_SECONDS).ambientIntensity
+      expect(ambient).toBeLessThanOrEqual(previous + 1e-9)
+      previous = ambient
+    }
   })
 
   it('wraps instead of stopping, and shows the same sky each lap', () => {
@@ -161,12 +185,27 @@ describe('the turning sky', () => {
     expect(daylightLap(DAY_CYCLE_SECONDS * 1.5)).toBe(1)
   })
 
-  it('fits two whole laps into a run', () => {
+  it('ends the run in the dark, on the second night turning to dawn', () => {
     // RUN_SECONDS in GameContext, kept as a literal rather than importing a
-    // React module into a data test. Whole laps matter: a partial one would
-    // end the run mid-transition.
+    // React module into a data test. The run is deliberately not a whole
+    // number of laps: two whole ones would put the final frame back on the
+    // opening evening, the brightest sky in the cycle, exactly when the craft
+    // is meant to be slipping away.
     expect(RUN_SECONDS).toBe(300)
-    expect(RUN_SECONDS % DAY_CYCLE_SECONDS).toBe(0)
+    expect(RUN_SECONDS / DAY_CYCLE_SECONDS).toBeCloseTo(1.6, 6)
+    expect(daylightLap(RUN_SECONDS)).toBe(1)
+
+    const ending = sampleDaylight(RUN_SECONDS)
+    expect(ending.phase).toBe('dawn')
+    // Dawn by name, but the sky is still night: stars up, moon up, sun down.
+    expect(ending.nightFactor).toBeGreaterThan(0.7)
+    expect(ending.starIntensity).toBeGreaterThan(0.4)
+    expect(ending.moonOpacity).toBeGreaterThan(0.5)
+    expect(ending.sunAltitude).toBeLessThan(0)
+    // And it is the darker half of the run: no daylight in the last minute.
+    for (let elapsed = RUN_SECONDS - 60; elapsed <= RUN_SECONDS; elapsed += 1) {
+      expect(sampleDaylight(elapsed).nightFactor, `${elapsed}s`).toBeGreaterThan(0.7)
+    }
   })
 
   it('reuses a caller-supplied sample so the frame loop does not allocate', () => {
