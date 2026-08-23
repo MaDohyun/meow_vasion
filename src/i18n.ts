@@ -18,6 +18,13 @@ import type { MissionQuestId } from './core/missions'
  *
  * Wave names ("DRONE SWARM" and friends) stay in English on purpose: they
  * are stylised arcade labels, closer to proper nouns than to sentences.
+ *
+ * A few strings carry `[[double brackets]]` around the part that must not be
+ * skimmed past - "the weight will crash you", "a building hit damages the
+ * hull". `<RichText>` renders those in the warning colour. The brackets live
+ * in the string rather than in the component because which words matter is a
+ * translation decision: Korean, Japanese and English put the verb in
+ * different places, and only the translator knows where the warning lands.
  */
 
 export const LANGUAGES = ['ko', 'ja', 'en'] as const
@@ -60,6 +67,11 @@ export type Strings = {
   massHint: string
   collapseAt: string
   hull: string
+  life: string
+  /** Contact damage is the one hazard nothing on screen announces, so it is
+   *  said in words: on the vitals card, in the manual and in the briefing. */
+  hazardBuildings: string
+  overloadHint: string
   bossName: string
   repairing: string
   ceiling: string
@@ -231,11 +243,14 @@ export const STRINGS: Record<Language, Strings> = {
     massHint: '사람은 흡수하고, 고양이는 구출해서 커지세요',
     collapseAt: '붕괴',
     hull: '선체',
+    life: '생명',
+    hazardBuildings: '건물에 부딪히면 [[선체 손상]]',
+    overloadHint: '가득 차면 [[추락]]',
     bossName: '공중전함',
     repairing: '수리 중',
     ceiling: '상승 한계',
     overloaded: '과적',
-    overloadAlarm: '무게가 높습니다. 고도 유지 불가. 무게를 줄이세요.',
+    overloadAlarm: '[[무게 초과 · 추락 위험]] 무게를 줄이세요!',
     waterAlarm: '호수 물을 빨아들이는 중 · 속도 저하',
     clock: '남은 시간',
     score: '점수',
@@ -289,7 +304,7 @@ export const STRINGS: Record<Language, Strings> = {
       { lines: ['Q 버튼을 누르면 레이저를 쏘아 적을 무찌를 수 있다!', '위급할 때 쓰도록!'] },
       { lines: ['스페이스 버튼을 누르면 우주선의 터보를 쓸 수 있다!', '하지만 쓸 수 있는 시간은 정해져 있으니 주의해서 쓰도록!'] },
       { lines: ['대원, 첫 임무다. 저 고양이를 구출해 봐. E 키를 꾹 누르고 있으면 돼.'], wait: 'beam' },
-      { lines: ['좋아, 합격이다.', '명심해라, 대원. 너무 많은 물건을 흡수하려고 하면 우주선이 추락하고 만다.'], auto: 4.6 },
+      { lines: ['좋아, 합격이다.', '명심해라, 대원. 너무 많은 물건을 흡수하면 [[무게 때문에 우주선이 추락한다]].', '그리고 비행 중 [[건물에 부딪혀도 선체가 손상된다]]. 건물은 피해서 날아라!'], auto: 6.4 },
       { lines: ['왼쪽에 대원이 달성해야 할 임무들을 표시해 두었다.', '아 참, 대원을 위해 우리 동지들의 표식을 지구 곳곳에 준비했으니 발견하면 지나가 보도록!', '그럼 행운을 빈다.'], auto: 5.2 },
     ],
     missionStageComplete: (previous, next) => `미션 ${previous} 완료 · 미션 ${next}, 골라서 해!`,
@@ -400,11 +415,14 @@ export const STRINGS: Record<Language, Strings> = {
     massHint: '人は吸収、猫は救出して大きくなろう',
     collapseAt: '崩壊',
     hull: '船体',
+    life: 'ライフ',
+    hazardBuildings: '建物にぶつかると[[船体が損傷]]',
+    overloadHint: '満タンで[[墜落]]',
     bossName: '空中戦艦',
     repairing: '修理中',
     ceiling: '上昇限界',
     overloaded: '過積載',
-    overloadAlarm: '重量超過。高度を維持できません。重量を減らしてください。',
+    overloadAlarm: '[[重量超過・墜落の危険]] 重量を減らせ！',
     waterAlarm: '湖の水を吸収中 · 速度低下',
     clock: '残り時間',
     score: 'スコア',
@@ -458,7 +476,7 @@ export const STRINGS: Record<Language, Strings> = {
       { lines: ['Qボタンでレーザーを撃ち、敵を倒せる！', '緊急時に使うんだ！'] },
       { lines: ['スペースボタンで機体のターボを使える！', '使える時間には限りがある。慎重に使え！'] },
       { lines: ['隊員、最初の任務だ。あの猫を救出しろ。Eキーを長押しだ。'], wait: 'beam' },
-      { lines: ['よし、合格だ。', 'いいか、物体を吸収しすぎると宇宙船は墜落する。'], auto: 4.6 },
+      { lines: ['よし、合格だ。', 'いいか、物体を吸収しすぎると[[重量で宇宙船が墜落する]]。', 'それと飛行中に[[建物にぶつかっても船体が損傷する]]。建物は避けて飛べ！'], auto: 6.4 },
       { lines: ['左側に達成すべき任務を表示している。', 'そうだ、仲間の印を地球各地に用意した。見つけたら通過してみろ！', '幸運を祈る。'], auto: 5.2 },
     ],
     missionStageComplete: (previous, next) => `ミッション${previous}完了 · ミッション${next}、好きなものを選べ！`,
@@ -569,11 +587,14 @@ export const STRINGS: Record<Language, Strings> = {
     massHint: 'ABSORB PEOPLE, RESCUE CATS, GROW',
     collapseAt: 'COLLAPSE',
     hull: 'HULL',
+    life: 'LIFE',
+    hazardBuildings: 'HITTING A BUILDING [[DAMAGES THE HULL]]',
+    overloadHint: 'FULL MEANS [[A CRASH]]',
     bossName: 'SKY DREADNOUGHT',
     repairing: 'REPAIRING',
     ceiling: 'CEILING',
     overloaded: 'OVERLOADED',
-    overloadAlarm: 'WEIGHT TOO HIGH. LOSING ALTITUDE. REDUCE YOUR LOAD.',
+    overloadAlarm: '[[OVERWEIGHT · ABOUT TO CRASH]] DROP SOME CARGO!',
     waterAlarm: 'DRAWING LAKE WATER · SLOWED',
     clock: 'CLOCK',
     score: 'SCORE',
@@ -627,7 +648,7 @@ export const STRINGS: Record<Language, Strings> = {
       { lines: ['Press Q to fire the laser and defeat enemies!', 'Save it for emergencies!'] },
       { lines: ['Press SPACE to use the craft\'s turbo!', 'Turbo time is limited, so use it carefully!'] },
       { lines: ['Pilot, this is your first mission. Rescue that cat. HOLD E.'], wait: 'beam' },
-      { lines: ['Good, you pass.', 'Remember: absorb too much and the spacecraft will crash.'], auto: 4.6 },
+      { lines: ['Good, you pass.', 'Remember: absorb too much and [[the weight will crash the craft]].', 'And in flight, [[hitting a building damages the hull]]. Fly around them!'], auto: 6.4 },
       { lines: ['Your objectives are displayed on the left.', 'We placed allied marks all over Earth. Pass through them when you find them!', 'Good luck.'], auto: 5.2 },
     ],
     missionStageComplete: (previous, next) => `MISSION ${previous} COMPLETE · MISSION ${next}, PICK YOUR OBJECTIVES!`,
