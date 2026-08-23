@@ -256,6 +256,19 @@ export function gasStationsAround(position: Pick<Vec3, 'x' | 'z'>, radius = 6) {
 }
 
 export type DestructibleLandmarkKind = 'gas-station' | 'communications'
+
+/**
+ * What the beam has to be able to shift before a forecourt comes apart.
+ *
+ * Every other structure in the city answers the beam by weight, and a gas
+ * station had no weight at all: the cone touching it was the whole test, so a
+ * craft with the feeblest beam in the game blew one up by flying over it. This
+ * is the station's rung on the same ladder - heavier than a pylon, lighter
+ * than a comms mast - and it is a demolition rather than a lift only because a
+ * station has no lifted model to carry off.
+ */
+export const GAS_STATION_BEAM_MASS = 9
+
 export type DestructibleLandmark = {
   id: string
   kind: DestructibleLandmarkKind
