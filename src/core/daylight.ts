@@ -5,19 +5,21 @@
  * the sky is put on the same clock. You can see how deep into the run you are
  * without looking at a number.
  *
- * It opens at night and it ends at night, and it is one lap: night, late
- * night, dawn, morning, noon, afternoon, evening, dusk, and back into night.
- * This game is at its best in the dark - lit windows, streetlights, and
- * additive beams and explosions all need a background that has stopped
- * competing with them - and the two moments that decide how a run is
- * remembered are the first frame and the last. Both are now dark. The daylight
- * in the middle is there to be left behind.
+ * It opens at night and it ends at the deepest point of one: night, late
+ * night, dawn, morning, noon, afternoon, evening, dusk, back into night, and
+ * down onto the floor. This game is at its best in the dark - lit windows,
+ * streetlights, and additive beams and explosions all need a background that
+ * has stopped competing with them - and the two moments that decide how a run
+ * is remembered are the first frame and the last. Both are now dark, and the
+ * last is the darkest sky in the cycle. The daylight in the middle is there to
+ * be left behind.
  *
  * The seam of the ring sits inside the night rather than at either edge of it.
  * That is the part that matters: the first keyframe and the last are the same
  * sky, value for value, so the wrap is invisible, and the deepening on either
  * side of it is one continuous fall rather than a stretch of frozen sky
- * waiting for the run to end.
+ * waiting for the run to end. The run then carries a little past that seam, so
+ * its final stretch is the far side of the same fall.
  *
  * The day is deliberately compressed into the middle half. Night has to be
  * back before the dreadnought launches at a hundred and eighty seconds, which
@@ -83,15 +85,27 @@ export type DaylightKeyframe = {
 }
 
 /**
- * Seconds for one full turn of the sky: exactly one run.
+ * Where the run's last frame lands in the cycle: the floor of the night.
  *
- * The sky used to turn faster than the run so that the last frame would land
- * somewhere dark, which took two nights and a day and a half to arrange. With
- * the seam of the ring moved inside the night, one lap does it on its own -
- * the run starts and finishes on the same sky because it is the same point of
- * the same night.
+ * The seam of the ring is a little way above the floor - dark, but the point
+ * the night is still falling toward. Running the sky a touch faster than the
+ * run carries the last frame past the seam and down onto the floor itself, so
+ * a run ends on the darkest sky it has, not on the one it opened with.
  */
-export const DAY_CYCLE_SECONDS = 300
+const RUN_CLOSES_ON = 0.1
+
+/** The five minute run. Mirrors RUN_SECONDS in GameContext, which is a React
+ *  module this one must not import; the daylight test keeps the two in step. */
+const RUN_LENGTH_SECONDS = 300
+
+/**
+ * Seconds for one full turn of the sky.
+ *
+ * A shade over nine tenths of the run, which is what puts the final frame on
+ * RUN_CLOSES_ON. It also lands the dreadnought's launch at a hundred and
+ * eighty seconds exactly on the nightfall keyframe.
+ */
+export const DAY_CYCLE_SECONDS = RUN_LENGTH_SECONDS / (1 + RUN_CLOSES_ON)
 
 /** The hour the run opens on. Night, not evening. */
 export const DAYLIGHT_START_HOUR = 21
@@ -131,9 +145,11 @@ export const DAYLIGHT_KEYFRAMES: DaylightKeyframe[] = [
     fogFar: 520,
   },
   {
-    // The floor. Pushed below the old one again: the city's own windows, the
-    // streetlights and the beam are meant to be the only bright things left.
-    at: 0.1,
+    // The floor, and where a run ends: the sky turns a shade faster than the
+    // run so the last frame lands here rather than back on the seam. Pushed
+    // below the old floor again - the city's own windows, the streetlights and
+    // the beam are meant to be the only bright things left in it.
+    at: RUN_CLOSES_ON,
     phase: 'night',
     label: 'LATE NIGHT',
     hour: 4.5,
@@ -336,8 +352,7 @@ export const DAYLIGHT_KEYFRAMES: DaylightKeyframe[] = [
     fogFar: 660,
   },
   {
-    // The last light. The dreadnought is launched at 180 seconds, three
-    // hundredths of the run after this, so the fight starts as the sun goes.
+    // The last light, about twenty seconds before the dreadnought launches.
     at: 0.58,
     phase: 'dusk',
     label: 'DUSK',
@@ -367,9 +382,9 @@ export const DAYLIGHT_KEYFRAMES: DaylightKeyframe[] = [
     fogFar: 620,
   },
   {
-    // Night falls about twenty seconds into the boss fight, and the last third
-    // of the run is spent going deeper into it, closing on the sky the run
-    // opened with.
+    // Night falls on the second the dreadnought launches, and the rest of the
+    // run - the whole boss fight - is spent going deeper into it, past the
+    // seam and down onto the floor.
     at: 0.66,
     phase: 'night',
     label: 'NIGHT',

@@ -197,35 +197,38 @@ describe('the turning sky', () => {
     expect(daylightLap(DAY_CYCLE_SECONDS * 1.5)).toBe(1)
   })
 
-  it('ends the run on the sky it opened with, in the dark', () => {
+  it('ends the run on the darkest sky it has', () => {
     // RUN_SECONDS in GameContext, kept as a literal rather than importing a
-    // React module into a data test. Exactly one lap: the ring's seam sits
-    // inside the night, so the first frame and the last are the same point of
-    // the same night and the wrap between them is invisible.
+    // React module into a data test. The sky turns a shade faster than the run
+    // so the last frame carries past the ring's seam and lands on the floor of
+    // the night rather than back on the sky the run opened with.
     expect(RUN_SECONDS).toBe(300)
-    expect(RUN_SECONDS).toBe(DAY_CYCLE_SECONDS)
+    expect(DAY_CYCLE_SECONDS).toBeLessThan(RUN_SECONDS)
+    expect(daylightLap(RUN_SECONDS)).toBe(1)
 
-    const opening = sampleDaylight(0)
+    const floor = DAYLIGHT_KEYFRAMES.reduce((best, keyframe) =>
+      (keyframe.ambientIntensity < best.ambientIntensity ? keyframe : best))
     const ending = sampleDaylight(RUN_SECONDS)
-    expect(ending.phase).toBe('night')
-    expect(ending.nightFactor).toBeCloseTo(opening.nightFactor, 6)
-    expect(ending.ambientIntensity).toBeCloseTo(opening.ambientIntensity, 6)
-    expect(ending.starIntensity).toBeCloseTo(opening.starIntensity, 6)
-    expect(ending.nightFactor).toBeGreaterThan(0.95)
+    expect(floor.label).toBe('LATE NIGHT')
+    expect(ending.label).toBe('LATE NIGHT')
+    expect(ending.ambientIntensity).toBeCloseTo(floor.ambientIntensity, 6)
+    expect(ending.nightFactor).toBeCloseTo(1, 6)
+    expect(ending.starIntensity).toBeCloseTo(1, 6)
+    // Darker than the sky it opened on, which was already night.
+    expect(ending.ambientIntensity).toBeLessThan(sampleDaylight(0).ambientIntensity)
 
-    // The dreadnought launches at 180 seconds and the fight runs to the end.
-    // All of it is dark, and it keeps getting darker: the climb out of dusk
-    // into full night is the fight, not a backdrop that already settled.
+    // The dreadnought launches at 180 seconds, on the nightfall keyframe
+    // itself, and the fight from there to the end only ever gets darker.
     const boss = sampleDaylight(180)
-    expect(boss.nightFactor).toBeGreaterThan(0.6)
-    let previous = 0
-    for (let elapsed = 186; elapsed <= RUN_SECONDS; elapsed += 2) {
+    expect(boss.phase).toBe('night')
+    expect(boss.nightFactor).toBeGreaterThan(0.9)
+    let previous = Number.POSITIVE_INFINITY
+    for (let elapsed = 180; elapsed <= RUN_SECONDS; elapsed += 2) {
       const sample = sampleDaylight(elapsed)
       expect(sample.phase, `${elapsed}s`).toBe('night')
-      expect(sample.nightFactor, `${elapsed}s`).toBeGreaterThanOrEqual(previous - 1e-9)
-      previous = sample.nightFactor
+      expect(sample.ambientIntensity, `${elapsed}s`).toBeLessThanOrEqual(previous + 1e-9)
+      previous = sample.ambientIntensity
     }
-    expect(sampleDaylight(186).ambientIntensity).toBeGreaterThan(ending.ambientIntensity)
   })
 
   it('reuses a caller-supplied sample so the frame loop does not allocate', () => {
