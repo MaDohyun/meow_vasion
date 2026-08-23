@@ -131,7 +131,6 @@ button { font: inherit; }
 .captive-rack small { color: #9e99a8; font-size: 8px; }
 
 .planet-radar { position:absolute; left:274px; bottom:18px; width:112px; height:112px; overflow:hidden; border:3px solid var(--cream); border-radius:11px; background-color:#365e70; background-image:linear-gradient(rgba(255,245,199,.1) 1px,transparent 1px),linear-gradient(90deg,rgba(255,245,199,.1) 1px,transparent 1px),radial-gradient(circle at 50% 50%,#66977f 0 18%,#365e70 72%); background-size:22px 22px,22px 22px,100% 100%; box-shadow:5px 5px 0 var(--ink), inset 0 0 0 5px rgba(100,241,238,.14); }
-.radar-label { position:absolute; z-index:5; left:50%; bottom:7px; transform:translateX(-50%); color:var(--cream); font-size:6px; font-weight:1000; letter-spacing:1px; white-space:nowrap; }
 .radar-orbit { position:absolute; inset:12px; border:1px dashed rgba(255,245,199,.48); border-radius:4px; }
 .district-dot,.target-dot,.player-dot { position:absolute; z-index:2; width:5px; height:5px; border-radius:50%; transform:translate(-50%,-50%); }
 .district-dot { background:rgba(255,245,199,.62); }

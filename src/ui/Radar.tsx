@@ -37,7 +37,7 @@ const COLORS = {
 }
 
 export function Radar() {
-  const { runtime, t } = useGame()
+  const { runtime } = useGame()
   const canvas = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
@@ -157,7 +157,6 @@ export function Radar() {
     <div className="planet-radar">
       <div className="radar-orbit" />
       <canvas ref={canvas} width={112} height={112} className="radar-canvas" />
-      <span className="radar-label">{t.radar}</span>
       <div className="radar-key">
         <i style={{ background: COLORS.living }} />
         <i style={{ background: COLORS.inert }} />
