@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useGame } from '../GameContext'
+import { mysteryCirclesNear, type MysteryCircleSite } from '../core/world'
 import { projectToRadar } from './radarProjection'
 
 /**
@@ -17,8 +18,11 @@ import { projectToRadar } from './radarProjection'
  * hostiles and nothing else. Everything it dropped is still visible out of
  * the window, in far more detail than a dot could give.
  *
- * The objective marker stays. It is not a contact - it is the arrow that says
- * where the mission is, and without it a checkpoint run has no heading at all.
+ * Two things that are not contacts also stay. The objective marker is the
+ * arrow that says where the mission is, and without it a checkpoint run has no
+ * heading at all. Mystery circles are painted on the ground and cannot be seen
+ * from above the rooftops at all, so the dial is the only place a player can
+ * learn one is nearby - which is the whole point of flying through them.
  *
  * Oriented to the craft's heading rather than north. The question being asked
  * is "what is in front of me", and a north-up radar makes the player do the
@@ -26,6 +30,21 @@ import { projectToRadar } from './radarProjection'
  */
 
 const RADAR_RANGE = 170
+
+/**
+ * The circle's own art, at dial size.
+ *
+ * The same file the ground decals use, so it is already in the browser cache
+ * by the time the radar wants it and costs nothing to draw here.
+ */
+const MYSTERY_ICON = typeof Image === 'undefined' ? null : Object.assign(new Image(), { src: '/landmarks/mystery-circle.png' })
+/**
+ * Drawn at about twice its true footprint. To scale a circle is eight pixels
+ * across, and eight pixels of that fine gold line work is a smudge; at sixteen
+ * it is recognisably the thing painted on the ground below.
+ */
+const MYSTERY_ICON_SIZE = 16
+
 const COLORS = {
   hostile: '#ff4d6d',
   mine: '#ff2f5a',
@@ -46,6 +65,8 @@ export function Radar() {
     const center = size / 2
     const scale = center / RADAR_RANGE
     let frame = 0
+    // Reused every frame; the sweep fills it rather than allocating.
+    const circles: MysteryCircleSite[] = []
 
     const draw = () => {
       frame = requestAnimationFrame(draw)
@@ -74,6 +95,20 @@ export function Radar() {
         }
         context.fillStyle = color
         context.fillRect(px - radius, py - radius, radius * 2, radius * 2)
+      }
+
+      // Ground first, so a hostile is never hidden under a landmark.
+      if (MYSTERY_ICON?.complete && MYSTERY_ICON.naturalWidth > 0) {
+        for (const circle of mysteryCirclesNear(player, RADAR_RANGE, circles)) {
+          const { px, py } = projectToRadar(circle.x - player.x, circle.z - player.z, heading, center, scale)
+          // The art is pale gold and the dial's middle is a pale green, so the
+          // icon gets a dark disc to sit on rather than fading into the sweep.
+          context.fillStyle = 'rgba(18,26,44,.58)'
+          context.beginPath()
+          context.arc(px, py, MYSTERY_ICON_SIZE / 2 + 1, 0, Math.PI * 2)
+          context.fill()
+          context.drawImage(MYSTERY_ICON, px - MYSTERY_ICON_SIZE / 2, py - MYSTERY_ICON_SIZE / 2, MYSTERY_ICON_SIZE, MYSTERY_ICON_SIZE)
+        }
       }
 
       // Hostiles only. Drones and fighters read a touch larger than they did
@@ -139,9 +174,11 @@ export function Radar() {
     <div className="planet-radar">
       <div className="radar-orbit" />
       <canvas ref={canvas} width={112} height={112} className="radar-canvas" />
-      {/* One swatch, because there is one thing on the dial. */}
+      {/* Two things on the dial, two swatches: what to avoid, and what to
+          go and fly through. */}
       <div className="radar-key">
         <i style={{ background: COLORS.hostile }} />
+        <i className="radar-key-mystery" />
       </div>
     </div>
   )

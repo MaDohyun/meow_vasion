@@ -283,17 +283,67 @@ export function lakeClusterForCell(cellX: number, cellZ: number) {
   return member ? `lake:${sectorX}:${sectorZ}` : null
 }
 
-/** Returns the deterministic empty tile carrying a mystery-circle signal. */
-export function mysteryCircleForCell(cellX: number, cellZ: number) {
-  if (isTutorialCell(cellX, cellZ)) return null
-  if (parkClusterForCell(cellX, cellZ) || lakeClusterForCell(cellX, cellZ)) return null
-  const sectorX = Math.floor(cellX / MYSTERY_SECTOR_SIZE)
-  const sectorZ = Math.floor(cellZ / MYSTERY_SECTOR_SIZE)
+export type MysteryCircleSite = { id: string; cellX: number; cellZ: number; x: number; z: number }
+
+/**
+ * The one mystery circle a sector carries, or null where it carries none.
+ *
+ * The anchor maths and the exclusions live here so that the per-cell lookup
+ * the world uses and the per-sector sweep the radar uses can never disagree
+ * about where a circle is.
+ */
+export function mysteryCircleForSector(sectorX: number, sectorZ: number): MysteryCircleSite | null {
   const seed = seedForWorldCell(sectorX, sectorZ, 0x6d797374)
   if (seed % 100 >= 24) return null
-  const anchorX = sectorX * MYSTERY_SECTOR_SIZE + 1 + ((seed >>> 9) % (MYSTERY_SECTOR_SIZE - 2))
-  const anchorZ = sectorZ * MYSTERY_SECTOR_SIZE + 1 + ((seed >>> 13) % (MYSTERY_SECTOR_SIZE - 2))
-  return cellX === anchorX && cellZ === anchorZ ? `mystery:${sectorX}:${sectorZ}` : null
+  const cellX = sectorX * MYSTERY_SECTOR_SIZE + 1 + ((seed >>> 9) % (MYSTERY_SECTOR_SIZE - 2))
+  const cellZ = sectorZ * MYSTERY_SECTOR_SIZE + 1 + ((seed >>> 13) % (MYSTERY_SECTOR_SIZE - 2))
+  // A circle is painted on open ground, so it yields to whatever else claimed
+  // the tile. Checked on the anchor rather than on the caller's cell because
+  // only the anchor can ever answer with a circle.
+  if (isTutorialCell(cellX, cellZ)) return null
+  if (parkClusterForCell(cellX, cellZ) || lakeClusterForCell(cellX, cellZ)) return null
+  return { id: `mystery:${sectorX}:${sectorZ}`, cellX, cellZ, x: worldCellCenter(cellX), z: worldCellCenter(cellZ) }
+}
+
+/** Returns the deterministic empty tile carrying a mystery-circle signal. */
+export function mysteryCircleForCell(cellX: number, cellZ: number) {
+  const site = mysteryCircleForSector(Math.floor(cellX / MYSTERY_SECTOR_SIZE), Math.floor(cellZ / MYSTERY_SECTOR_SIZE))
+  if (!site) return null
+  return site.cellX === cellX && site.cellZ === cellZ ? site.id : null
+}
+
+/** How far apart two mystery-circle sectors are, in metres. */
+const MYSTERY_SECTOR_SPAN = WORLD_CELL_SIZE * MYSTERY_SECTOR_SIZE
+
+/**
+ * Every mystery circle whose centre lies within `range` of a point.
+ *
+ * Stepped by sector rather than by cell: at most one circle exists per 6x6
+ * sector, so a 170m sweep is nine hashes instead of a hundred and twenty-one.
+ * That matters because the radar asks this on every animation frame.
+ *
+ * @param into reused between frames so a per-frame sweep allocates nothing.
+ */
+export function mysteryCirclesNear(
+  position: Pick<Vec3, 'x' | 'z'>,
+  range: number,
+  into: MysteryCircleSite[] = [],
+) {
+  into.length = 0
+  if (range <= 0) return into
+  const fromX = Math.floor((position.x - range) / MYSTERY_SECTOR_SPAN)
+  const toX = Math.floor((position.x + range) / MYSTERY_SECTOR_SPAN)
+  const fromZ = Math.floor((position.z - range) / MYSTERY_SECTOR_SPAN)
+  const toZ = Math.floor((position.z + range) / MYSTERY_SECTOR_SPAN)
+  for (let sectorZ = fromZ; sectorZ <= toZ; sectorZ += 1) {
+    for (let sectorX = fromX; sectorX <= toX; sectorX += 1) {
+      const site = mysteryCircleForSector(sectorX, sectorZ)
+      if (!site) continue
+      if (Math.hypot(site.x - position.x, site.z - position.z) > range) continue
+      into.push(site)
+    }
+  }
+  return into
 }
 
 /** Adjacent cells in one landmark cluster do not need an internal road seam. */

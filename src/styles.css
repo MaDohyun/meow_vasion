@@ -500,6 +500,7 @@ button { font: inherit; }
 .radar-canvas { position:absolute; inset:0; z-index:3; width:100%; height:100%; image-rendering:pixelated; }
 .radar-key { position:absolute; z-index:5; top:5px; left:50%; display:flex; gap:3px; transform:translateX(-50%); }
 .radar-key i { width:5px; height:5px; box-shadow:0 0 0 1px rgba(20,16,34,.7); }
+.radar-key-mystery { width:7px; height:7px; margin-top:-1px; background:url(/landmarks/mystery-circle.png) center/contain no-repeat; box-shadow:none; }
 
 .secondary-button { padding:14px 26px; color:var(--cream); background:rgba(31,25,49,.86); border:4px solid var(--cream); box-shadow:7px 7px 0 var(--ink); font-weight:1000; letter-spacing:2px; cursor:pointer; }
 .secondary-button:hover { transform:translate(2px,2px); box-shadow:5px 5px 0 var(--ink); }
