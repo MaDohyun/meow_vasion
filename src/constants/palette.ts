@@ -69,6 +69,9 @@ export const GROUND = {
 export const BUILDING = {
   /** Daylight wall tone. The night look comes from the lights, not from here. */
   FACADE_WALL: '#e5ddcf',
+  /** Where a laser round just landed. Light enough that a tower answers the
+   *  shot without reading as being on fire. */
+  LASER_HIT: '#ff6a52',
   FACADE_SEAM: 'rgba(74,67,82,.10)',
   FACADE_BASE: '#c3b5bd',
   ROOF: '#d8d0c1',
