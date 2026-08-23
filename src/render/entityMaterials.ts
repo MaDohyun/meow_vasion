@@ -19,9 +19,59 @@ import { applyRimLight } from './rimLight'
 type GlowRamp = { material: THREE.MeshToonMaterial; day: number; night: number }
 
 const glowRamps: GlowRamp[] = []
+/** Neutral visibility lift for pedestrians. A saturated shared emissive colour
+ *  would wash every independently coloured outfit into the same hue at night. */
+const PEDESTRIAN_VISIBILITY_GLOW = '#b8c2bf'
+/** Cats share one material across three coat colours, so their night light also
+ *  has to stay neutral. Slightly stronger than a pedestrian because the model
+ *  is much smaller on screen. */
+const CAT_VISIBILITY_GLOW = '#c3ceca'
 
 function withGlowRamp(material: THREE.MeshToonMaterial, day: number, night: number) {
   glowRamps.push({ material, day, night })
+  return material
+}
+
+/**
+ * Keeps the pedestrian family in one draw call while selecting independently
+ * modelled tops and bottoms per instance. Skin, hair and shoes keep their baked
+ * vertex colours; only tagged clothing vertices receive the instance tints.
+ */
+function applyPedestrianOutfits(material: THREE.MeshToonMaterial) {
+  const previousCompile = material.onBeforeCompile
+  const previousCacheKey = material.customProgramCacheKey.bind(material)
+  material.onBeforeCompile = (shader, renderer) => {
+    previousCompile.call(material, shader, renderer)
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', `#include <common>
+        attribute float outfitPart;
+        attribute float outfitVariant;
+        attribute float outfitTopStyle;
+        attribute float outfitBottomStyle;
+        attribute vec3 outfitTopTint;
+        attribute vec3 outfitBottomTint;
+        attribute vec3 outfitDetailTint;
+        attribute float outfitBeamLit;`)
+      .replace('#include <begin_vertex>', `#include <begin_vertex>
+        float outfitVisible = 1.0;
+        if (outfitVariant > 0.5 && outfitVariant < 10.5) {
+          outfitVisible = 1.0 - step(0.5, abs(outfitTopStyle - (outfitVariant - 1.0)));
+        } else if (outfitVariant >= 10.5) {
+          outfitVisible = 1.0 - step(0.5, abs(outfitBottomStyle - (outfitVariant - 11.0)));
+        }
+        transformed *= outfitVisible;`)
+      .replace('#include <color_vertex>', `#include <color_vertex>
+        #ifdef USE_COLOR
+          if (outfitPart > 0.5 && outfitPart < 1.5) vColor = outfitTopTint;
+          else if (outfitPart >= 1.5 && outfitPart < 2.5) vColor = outfitBottomTint;
+          else if (outfitPart >= 2.5) vColor = outfitDetailTint;
+          // A restrained reflection of the mint tractor beam. The previous
+          // yellow 90% mix replaced every outfit colour; 15% keeps the outfit
+          // readable while making the captured person feel beam-lit.
+          vColor = mix(vColor, vec3(0.56, 1.0, 0.88), outfitBeamLit * 0.15);
+        #endif`)
+  }
+  material.customProgramCacheKey = () => `${previousCacheKey()}-pedestrian-outfits-v1`
   return material
 }
 
@@ -29,9 +79,6 @@ function withGlowRamp(material: THREE.MeshToonMaterial, day: number, night: numb
  *  erase the type read the wave design depends on. */
 const ENEMY_GLOW: Record<EnemyKind, string> = {
   drone: ENTITY.DRONE_GLOW,
-  police: ENTITY.POLICE_GLOW,
-  'police-car': ENTITY.POLICE_CAR_GLOW,
-  soldier: ENTITY.SOLDIER_GLOW,
   helicopter: ENTITY.HELICOPTER_GLOW,
   fighter: ENTITY.FIGHTER_GLOW,
   'anti-air': ENTITY.ANTI_AIR_GLOW,
@@ -40,16 +87,16 @@ const ENEMY_GLOW: Record<EnemyKind, string> = {
 }
 
 export const crowdMaterial: Record<CrowdKind, THREE.Material> = {
-  pedestrian: applyRimLight(
-    withGlowRamp(new THREE.MeshToonMaterial({ vertexColors: true, emissive: new THREE.Color(ENTITY.PEDESTRIAN_GLOW) }), 0.04, 0.82),
-    ENTITY.PEDESTRIAN_GLOW,
-    0.34,
+  pedestrian: applyPedestrianOutfits(applyRimLight(
+    withGlowRamp(new THREE.MeshToonMaterial({ vertexColors: true, emissive: new THREE.Color(PEDESTRIAN_VISIBILITY_GLOW) }), 0.015, 0.16),
+    PEDESTRIAN_VISIBILITY_GLOW,
+    0.16,
     2.8,
-  ),
+  ) as THREE.MeshToonMaterial),
   cat: applyRimLight(
-    withGlowRamp(new THREE.MeshToonMaterial({ vertexColors: true, emissive: new THREE.Color(ENTITY.CAT_GLOW) }), 0.05, 0.92),
-    ENTITY.CAT_GLOW,
-    0.38,
+    withGlowRamp(new THREE.MeshToonMaterial({ vertexColors: true, emissive: new THREE.Color(CAT_VISIBILITY_GLOW) }), 0.02, 0.22),
+    CAT_VISIBILITY_GLOW,
+    0.2,
     2.8,
   ),
 }

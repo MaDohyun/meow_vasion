@@ -135,8 +135,8 @@ describe('suicide drones', () => {
     expect(drone.position.y).toBe(startY)
   })
 
-  it('detonates on contact and reports where, and hits harder than a vehicle', () => {
-    expect(ENEMY_CONTACT_DAMAGE.drone).toBeGreaterThan(ENEMY_CONTACT_DAMAGE['police-car'])
+  it('detonates on contact and reports where, and hits harder than a helicopter', () => {
+    expect(ENEMY_CONTACT_DAMAGE.drone).toBeGreaterThan(ENEMY_CONTACT_DAMAGE.helicopter)
     const state = createEnemyState()
     const drone = state.slots.find((enemy) => enemy.kind === 'drone')!
     drone.active = true

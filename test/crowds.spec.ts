@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import * as THREE from 'three'
 import { type BeamObject, CAR_MASS, beginCarDestruction, stepBeamObjects } from '../src/core/beam'
 import {
   CAT_MAX,
@@ -6,6 +7,7 @@ import {
   CROWD_CELL_ACTIVATE_RADIUS,
   crowdPositionIsWalkable,
   crowdObjectIsVisible,
+  pedestrianOutfitForSlot,
   INITIAL_CATS,
   INITIAL_PEDESTRIANS,
   PEDESTRIAN_MAX,
@@ -16,6 +18,7 @@ import {
   stepCrowds,
 } from '../src/core/crowds'
 import { lakeClusterForCell, WORLD_CELL_SIZE } from '../src/core/world'
+import { applyEntityDaylight, crowdMaterial } from '../src/render/entityMaterials'
 
 const inactiveBeam = {
   active: false,
@@ -36,6 +39,34 @@ function car(): BeamObject {
 }
 
 describe('pooled city crowds and destructible cars', () => {
+  it('uses the expanded crowd capacities and opening population', () => {
+    expect(PEDESTRIAN_MAX).toBe(176)
+    expect(CAT_MAX).toBe(53)
+    expect(INITIAL_PEDESTRIANS).toBe(62)
+    expect(INITIAL_CATS).toBe(15)
+  })
+
+  it('keeps shared night glows neutral and below individual crowd colours', () => {
+    applyEntityDaylight(1)
+    for (const [kind, maximum] of [['pedestrian', 0.16], ['cat', 0.22]] as const) {
+      expect(crowdMaterial[kind]).toBeInstanceOf(THREE.MeshToonMaterial)
+      const material = crowdMaterial[kind] as THREE.MeshToonMaterial
+      expect(material.emissiveIntensity).toBeCloseTo(maximum, 6)
+      const { r, g, b } = material.emissive
+      expect(Math.max(r, g, b) - Math.min(r, g, b)).toBeLessThan(0.08)
+    }
+    applyEntityDaylight(0)
+  })
+
+  it('mixes independent pedestrian tops and bottoms across the fixed pool', () => {
+    const outfits = Array.from({ length: 28 }, (_, slot) => pedestrianOutfitForSlot(slot))
+    expect(new Set(outfits.map((outfit) => outfit.topStyle))).toEqual(new Set([0, 1, 2, 3]))
+    expect(new Set(outfits.map((outfit) => outfit.bottomStyle))).toEqual(new Set([0, 1, 2, 3]))
+    expect(new Set(outfits.map((outfit) => `${outfit.topStyle}:${outfit.bottomStyle}`)).size).toBeGreaterThan(10)
+    expect(pedestrianOutfitForSlot(5, 0)).toEqual(pedestrianOutfitForSlot(5, 0))
+    expect(pedestrianOutfitForSlot(5, 1)).not.toEqual(pedestrianOutfitForSlot(5, 0))
+  })
+
   it('keeps fixed pools and seeds a city-wide population at run start', () => {
     const state = createCrowdState(42)
     expect(state.objects).toHaveLength(PEDESTRIAN_MAX + CAT_MAX)

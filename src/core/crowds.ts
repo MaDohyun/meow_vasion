@@ -4,6 +4,41 @@ import type { Aabb, Vec3 } from './drone'
 import { isLakeAt, isTutorialCell, parkClusterForCell, seedForWorldCell, WORLD_CELL_SIZE, worldCellCenter, worldCellCoord } from './world'
 
 export type CrowdKind = 'pedestrian' | 'cat'
+
+export const PEDESTRIAN_TOP_STYLE_COUNT = 4
+export const PEDESTRIAN_BOTTOM_STYLE_COUNT = 4
+export const PEDESTRIAN_TOP_PALETTE_COUNT = 8
+export const PEDESTRIAN_BOTTOM_PALETTE_COUNT = 8
+export const PEDESTRIAN_DETAIL_PALETTE_COUNT = 6
+
+export type PedestrianOutfit = {
+  topStyle: number
+  bottomStyle: number
+  topPalette: number
+  bottomPalette: number
+  detailPalette: number
+}
+
+/**
+ * A crowd slot keeps a stable outfit while it is alive, then receives another
+ * deterministic combination when that slot is spawned again. This gives the
+ * single fixed pedestrian pool varied tops and bottoms without saved state.
+ */
+export function pedestrianOutfitForSlot(slot: number, generation = 0): PedestrianOutfit {
+  let seed = (Math.imul(slot + 1, 0x9e3779b1) ^ Math.imul(generation + 1, 0x85ebca6b)) >>> 0
+  seed ^= seed >>> 16
+  seed = Math.imul(seed, 0x7feb352d) >>> 0
+  seed ^= seed >>> 15
+  seed = Math.imul(seed, 0x846ca68b) >>> 0
+  seed = (seed ^ seed >>> 16) >>> 0
+  return {
+    topStyle: seed % PEDESTRIAN_TOP_STYLE_COUNT,
+    bottomStyle: (seed >>> 2) % PEDESTRIAN_BOTTOM_STYLE_COUNT,
+    topPalette: (seed >>> 4) % PEDESTRIAN_TOP_PALETTE_COUNT,
+    bottomPalette: (seed >>> 8) % PEDESTRIAN_BOTTOM_PALETTE_COUNT,
+    detailPalette: (seed >>> 12) % PEDESTRIAN_DETAIL_PALETTE_COUNT,
+  }
+}
 /**
  * Pool sizes.
  *
@@ -17,14 +52,14 @@ export type CrowdKind = 'pedestrian' | 'cat'
  * residents of every street cell within the activation ring at once, not just
  * a camera wedge's worth of extras.
  */
-export const PEDESTRIAN_MAX = 160
-export const CAT_MAX = 48
+export const PEDESTRIAN_MAX = 176
+export const CAT_MAX = 53
 // The opening wedge seed is deliberately smaller than the pool now: it only
 // dresses the streets the camera opens on, while the district layer below
 // fills the rest of the ring in every direction. Overfilling the wedge left
 // no free slots for the districts, which is what made every other block empty.
-export const INITIAL_PEDESTRIANS = 56
-export const INITIAL_CATS = 14
+export const INITIAL_PEDESTRIANS = 62
+export const INITIAL_CATS = 15
 // Tight on purpose. The pool is fixed size, so stragglers left alive far behind
 // the player squat in every slot and block respawns near the path: the pool
 // saturated at 53 bodies while only two or three were ever within reach.

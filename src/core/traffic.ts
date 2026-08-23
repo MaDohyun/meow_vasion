@@ -1,12 +1,14 @@
 import type { Vec3 } from './drone'
 import { isLakeAt, isParkAt, PARKED_CAR_COLORS, sameLandmarkCluster, WORLD_CELL_SIZE } from './world'
 
-export const TRAFFIC_MAX_CARS = 32
+export const TRAFFIC_MAX_CARS = 42
 /** No moving car is created inside this ring after the opening preload. */
 export const TRAFFIC_SPAWN_MIN_DISTANCE = 140
 export const TRAFFIC_SPAWN_MAX_DISTANCE = 250
 export const TRAFFIC_REMOVE_DISTANCE = 300
-const TRAFFIC_SPAWN_INTERVAL = 0.08
+/** Refill empty traffic slots ten percent faster while retaining a fixed pool. */
+export const TRAFFIC_SPAWN_RATE_MULTIPLIER = 1.1
+const TRAFFIC_SPAWN_INTERVAL = 0.08 / TRAFFIC_SPAWN_RATE_MULTIPLIER
 
 export type TrafficAxis = 'x' | 'z'
 

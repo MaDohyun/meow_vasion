@@ -20,6 +20,7 @@ import {
   isTutorialCell,
   lakeClusterForCell,
   mysteryCircleForCell,
+  PARKED_CAR_SPAWN_MULTIPLIER,
   parkClusterForCell,
   sameLandmarkCluster,
 } from '../src/core/world'
@@ -32,6 +33,21 @@ describe('deterministic infinite city', () => {
       expect(getProceduralCell(x, z)).toEqual(getProceduralCell(x, z))
     }
     expect(getProceduralCell(12, -8)).not.toEqual(getProceduralCell(-43, 91))
+  })
+
+  it('raises deterministic parked-car lots by ten percent', () => {
+    expect(PARKED_CAR_SPAWN_MULTIPLIER).toBe(1.1)
+    let eligible = 0
+    let parkedCars = 0
+    for (let z = -100; z <= 100; z += 1) {
+      for (let x = -100; x <= 100; x += 1) {
+        if (isTutorialCell(x, z) || parkClusterForCell(x, z) || lakeClusterForCell(x, z) || mysteryCircleForCell(x, z)) continue
+        eligible += 1
+        if (getProceduralCell(x, z).kind === 'parked-car') parkedCars += 1
+      }
+    }
+    expect(parkedCars / eligible).toBeGreaterThan(0.083)
+    expect(parkedCars / eligible).toBeLessThan(0.094)
   })
 
   it('rebuilds the same nearby layout after leaving and returning', () => {

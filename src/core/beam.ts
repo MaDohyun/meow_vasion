@@ -4,7 +4,7 @@ export type BeamObjectKind =
   | 'car' | 'truck' | 'pedestrian' | 'cat' | 'explosive' | 'building'
   | 'rooftop-structure' | 'tree' | 'utility-pole' | 'power-pylon' | 'communications'
   | 'trash-bin' | 'park-bench' | 'bus-stop'
-  | 'drone' | 'police' | 'police-car' | 'helicopter' | 'soldier'
+  | 'drone' | 'helicopter'
   | 'fighter' | 'anti-air' | 'tank' | 'boss'
 
 export type BeamWorldProp = {
@@ -55,11 +55,8 @@ const DEFAULT_DIAMETER: Record<BeamObjectKind, number> = {
   building: 18,
   cat: 0.55,
   pedestrian: 0.78,
-  police: 1.35,
-  soldier: 1.55,
   drone: 1.6,
   car: 2.9,
-  'police-car': 3.2,
   truck: 4.2,
   fighter: 4.4,
   helicopter: 4.6,

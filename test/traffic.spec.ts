@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   TRAFFIC_MAX_CARS,
+  TRAFFIC_SPAWN_RATE_MULTIPLIER,
   captureTrafficCar,
   createTrafficState,
   primeTraffic,
@@ -8,13 +9,20 @@ import {
   trafficCarIsVisible,
   trafficPositionIsDriveable,
 } from '../src/core/traffic'
-import { lakeClusterForCell, WORLD_CELL_SIZE } from '../src/core/world'
+import { lakeClusterForCell, WORLD_CELL_SIZE, WORLD_MAX_CARS } from '../src/core/world'
 
 const view = { position: { x: 0, y: 3, z: 0 }, heading: 0 }
 
 describe('pooled road traffic', () => {
+  it('raises the combined parked and moving car capacity by thirty percent', () => {
+    expect(WORLD_MAX_CARS).toBe(62)
+    expect(TRAFFIC_MAX_CARS).toBe(42)
+    expect(WORLD_MAX_CARS + TRAFFIC_MAX_CARS).toBe(104)
+  })
+
   it('preloads the opening district and keeps mid-run spawns out of view', () => {
     expect(TRAFFIC_MAX_CARS).toBeGreaterThanOrEqual(30)
+    expect(TRAFFIC_SPAWN_RATE_MULTIPLIER).toBe(1.1)
     const state = createTrafficState(12345)
     primeTraffic(state, view)
     expect(state.cars.filter((car) => car.active)).toHaveLength(TRAFFIC_MAX_CARS)

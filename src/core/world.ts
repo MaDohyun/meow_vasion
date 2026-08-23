@@ -10,7 +10,9 @@ export const WORLD_LOD_RADIUS = 820
 export const WORLD_REFRESH_DISTANCE = 10
 export const WORLD_MAX_BUILDINGS = 128
 export const WORLD_MAX_DISTANT_BUILDINGS = 880
-export const WORLD_MAX_CARS = 48
+export const WORLD_MAX_CARS = 62
+/** Ten percent more parked-car lots without changing the fixed render pool. */
+export const PARKED_CAR_SPAWN_MULTIPLIER = 1.1
 export const WORLD_GROUND_RADIUS_CELLS = 9
 export const TUTORIAL_SPAWN = { x: 0, y: 7, z: 54.5 } as const
 export const TUTORIAL_CELL_X = 0
@@ -372,15 +374,16 @@ export function getProceduralCell(cellX: number, cellZ: number, worldSeed = WORL
   const mystery = mysteryCircleForCell(cellX, cellZ)
   const forcedOpen = park !== null || mystery !== null
   const lake = lakeClusterForCell(cellX, cellZ)
-  // Bands: building 58%, parked car 8%, intersection 12%, empty 22%.
-  // Raising the building band by ten points adds roughly one fifth more
-  // occupied lots while leaving roads and the deterministic landmark cells
-  // available for traffic and open-space dressing.
+  // Keep the existing deterministic bands intact, then convert 0.8 percentage
+  // points of the old empty band into parked cars. That raises the car rate
+  // from 8% to 8.8% (+10%) without reshuffling buildings or intersections.
+  const extraParkedCar = roll >= 78
+    && saltedUnit(seed, 41) < (0.08 * (PARKED_CAR_SPAWN_MULTIPLIER - 1)) / 0.22
   const kind: WorldCellKind = forcedOpen || lake
     ? 'empty'
     : roll < 58
     ? 'building'
-    : roll < 66
+    : roll < 66 || extraParkedCar
       ? 'parked-car'
       : roll < 78
         ? 'intersection'

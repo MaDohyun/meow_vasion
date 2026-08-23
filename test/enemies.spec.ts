@@ -56,7 +56,7 @@ describe('time-based enemy waves', () => {
     const state = createEnemyState()
     syncEnemyTiers(state, 0, { x: 0, y: 4, z: 0 }, 0, 1 / 60)
     expect(activeEnemyCount(state, 'drone')).toBe(2)
-    expect(activeEnemyCount(state, 'police')).toBe(0)
+    expect(state.slots.some((enemy) => ['police', 'police-car', 'soldier'].includes(enemy.kind as string))).toBe(false)
     expect(waveStageForTime(ENEMY_WAVE_STAGES[1]!.at)).toBe(1)
   })
 

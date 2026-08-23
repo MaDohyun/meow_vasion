@@ -2,7 +2,7 @@ import type { BeamObject } from './beam'
 import type { Vec3 } from './drone'
 import { seedForWorldCell, WORLD_CELL_SIZE, type ProceduralBuilding } from './world'
 
-export type EnemyKind = 'drone' | 'police' | 'police-car' | 'helicopter' | 'soldier' | 'fighter' | 'anti-air' | 'tank' | 'boss'
+export type EnemyKind = 'drone' | 'helicopter' | 'fighter' | 'anti-air' | 'tank' | 'boss'
 export type EnemyMode = 'roam' | 'chase' | 'ground' | 'strafe' | 'outbound' | 'fixed'
 export type EnemyProjectileKind = 'rifle' | 'shell' | 'missile' | 'rocket' | 'boss-beam'
 
@@ -17,21 +17,18 @@ export type EnemyProjectileKind = 'rifle' | 'shell' | 'missile' | 'rocket' | 'bo
  */
 export const ENEMY_WAVE_STAGES = [
   { at: 0, tempo: 0, label: 'RECON DRONES', targets: { drone: 2 } },
-  { at: 25, tempo: 1, label: 'POLICE DISPATCH', targets: { drone: 13, police: 6, 'police-car': 2 } },
-  { at: 54, tempo: 2, label: 'AIR SUPPORT', targets: { drone: 22, police: 10, 'police-car': 4, helicopter: 4 } },
-  { at: 83, tempo: 3, label: 'MILITARY DEPLOYMENT', targets: { drone: 33, police: 14, 'police-car': 6, helicopter: 7, soldier: 18 } },
-  { at: 108, tempo: 4, label: 'FIGHTER SCRAMBLE', targets: { drone: 40, police: 16, 'police-car': 8, helicopter: 9, soldier: 24, fighter: 3 } },
-  { at: 133, tempo: 5, label: 'AA NETWORK', targets: { drone: 44, police: 18, 'police-car': 9, helicopter: 11, soldier: 26, fighter: 4, 'anti-air': 5 } },
-  { at: 158, tempo: 6, label: 'ARMORED RESPONSE', targets: { drone: 47, police: 19, 'police-car': 10, helicopter: 12, soldier: 28, fighter: 5, 'anti-air': 6, tank: 7 } },
-  { at: 180, tempo: 7, label: 'SKY DREADNOUGHT', targets: { drone: 52, police: 20, 'police-car': 10, helicopter: 14, soldier: 30, fighter: 6, 'anti-air': 6, tank: 8, boss: 1 } },
+  { at: 25, tempo: 1, label: 'DRONE SWARM', targets: { drone: 13 } },
+  { at: 54, tempo: 2, label: 'AIR SUPPORT', targets: { drone: 22, helicopter: 4 } },
+  { at: 83, tempo: 3, label: 'HELICOPTER SURGE', targets: { drone: 33, helicopter: 7 } },
+  { at: 108, tempo: 4, label: 'FIGHTER SCRAMBLE', targets: { drone: 40, helicopter: 9, fighter: 3 } },
+  { at: 133, tempo: 5, label: 'AA NETWORK', targets: { drone: 44, helicopter: 11, fighter: 4, 'anti-air': 5 } },
+  { at: 158, tempo: 6, label: 'ARMORED RESPONSE', targets: { drone: 47, helicopter: 12, fighter: 5, 'anti-air': 6, tank: 7 } },
+  { at: 180, tempo: 7, label: 'SKY DREADNOUGHT', targets: { drone: 52, helicopter: 14, fighter: 6, 'anti-air': 6, tank: 8, boss: 1 } },
 ] as const
 
 export const ENEMY_TIER: Record<EnemyKind, number> = {
   drone: 0,
-  police: 1,
-  'police-car': 1,
   helicopter: 2,
-  soldier: 3,
   fighter: 4,
   'anti-air': 5,
   tank: 6,
@@ -40,10 +37,7 @@ export const ENEMY_TIER: Record<EnemyKind, number> = {
 
 export const ENEMY_MAX_HP: Record<EnemyKind, number> = {
   drone: 1,
-  police: 1,
-  'police-car': 1,
   helicopter: 3,
-  soldier: 1,
   fighter: 4,
   'anti-air': 10,
   tank: 8,
@@ -55,10 +49,7 @@ export const ENEMY_MAX_HP: Record<EnemyKind, number> = {
 
 export const ENEMY_CAPS: Record<EnemyKind, number> = {
   drone: 52,
-  police: 20,
-  'police-car': 10,
   helicopter: 14,
-  soldier: 30,
   fighter: 6,
   'anti-air': 6,
   tank: 8,
@@ -186,10 +177,7 @@ export const ENEMY_CONTACT_DAMAGE: Record<EnemyKind, number> = {
   // Detonating on you is the drone's entire purpose, so it costs more than
   // brushing a vehicle.
   drone: 5,
-  police: 2,
-  'police-car': 3,
   helicopter: 4,
-  soldier: 2,
   fighter: 5,
   'anti-air': 4,
   tank: 5,
@@ -272,15 +260,12 @@ export type EnemyState = {
   mineExplosion: { position: Vec3; radius: number; damage: number } | null
 }
 
-const ORDER: EnemyKind[] = ['drone', 'police', 'police-car', 'helicopter', 'soldier', 'fighter', 'anti-air', 'tank', 'boss']
-const SPAWN_ORDER: EnemyKind[] = ['boss', 'tank', 'anti-air', 'fighter', 'soldier', 'helicopter', 'police-car', 'police', 'drone']
+const ORDER: EnemyKind[] = ['drone', 'helicopter', 'fighter', 'anti-air', 'tank', 'boss']
+const SPAWN_ORDER: EnemyKind[] = ['boss', 'tank', 'anti-air', 'fighter', 'helicopter', 'drone']
 
 export const ENEMY_DIAMETER: Record<EnemyKind, number> = {
   drone: 1.6,
-  police: 1.35,
-  'police-car': 3.2,
   helicopter: 4.6,
-  soldier: 1.55,
   fighter: 4.4,
   'anti-air': 5.2,
   tank: 4.8,
@@ -289,10 +274,7 @@ export const ENEMY_DIAMETER: Record<EnemyKind, number> = {
 
 const ENEMY_MASS: Record<EnemyKind, number> = {
   drone: 3,
-  police: 2.5,
-  'police-car': 3,
   helicopter: 4,
-  soldier: 2.5,
   fighter: 4,
   'anti-air': 7,
   tank: 7,
@@ -374,7 +356,7 @@ function makeSlot(kind: EnemyKind, slot: number): EnemySlot {
     absorbing: false,
     absorbTimer: 0,
     diameter: ENEMY_DIAMETER[kind],
-    scoreValue: kind === 'boss' ? 1200 : kind === 'tank' ? 260 : kind === 'fighter' ? 140 : kind === 'helicopter' ? 80 : kind === 'police-car' ? 55 : 35,
+    scoreValue: kind === 'boss' ? 1200 : kind === 'tank' ? 260 : kind === 'fighter' ? 140 : kind === 'helicopter' ? 80 : 35,
     // The battleship is not "too big to eat yet" - it is not food. A craft at
     // the size cap still cannot take it.
     beamImmune: kind === 'drone' || kind === 'helicopter' || kind === 'fighter' || kind === 'anti-air' || kind === 'boss',
@@ -402,7 +384,7 @@ function makeSlot(kind: EnemyKind, slot: number): EnemySlot {
   }
 }
 
-export function createEnemyState(seed = 0x91eab7) {
+export function createEnemyState(seed = 0x91eab7): EnemyState {
   const slots: EnemySlot[] = []
   for (const kind of ORDER) for (let slot = 0; slot < ENEMY_CAPS[kind]; slot += 1) slots.push(makeSlot(kind, slot))
   const projectiles = Array.from({ length: ENEMY_MAX_PROJECTILES }, (_, slot) => makeProjectile(slot))
@@ -437,9 +419,9 @@ function resetSlot(enemy: EnemySlot, player: Vec3, heading: number, state: Enemy
   enemy.angularVelocity.y = 0
   enemy.angularVelocity.z = 0
   enemy.phase = heading + (enemy.slot + 1) * 2.399963
-  enemy.mode = enemy.kind === 'fighter' ? 'strafe' : enemy.kind === 'anti-air' ? 'fixed' : enemy.kind === 'police' || enemy.kind === 'police-car' || enemy.kind === 'soldier' || enemy.kind === 'tank' ? 'ground' : enemy.kind === 'boss' ? 'chase' : 'roam'
+  enemy.mode = enemy.kind === 'fighter' ? 'strafe' : enemy.kind === 'anti-air' ? 'fixed' : enemy.kind === 'tank' ? 'ground' : enemy.kind === 'boss' ? 'chase' : 'roam'
   enemy.radius = enemy.kind === 'fighter' ? 110 : enemy.kind === 'boss' ? BATTLESHIP_ORBIT : enemy.kind === 'helicopter' ? 92 : 82
-  enemy.hitRadius = enemy.kind === 'drone' ? 0.75 : enemy.kind === 'police' ? 0.9 : enemy.kind === 'police-car' ? 1.8 : enemy.kind === 'soldier' ? 1.1 : enemy.kind === 'helicopter' ? 2.4 : enemy.kind === 'fighter' ? 2.2 : enemy.kind === 'tank' ? 2.8 : enemy.kind === 'anti-air' ? 2.2 : 9.5
+  enemy.hitRadius = enemy.kind === 'drone' ? 0.75 : enemy.kind === 'helicopter' ? 2.4 : enemy.kind === 'fighter' ? 2.2 : enemy.kind === 'tank' ? 2.8 : enemy.kind === 'anti-air' ? 2.2 : 9.5
   enemy.attackTimer = enemy.kind === 'boss' ? 3.2 : 0.7 + (enemy.slot % 5) * 0.22
   enemy.turret = 0
   enemy.burstLeft = 0
@@ -535,7 +517,7 @@ export function syncEnemyTiers(state: EnemyState, elapsed: number, player: Vec3,
   state.waveStage = stage
   state.spawnTimer -= Math.min(Math.max(0, dt), 0.05)
   if (stageChanged) state.spawnTimer = 0
-  const initialBurst = state.spawnTimer <= 0 && activeEnemyCount(state, 'drone') === 0 && activeEnemyCount(state, 'police') === 0
+  const initialBurst = state.spawnTimer <= 0 && activeEnemyCount(state, 'drone') === 0
   for (const enemy of state.slots) {
     if (enemy.respawn > 0) enemy.respawn = Math.max(0, enemy.respawn - dt)
     const target = targetForKind(enemy.kind, elapsed)
@@ -626,9 +608,9 @@ export const PROJECTILE_SPEED: Record<EnemyProjectileKind, number> = {
  * (shoots exactly where you will be).
  *
  * Tiered rather than uniform, because the wave ladder is the difficulty curve:
- * police and infantry miss often enough that the first minute teaches the rule
- * without punishing it, and by the time the anti-air network is up, flying
- * straight is fatal.
+ * helicopters miss often enough that the early game teaches the rule without
+ * punishing it, and by the time the anti-air network is up, flying straight is
+ * fatal.
  *
  * A lower tier still leads the target properly - it just puts the shot down
  * beside the answer. Scaling the lead instead was the first attempt and it was
@@ -642,9 +624,6 @@ export const AIM_ERROR_METRES = 16
 
 export const LEAD_ACCURACY: Record<EnemyKind, number> = {
   drone: 0,
-  police: 0.45,
-  'police-car': 0.6,
-  soldier: 0.45,
   helicopter: 0.62,
   fighter: 0.82,
   tank: 0.8,
@@ -778,9 +757,8 @@ function stepAirEnemy(enemy: EnemySlot, player: Vec3, d: number) {
 }
 
 function stepGroundEnemy(enemy: EnemySlot, player: Vec3, d: number) {
-  const speed = enemy.kind === 'tank' ? 4.2 : enemy.kind === 'police-car' ? 11 : enemy.kind === 'soldier' ? 7.2 : 8.4
-  enemy.position[enemy.roadAxis] += speed * enemy.roadDirection * d
-  enemy.position.y = enemy.kind === 'tank' ? 1.2 : 0.8
+  enemy.position[enemy.roadAxis] += 4.2 * enemy.roadDirection * d
+  enemy.position.y = 1.2
   if (distanceToPlayer(enemy, player) > 230) enemy.active = false
 }
 
@@ -941,7 +919,7 @@ export function stepEnemies(state: EnemyState, player: Vec3, dt: number, playerV
     } else if (enemy.kind === 'boss') stepBattleship(enemy, player, d)
     else if (enemy.kind === 'fighter') stepFighter(enemy, player, d)
     else if (enemy.kind === 'drone' || enemy.kind === 'helicopter') stepAirEnemy(enemy, player, d)
-    else if (enemy.kind === 'police' || enemy.kind === 'police-car' || enemy.kind === 'soldier' || enemy.kind === 'tank') stepGroundEnemy(enemy, player, d)
+    else if (enemy.kind === 'tank') stepGroundEnemy(enemy, player, d)
     else {
       const distance = distanceToPlayer(enemy, player)
       const desiredX = player.x + Math.sin(enemy.phase) * 66
@@ -959,8 +937,7 @@ export function stepEnemies(state: EnemyState, player: Vec3, dt: number, playerV
     if (enemy.telegraph > 0) {
       enemy.telegraph = Math.max(0, enemy.telegraph - d)
       if (enemy.telegraph <= 0) {
-        if (enemy.kind === 'police' || enemy.kind === 'soldier' || enemy.kind === 'helicopter') fireProjectile(state, enemy, 'rifle')
-        else if (enemy.kind === 'police-car') fireProjectile(state, enemy, 'shell')
+        if (enemy.kind === 'helicopter') fireProjectile(state, enemy, 'rifle')
         else if (enemy.kind === 'tank') fireProjectile(state, enemy, 'shell')
         else if (enemy.kind === 'anti-air') fireProjectile(state, enemy, 'missile')
         else if (enemy.kind === 'fighter') fireProjectile(state, enemy, 'rocket')
@@ -969,19 +946,16 @@ export function stepEnemies(state: EnemyState, player: Vec3, dt: number, playerV
       }
     } else if (enemy.attackTimer <= 0) {
       const distance = distanceToPlayer(enemy, player)
-      const low = player.y <= 5.5
       const middle = player.y > 5.5 && player.y < 28
       const high = player.y >= 28
       // Drones are deliberately absent here: they deal contact damage only.
       // Thirty-six of them firing would bury the screen in projectiles.
-      const canAttack = (enemy.kind === 'police' || enemy.kind === 'soldier') ? low && distance < 48
-        : enemy.kind === 'police-car' ? low && distance < 58
-          : enemy.kind === 'helicopter' ? !high && distance < 78
-            : enemy.kind === 'tank' ? middle && distance < 100
-              : enemy.kind === 'anti-air' ? high && distance < 145
-                : enemy.kind === 'fighter'
+      const canAttack = enemy.kind === 'helicopter' ? !high && distance < 78
+        : enemy.kind === 'tank' ? middle && distance < 100
+          : enemy.kind === 'anti-air' ? high && distance < 145
+            : enemy.kind === 'fighter'
       if (canAttack) {
-        const kind = enemy.kind === 'police' || enemy.kind === 'soldier' || enemy.kind === 'helicopter' ? 'rifle' : enemy.kind === 'police-car' || enemy.kind === 'tank' ? 'shell' : enemy.kind === 'anti-air' ? 'missile' : 'rocket'
+        const kind = enemy.kind === 'helicopter' ? 'rifle' : enemy.kind === 'tank' ? 'shell' : enemy.kind === 'anti-air' ? 'missile' : 'rocket'
         const speed = PROJECTILE_SPEED[kind]
         const damage = kind === 'rifle' ? 2 : kind === 'shell' ? (enemy.kind === 'tank' ? 5 : 4) : kind === 'missile' ? 10 : 3
         aimProjectile(state, enemy, player, playerVelocity, kind, speed, damage, enemy.kind === 'anti-air' ? 0.8 : enemy.kind === 'helicopter' ? 0.45 : 0.52)

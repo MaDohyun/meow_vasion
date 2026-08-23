@@ -867,7 +867,7 @@ function registerEnemyHit(game: GameRuntime, id: string, damage: number) {
   // The ship is worth about two and a half times what it was: it now takes
   // sixty-four laser hits instead of twenty-five, and a reward that did not
   // move with that would make the fight cost more than it pays.
-  const reward = result.kind === 'boss' ? 3200 : result.kind === 'tank' ? 260 : result.kind === 'anti-air' ? 180 : result.kind === 'fighter' ? 140 : result.kind === 'helicopter' ? 80 : result.kind === 'police-car' ? 55 : 35
+  const reward = result.kind === 'boss' ? 3200 : result.kind === 'tank' ? 260 : result.kind === 'anti-air' ? 180 : result.kind === 'fighter' ? 140 : result.kind === 'helicopter' ? 80 : 35
   game.enemiesDown += 1
   game.score += reward
   reportMissionEvent(game, { type: 'destroy-enemy', kind: result.kind })

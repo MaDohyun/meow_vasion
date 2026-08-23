@@ -14,7 +14,7 @@ import { DRONE_DEFAULTS } from '../src/core/drone'
 
 /** Each enemy only shoots in its own altitude band. */
 const BAND: Partial<Record<EnemyKind, number>> = {
-  soldier: 3, police: 3, 'police-car': 3, helicopter: 12, tank: 12, fighter: 12, 'anti-air': 40,
+  helicopter: 12, tank: 12, fighter: 12, 'anti-air': 40,
 }
 
 /**
@@ -117,22 +117,22 @@ describe('lead aiming', () => {
   it('hits a craft that holds its heading', () => {
     // The point of the whole change. Flying in a straight line at full speed
     // used to be perfect safety.
-    expect(run({ kind: 'soldier', speed: DRONE_DEFAULTS.maxSpeed })).toBeGreaterThan(0)
+    expect(run({ kind: 'helicopter', speed: DRONE_DEFAULTS.maxSpeed })).toBeGreaterThan(0)
     expect(run({ kind: 'tank', speed: DRONE_DEFAULTS.maxSpeed })).toBeGreaterThan(0)
   })
 
   it('misses a craft that breaks its heading', () => {
     // And the other half: the telegraph is a real window, not decoration.
-    const straight = run({ kind: 'soldier', speed: DRONE_DEFAULTS.maxSpeed })
-    const jinking = run({ kind: 'soldier', speed: DRONE_DEFAULTS.maxSpeed, jink: true })
+    const straight = run({ kind: 'helicopter', speed: DRONE_DEFAULTS.maxSpeed })
+    const jinking = run({ kind: 'helicopter', speed: DRONE_DEFAULTS.maxSpeed, jink: true })
     expect(jinking).toBeLessThan(straight)
   })
 
   it('hits a big craft far more often than a small one', () => {
     // Size is the cost of growing, and it only became a real cost once shots
     // could arrive at all. Judged purely on geometry: same aim, bigger target.
-    const small = run({ kind: 'soldier', speed: DRONE_DEFAULTS.maxSpeed, hitRadius: 1.05 })
-    const large = run({ kind: 'soldier', speed: DRONE_DEFAULTS.maxSpeed, hitRadius: 3.26 })
+    const small = run({ kind: 'helicopter', speed: DRONE_DEFAULTS.maxSpeed, hitRadius: 1.05 })
+    const large = run({ kind: 'helicopter', speed: DRONE_DEFAULTS.maxSpeed, hitRadius: 3.26 })
     expect(large).toBeGreaterThan(small)
   })
 
@@ -163,7 +163,7 @@ describe('lead aiming', () => {
   it('leads worse the lower the enemy tier', () => {
     // The wave ladder is the difficulty curve: the first minute teaches the
     // rule, the anti-air network enforces it.
-    expect(LEAD_ACCURACY.soldier).toBeLessThan(LEAD_ACCURACY.tank)
+    expect(LEAD_ACCURACY.helicopter).toBeLessThan(LEAD_ACCURACY.tank)
     expect(LEAD_ACCURACY.tank).toBeLessThan(LEAD_ACCURACY['anti-air'])
     expect(LEAD_ACCURACY['anti-air']).toBe(1)
     expect(LEAD_ACCURACY.drone).toBe(0)

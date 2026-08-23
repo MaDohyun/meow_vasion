@@ -19,7 +19,7 @@ import {
 import { setRimNightFactor } from './rimLight'
 import { radialGlowTexture } from './textures'
 import { BEAM_ABSORB_TIME, beamLiftScale, beamObjectDiameter, beamProfile, beamVisualLength, type BeamObject } from '../core/beam'
-import { CAT_MAX, CROWD_ABSORB_TIME, PEDESTRIAN_MAX, type CrowdKind } from '../core/crowds'
+import { CAT_MAX, CROWD_ABSORB_TIME, PEDESTRIAN_MAX, pedestrianOutfitForSlot, type CrowdKind } from '../core/crowds'
 import { HAZARD_MAX } from '../core/hazards'
 import { type DaylightKeyframe, type DaylightSample } from '../core/daylight'
 import {
@@ -101,16 +101,133 @@ function eyePair(radius: number, x: number, y: number, z: number) {
   return [-x, x].map((eyeX) => coloredPart(new THREE.SphereGeometry(radius, 6, 5).translate(eyeX, y, z), EYE_COLOR))
 }
 
-function pedestrianGeometry() {
-  return mergeModel([
-    coloredPart(new THREE.CapsuleGeometry(0.34, 0.72, 4, 8), '#ee6f9f'),
-    coloredPart(new THREE.SphereGeometry(0.34, 8, 6).translate(0, 0.92, 0), '#f4b98d'),
-    coloredPart(new THREE.BoxGeometry(0.2, 0.7, 0.24).translate(-0.2, -0.68, 0), '#38547e'),
-    coloredPart(new THREE.BoxGeometry(0.2, 0.7, 0.24).translate(0.2, -0.68, 0), '#38547e'),
-    coloredPart(new THREE.BoxGeometry(0.15, 0.82, 0.17).rotateZ(0.34).translate(-0.46, 0.02, 0), '#f4b98d'),
-    coloredPart(new THREE.BoxGeometry(0.15, 0.82, 0.17).rotateZ(-0.34).translate(0.46, 0.02, 0), '#f4b98d'),
-    ...eyePair(0.065, 0.13, 0.95, 0.32),
+const PEDESTRIAN_SKIN = '#efb184'
+const PEDESTRIAN_HAIR = '#2b2430'
+const PEDESTRIAN_SHOE = '#282630'
+const PEDESTRIAN_TOP_VARIANT_OFFSET = 1
+const PEDESTRIAN_BOTTOM_VARIANT_OFFSET = 11
+
+/** Part tags let one instanced material colour tops and bottoms independently. */
+function pedestrianPart(
+  geometry: THREE.BufferGeometry,
+  colorValue: string,
+  outfitPart: 0 | 1 | 2 | 3,
+  outfitVariant = 0,
+) {
+  const result = coloredPart(geometry, colorValue)
+  const count = result.getAttribute('position').count
+  const parts = new Float32Array(count)
+  const variants = new Float32Array(count)
+  parts.fill(outfitPart)
+  variants.fill(outfitVariant)
+  result.setAttribute('outfitPart', new THREE.BufferAttribute(parts, 1))
+  result.setAttribute('outfitVariant', new THREE.BufferAttribute(variants, 1))
+  return result
+}
+
+function pedestrianEyes() {
+  return [-0.13, 0.13].map((x) => pedestrianPart(
+    new THREE.SphereGeometry(0.055, 6, 5).translate(x, 0.99, 0.32),
+    EYE_COLOR,
+    0,
+  ))
+}
+
+function pedestrianArmParts(style: number, sleeveLength: number, handY: number) {
+  const variant = PEDESTRIAN_TOP_VARIANT_OFFSET + style
+  return [-1, 1].flatMap((side) => [
+    pedestrianPart(
+      new THREE.BoxGeometry(0.18, sleeveLength, 0.2)
+        .rotateZ(side * -0.28)
+        .translate(side * 0.44, 0.12 - sleeveLength * 0.22, 0),
+      '#ffffff',
+      1,
+      variant,
+    ),
+    pedestrianPart(
+      new THREE.SphereGeometry(0.105, 6, 5).translate(side * 0.52, handY, 0),
+      PEDESTRIAN_SKIN,
+      0,
+      variant,
+    ),
   ])
+}
+
+function pedestrianGeometry() {
+  const parts = [
+    // Head, hair and eyes never inherit clothing tints, so skin stays a
+    // natural peach even when a bright top and dark trousers are combined.
+    pedestrianPart(new THREE.SphereGeometry(0.34, 8, 6).translate(0, 0.96, 0), PEDESTRIAN_SKIN, 0),
+    pedestrianPart(
+      new THREE.SphereGeometry(0.355, 8, 4, 0, Math.PI * 2, 0, Math.PI / 2).translate(0, 1.07, 0),
+      PEDESTRIAN_HAIR,
+      0,
+    ),
+    ...pedestrianEyes(),
+
+    // Top 0: short-sleeved T-shirt with exposed forearms.
+    pedestrianPart(new THREE.CapsuleGeometry(0.34, 0.62, 4, 8).translate(0, 0.04, 0), '#ffffff', 1, 1),
+    ...pedestrianArmParts(0, 0.3, -0.28),
+    ...[-1, 1].map((side) => pedestrianPart(
+      new THREE.BoxGeometry(0.13, 0.38, 0.16).rotateZ(side * -0.28).translate(side * 0.49, -0.11, 0),
+      PEDESTRIAN_SKIN,
+      0,
+      1,
+    )),
+
+    // Top 1: relaxed knit with long sleeves and a visible undershirt hem.
+    pedestrianPart(new THREE.CapsuleGeometry(0.37, 0.68, 4, 8).translate(0, 0.02, 0), '#ffffff', 1, 2),
+    ...pedestrianArmParts(1, 0.78, -0.35),
+    pedestrianPart(new THREE.BoxGeometry(0.55, 0.08, 0.05).translate(0, -0.53, 0.31), '#f2eee3', 3, 2),
+
+    // Top 2: suit jacket, pale shirt, lapels and tie.
+    pedestrianPart(new THREE.CapsuleGeometry(0.36, 0.72, 4, 8).translate(0, 0.03, 0), '#ffffff', 1, 3),
+    ...pedestrianArmParts(2, 0.8, -0.36),
+    pedestrianPart(new THREE.BoxGeometry(0.17, 0.55, 0.045).translate(0, 0.12, 0.35), '#eee9df', 0, 3),
+    pedestrianPart(new THREE.BoxGeometry(0.11, 0.38, 0.045).rotateZ(-0.38).translate(-0.09, 0.27, 0.37), '#d9d3ca', 0, 3),
+    pedestrianPart(new THREE.BoxGeometry(0.11, 0.38, 0.045).rotateZ(0.38).translate(0.09, 0.27, 0.37), '#d9d3ca', 0, 3),
+    pedestrianPart(new THREE.ConeGeometry(0.07, 0.34, 3).translate(0, 0.16, 0.39), '#463348', 3, 3),
+
+    // Top 3: long city coat with a bright scarf.
+    pedestrianPart(new THREE.CapsuleGeometry(0.41, 0.94, 4, 8).translate(0, -0.08, 0), '#ffffff', 1, 4),
+    ...pedestrianArmParts(3, 0.86, -0.39),
+    pedestrianPart(new THREE.TorusGeometry(0.2, 0.055, 4, 8).rotateX(Math.PI / 2).translate(0, 0.58, 0), '#ffffff', 3, 4),
+    pedestrianPart(new THREE.BoxGeometry(0.13, 0.47, 0.055).translate(0.11, 0.31, 0.4), '#ffffff', 3, 4),
+
+    // Bottom 0: slim suit trousers.
+    ...[-1, 1].flatMap((side) => [
+      pedestrianPart(new THREE.BoxGeometry(0.18, 0.76, 0.22).translate(side * 0.15, -0.8, 0), '#ffffff', 2, 11),
+      pedestrianPart(new THREE.BoxGeometry(0.22, 0.15, 0.34).translate(side * 0.15, -1.2, 0.07), PEDESTRIAN_SHOE, 0, 11),
+    ]),
+
+    // Bottom 1: the wide black trousers from the streetwear reference.
+    ...[-1, 1].flatMap((side) => [
+      pedestrianPart(new THREE.BoxGeometry(0.31, 0.82, 0.29).translate(side * 0.17, -0.81, 0), '#ffffff', 2, 12),
+      pedestrianPart(new THREE.BoxGeometry(0.3, 0.15, 0.38).translate(side * 0.17, -1.24, 0.08), PEDESTRIAN_SHOE, 0, 12),
+    ]),
+
+    // Bottom 2: straight jeans with contrasting cuffs.
+    ...[-1, 1].flatMap((side) => [
+      pedestrianPart(new THREE.BoxGeometry(0.23, 0.71, 0.25).translate(side * 0.16, -0.77, 0), '#ffffff', 2, 13),
+      pedestrianPart(new THREE.BoxGeometry(0.245, 0.09, 0.27).translate(side * 0.16, -1.1, 0), '#ffffff', 3, 13),
+      pedestrianPart(new THREE.BoxGeometry(0.25, 0.15, 0.35).translate(side * 0.16, -1.21, 0.08), PEDESTRIAN_SHOE, 0, 13),
+    ]),
+
+    // Bottom 3: skirt, bare legs and compact shoes.
+    pedestrianPart(new THREE.CylinderGeometry(0.29, 0.43, 0.62, 7).translate(0, -0.56, 0), '#ffffff', 2, 14),
+    ...[-1, 1].flatMap((side) => [
+      pedestrianPart(new THREE.BoxGeometry(0.13, 0.42, 0.15).translate(side * 0.14, -0.99, 0), PEDESTRIAN_SKIN, 0, 14),
+      pedestrianPart(new THREE.BoxGeometry(0.2, 0.14, 0.32).translate(side * 0.14, -1.22, 0.07), PEDESTRIAN_SHOE, 0, 14),
+    ]),
+  ]
+  const geometry = mergeModel(parts)
+  geometry.setAttribute('outfitTopStyle', new THREE.InstancedBufferAttribute(new Float32Array(PEDESTRIAN_MAX), 1).setUsage(THREE.DynamicDrawUsage))
+  geometry.setAttribute('outfitBottomStyle', new THREE.InstancedBufferAttribute(new Float32Array(PEDESTRIAN_MAX), 1).setUsage(THREE.DynamicDrawUsage))
+  geometry.setAttribute('outfitTopTint', new THREE.InstancedBufferAttribute(new Float32Array(PEDESTRIAN_MAX * 3), 3).setUsage(THREE.DynamicDrawUsage))
+  geometry.setAttribute('outfitBottomTint', new THREE.InstancedBufferAttribute(new Float32Array(PEDESTRIAN_MAX * 3), 3).setUsage(THREE.DynamicDrawUsage))
+  geometry.setAttribute('outfitDetailTint', new THREE.InstancedBufferAttribute(new Float32Array(PEDESTRIAN_MAX * 3), 3).setUsage(THREE.DynamicDrawUsage))
+  geometry.setAttribute('outfitBeamLit', new THREE.InstancedBufferAttribute(new Float32Array(PEDESTRIAN_MAX), 1).setUsage(THREE.DynamicDrawUsage))
+  return geometry
 }
 
 /**
@@ -143,18 +260,6 @@ function catGeometry() {
     )),
     ...eyePair(0.065, 0.14, 0.28, 0.97),
   ]).scale(CAT_SCALE, CAT_SCALE, CAT_SCALE).translate(0, -0.34 * (1 - CAT_SCALE), 0)
-}
-
-function soldierGeometry() {
-  return mergeModel([
-    coloredPart(new THREE.CapsuleGeometry(0.4, 0.85, 4, 7), '#ba535e'),
-    coloredPart(new THREE.SphereGeometry(0.34, 8, 6).translate(0, 0.98, 0), '#d9a06f'),
-    coloredPart(new THREE.SphereGeometry(0.37, 8, 4, 0, Math.PI * 2, 0, Math.PI / 2).translate(0, 1.08, 0), '#574d68'),
-    coloredPart(new THREE.BoxGeometry(0.2, 0.75, 0.22).translate(-0.22, -0.72, 0), '#4e4660'),
-    coloredPart(new THREE.BoxGeometry(0.2, 0.75, 0.22).translate(0.22, -0.72, 0), '#4e4660'),
-    coloredPart(new THREE.BoxGeometry(0.16, 0.16, 1.35).rotateX(-0.08).translate(0.46, 0.12, 0.45), '#272b39'),
-    coloredPart(new THREE.BoxGeometry(0.18, 0.42, 0.16).rotateZ(-0.35).translate(0.4, -0.04, 0.04), '#d9a06f'),
-  ])
 }
 
 function helicopterGeometry() {
@@ -215,23 +320,6 @@ const mineMaterial = new THREE.MeshToonMaterial({
   emissive: new THREE.Color('#6d1e34'),
   emissiveIntensity: 0.35,
 })
-
-function policeGeometry() {
-  return mergeModel([
-    coloredPart(new THREE.CapsuleGeometry(0.28, 0.62, 4, 7), '#4670a0'),
-    coloredPart(new THREE.SphereGeometry(0.25, 7, 5).translate(0, 0.78, 0), '#d9a06f'),
-    coloredPart(new THREE.BoxGeometry(0.15, 0.56, 0.17).translate(-0.17, -0.55, 0), '#253958'),
-    coloredPart(new THREE.BoxGeometry(0.15, 0.56, 0.17).translate(0.17, -0.55, 0), '#253958'),
-  ])
-}
-
-function policeCarGeometry() {
-  return mergeModel([
-    coloredPart(new RoundedBoxGeometry(1.8, 0.58, 3.2, 2, 0.15), '#e9e4ce'),
-    coloredPart(new RoundedBoxGeometry(1.42, 0.56, 1.45, 2, 0.16).translate(0, 0.52, -0.12), '#6d91a5'),
-    coloredPart(new THREE.BoxGeometry(0.88, 0.12, 0.24).translate(0, 0.85, -0.12), '#ff5269'),
-  ])
-}
 
 function tankGeometry() {
   return mergeModel([
@@ -848,14 +936,24 @@ const crowdGeometry: Record<CrowdKind, THREE.BufferGeometry> = {
   cat: catGeometry(),
 }
 
-// Four instance tints give the single pedestrian pool readable silhouettes
-// (commuter, workwear, warm coat, green jacket) without splitting it into four
-// draw calls or changing the low-poly assembled body.
-const pedestrianStyleColors = ['#d45c78', '#5d6c9b', '#e6a43d', '#72b995'] as const
+// Tops and bottoms are picked independently. Dark suit/coat colours sit beside
+// casual knits and tees, while trousers include black, denim and warmer cloth.
+const pedestrianTopColors = [
+  '#242630', '#30496f', '#465a3f', '#744354',
+  '#d4c5a3', '#b96b3e', '#367a74', '#6c78a3',
+].map((value) => new THREE.Color(value))
+const pedestrianBottomColors = [
+  '#1e2028', '#2b3144', '#455d79', '#493f38',
+  '#706861', '#17191f', '#68765d', '#604758',
+].map((value) => new THREE.Color(value))
+const pedestrianDetailColors = [
+  '#f0eadc', '#a9c8d8', '#e6b84d', '#d66b67', '#77b7a0', '#a98bbb',
+].map((value) => new THREE.Color(value))
 // Keep the three feline coats in one fixed InstancedMesh. The pale tint leaves
 // the vertex-coloured dark patches black on the tuxedo cat and turns them into
 // warm brown or charcoal tabby stripes on the orange and gray cats.
 const catStyleColors = ['#f2efe8', '#e88d3d', '#9299a3'] as const
+const beamReflectionColor = new THREE.Color('#8fffe1')
 
 function CrowdPool({ kind }: { kind: CrowdKind }) {
   const { runtime, snapshot } = useGame()
@@ -866,9 +964,14 @@ function CrowdPool({ kind }: { kind: CrowdKind }) {
   const scale = useMemo(() => new THREE.Vector3(), [])
   const rotation = useMemo(() => new THREE.Euler(), [])
   const color = useMemo(() => new THREE.Color(), [])
-  const pale = useMemo(() => new THREE.Color('#fff8df'), [])
   useFrame(({ clock }) => {
     if (!ref.current) return
+    const topStyleAttribute = kind === 'pedestrian' ? crowdGeometry.pedestrian.getAttribute('outfitTopStyle') as THREE.InstancedBufferAttribute : null
+    const bottomStyleAttribute = kind === 'pedestrian' ? crowdGeometry.pedestrian.getAttribute('outfitBottomStyle') as THREE.InstancedBufferAttribute : null
+    const topTintAttribute = kind === 'pedestrian' ? crowdGeometry.pedestrian.getAttribute('outfitTopTint') as THREE.InstancedBufferAttribute : null
+    const bottomTintAttribute = kind === 'pedestrian' ? crowdGeometry.pedestrian.getAttribute('outfitBottomTint') as THREE.InstancedBufferAttribute : null
+    const detailTintAttribute = kind === 'pedestrian' ? crowdGeometry.pedestrian.getAttribute('outfitDetailTint') as THREE.InstancedBufferAttribute : null
+    const beamLitAttribute = kind === 'pedestrian' ? crowdGeometry.pedestrian.getAttribute('outfitBeamLit') as THREE.InstancedBufferAttribute : null
     let count = 0
     for (const object of runtime.current.crowds.objects) {
       if (!object.active || object.kind !== kind) continue
@@ -876,24 +979,49 @@ function CrowdPool({ kind }: { kind: CrowdKind }) {
       rotation.set(object.rotation.x, object.rotation.y, object.rotation.z)
       quaternion.setFromEuler(rotation)
       const bounce = object.inBeam ? 1 : 1 + Math.sin(clock.elapsedTime * 8 + object.slot) * 0.04
-      const style = kind === 'pedestrian' ? object.slot % pedestrianStyleColors.length : 0
+      const outfit = kind === 'pedestrian' ? pedestrianOutfitForSlot(object.slot, object.generation) : null
       // Crowds read as a city only when an intersection contains many small
       // bodies, rather than a few oversized figures competing with the UFO.
       const targetScale = (snapshot.beamTargetId === object.id ? 1.38 : 1.16)
-        * (kind === 'pedestrian' ? (0.94 + style * 0.035) * 0.5 : 1)
+        * (kind === 'pedestrian' ? (0.94 + (outfit?.topStyle ?? 0) * 0.025) * 0.5 : 1)
       const absorbScale = object.absorbing ? Math.max(0.04, object.absorbTimer / CROWD_ABSORB_TIME) : 1
       scale.set(targetScale * absorbScale, targetScale * bounce * absorbScale, targetScale * absorbScale)
       matrix.compose(position, quaternion, scale)
       ref.current.setMatrixAt(count, matrix)
-      if (snapshot.beamTargetId === object.id) color.set('#fff36d')
-      else if (kind === 'cat') color.set(catStyleColors[object.slot % catStyleColors.length]!)
-      else color.set(pedestrianStyleColors[style]!).lerp(pale, 0.72)
-      ref.current.setColorAt(count, color)
+      if (kind === 'pedestrian' && outfit) {
+        const topPalette = outfit.topStyle === 2
+          ? outfit.topPalette % 4
+          : outfit.topPalette
+        topStyleAttribute!.setX(count, outfit.topStyle)
+        bottomStyleAttribute!.setX(count, outfit.bottomStyle)
+        const topTint = pedestrianTopColors[topPalette]!
+        const bottomTint = pedestrianBottomColors[outfit.bottomPalette]!
+        const detailTint = pedestrianDetailColors[outfit.detailPalette]!
+        topTintAttribute!.setXYZ(count, topTint.r, topTint.g, topTint.b)
+        bottomTintAttribute!.setXYZ(count, bottomTint.r, bottomTint.g, bottomTint.b)
+        detailTintAttribute!.setXYZ(count, detailTint.r, detailTint.g, detailTint.b)
+        beamLitAttribute!.setX(count, snapshot.beamTargetId === object.id ? 1 : 0)
+      } else {
+        // Rotate coats when a pooled slot is reused, then retain that coat
+        // under the beam. A restrained mint reflection communicates capture
+        // without replacing every cat with the old flat yellow highlight.
+        const coat = (object.slot + object.generation * 2) % catStyleColors.length
+        color.set(catStyleColors[coat]!)
+        if (snapshot.beamTargetId === object.id) color.lerp(beamReflectionColor, 0.15)
+        ref.current.setColorAt(count, color)
+      }
       count += 1
     }
     ref.current.count = count
     ref.current.instanceMatrix.needsUpdate = true
-    if (ref.current.instanceColor) ref.current.instanceColor.needsUpdate = true
+    if (kind === 'pedestrian') {
+      topStyleAttribute!.needsUpdate = true
+      bottomStyleAttribute!.needsUpdate = true
+      topTintAttribute!.needsUpdate = true
+      bottomTintAttribute!.needsUpdate = true
+      detailTintAttribute!.needsUpdate = true
+      beamLitAttribute!.needsUpdate = true
+    } else if (ref.current.instanceColor) ref.current.instanceColor.needsUpdate = true
   })
   return (
     <instancedMesh ref={ref} args={[crowdGeometry[kind], crowdMaterial[kind], kind === 'cat' ? CAT_MAX : PEDESTRIAN_MAX]} frustumCulled={false} />
@@ -1204,9 +1332,6 @@ function MinePool() {
 
 const enemyGeometry: Record<EnemyKind, THREE.BufferGeometry> = {
   drone: droneGeometry(),
-  police: policeGeometry(),
-  'police-car': policeCarGeometry(),
-  soldier: soldierGeometry(),
   helicopter: helicopterGeometry(),
   'anti-air': antiAirGeometry(),
   fighter: fighterGeometry(),
@@ -1234,7 +1359,7 @@ function EnemyPool({ kind }: { kind: EnemyKind }) {
       position.set(enemy.position.x, enemy.position.y, enemy.position.z)
       const yaw = Math.atan2(player.x - enemy.position.x, player.z - enemy.position.z)
       const horizontalDistance = Math.hypot(player.x - enemy.position.x, player.z - enemy.position.z)
-      const groundUnit = kind === 'police' || kind === 'police-car' || kind === 'soldier' || kind === 'tank'
+      const groundUnit = kind === 'tank'
       const lookUp = groundUnit && player.y > 5.5 && horizontalDistance < 60
       const pitch = lookUp ? -Math.atan2(Math.max(0, player.y - enemy.position.y), Math.max(0.1, horizontalDistance)) : 0
       // The battleship steers itself: its heading is its course, not a stare
@@ -1247,7 +1372,7 @@ function EnemyPool({ kind }: { kind: EnemyKind }) {
       // The battleship's geometry is authored at true scale, so it is the one
       // pool that must not be scaled - the turret positions the guns fire from
       // are in world metres.
-      const size = kind === 'boss' ? 1 : kind === 'drone' ? 0.45 : kind === 'police' ? 0.82 : kind === 'police-car' ? 1.05 : kind === 'soldier' ? 1.08 : kind === 'helicopter' ? 0.82 : kind === 'fighter' ? 1.18 : kind === 'tank' ? 1.45 : kind === 'anti-air' ? 2.35 : 1.8
+      const size = kind === 'boss' ? 1 : kind === 'drone' ? 0.45 : kind === 'helicopter' ? 0.82 : kind === 'fighter' ? 1.18 : kind === 'tank' ? 1.45 : kind === 'anti-air' ? 2.35 : 1.8
       const absorbScale = enemy.absorbing ? Math.max(0.04, enemy.absorbTimer / BEAM_ABSORB_TIME) : 1
       scale.setScalar(size * absorbScale)
       matrix.compose(position, quaternion, scale)
@@ -1267,7 +1392,6 @@ function EnemyPool({ kind }: { kind: EnemyKind }) {
           color.setRGB(1, 0.24 * pulse, 0.28 * pulse)
         } else color.set('#68e4ec')
       }
-      else if (kind === 'police' || kind === 'police-car') color.set('#e9edf0')
       else if (kind === 'tank' || kind === 'anti-air') color.set('#7f8765')
       else if (kind === 'boss') color.set('#eef2f6')
       else color.setRGB(0.84 + (enemy.slot % 3) * 0.07, 0.84 + (enemy.slot % 3) * 0.07, 0.84 + (enemy.slot % 3) * 0.07)
@@ -1287,9 +1411,6 @@ function EnemyPools() {
   return (
     <group>
       <EnemyPool kind="drone" />
-      <EnemyPool kind="police" />
-      <EnemyPool kind="police-car" />
-      <EnemyPool kind="soldier" />
       <EnemyPool kind="helicopter" />
       <EnemyPool kind="anti-air" />
       <EnemyPool kind="fighter" />
