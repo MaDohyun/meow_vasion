@@ -16,7 +16,6 @@ let gameplayMusic: HTMLAudioElement | null = null
 let beamSound: HTMLAudioElement | null = null
 let boosterSound: HTMLAudioElement | null = null
 let mysteryCircleSound: HTMLAudioElement | null = null
-let catCrySound: HTMLAudioElement | null = null
 let nearbyCatCrySound: HTMLAudioElement | null = null
 let gameplayFadeFrame: number | null = null
 let effectsMasterGain: GainNode | null = null
@@ -81,7 +80,6 @@ export function setSfxVolume(value: number) {
   if (beamSound) beamSound.volume = BEAM_VOLUME * sfxVolume
   if (boosterSound) boosterSound.volume = BOOSTER_VOLUME * sfxVolume
   if (mysteryCircleSound) mysteryCircleSound.volume = MYSTERY_CIRCLE_VOLUME * sfxVolume
-  if (catCrySound) catCrySound.volume = CAT_CRY_VOLUME * sfxVolume
   if (nearbyCatCrySound) nearbyCatCrySound.volume = CAT_CRY_VOLUME * sfxVolume
   if (context && effectsMasterGain) {
     effectsMasterGain.gain.setValueAtTime(sfxVolume, context.currentTime)
@@ -165,17 +163,6 @@ function mysteryCircleTrack() {
     mysteryCircleSound.volume = MYSTERY_CIRCLE_VOLUME * sfxVolume
   }
   return mysteryCircleSound
-}
-
-function catCryTrack() {
-  if (typeof Audio === 'undefined') return null
-  if (!catCrySound) {
-    catCrySound = new Audio('/audio/cat-cry.wav')
-    catCrySound.loop = false
-    catCrySound.preload = 'auto'
-    catCrySound.volume = CAT_CRY_VOLUME * sfxVolume
-  }
-  return catCrySound
 }
 
 function nearbyCatCryTrack() {
@@ -291,16 +278,8 @@ export function playMysteryCircleSound() {
   void track.play().catch(() => undefined)
 }
 
-/** Play the lobby's start cue once when the player begins a run. */
-export function playCatCrySound() {
-  const track = catCryTrack()
-  if (!track) return
-  track.currentTime = 0
-  void track.play().catch(() => undefined)
-}
-
-/** Play a nearby-cat call on its own channel so it cannot restart the lobby's
- * start cue when the player begins a run beside the tutorial cat. */
+/** Play a nearby-cat call on its own channel so overlapping proximity events
+ * can never restart an already-playing call. */
 export function playNearbyCatCrySound(volumeScale = 1) {
   const track = nearbyCatCryTrack()
   if (!track) return
