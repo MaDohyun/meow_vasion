@@ -21,6 +21,7 @@ export const WORLD_PROP_MASS = {
   'utility-pole': 3,
   'power-pylon': 6,
   communications: 11,
+  'trash-bin': 2,
 } as const
 
 export const ROOF_STRUCTURE_MIN_HEIGHT = 10
@@ -97,6 +98,48 @@ export function utilityPolesAround(position: Pick<Vec3, 'x' | 'z'>, radius = STR
   return poles
 }
 
+/**
+ * Sorting-station bin pairs, tucked against the building line.
+ *
+ * Same deterministic per-cell roll as the street lamps, but deliberately
+ * rarer, and set deeper off the carriageway than the lamp line so a bin sits
+ * beside the buildings at the back of the pavement rather than in anyone's
+ * way. The along-edge offset comes from the seed too, so bins land at varied
+ * points down a block instead of always at the same spot per cell.
+ */
+export function trashBinsAround(position: Pick<Vec3, 'x' | 'z'>, radius = STREETLIGHT_RADIUS_CELLS) {
+  const bins: BeamWorldProp[] = []
+  const centreX = Math.floor(position.x / WORLD_CELL_SIZE)
+  const centreZ = Math.floor(position.z / WORLD_CELL_SIZE)
+  const inset = 6.4
+  for (let dz = -radius; dz <= radius; dz += 1) {
+    for (let dx = -radius; dx <= radius; dx += 1) {
+      const cellX = centreX + dx
+      const cellZ = centreZ + dz
+      if (parkClusterForCell(cellX, cellZ) || lakeClusterForCell(cellX, cellZ)) continue
+      for (let spotIndex = 0; spotIndex < 2; spotIndex += 1) {
+        const seed = seedForWorldCell(cellX, cellZ, 0x7b1a5 + spotIndex)
+        if (seed % 7 !== 0) continue
+        const along = 6 + ((seed >>> 9) % 22)
+        // Spot 0 stands along the cell's west edge facing east into the road;
+        // spot 1 along the south edge facing north. Both sit behind the lamp
+        // line (4.6), against the building fronts.
+        const [x, z, rotation] = spotIndex === 0
+          ? [cellX * WORLD_CELL_SIZE + inset, cellZ * WORLD_CELL_SIZE + along, -Math.PI / 2]
+          : [cellX * WORLD_CELL_SIZE + along, cellZ * WORLD_CELL_SIZE + inset, Math.PI]
+        bins.push(prop({
+          id: `trash-bin:${cellX}:${cellZ}:${spotIndex}`,
+          kind: 'trash-bin',
+          position: { x, y: 0, z },
+          rotation,
+          variant: spotIndex,
+        }))
+      }
+    }
+  }
+  return bins
+}
+
 /** All beam-capable dressing in the active district. */
 export function worldPropsAround(world: ActiveWorld, position: Pick<Vec3, 'x' | 'z'>) {
   const props: BeamWorldProp[] = []
@@ -132,6 +175,7 @@ export function worldPropsAround(world: ActiveWorld, position: Pick<Vec3, 'x' | 
     }))
   }
   props.push(...utilityPolesAround(position))
+  props.push(...trashBinsAround(position))
   for (const cell of groundCellsAround(position, LANDMARK_RADIUS_CELLS)) {
     const landmark = groundLandmarkForCell(cell)
     const center = { x: (cell.cellX + 0.5) * WORLD_CELL_SIZE, y: 0, z: (cell.cellZ + 0.5) * WORLD_CELL_SIZE }

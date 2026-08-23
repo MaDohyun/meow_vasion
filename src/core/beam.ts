@@ -3,12 +3,13 @@ import type { Aabb, Vec3 } from './drone'
 export type BeamObjectKind =
   | 'car' | 'truck' | 'pedestrian' | 'cat' | 'explosive' | 'building'
   | 'rooftop-structure' | 'tree' | 'utility-pole' | 'power-pylon' | 'communications'
+  | 'trash-bin'
   | 'drone' | 'police' | 'police-car' | 'helicopter' | 'soldier'
   | 'fighter' | 'anti-air' | 'tank' | 'boss'
 
 export type BeamWorldProp = {
   id: string
-  kind: 'rooftop-structure' | 'tree' | 'utility-pole' | 'power-pylon' | 'communications'
+  kind: 'rooftop-structure' | 'tree' | 'utility-pole' | 'power-pylon' | 'communications' | 'trash-bin'
   position: Vec3
   rotation: number
   scale: Vec3
@@ -68,6 +69,7 @@ const DEFAULT_DIAMETER: Record<BeamObjectKind, number> = {
   'rooftop-structure': 6.2,
   tree: 4.4,
   'utility-pole': 2.8,
+  'trash-bin': 1.7,
   'power-pylon': 7.2,
   communications: 12,
   // The battleship's beam width. Only a fallback - it is excluded by kind

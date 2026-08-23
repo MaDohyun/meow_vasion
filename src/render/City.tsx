@@ -15,6 +15,7 @@ import {
 } from '../core/cityLandmarks'
 import {
   isWorldPropHidden,
+  trashBinsAround,
   utilityPolesAround,
   worldPropVisibilityKey,
   worldPropsAround,
@@ -1747,6 +1748,171 @@ function LiftedUtilityPolePool() {
   </instancedMesh>
 }
 
+/** Bakes one flat colour into a part so the bin pair renders its charcoal
+ *  bodies, dark openings and pale labels from a single instanced mesh. */
+function tintedBinPart(geometry: THREE.BufferGeometry, colorValue: string) {
+  const result = geometry.index ? geometry.toNonIndexed() : geometry
+  if (result !== geometry) geometry.dispose()
+  const tint = new THREE.Color(colorValue)
+  const colors = new Float32Array(result.getAttribute('position').count * 3)
+  for (let index = 0; index < colors.length; index += 3) {
+    colors[index] = tint.r
+    colors[index + 1] = tint.g
+    colors[index + 2] = tint.b
+  }
+  result.setAttribute('color', new THREE.BufferAttribute(colors, 3))
+  return result
+}
+
+// The kerbside sorting station: two charcoal cabinets side by side - a waste
+// slot on the left, two round-ish drop holes on the right - with pale label
+// plates on the doors. Front faces +z before the per-spot rotation.
+const trashBinGeometry = mergeGeometries([
+  tintedBinPart(new THREE.BoxGeometry(1.44, 0.06, 0.54).translate(0, 0.03, 0), '#33383f'),
+  tintedBinPart(new THREE.BoxGeometry(0.66, 1.0, 0.56).translate(-0.36, 0.53, 0), '#4a5058'),
+  tintedBinPart(new THREE.BoxGeometry(0.66, 1.0, 0.56).translate(0.36, 0.53, 0), '#4a5058'),
+  tintedBinPart(new THREE.BoxGeometry(0.7, 0.1, 0.6).translate(-0.36, 1.06, 0), '#3d434b'),
+  tintedBinPart(new THREE.BoxGeometry(0.7, 0.1, 0.6).translate(0.36, 1.06, 0), '#3d434b'),
+  tintedBinPart(new THREE.BoxGeometry(0.34, 0.12, 0.04).translate(-0.36, 0.86, 0.28), '#14171c'),
+  tintedBinPart(new THREE.CylinderGeometry(0.09, 0.09, 0.04, 8).rotateX(Math.PI / 2).translate(0.22, 0.87, 0.28), '#14171c'),
+  tintedBinPart(new THREE.CylinderGeometry(0.09, 0.09, 0.04, 8).rotateX(Math.PI / 2).translate(0.5, 0.87, 0.28), '#14171c'),
+  tintedBinPart(new THREE.BoxGeometry(0.42, 0.28, 0.03).translate(-0.36, 0.5, 0.285), '#d8dce0'),
+  tintedBinPart(new THREE.BoxGeometry(0.42, 0.28, 0.03).translate(0.36, 0.5, 0.285), '#d8dce0'),
+], false)!
+
+const trashBinMaterial = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: toonGradient })
+
+const TRASH_BIN_COUNT = 90
+
+function TrashBinPool() {
+  const { runtime } = useGame()
+  const ref = useRef<THREE.InstancedMesh>(null)
+  const lastKey = useRef('')
+  const matrix = useMemo(() => new THREE.Matrix4(), [])
+  const position = useMemo(() => new THREE.Vector3(), [])
+  const scale = useMemo(() => new THREE.Vector3(1, 1, 1), [])
+  const rotation = useMemo(() => new THREE.Quaternion(), [])
+
+  useFrame(() => {
+    const mesh = ref.current
+    if (!mesh) return
+    const world = runtime.current.world
+    const key = `${world.cellX}:${world.cellZ}|${worldPropVisibilityKey(runtime.current.destroyedWorldProps, runtime.current.beamObjects)}`
+    if (key === lastKey.current) return
+    lastKey.current = key
+    let slot = 0
+    for (const prop of trashBinsAround(runtime.current.drone.position)) {
+      if (slot >= TRASH_BIN_COUNT) break
+      if (isWorldPropHidden(prop.id, runtime.current.destroyedWorldProps, runtime.current.beamObjects)) continue
+      rotation.setFromAxisAngle(THREE.Object3D.DEFAULT_UP, prop.rotation)
+      position.set(prop.position.x, prop.position.y, prop.position.z)
+      matrix.compose(position, rotation, scale)
+      mesh.setMatrixAt(slot, matrix)
+      slot += 1
+    }
+    mesh.count = slot
+    mesh.instanceMatrix.needsUpdate = true
+  })
+
+  return <instancedMesh ref={ref} args={[trashBinGeometry, trashBinMaterial, TRASH_BIN_COUNT]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }} />
+}
+
+function LiftedTrashBinPool() {
+  const { runtime } = useGame()
+  const ref = useRef<THREE.InstancedMesh>(null)
+  const matrix = useMemo(() => new THREE.Matrix4(), [])
+  const position = useMemo(() => new THREE.Vector3(), [])
+  const scale = useMemo(() => new THREE.Vector3(), [])
+  const rotation = useMemo(() => new THREE.Quaternion(), [])
+  const euler = useMemo(() => new THREE.Euler(), [])
+  useFrame(() => {
+    const mesh = ref.current
+    if (!mesh) return
+    let count = 0
+    for (const object of runtime.current.beamObjects) {
+      if (!object.active || object.kind !== 'trash-bin') continue
+      if (count >= LIFTED_WORLD_PROP_CAPACITY) break
+      const swallow = object.absorbing ? Math.max(0.05, object.absorbTimer / BEAM_ABSORB_TIME) : 1
+      position.set(object.position.x, object.position.y, object.position.z)
+      euler.set(object.rotation.x, object.rotation.y, object.rotation.z)
+      rotation.setFromEuler(euler)
+      scale.set(object.scale?.x ?? 1, object.scale?.y ?? 1, object.scale?.z ?? 1).multiplyScalar(swallow)
+      matrix.compose(position, rotation, scale)
+      mesh.setMatrixAt(count, matrix)
+      count += 1
+    }
+    mesh.count = count
+    mesh.instanceMatrix.needsUpdate = true
+  })
+  return <instancedMesh ref={ref} args={[trashBinGeometry, trashBinMaterial, LIFTED_WORLD_PROP_CAPACITY]} frustumCulled={false} renderOrder={2} onUpdate={(mesh) => { mesh.count = 0 }} />
+}
+
+/**
+ * Litter fluttering around a bin while the beam carries it.
+ *
+ * Purely visual: the flecks are computed fresh each frame from the clock and
+ * the particle index, so nothing is simulated, nothing lands, and nothing is
+ * left behind - each fleck swirls outward and down from the carried bin and
+ * fades out at the end of its short cycle.
+ */
+const TRASH_SCATTER_PER_BIN = 12
+const TRASH_SCATTER_MAX_BINS = 4
+const TRASH_SCATTER_CAPACITY = TRASH_SCATTER_PER_BIN * TRASH_SCATTER_MAX_BINS
+const trashScatterColors = ['#e8e4d8', '#c9d18a', '#8fc7d8', '#e0a4b8', '#b9a27c']
+
+function TrashScatterPool() {
+  const { runtime } = useGame()
+  const ref = useRef<THREE.InstancedMesh>(null)
+  const matrix = useMemo(() => new THREE.Matrix4(), [])
+  const position = useMemo(() => new THREE.Vector3(), [])
+  const scale = useMemo(() => new THREE.Vector3(), [])
+  const rotation = useMemo(() => new THREE.Quaternion(), [])
+  const euler = useMemo(() => new THREE.Euler(), [])
+  const color = useMemo(() => new THREE.Color(), [])
+  useFrame(({ clock }) => {
+    const mesh = ref.current
+    if (!mesh) return
+    let count = 0
+    const time = clock.elapsedTime
+    for (const object of runtime.current.beamObjects) {
+      if (!object.active || object.kind !== 'trash-bin') continue
+      if (!(object.inBeam || object.tether > 0.02)) continue
+      if (count + TRASH_SCATTER_PER_BIN > TRASH_SCATTER_CAPACITY) break
+      for (let fleck = 0; fleck < TRASH_SCATTER_PER_BIN; fleck += 1) {
+        const phase = (fleck * 0.618) % 1
+        const cycle = 1.1 + (fleck % 3) * 0.35
+        const life = (time / cycle + phase) % 1
+        const angle = phase * Math.PI * 2 + time * (1.6 + (fleck % 4) * 0.55)
+        // Spill out and flutter down below the carried bin, into the beam
+        // cone the chase camera can actually see under the hull - swirling
+        // above the bin instead put every fleck behind the saucer's own
+        // silhouette. Large enough to read from the chase camera.
+        const radius = 0.4 + life * 2.2
+        position.set(
+          object.position.x + Math.cos(angle) * radius,
+          object.position.y + 0.6 - life * 3.1,
+          object.position.z + Math.sin(angle) * radius,
+        )
+        euler.set(angle * 2.1, angle * 1.3, life * 8)
+        rotation.setFromEuler(euler)
+        const size = (1 - life) * 0.34 + 0.1
+        scale.set(size, size * 0.45, size * 1.5)
+        matrix.compose(position, rotation, scale)
+        mesh.setMatrixAt(count, matrix)
+        mesh.setColorAt(count, color.set(trashScatterColors[fleck % trashScatterColors.length]!))
+        count += 1
+      }
+    }
+    mesh.count = count
+    mesh.instanceMatrix.needsUpdate = true
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
+  })
+  return <instancedMesh ref={ref} args={[undefined, undefined, TRASH_SCATTER_CAPACITY]} frustumCulled={false} renderOrder={3} onUpdate={(mesh) => { mesh.count = 0 }}>
+    <boxGeometry args={[1, 1, 1]} />
+    <meshBasicMaterial toneMapped={false} />
+  </instancedMesh>
+}
+
 // Low-rise roofs (including the rare mega-mart/hotel) now carry the same
 // compact prop kit; the extra silhouette detail matters most from the top-down
 // camera and costs no additional pool beyond the four existing variants.
@@ -1902,6 +2068,9 @@ export const City = memo(function City() {
       ))}
       <LiftedTreePool />
       <LiftedUtilityPolePool />
+      <TrashBinPool />
+      <LiftedTrashBinPool />
+      <TrashScatterPool />
       <CrosswalkPool />
       <StreetLightPool />
       <RoofBeaconPool />

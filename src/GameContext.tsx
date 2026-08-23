@@ -392,7 +392,7 @@ function makeWorldPropBeamObject(worldProp: BeamWorldProp): BeamObject {
     id: worldProp.id,
     kind: worldProp.kind,
     mass: WORLD_PROP_MASS[worldProp.kind],
-    color: worldProp.kind === 'tree' ? '#6e914b' : worldProp.kind === 'communications' ? '#d7d1c5' : '#aeb5b8',
+    color: worldProp.kind === 'tree' ? '#6e914b' : worldProp.kind === 'communications' ? '#d7d1c5' : worldProp.kind === 'trash-bin' ? '#565d66' : '#aeb5b8',
     position: { ...worldProp.position },
     velocity: { x: 0, y: 0, z: 0 },
     rotation: { x: 0, y: worldProp.rotation, z: 0 },
@@ -407,8 +407,8 @@ function makeWorldPropBeamObject(worldProp: BeamWorldProp): BeamObject {
     explosionPending: false,
     absorbing: false,
     absorbTimer: 0,
-    diameter: worldProp.kind === 'communications' ? 12 : worldProp.kind === 'power-pylon' ? 7.2 : worldProp.kind === 'rooftop-structure' ? 6.2 : worldProp.kind === 'tree' ? 4.4 : 2.8,
-    scoreValue: worldProp.kind === 'communications' ? 520 : worldProp.kind === 'power-pylon' ? 180 : worldProp.kind === 'rooftop-structure' ? 110 : worldProp.kind === 'tree' ? 65 : 45,
+    diameter: worldProp.kind === 'communications' ? 12 : worldProp.kind === 'power-pylon' ? 7.2 : worldProp.kind === 'rooftop-structure' ? 6.2 : worldProp.kind === 'tree' ? 4.4 : worldProp.kind === 'trash-bin' ? 1.7 : 2.8,
+    scoreValue: worldProp.kind === 'communications' ? 520 : worldProp.kind === 'power-pylon' ? 180 : worldProp.kind === 'rooftop-structure' ? 110 : worldProp.kind === 'tree' ? 65 : worldProp.kind === 'trash-bin' ? 30 : 45,
     worldProp,
   }
 }
