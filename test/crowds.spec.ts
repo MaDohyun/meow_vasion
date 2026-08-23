@@ -206,6 +206,10 @@ describe('pooled city crowds and destructible cars', () => {
     // And the errand runners really are covering blocks, not drifting a few
     // metres - a cell is 34m across.
     expect(mean(walked)).toBeGreaterThan(34)
+    // Cats stroll to destinations too now - a city where every cat paces the
+    // same square metre reads as furniture, not animals.
+    const cats = state.objects.filter((object) => object.active && object.kind === 'cat')
+    expect(cats.filter((object) => !object.roams).length).toBeGreaterThan(cats.length / 2)
   })
 
   it('sends pedestrians down streets rather than through the middle of blocks', () => {

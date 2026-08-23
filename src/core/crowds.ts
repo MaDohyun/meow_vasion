@@ -146,8 +146,10 @@ const DESTINATION_RANGE = 70
 const DESTINATION_ARRIVE = 3.2
 /** Give-up timer. A destination behind a wall must not strand a body forever. */
 const DESTINATION_TIMEOUT = 26
-/** The rest stay local - a city where nobody ever loiters reads as a parade. */
-const ROAMER_SHARE = 0.22
+/** The rest stay local - a city where nobody ever loiters reads as a parade.
+ *  Kept small for both kinds: almost everyone is going somewhere, and cats
+ *  now run errands down streets too instead of pacing where they spawned. */
+const ROAMER_SHARE: Record<CrowdKind, number> = { pedestrian: 0.12, cat: 0.25 }
 
 export type CrowdObject = BeamObject & {
   kind: CrowdKind
@@ -384,7 +386,7 @@ function finalizeCrowdSlot(state: CrowdState, object: CrowdObject, kind: CrowdKi
   object.angularVelocity.x = 0
   object.angularVelocity.y = 0
   object.angularVelocity.z = 0
-  object.roams = kind === 'cat' || random(state) < ROAMER_SHARE
+  object.roams = random(state) < ROAMER_SHARE[kind]
   object.wanderTimer = 1 + random(state) * 3
   if (!object.roams) pickDestination(state, object)
   object.pauseTimer = 0
@@ -817,10 +819,6 @@ export function stepCrowds(state: CrowdState, view: CrowdView, dt: number) {
       const nextZ = object.position.z + object.velocity.z * d
       let blockedX = false
       let blockedZ = false
-      // The city collider list is capped at 128 buildings. Bodies outside the
-      // local street band are still simulated, but defer wall checks until
-      // they approach the player; this keeps the larger crowd pool from
-      // turning every frame into a full pool × collider sweep.
       // Water is a real movement boundary for pedestrians and cats. Resolving
       // each axis independently lets them follow the shore instead of walking
       // diagonally across a lake or vibrating at its edge.
@@ -832,7 +830,12 @@ export function stepCrowds(state: CrowdState, view: CrowdView, dt: number) {
         blockedX = true
         blockedZ = true
       }
-      if (view.colliders && distance < 120) {
+      // Wall checks run over the whole streamed-building radius, not just a
+      // narrow band by the craft: with nearly everyone walking somewhere now,
+      // a 120m band let walkers a street or two away cut visibly through
+      // building footprints. The collider list itself only covers the ~250m
+      // building stream, so this bound also marks where the data runs out.
+      if (view.colliders && distance < 260) {
         for (const collider of view.colliders) {
           const spanX = object.position.x > collider.minX - COLLIDER_MARGIN && object.position.x < collider.maxX + COLLIDER_MARGIN
           const spanZ = object.position.z > collider.minZ - COLLIDER_MARGIN && object.position.z < collider.maxZ + COLLIDER_MARGIN
