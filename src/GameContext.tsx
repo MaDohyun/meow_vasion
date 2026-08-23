@@ -68,7 +68,7 @@ import { MYSTERY_BOOST_DURATION, MYSTERY_BOOST_MAX_MULTIPLIER, mysteryBoostMulti
 import { absorbShieldDamage, createShieldState, isShieldRegenerating, setShieldCapacity, shieldRatio, stepShield, type ShieldState } from './core/shield'
 import { shouldCrashFromOverload } from './core/overload'
 import { worldPropMass, worldPropsAround } from './core/worldProps'
-import { playBoosterSound, playBuildingCollapseSound, playDroneExplosionSound, playLaserSound, playMysteryCircleSound, startBeamSound, startGameplayMusic, stopBeamSound, stopGameplayMusic, stopLobbyMusic, tone, unlockAudio } from './audio'
+import { playBoosterSound, playBuildingCollapseSound, playCatCrySound, playDroneExplosionSound, playLaserSound, playMysteryCircleSound, playNearbyCatCrySound, startBeamSound, startGameplayMusic, stopBeamSound, stopGameplayMusic, stopLobbyMusic, tone, unlockAudio } from './audio'
 
 export type GamePhase = 'intro' | 'playing' | 'upgrade' | 'results'
 
@@ -115,6 +115,7 @@ export type GameRuntime = {
   loadedCars: number
   damageCooldown: number
   collisionCooldown: number
+  catCryCooldown: number
   turbo: number
   /** Draining the gauge to empty forces a short cooldown before it can be
    *  engaged again, even though the gauge itself keeps refilling underneath -
@@ -334,6 +335,8 @@ const GameContext = createContext<GameContextValue | null>(null)
 const UFO_UPGRADES = { speed: 0, stability: 0, rack: 0, special: 'none' as const }
 
 const HITSTOP_TIME = 0.05
+const CAT_CRY_HEAR_DISTANCE = 18
+const CAT_CRY_INTERVAL = 4.5
 /**
  * Converts hanging mass into flight load.
  *
@@ -528,6 +531,9 @@ function makeRuntime(): GameRuntime {
     loadedCars: 0,
     damageCooldown: 0,
     collisionCooldown: 0,
+    // Let the lobby start cue finish before the first proximity call when the
+    // tutorial cat is already beneath the opening craft.
+    catCryCooldown: 1.8,
     turbo: 1,
     turboLockout: 0,
     mysteryCircleId: null,
@@ -1138,6 +1144,24 @@ function syncCrowdThreats(game: GameRuntime) {
   }
 }
 
+function updateNearbyCatCry(game: GameRuntime, dt: number) {
+  game.catCryCooldown = Math.max(0, game.catCryCooldown - dt)
+  if (game.catCryCooldown > 0) return
+  let nearest = Number.POSITIVE_INFINITY
+  for (const object of game.crowds.objects) {
+    if (!object.active || object.kind !== 'cat' || object.absorbing || object.inBeam) continue
+    const distance = Math.hypot(
+      object.position.x - game.drone.position.x,
+      object.position.y - game.drone.position.y,
+      object.position.z - game.drone.position.z,
+    )
+    if (distance < nearest) nearest = distance
+  }
+  if (nearest > CAT_CRY_HEAR_DISTANCE) return
+  playNearbyCatCrySound(1 - nearest / CAT_CRY_HEAR_DISTANCE)
+  game.catCryCooldown = CAT_CRY_INTERVAL
+}
+
 function registerImpact(game: GameRuntime, source: 'ENEMY' | 'BUILDING', loss?: HealthLossKind) {
   if (game.damageCooldown > 0 || game.phase !== 'playing') return
   game.damageCooldown = 1.05
@@ -1610,6 +1634,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       spawnZones: game.crowdSpawnZones,
       tutorialCatOnly: tutorialAtStart,
     }, d)
+    updateNearbyCatCry(game, d)
     const beamField: BeamField = {
       active: game.beamActive,
       boosting: turboActive,
@@ -1776,6 +1801,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const start = useCallback(() => {
     stopBeamSound()
     unlockAudio()
+    playCatCrySound()
     stopLobbyMusic()
     startGameplayMusic()
     pointer.current = { x: 0, y: 0 }

@@ -16,6 +16,8 @@ let gameplayMusic: HTMLAudioElement | null = null
 let beamSound: HTMLAudioElement | null = null
 let boosterSound: HTMLAudioElement | null = null
 let mysteryCircleSound: HTMLAudioElement | null = null
+let catCrySound: HTMLAudioElement | null = null
+let nearbyCatCrySound: HTMLAudioElement | null = null
 let gameplayFadeFrame: number | null = null
 let effectsMasterGain: GainNode | null = null
 
@@ -26,6 +28,7 @@ const GAMEPLAY_MUSIC_FADE_SECONDS = 8
 const BEAM_VOLUME = 0.2
 const BOOSTER_VOLUME = 0.4
 const MYSTERY_CIRCLE_VOLUME = 0.7
+const CAT_CRY_VOLUME = 0.62
 const BGM_VOLUME_STORAGE_KEY = 'beam-bandit-bgm-volume'
 const SFX_VOLUME_STORAGE_KEY = 'beam-bandit-sfx-volume'
 
@@ -78,6 +81,8 @@ export function setSfxVolume(value: number) {
   if (beamSound) beamSound.volume = BEAM_VOLUME * sfxVolume
   if (boosterSound) boosterSound.volume = BOOSTER_VOLUME * sfxVolume
   if (mysteryCircleSound) mysteryCircleSound.volume = MYSTERY_CIRCLE_VOLUME * sfxVolume
+  if (catCrySound) catCrySound.volume = CAT_CRY_VOLUME * sfxVolume
+  if (nearbyCatCrySound) nearbyCatCrySound.volume = CAT_CRY_VOLUME * sfxVolume
   if (context && effectsMasterGain) {
     effectsMasterGain.gain.setValueAtTime(sfxVolume, context.currentTime)
   }
@@ -160,6 +165,28 @@ function mysteryCircleTrack() {
     mysteryCircleSound.volume = MYSTERY_CIRCLE_VOLUME * sfxVolume
   }
   return mysteryCircleSound
+}
+
+function catCryTrack() {
+  if (typeof Audio === 'undefined') return null
+  if (!catCrySound) {
+    catCrySound = new Audio('/audio/cat-cry.wav')
+    catCrySound.loop = false
+    catCrySound.preload = 'auto'
+    catCrySound.volume = CAT_CRY_VOLUME * sfxVolume
+  }
+  return catCrySound
+}
+
+function nearbyCatCryTrack() {
+  if (typeof Audio === 'undefined') return null
+  if (!nearbyCatCrySound) {
+    nearbyCatCrySound = new Audio('/audio/cat-cry.wav')
+    nearbyCatCrySound.loop = false
+    nearbyCatCrySound.preload = 'auto'
+    nearbyCatCrySound.volume = CAT_CRY_VOLUME * sfxVolume
+  }
+  return nearbyCatCrySound
 }
 
 /** Start as soon as the lobby is mounted. Browsers that block unmuted
@@ -261,6 +288,24 @@ export function playMysteryCircleSound() {
   const track = mysteryCircleTrack()
   if (!track) return
   track.currentTime = 0
+  void track.play().catch(() => undefined)
+}
+
+/** Play the lobby's start cue once when the player begins a run. */
+export function playCatCrySound() {
+  const track = catCryTrack()
+  if (!track) return
+  track.currentTime = 0
+  void track.play().catch(() => undefined)
+}
+
+/** Play a nearby-cat call on its own channel so it cannot restart the lobby's
+ * start cue when the player begins a run beside the tutorial cat. */
+export function playNearbyCatCrySound(volumeScale = 1) {
+  const track = nearbyCatCryTrack()
+  if (!track) return
+  track.currentTime = 0
+  track.volume = CAT_CRY_VOLUME * sfxVolume * Math.max(0.16, Math.min(1, volumeScale))
   void track.play().catch(() => undefined)
 }
 
