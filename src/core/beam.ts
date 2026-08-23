@@ -235,16 +235,38 @@ export function absorptionScore(object: Pick<BeamObject, 'kind' | 'diameter' | '
   return Math.max(1, Math.round(base * Math.max(0.1, scoreMultiplier)))
 }
 
+/**
+ * Swallows one thing the beam has hold of, if anything is close enough.
+ *
+ * `gripStrength` is the same integer the lifting ladder uses, and city
+ * dressing is measured against it before it can be eaten. Absorption used to
+ * ask only whether a thing was in the cone and within reach, which meant a
+ * beam far too weak to shift a bus shelter still made it vanish the moment the
+ * craft skimmed past it - scenery blinking out of a standing city on contact,
+ * with none of the lift the weight ladder promises. A prop that cannot be
+ * lifted is now simply not food; a graze plays over it and leaves it standing.
+ *
+ * It also puts the simulation back in step with what the player is shown: the
+ * beam target ring is already withheld from anything above the current band,
+ * so an unliftable shelter carried no marker at all and then went off in a
+ * flash of sparks as the craft passed over it.
+ *
+ * Only props are gated. Cars, crowds and machines are loose objects with no
+ * spot in the world to be taken off, so bumping into one with the beam on is
+ * still a meal.
+ */
 export function beginNearbyBeamObjectAbsorption(
   objects: BeamObject[],
   ufoPosition: Vec3,
   maxDiameter: number,
   reach: number,
+  gripStrength = Number.POSITIVE_INFINITY,
 ) {
   for (const object of objects) {
     if (!object.active || object.absorbing || !object.inBeam || object.beamImmune) continue
     const diameter = beamObjectDiameter(object)
     if (!isAbsorbable(object.kind, diameter, maxDiameter)) continue
+    if (object.worldProp && beamLiftScale(object.mass, gripStrength) <= 0) continue
     const distance = Math.hypot(
       object.position.x - ufoPosition.x,
       object.position.y - ufoPosition.y,
