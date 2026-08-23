@@ -3,6 +3,10 @@ let laserBuffer: AudioBuffer | null = null
 let laserLoad: Promise<AudioBuffer | null> | null = null
 let laserPlaybackQueued = false
 let laserLoadFailed = false
+let droneExplosionBuffer: AudioBuffer | null = null
+let droneExplosionLoad: Promise<AudioBuffer | null> | null = null
+let droneExplosionPlaybackQueued = false
+let droneExplosionLoadFailed = false
 let lobbyMusic: HTMLAudioElement | null = null
 let gameplayMusic: HTMLAudioElement | null = null
 let beamSound: HTMLAudioElement | null = null
@@ -261,6 +265,7 @@ export function unlockAudio() {
   effectsDestination()
   if (context.state === 'suspended') void context.resume()
   void loadLaserSound()
+  void loadDroneExplosionSound()
 }
 
 /** Load the supplied laser sample once, then fan out short overlapping buffer
@@ -300,6 +305,48 @@ export function playLaserSound() {
   // leaving enough headroom for rapid-fire overlap.
   gain.gain.setValueAtTime(0.92, context.currentTime)
   gain.gain.exponentialRampToValueAtTime(0.001, context.currentTime + Math.min(0.42, laserBuffer.duration))
+  source.connect(gain)
+  gain.connect(effectsDestination() ?? context.destination)
+  source.start()
+}
+
+/** Decode the supplied drone blast once. Buffer sources are created per event
+ * so several drones can explode without cutting one another off. */
+function loadDroneExplosionSound() {
+  if (!context || droneExplosionBuffer || droneExplosionLoadFailed) return Promise.resolve(droneExplosionBuffer)
+  if (droneExplosionLoad) return droneExplosionLoad
+  droneExplosionLoad = fetch('/audio/drone-explosion.wav')
+    .then((response) => response.arrayBuffer())
+    .then((data) => context ? context.decodeAudioData(data) : null)
+    .then((buffer) => {
+      droneExplosionBuffer = buffer
+      return buffer
+    })
+    .catch(() => {
+      droneExplosionLoadFailed = true
+      return null
+    })
+  return droneExplosionLoad
+}
+
+/** Play for every way a drone can detonate: laser kill, mine fuse or contact. */
+export function playDroneExplosionSound() {
+  if (!context || context.state !== 'running' || droneExplosionLoadFailed) return
+  if (!droneExplosionBuffer) {
+    if (droneExplosionPlaybackQueued) return
+    droneExplosionPlaybackQueued = true
+    void loadDroneExplosionSound().then(() => {
+      droneExplosionPlaybackQueued = false
+      playDroneExplosionSound()
+    })
+    return
+  }
+  const source = context.createBufferSource()
+  const gain = context.createGain()
+  source.buffer = droneExplosionBuffer
+  // Leave headroom for rapid swarm kills; the shared effects gain applies the
+  // lobby's sound-effect slider after this per-sample mix level.
+  gain.gain.setValueAtTime(0.58, context.currentTime)
   source.connect(gain)
   gain.connect(effectsDestination() ?? context.destination)
   source.start()

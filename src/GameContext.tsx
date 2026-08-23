@@ -68,7 +68,7 @@ import { MYSTERY_BOOST_DURATION, MYSTERY_BOOST_MAX_MULTIPLIER, mysteryBoostMulti
 import { absorbShieldDamage, createShieldState, isShieldRegenerating, setShieldCapacity, shieldRatio, stepShield, type ShieldState } from './core/shield'
 import { shouldCrashFromOverload } from './core/overload'
 import { worldPropMass, worldPropsAround } from './core/worldProps'
-import { playBoosterSound, playLaserSound, playMysteryCircleSound, startBeamSound, startGameplayMusic, stopBeamSound, stopGameplayMusic, stopLobbyMusic, tone, unlockAudio } from './audio'
+import { playBoosterSound, playDroneExplosionSound, playLaserSound, playMysteryCircleSound, startBeamSound, startGameplayMusic, stopBeamSound, stopGameplayMusic, stopLobbyMusic, tone, unlockAudio } from './audio'
 
 export type GamePhase = 'intro' | 'playing' | 'upgrade' | 'results'
 
@@ -876,6 +876,7 @@ function registerEnemyHit(game: GameRuntime, id: string, damage: number) {
     triggerLaserBurst(game.laserBursts, 'impact', result.enemy.position, '#ffd27a')
   }
   if (!result.destroyed || !result.kind) return
+  if (result.kind === 'drone') playDroneExplosionSound()
   if (result.kind === 'boss') game.bossDestroyed = true
   if (result.kind === 'boss' && result.enemy) {
     // Seventy-four metres of ship does not go up in one puff. A burst at every
@@ -1562,6 +1563,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     if (!tutorialAtStart) stepEnemies(game.enemies, game.drone.position, d, game.drone.velocity, game.sizeProfile.hitRadius)
     const mineExplosion = game.enemies.mineExplosion
     if (mineExplosion) {
+      playDroneExplosionSound()
       triggerLaserBurst(game.laserBursts, 'impact', mineExplosion.position, '#ff4f62')
       // The fire covers exactly what the blast killed, so the shell the mine
       // was drawing beforehand and the explosion agree with each other.
@@ -1734,6 +1736,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     // survive once fat, which is what stops growth from being free.
     const contactDamage = resolveEnemyContacts(game.enemies, game.drone.position, game.sizeProfile.hitRadius)
     if (game.enemies.contactKills > 0) {
+      playDroneExplosionSound()
       game.enemiesDown += game.enemies.contactKills
       game.score += game.enemies.contactKills * 35
       triggerLaserBurst(game.laserBursts, 'impact', game.enemies.lastContactPoint, '#ff9a3d')
