@@ -190,7 +190,7 @@ function Options({ onClose }: { onClose: () => void }) {
 }
 
 function Intro() {
-  const { start, t } = useGame()
+  const { start, t, language } = useGame()
   const [optionsOpen, setOptionsOpen] = useState(false)
   useEffect(() => {
     // Try immediately for browsers that permit it. Otherwise retry from the
@@ -209,18 +209,27 @@ function Intro() {
   }, [])
   if (optionsOpen) return <Options onClose={() => setOptionsOpen(false)} />
   return (
-    <div className="overlay intro-overlay">
-      <div className="sun-disc" />
-      <div className="ufo-poster" aria-hidden="true">
-        <i className="ufo-dome" /><i className="ufo-saucer" /><i className="poster-beam" />
-      </div>
-      <div className="title-kicker">{t.titleKicker}</div>
-      <h1><span>{t.titleLine1}</span><span>{t.titleLine2}</span></h1>
-      <p className="tagline">{t.tagline}</p>
-      <div className="intro-actions">
-        <button className="primary-button" onClick={start}>{t.start}</button>
-        <button className="secondary-button" onClick={() => setOptionsOpen(true)}>{t.options}</button>
-      </div>
+    <div className="overlay intro-overlay" data-language={language}>
+      <div className="intro-noise" aria-hidden="true" />
+      <header className="lobby-command-bar" aria-hidden="true">
+        <span className="lobby-faction">
+          <span className="paw-sigil"><i /><i /><i /><i /><b /></span>
+          CAT FLEET // SECTOR 34
+        </span>
+        <span className="lobby-ready"><i /> INVASION READY</span>
+      </header>
+      <section className="lobby-copy">
+        <div className="title-kicker">
+          <span className="paw-sigil" aria-hidden="true"><i /><i /><i /><i /><b /></span>
+          <span>{t.titleKicker}</span>
+        </div>
+        <h1>{t.titleLine1}{t.titleLine2}</h1>
+        <p className="tagline">{t.tagline}</p>
+        <div className="intro-actions">
+          <button className="primary-button" onClick={start}><span>{t.start}</span><b aria-hidden="true">▶</b></button>
+          <button className="secondary-button" onClick={() => setOptionsOpen(true)}>{t.options}</button>
+        </div>
+      </section>
       <div className="controls-card">
         <span><b>W/S</b> {t.controlFly}</span>
         <span><b>A/D</b> {t.controlStrafe}</span>
