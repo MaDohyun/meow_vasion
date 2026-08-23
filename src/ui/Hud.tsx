@@ -3,6 +3,7 @@ import { useGame } from '../GameContext'
 import { LANGUAGES, LANGUAGE_LABELS, bulletinFor, formatMessage } from '../i18n'
 import { broadcastPhase, broadcastProgress } from '../core/broadcast'
 import { UPGRADE_DEFINITIONS, type UpgradeId } from '../core/upgrades'
+import { HowToPlay } from './HowToPlay'
 import { Radar } from './Radar'
 import { pilotFrameStyle } from '../render/pilotArt'
 import { getAudioVolumes, setBgmVolume, setSfxVolume, startLobbyMusic, unlockAudio } from '../audio'
@@ -192,6 +193,7 @@ function Options({ onClose }: { onClose: () => void }) {
 function Intro() {
   const { start, t, language } = useGame()
   const [optionsOpen, setOptionsOpen] = useState(false)
+  const [howToOpen, setHowToOpen] = useState(false)
   useEffect(() => {
     // Try immediately for browsers that permit it. Otherwise retry from the
     // first intentional lobby input, which satisfies autoplay policy.
@@ -208,6 +210,7 @@ function Intro() {
     }
   }, [])
   if (optionsOpen) return <Options onClose={() => setOptionsOpen(false)} />
+  if (howToOpen) return <HowToPlay onClose={() => setHowToOpen(false)} />
   return (
     <div className="overlay intro-overlay" data-language={language}>
       <div className="intro-noise" aria-hidden="true" />
@@ -224,20 +227,12 @@ function Intro() {
           <span>{t.titleKicker}</span>
         </div>
         <h1>{t.titleLine1}{t.titleLine2}</h1>
-        <p className="tagline">{t.tagline}</p>
         <div className="intro-actions">
           <button className="primary-button" onClick={start}><span>{t.start}</span><b aria-hidden="true">▶</b></button>
+          <button className="secondary-button" onClick={() => setHowToOpen(true)}>{t.howTo}</button>
           <button className="secondary-button" onClick={() => setOptionsOpen(true)}>{t.options}</button>
         </div>
       </section>
-      <div className="controls-card">
-        <span><b>W/S</b> {t.controlFly}</span>
-        <span><b>A/D</b> {t.controlStrafe}</span>
-        <span><b>MOUSE</b> {t.controlAim}</span>
-        <span><b>E</b> {t.controlBeam}</span>
-        <span><b>Q</b> {t.controlLaser} · {t.hold}</span>
-        <span><b>SPACE</b> {t.controlBoost}</span>
-      </div>
     </div>
   )
 }
