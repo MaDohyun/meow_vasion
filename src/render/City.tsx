@@ -1367,7 +1367,7 @@ function LiftedBuildingPool() {
       scale.set(object.scale.x * swallow, object.scale.y * swallow, object.scale.z * swallow)
       matrix.compose(position, rotation, scale)
       mesh.setMatrixAt(count, matrix)
-      mesh.setColorAt(count, color.set(object.color).lerp(pastelWall, 0.42))
+      mesh.setColorAt(count, color.set(object.color).lerp(pastelWall, 0.52))
       slots[count] = object.facade ?? 0
       floors[count] = object.floors ?? 1
       count += 1
@@ -1546,7 +1546,7 @@ function BuildingPool() {
       // World generation still chooses the building family. Only the displayed
       // tint is lifted toward a shared warm neutral, keeping that variation
       // without the saturated red/teal walls dominating the playfield.
-      bodies.current!.setColorAt(index, color.set(building.color).lerp(pastelWall, 0.42))
+      bodies.current!.setColorAt(index, color.set(building.color).lerp(pastelWall, 0.52))
       facadeSlots[index] = building.facade
       facadeFloors[index] = building.floors
 
@@ -1557,7 +1557,7 @@ function BuildingPool() {
       scale.set(building.size.x * building.roofOverhang, slab, building.size.z * building.roofOverhang)
       matrix.compose(position, rotation, scale)
       roofs.current!.setMatrixAt(index, matrix)
-      roofs.current!.setColorAt(index, color.set(building.roof).lerp(pastelRoof, 0.42))
+      roofs.current!.setColorAt(index, color.set(building.roof).lerp(pastelRoof, 0.52))
 
       const signOnX = building.sign.side === 'x'
       const neonLayout = buildingNeonSignLayout(building)

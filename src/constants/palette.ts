@@ -85,8 +85,8 @@ export const BUILDING = {
   WINDOW_DIM: '#c8cec7',
   /** Blinking obstruction light on tall roofs. */
   BEACON: '#df6673',
-  DISTANT: '#b9b5bd',
-  DISTANT_FAR: '#9e9dab',
+  DISTANT: '#c4c1c8',
+  DISTANT_FAR: '#aaa9b6',
   STORE_BAND: '#71c9ae',
   STORE_TRIM: '#fff0b0',
   TRANSIT: '#78aebc',

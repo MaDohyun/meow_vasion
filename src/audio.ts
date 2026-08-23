@@ -7,6 +7,10 @@ let droneExplosionBuffer: AudioBuffer | null = null
 let droneExplosionLoad: Promise<AudioBuffer | null> | null = null
 let droneExplosionPlaybackQueued = false
 let droneExplosionLoadFailed = false
+let buildingCollapseBuffer: AudioBuffer | null = null
+let buildingCollapseLoad: Promise<AudioBuffer | null> | null = null
+let buildingCollapsePlaybackQueued = false
+let buildingCollapseLoadFailed = false
 let lobbyMusic: HTMLAudioElement | null = null
 let gameplayMusic: HTMLAudioElement | null = null
 let beamSound: HTMLAudioElement | null = null
@@ -266,6 +270,7 @@ export function unlockAudio() {
   if (context.state === 'suspended') void context.resume()
   void loadLaserSound()
   void loadDroneExplosionSound()
+  void loadBuildingCollapseSound()
 }
 
 /** Load the supplied laser sample once, then fan out short overlapping buffer
@@ -347,6 +352,45 @@ export function playDroneExplosionSound() {
   // Leave headroom for rapid swarm kills; the shared effects gain applies the
   // lobby's sound-effect slider after this per-sample mix level.
   gain.gain.setValueAtTime(0.58, context.currentTime)
+  source.connect(gain)
+  gain.connect(effectsDestination() ?? context.destination)
+  source.start()
+}
+
+/** Decode the supplied building-collapse blast once and play it only after a
+ * building's destruction threshold has actually been reached. */
+function loadBuildingCollapseSound() {
+  if (!context || buildingCollapseBuffer || buildingCollapseLoadFailed) return Promise.resolve(buildingCollapseBuffer)
+  if (buildingCollapseLoad) return buildingCollapseLoad
+  buildingCollapseLoad = fetch('/audio/building-collapse.wav')
+    .then((response) => response.arrayBuffer())
+    .then((data) => context ? context.decodeAudioData(data) : null)
+    .then((buffer) => {
+      buildingCollapseBuffer = buffer
+      return buffer
+    })
+    .catch(() => {
+      buildingCollapseLoadFailed = true
+      return null
+    })
+  return buildingCollapseLoad
+}
+
+export function playBuildingCollapseSound() {
+  if (!context || context.state !== 'running' || buildingCollapseLoadFailed) return
+  if (!buildingCollapseBuffer) {
+    if (buildingCollapsePlaybackQueued) return
+    buildingCollapsePlaybackQueued = true
+    void loadBuildingCollapseSound().then(() => {
+      buildingCollapsePlaybackQueued = false
+      playBuildingCollapseSound()
+    })
+    return
+  }
+  const source = context.createBufferSource()
+  const gain = context.createGain()
+  source.buffer = buildingCollapseBuffer
+  gain.gain.setValueAtTime(0.66, context.currentTime)
   source.connect(gain)
   gain.connect(effectsDestination() ?? context.destination)
   source.start()

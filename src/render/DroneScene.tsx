@@ -939,12 +939,12 @@ const crowdGeometry: Record<CrowdKind, THREE.BufferGeometry> = {
 // Tops and bottoms are picked independently. Dark suit/coat colours sit beside
 // casual knits and tees, while trousers include black, denim and warmer cloth.
 const pedestrianTopColors = [
-  '#242630', '#30496f', '#465a3f', '#744354',
-  '#d4c5a3', '#b96b3e', '#367a74', '#6c78a3',
+  '#343744', '#3d5a83', '#566d4e', '#875466',
+  '#dfd0ae', '#ca7c4c', '#448d86', '#7d89b3',
 ].map((value) => new THREE.Color(value))
 const pedestrianBottomColors = [
-  '#1e2028', '#2b3144', '#455d79', '#493f38',
-  '#706861', '#17191f', '#68765d', '#604758',
+  '#30323c', '#3c4459', '#58708c', '#5c5047',
+  '#827a72', '#292b33', '#79886e', '#73596b',
 ].map((value) => new THREE.Color(value))
 const pedestrianDetailColors = [
   '#f0eadc', '#a9c8d8', '#e6b84d', '#d66b67', '#77b7a0', '#a98bbb',
@@ -952,7 +952,7 @@ const pedestrianDetailColors = [
 // Keep the three feline coats in one fixed InstancedMesh. The pale tint leaves
 // the vertex-coloured dark patches black on the tuxedo cat and turns them into
 // warm brown or charcoal tabby stripes on the orange and gray cats.
-const catStyleColors = ['#f2efe8', '#e88d3d', '#9299a3'] as const
+const catStyleColors = ['#fffaf2', '#f29c4c', '#a8afb8'] as const
 const beamReflectionColor = new THREE.Color('#8fffe1')
 
 function CrowdPool({ kind }: { kind: CrowdKind }) {

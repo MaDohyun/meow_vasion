@@ -68,7 +68,7 @@ import { MYSTERY_BOOST_DURATION, MYSTERY_BOOST_MAX_MULTIPLIER, mysteryBoostMulti
 import { absorbShieldDamage, createShieldState, isShieldRegenerating, setShieldCapacity, shieldRatio, stepShield, type ShieldState } from './core/shield'
 import { shouldCrashFromOverload } from './core/overload'
 import { worldPropMass, worldPropsAround } from './core/worldProps'
-import { playBoosterSound, playDroneExplosionSound, playLaserSound, playMysteryCircleSound, startBeamSound, startGameplayMusic, stopBeamSound, stopGameplayMusic, stopLobbyMusic, tone, unlockAudio } from './audio'
+import { playBoosterSound, playBuildingCollapseSound, playDroneExplosionSound, playLaserSound, playMysteryCircleSound, startBeamSound, startGameplayMusic, stopBeamSound, stopGameplayMusic, stopLobbyMusic, tone, unlockAudio } from './audio'
 
 export type GamePhase = 'intro' | 'playing' | 'upgrade' | 'results'
 
@@ -957,6 +957,7 @@ function registerBuildingLaserHit(game: GameRuntime, id: string) {
   game.buildingHitFlash.set(building.id, 1)
   triggerLaserBurst(game.laserBursts, 'impact', building.position, '#ffca63')
   if (!result.destroyed) return true
+  playBuildingCollapseSound()
   // A tower's own blast is centred on the tower, not on the point that was
   // shot: it is the whole thing failing, not the last hit landing.
   triggerFireball(game.fireballs, 'ruin', {
