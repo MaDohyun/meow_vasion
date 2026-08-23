@@ -63,6 +63,36 @@ test('loads first frame and validates combat and high-altitude flight', async ({
 })
 
 /**
+ * The language switch is duplicated onto the lobby itself because the options
+ * panel that also holds it is behind a button nobody can read yet. What only a
+ * browser can show is that the lobby copy actually follows the press.
+ */
+test('switches language from the lobby without opening options', async ({ page }) => {
+  await page.goto('/')
+  // The loading screen holds the lobby back while the cell pools build, so
+  // wait for the menu itself before reaching for anything on it.
+  await expect(page.locator('.intro-actions .primary-button')).toBeVisible({ timeout: 30000 })
+  const choices = page.locator('.lobby-language button')
+  await expect(choices).toHaveCount(3)
+  // Korean is the default, so it starts as the pressed one.
+  await expect(page.locator('.lobby-language button[lang="ko"]')).toHaveAttribute('aria-pressed', 'true')
+
+  const title = page.locator('.intro-overlay h1')
+  const korean = await title.textContent()
+  await page.locator('.lobby-language button[lang="ja"]').click()
+  await expect(page.locator('.lobby-language button[lang="ja"]')).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.locator('.lobby-language button[lang="ko"]')).toHaveAttribute('aria-pressed', 'false')
+  await expect(title).not.toHaveText(korean ?? '')
+  // The lobby marks the whole overlay with the language so the CSS can size a
+  // title that is far longer in one script than another.
+  await expect(page.locator('.intro-overlay')).toHaveAttribute('data-language', 'ja')
+
+  await page.locator('.lobby-language button[lang="en"]').click()
+  await expect(page.locator('.intro-overlay')).toHaveAttribute('data-language', 'en')
+  await expect(page.locator('.intro-actions .primary-button')).toBeVisible()
+})
+
+/**
  * A finger aims by dragging, not by pointing: see src/core/aim. The maths is
  * unit tested; what only a browser can show is the wiring - that a drag on the
  * open city moves the reticle, and that a drag on the stick or a fire button

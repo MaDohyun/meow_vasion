@@ -253,6 +253,14 @@ button { font: inherit; }
 .intro-actions .primary-button { display:flex; align-items:center; gap:20px; min-width:188px; margin-top:0; padding:13px 15px 13px 21px; background:linear-gradient(135deg,#ffe674,#ffc857); border:2px solid var(--cream); box-shadow:4px 4px 0 #031326,0 0 18px rgba(255,224,95,.12); }
 .intro-actions .primary-button b { margin-left:auto; color:var(--coral); font-size:13px; }
 .intro-actions .secondary-button { min-width:110px; padding:13px 18px; color:var(--cream); background:rgba(3,17,37,.78); border:2px solid rgba(100,241,238,.8); box-shadow:4px 4px 0 #031326; }
+/* The lobby's own language switch. It sits under the menu rather than inside
+   the options panel so a player who cannot read the menu never has to guess
+   which button opens the settings. Each label is set in its own language. */
+.lobby-language { z-index:2; display:flex; align-items:center; justify-content:center; gap:7px; margin-top:13px; }
+.lobby-language button { padding:7px 13px; color:rgba(233,231,214,.82); background:rgba(3,17,37,.72); border:2px solid rgba(100,241,238,.45); box-shadow:3px 3px 0 #031326; font-size:9px; font-weight:1000; letter-spacing:1.4px; cursor:pointer; }
+.lobby-language button:hover { color:var(--cream); border-color:rgba(100,241,238,.85); transform:translate(2px,2px); box-shadow:1px 1px 0 #031326; }
+.lobby-language button.selected { color:var(--ink); background:var(--cyan); border-color:var(--cream); }
+
 /* Shown only while the browser is holding the lobby track back until it sees
    a gesture. One press is all it wants, and the cue disappears. */
 .lobby-sound-cue { z-index:2; display:flex; align-items:center; gap:8px; margin-top:13px; padding:8px 14px; color:var(--yellow); background:rgba(3,17,37,.72); border:2px solid rgba(255,224,95,.72); box-shadow:3px 3px 0 #031326; font-size:8px; font-weight:1000; letter-spacing:2.2px; cursor:pointer; }
@@ -469,6 +477,8 @@ button { font: inherit; }
   .intro-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px; width:min(88vw,330px); margin-top:12px; }
   .intro-actions .primary-button { grid-column:1/-1; min-width:0; width:100%; padding:10px 12px 10px 16px; border-width:2px; box-shadow:3px 3px 0 #031326; font-size:9px; }
   .intro-actions .secondary-button { min-width:0; padding:9px 8px; border-width:2px; box-shadow:3px 3px 0 #031326; font-size:8px; }
+  .lobby-language { gap:5px; margin-top:9px; }
+  .lobby-language button { padding:6px 9px; border-width:2px; box-shadow:2px 2px 0 #031326; font-size:8px; letter-spacing:1px; }
 }
 
 @media (max-width:360px) {

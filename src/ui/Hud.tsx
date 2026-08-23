@@ -226,7 +226,7 @@ function Options({ onClose }: { onClose: () => void }) {
 }
 
 function Intro() {
-  const { start, t, language } = useGame()
+  const { start, t, language, setLanguage } = useGame()
   const [optionsOpen, setOptionsOpen] = useState(false)
   const [howToOpen, setHowToOpen] = useState(false)
   // The browser will not let the lobby track be heard until it has seen a
@@ -273,6 +273,25 @@ function Intro() {
           <button className="primary-button" onMouseEnter={playMenuHoverSound} onClick={start}><span>{t.start}</span><b aria-hidden="true">▶</b></button>
           <button className="secondary-button" onMouseEnter={playMenuHoverSound} onClick={() => setHowToOpen(true)}>{t.howTo}</button>
           <button className="secondary-button" onMouseEnter={playMenuHoverSound} onClick={() => setOptionsOpen(true)}>{t.options}</button>
+        </div>
+        {/* The language switch also lives in the options panel, but a player who
+            cannot read the lobby yet is exactly the player least likely to find
+            a button labelled in a language they do not speak. Each option is
+            written in its own language, so it needs no label to be understood. */}
+        <div className="lobby-language" role="group" aria-label={t.language}>
+          {LANGUAGES.map((code) => (
+            <button
+              key={code}
+              type="button"
+              lang={code}
+              className={language === code ? 'selected' : ''}
+              aria-pressed={language === code}
+              onMouseEnter={playMenuHoverSound}
+              onClick={() => setLanguage(code)}
+            >
+              {LANGUAGE_LABELS[code]}
+            </button>
+          ))}
         </div>
         {soundBlocked && (
           <button className="lobby-sound-cue" type="button" onClick={() => startLobbyMusic()}>
