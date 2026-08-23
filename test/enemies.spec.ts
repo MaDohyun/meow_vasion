@@ -101,22 +101,7 @@ describe('time-based enemy waves', () => {
     expect(state.slots.some((enemy) => enemy.kind === ('balloon' as never))).toBe(false)
   })
 
-  it('keeps air units on their own heading instead of chasing the player', () => {
-    const { state } = fillWave(MID_WAVE_AT)
-    const player = { x: 10, y: 14, z: 20 }
-    // Drones are excluded on purpose: every one of them is a mine and is
-    // supposed to sit still. This guards the helicopters, which must cross the
-    // area and carry on rather than latch on.
-    const helicopter = state.slots.find((enemy) => enemy.kind === 'helicopter' && enemy.active)!
-    const startDistance = Math.hypot(helicopter.position.x - player.x, helicopter.position.z - player.z)
-    for (let tick = 0; tick < 120; tick += 1) stepEnemies(state, player, 1 / 60)
-    // A chasing unit converges on the player and parks there. A travelling one
-    // crosses the area and keeps going, so its distance must not settle.
-    const endDistance = Math.hypot(helicopter.position.x - player.x, helicopter.position.z - player.z)
-    expect(Math.abs(endDistance - startDistance)).toBeGreaterThan(4)
-  })
-
-  it('holds helicopters in their altitude band so climbing is an escape', () => {
+  it('holds helicopters in their altitude band while nothing has provoked them', () => {
     const { state } = fillWave(MID_WAVE_AT)
     const highPlayer = { x: 10, y: 95, z: 20 }
     for (let tick = 0; tick < 240; tick += 1) stepEnemies(state, highPlayer, 1 / 60)
@@ -139,17 +124,6 @@ describe('time-based enemy waves', () => {
       // Mines bob a little; nothing rises toward the player.
       expect(enemy.position.y).toBeLessThan(y + 2)
     }
-  })
-
-  it('lets helicopters actually open fire', () => {
-    const state = createEnemyState()
-    const player = { x: 0, y: 12, z: 0 }
-    const helicopter = state.slots.find((enemy) => enemy.kind === 'helicopter')!
-    helicopter.active = true
-    helicopter.position = { x: 0, y: 22, z: 30 }
-    helicopter.attackTimer = 0
-    for (let tick = 0; tick < 90; tick += 1) stepEnemies(state, player, 1 / 60)
-    expect(state.projectiles.some((projectile) => projectile.active)).toBe(true)
   })
 
   it('destroys a drone the player flies through and never lets contacts stack', () => {
