@@ -9,10 +9,14 @@ export default defineConfig({
    * player a new origin every time - 5173, then 5174, then 5175 - so that
    * credit never accumulates and the lobby track is refused on every reload.
    * Hold the port, and say so when it is taken, rather than drifting.
+   *
+   * 5174 rather than Vite's 5173 on purpose: it is the address this game has
+   * actually been played at, so it is the one browsers here already trust with
+   * sound. Moving to a tidier number would throw that away.
    */
   server: {
     host: '127.0.0.1',
-    port: 5173,
+    port: 5174,
     strictPort: true,
   },
   preview: {
