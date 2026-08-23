@@ -11,7 +11,7 @@ import { LifeHearts } from './LifeHearts'
 import { RichText, plainText } from './RichText'
 import { Radar } from './Radar'
 import { pilotFrameStyle } from '../render/pilotArt'
-import { getAudioVolumes, isLobbyMusicBlocked, onLobbyMusicBlockedChange, setBgmVolume, setSfxVolume, startLobbyMusic, stopLobbyMusic, unlockAudio } from '../audio'
+import { getAudioVolumes, isLobbyMusicBlocked, onLobbyMusicBlockedChange, playMenuHoverSound, setBgmVolume, setSfxVolume, startLobbyMusic, stopLobbyMusic, unlockAudio } from '../audio'
 
 const formatTime = (seconds: number) => {
   const safe = Math.max(0, Math.ceil(seconds))
@@ -270,9 +270,9 @@ function Intro() {
         </div>
         <h1>{t.titleLine1}{t.titleLine2}</h1>
         <div className="intro-actions">
-          <button className="primary-button" onClick={start}><span>{t.start}</span><b aria-hidden="true">▶</b></button>
-          <button className="secondary-button" onClick={() => setHowToOpen(true)}>{t.howTo}</button>
-          <button className="secondary-button" onClick={() => setOptionsOpen(true)}>{t.options}</button>
+          <button className="primary-button" onMouseEnter={playMenuHoverSound} onClick={start}><span>{t.start}</span><b aria-hidden="true">▶</b></button>
+          <button className="secondary-button" onMouseEnter={playMenuHoverSound} onClick={() => setHowToOpen(true)}>{t.howTo}</button>
+          <button className="secondary-button" onMouseEnter={playMenuHoverSound} onClick={() => setOptionsOpen(true)}>{t.options}</button>
         </div>
         {soundBlocked && (
           <button className="lobby-sound-cue" type="button" onClick={() => startLobbyMusic()}>
