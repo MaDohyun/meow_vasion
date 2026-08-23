@@ -110,7 +110,6 @@ type Strings = {
   tutorialBriefing: readonly TutorialBriefingStep[]
   missionStageComplete: (previous: number, next: number) => string
   reconComplete: string
-  shield: string
   radar: string
   survivedTitle: string
   collapsedTitle: string
@@ -307,7 +306,6 @@ export const STRINGS: Record<Language, Strings> = {
     ],
     missionStageComplete: (previous, next) => `미션 ${previous} 완료 · 미션 ${next}, 골라서 해!`,
     reconComplete: '지구 정찰 완료 · 장군님 퇴근 준비 끝!',
-    shield: '쉴드',
     radar: '주변 탐지 · 실시간',
     survivedTitle: '지구 정찰 완료',
     collapsedTitle: '지구가 좀 치네?',
@@ -372,7 +370,6 @@ export const STRINGS: Record<Language, Strings> = {
     upgradeMaxed: '최대',
     upgrades: {
       'laser-power': { name: '레이저 위력', detail: '한 단계마다 피해량 +20%. 지구 건물도 이제 얌전하지 않습니다.' },
-      shield: { name: '쉴드', detail: '선체 앞에 초록 쉴드 1칸. 맞지 않으면 알아서 다시 찹니다.' },
       'beam-radius': { name: '빔 범위', detail: '빔 반경 +15%. 기체가 커져도 범위는 이 카드로만 늘어납니다.' },
       'beam-grip': { name: '빔 흡수력', detail: '흡수력 +1. 숫자가 무게보다 높을수록 덜 낑낑댑니다.' },
       lift: { name: '양력', detail: '들고 버틸 수 있는 총 무게 +2. 욕심도 비행 기술입니다.' },
@@ -477,7 +474,6 @@ export const STRINGS: Record<Language, Strings> = {
     ],
     missionStageComplete: (previous, next) => `ミッション${previous}完了 · ミッション${next}、好きなものを選べ！`,
     reconComplete: '地球偵察完了 · 将軍も帰宅準備完了！',
-    shield: 'シールド',
     radar: '周辺探知・リアルタイム',
     survivedTitle: '地球偵察完了',
     collapsedTitle: '地球、意外とやるな',
@@ -542,7 +538,6 @@ export const STRINGS: Record<Language, Strings> = {
     upgradeMaxed: '最大',
     upgrades: {
       'laser-power': { name: 'レーザー威力', detail: 'レベルごとにダメージ+20%。' },
-      shield: { name: 'シールド', detail: '船体の前に再生するシールドを1つ追加。' },
       'beam-radius': { name: 'ビーム範囲', detail: 'ビーム半径+15%。' },
       'beam-grip': { name: '吸引力', detail: '整数の吸引力+1。' },
       lift: { name: '揚力', detail: '運べる総重量+2。' },
@@ -647,7 +642,6 @@ export const STRINGS: Record<Language, Strings> = {
     ],
     missionStageComplete: (previous, next) => `MISSION ${previous} COMPLETE · MISSION ${next}, PICK YOUR OBJECTIVES!`,
     reconComplete: 'EARTH RECON COMPLETE · THE GENERAL IS READY TO CLOCK OUT!',
-    shield: 'SHIELD',
     radar: 'LOCAL GRID · LIVE',
     survivedTitle: 'EARTH RECON COMPLETE',
     collapsedTitle: 'EARTH HAD NOTES',
@@ -712,7 +706,6 @@ export const STRINGS: Record<Language, Strings> = {
     upgradeMaxed: 'MAX',
     upgrades: {
       'laser-power': { name: 'LASER POWER', detail: '+20% damage per level.' },
-      shield: { name: 'SHIELD', detail: 'Adds one regenerating shield pip ahead of the hull.' },
       'beam-radius': { name: 'BEAM RANGE', detail: '+15% beam radius.' },
       'beam-grip': { name: 'PULL STRENGTH', detail: '+1 integer pull strength.' },
       lift: { name: 'LIFT', detail: '+2 total hanging-weight capacity.' },

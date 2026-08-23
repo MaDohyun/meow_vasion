@@ -14,14 +14,13 @@ import {
 import { LANGUAGES, STRINGS } from '../src/i18n'
 
 describe('upgrade cards', () => {
-  it('contains exactly the nine reconnaissance stats with fixed caps', () => {
-    expect(UPGRADE_IDS).toHaveLength(9)
+  it('contains exactly the eight reconnaissance stats with fixed caps', () => {
+    expect(UPGRADE_IDS).toHaveLength(8)
     expect(new Set(UPGRADE_IDS)).toEqual(new Set([
-      'laser-power', 'shield', 'beam-radius', 'beam-grip', 'lift', 'speed',
+      'laser-power', 'beam-radius', 'beam-grip', 'lift', 'speed',
       'turbo-recharge', 'turbo-capacity', 'turn',
     ]))
     expect(UPGRADE_DEFINITIONS['laser-power'].maxLevel).toBe(5)
-    expect(UPGRADE_DEFINITIONS.shield.maxLevel).toBe(5)
     expect(UPGRADE_DEFINITIONS['beam-radius'].step).toBe(0.15)
     expect(UPGRADE_DEFINITIONS['beam-grip'].step).toBe(1)
     expect(UPGRADE_DEFINITIONS.lift.step).toBe(2)
@@ -73,7 +72,7 @@ describe('upgrade cards', () => {
     applyUpgrade(state, 'laser-power')
     expect(upgradeMultiplier(state, 'laser-power')).toBeGreaterThan(1)
     expect(upgradeMultiplier(state, 'beam-radius')).toBe(1)
-    expect(upgradeMultiplier(state, 'shield')).toBe(1)
+    expect(upgradeMultiplier(state, 'turn')).toBe(1)
   })
 
   it('never returns a multiplier below one', () => {

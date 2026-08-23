@@ -16,7 +16,6 @@
 
 export type UpgradeId =
   | 'laser-power'
-  | 'shield'
   | 'beam-radius'
   | 'beam-grip'
   | 'lift'
@@ -41,7 +40,6 @@ export type UpgradeDefinition = {
 
 export const UPGRADE_DEFINITIONS: Record<UpgradeId, UpgradeDefinition> = {
   'laser-power': { id: 'laser-power', step: 0.2, maxLevel: 5 },
-  shield: { id: 'shield', step: 1, maxLevel: 5 },
   'beam-radius': { id: 'beam-radius', step: 0.15, maxLevel: 5 },
   'beam-grip': { id: 'beam-grip', step: 1, maxLevel: 5 },
   lift: { id: 'lift', step: 2, maxLevel: 5 },

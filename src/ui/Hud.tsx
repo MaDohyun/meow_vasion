@@ -7,7 +7,7 @@ import { broadcastPhase, broadcastProgress } from '../core/broadcast'
 import { UPGRADE_DEFINITIONS, type UpgradeId } from '../core/upgrades'
 import { HowToPlay } from './HowToPlay'
 import { LifeHearts } from './LifeHearts'
-import { RichText, plainText } from './RichText'
+import { RichText } from './RichText'
 import { Radar } from './Radar'
 import { pilotFrameStyle } from '../render/pilotArt'
 import { getAudioVolumes, isLobbyMusicBlocked, onLobbyMusicBlockedChange, setBgmVolume, setSfxVolume, startLobbyMusic, stopLobbyMusic, unlockAudio } from '../audio'
@@ -632,39 +632,22 @@ export function Hud() {
   return (
     <>
       <div className="hud" data-dazed={snapshot.daze > 0}>
-        {/* Two resources, two corners. The left card is what keeps you alive;
-            the right card is what the run is scored on. They used to be one
-            card each way round - mass sat on the life card, which put the
-            number you are chasing next to the bar you are protecting and made
-            neither read. */}
+        {/* Two corners, two questions. Left is what keeps you alive, right is
+            what the run is scored on. Mass used to sit on the left, which put
+            the number you are chasing beside the bar you are defending and
+            made neither read. */}
         <div className="hud-left">
-          <section className={`life-card panel ${snapshot.healthRatio <= 0.25 ? 'life-warning' : ''}`}>
-            <span className="eyebrow">{t.life}</span>
-            <LifeHearts
-              current={snapshot.health}
-              max={snapshot.healthMax}
-              regenerating={snapshot.regenerating}
-              label={t.life}
-            />
-            {snapshot.shieldMax > 0 && (
-              <div className="shield-bar" data-regen={snapshot.shieldRegenerating}>
-                {Array.from({ length: snapshot.shieldMax }, (_, pip) => (
-                  <i key={pip} data-state={snapshot.shield >= pip + 1 ? 'full' : snapshot.shield > pip ? 'part' : 'empty'} />
-                ))}
-                <b>{t.shield} {snapshot.shield.toFixed(1)}/{snapshot.shieldMax}</b>
-              </div>
-            )}
-            <small>
-              {t.hull} {Math.ceil(snapshot.health)}/{snapshot.healthMax}
-              {snapshot.regenerating ? ` · ${t.repairing}` : ''}
-            </small>
-            {/* Nothing on screen announces a building the way an enemy shot
-                announces itself, so the one hazard the player can fly into
-                blind gets said out loud, right under the hearts it costs. */}
-            <p className="hazard-note" title={plainText(t.hazardBuildings)}>
-              <i aria-hidden="true">!</i><RichText text={t.hazardBuildings} />
-            </p>
-          </section>
+          {/* Hearts and nothing else. This card used to carry a label, a
+              "5/5" readout, a shield bar and a hazard line - four ways of
+              saying what the hearts already say, in a stack a player has to
+              parse mid-flight. The hazard warning still gets told, in the
+              general's briefing and in the field manual. */}
+          <LifeHearts
+            current={snapshot.health}
+            max={snapshot.healthMax}
+            regenerating={snapshot.regenerating}
+            label={t.life}
+          />
 
           <MissionPanel />
         </div>

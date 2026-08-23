@@ -67,7 +67,6 @@ import { createBuildingRuin, damageBuilding, ruinCollider, type BuildingRuin } f
 import { stepLakeAbsorption } from './core/lakes'
 import { createMissionState, isInsideAirCheckpoint, missionHasQuest, recordMissionEvent, startMissionOne, syncMissionState, type MissionQuest, type MissionState } from './core/missions'
 import { MYSTERY_BOOST_DURATION, MYSTERY_BOOST_MAX_MULTIPLIER, mysteryBoostMultiplier } from './core/mysteryCircles'
-import { absorbShieldDamage, createShieldState, isShieldRegenerating, setShieldCapacity, shieldRatio, stepShield, type ShieldState } from './core/shield'
 import { shouldCrashFromOverload } from './core/overload'
 import { DRONE_BLAST_TRAUMA, addShakeTrauma, createShakeState, stepShake, type ShakeState } from './core/shake'
 import { worldPropMass, worldPropsAround } from './core/worldProps'
@@ -197,7 +196,6 @@ export type GameRuntime = {
   size: number
   sizeProfile: SizeProfile
   health: HealthState
-  shield: ShieldState
   sizePulse: number
   absorbedCount: number
   ballast: number
@@ -257,10 +255,6 @@ export type GameSnapshot = {
   healthMax: number
   healthRatio: number
   regenerating: boolean
-  shield: number
-  shieldMax: number
-  shieldRatio: number
-  shieldRegenerating: boolean
   maxAltitude: number
   sizePulse: number
   absorbedCount: number
@@ -606,7 +600,6 @@ function makeRuntime(): GameRuntime {
     size: SIZE_START,
     sizeProfile: sizeProfile(SIZE_START),
     health: createHealthState(),
-    shield: createShieldState(),
     sizePulse: 0,
     absorbedCount: 0,
     ballast: 0,
@@ -1060,11 +1053,8 @@ function growBy(game: GameRuntime, amount: number) {
 function wound(game: GameRuntime, kind: HealthLossKind) {
   game.impactKind = kind
   game.impactFlash = 1
-  const hullDamage = absorbShieldDamage(game.shield, HEALTH_LOSS[kind])
-  if (hullDamage > 0) {
-    game.health.current = Math.max(0, game.health.current - hullDamage)
-    game.health.sinceHit = 0
-  }
+  game.health.current = Math.max(0, game.health.current - HEALTH_LOSS[kind])
+  game.health.sinceHit = 0
   if (isDead(game.health)) endRun(game, 'CRAFT DOWN', false)
 }
 
@@ -1243,10 +1233,6 @@ function snapshotOf(game: GameRuntime): GameSnapshot {
     healthMax: game.health.max,
     healthRatio: healthRatio(game.health),
     regenerating: isRegenerating(game.health),
-    shield: game.shield.current,
-    shieldMax: game.shield.max,
-    shieldRatio: shieldRatio(game.shield),
-    shieldRegenerating: isShieldRegenerating(game.shield),
     maxAltitude: game.sizeProfile.maxAltitude,
     sizePulse: game.sizePulse,
     absorbedCount: game.absorbedCount,
@@ -1526,7 +1512,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
     game.laserCooldown = Math.max(0, game.laserCooldown - d)
     game.broadcastTime = Math.max(0, game.broadcastTime - d)
     stepHealth(game.health, d)
-    stepShield(game.shield, d)
     // The city reports the sighting once the player has had a moment to fly.
     if (!tutorialAtStart && !game.openingBroadcastDone && game.sessionTime >= BROADCAST_OPENING_AT) {
       game.openingBroadcastDone = true
@@ -1946,7 +1931,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
     if (game.phase !== 'upgrade') return
     if (!game.upgrades.offered.includes(id)) return
     applyUpgrade(game.upgrades, id)
-    if (id === 'shield') setShieldCapacity(game.shield, game.upgrades.levels.shield)
     game.phase = 'playing'
     tone('pickup')
     publish()
