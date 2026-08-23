@@ -1666,7 +1666,8 @@ function FireballPool() {
     let count = 0
     for (const fireball of runtime.current.fireballs) {
       if (!fireball.active) continue
-      for (const puff of fireball.puffs) {
+      for (let index = 0; index < fireball.puffCount; index += 1) {
+        const puff = fireball.puffs[index]!
         if (count >= FIREBALL_CAPACITY) break
         const progress = fireballPuffProgress(fireball, puff)
         // Not erupted yet, or already gone. Drawing either would put a lobe

@@ -136,14 +136,16 @@ export const DRONE_MINE_TARGETS = [0, 8, 14, 19, 22, 25, 27, 30]
  */
 export const DRONE_MINE_BLAST_RADIUS = 9
 /**
- * A second, and no more.
+ * Three tenths of a second, which at cruising speed is about the width of the
+ * shell itself.
  *
- * It used to be 2.4, which at cruising speed is seventy metres of escape - the
- * mine was a noise the player flew away from rather than a thing that went off.
- * One second is still enough to break away if the shell was read before
- * crossing it, which is the whole point of drawing the shell.
+ * It used to be 2.4, and a mine was a noise the player flew away from rather
+ * than a thing that went off. This is short enough that crossing the shell is
+ * the decision - break away the instant it is touched and the craft is clear;
+ * fly through it and the blast is already going up. Reading the shell before
+ * touching it is the whole point of drawing it a full second's flight wide.
  */
-export const DRONE_MINE_FUSE = 1
+export const DRONE_MINE_FUSE = 0.3
 
 /** Mines are bigger than a passing drone; a hazard that holds still has to be
  *  spotted from a distance rather than discovered by hitting it. */
