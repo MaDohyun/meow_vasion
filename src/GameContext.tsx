@@ -1319,12 +1319,30 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const publish = useCallback(() => setSnapshot(snapshotOf(runtime.current)), [])
 
   useEffect(() => {
+    /**
+     * Whether the keystroke belongs to a text field rather than to the craft.
+     *
+     * The flight controls are bare letters on `window`, which is right for a
+     * game that is played with no chrome - but the results screen now has a
+     * name box in it, and without this check typing a name would fly the ship
+     * and, worse, the space bar's `preventDefault` would refuse to type a
+     * space at all.
+     */
+    const editing = (target: EventTarget | null) => {
+      const element = target as HTMLElement | null
+      if (!element || typeof element.tagName !== 'string') return false
+      const tag = element.tagName.toLowerCase()
+      return tag === 'input' || tag === 'textarea' || tag === 'select' || element.isContentEditable === true
+    }
     const down = (event: KeyboardEvent) => {
+      if (editing(event.target)) return
       keys.current[event.code] = true
       if (event.key.length === 1) keys.current[`Key${event.key.toUpperCase()}`] = true
       if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.code)) event.preventDefault()
     }
     const up = (event: KeyboardEvent) => {
+      // Releases are always honoured, even from a text field: a key that went
+      // down on the canvas and came up in the box must not stay held.
       keys.current[event.code] = false
       if (event.key.length === 1) keys.current[`Key${event.key.toUpperCase()}`] = false
     }

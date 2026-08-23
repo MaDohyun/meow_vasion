@@ -1,4 +1,6 @@
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent as ReactFormEvent, type PointerEvent as ReactPointerEvent } from 'react'
+import { NAME_MAX_LENGTH, isNameAcceptable, makeEntry, type RankedEntry } from '../core/leaderboard'
+import { leaderboard, type LeaderboardSource } from '../net/leaderboard'
 import { useGame } from '../GameContext'
 import { LANGUAGES, LANGUAGE_LABELS, bulletinFor, formatMessage } from '../i18n'
 import { broadcastPhase, broadcastProgress } from '../core/broadcast'
@@ -311,9 +313,155 @@ function BossBriefing() {
   )
 }
 
+/**
+ * The ranking panel, opened from the results screen.
+ *
+ * It is a panel over the results rather than a section inside them because the
+ * results screen is already a full column of type on a phone, and because
+ * signing a run is a decision the player either makes or skips - putting a text
+ * box permanently in the middle of the screen turns "play again" into a form to
+ * dismiss.
+ *
+ * Four states, and the reason each one exists:
+ *
+ * - `form`   the name box, opened by the button. The board loads underneath it
+ *            at the same time, so the player can see what they are aiming at
+ *            while they type.
+ * - `sending` the submit is in flight. The button is disabled here because a
+ *            second press would write a second row, not retry the first.
+ * - `saved`  the record landed. The board is re-shown with the new row lit up,
+ *            and the form is gone: one run is one record.
+ * - `error`  the sheet refused or could not be reached. This is the one state
+ *            that keeps the form, because the record is genuinely not saved and
+ *            pressing again is the right thing to do.
+ */
+function RankingPanel({ onClose }: { onClose: () => void }) {
+  const { snapshot, t } = useGame()
+  const [name, setName] = useState(() => leaderboard.readStoredName())
+  const [stage, setStage] = useState<'form' | 'sending' | 'saved' | 'error'>('form')
+  const [entries, setEntries] = useState<RankedEntry[] | null>(null)
+  const [source, setSource] = useState<LeaderboardSource>('remote')
+  const [rank, setRank] = useState<number | null>(null)
+  const [notice, setNotice] = useState('')
+  /** The row to light up: the submitted record, matched by its timestamp. */
+  const [mine, setMine] = useState<number | null>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    void leaderboard.load().then((result) => {
+      if (cancelled) return
+      setEntries(result.entries)
+      setSource(result.source)
+    })
+    inputRef.current?.focus()
+    return () => { cancelled = true }
+  }, [])
+
+  const submit = async (event: ReactFormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (stage === 'sending') return
+    if (!isNameAcceptable(name)) {
+      setNotice(t.rankingNameRequired)
+      return
+    }
+    const entry = makeEntry({
+      name,
+      score: snapshot.score,
+      survivalTime: snapshot.survivalTime,
+      waveStage: snapshot.waveStage,
+      victory: snapshot.victory,
+      recordedAt: Date.now(),
+    })
+    setStage('sending')
+    setNotice('')
+    try {
+      const result = await leaderboard.submit(entry)
+      leaderboard.storeName(entry.name)
+      setEntries(result.entries)
+      setSource(result.source)
+      setRank(result.rank)
+      setMine(entry.recordedAt)
+      setStage('saved')
+    } catch {
+      setStage('error')
+      setNotice(t.rankingFailed)
+    }
+  }
+
+  const saved = stage === 'saved'
+  return (
+    <div className="overlay ranking-overlay" role="dialog" aria-modal="true" aria-label={t.rankingTitle}>
+      <div className="ranking-panel">
+        <span className="eyebrow">{t.rankingTitle}</span>
+        {!saved && <p className="ranking-lead">{t.rankingLead}</p>}
+        {saved && (
+          <p className="ranking-lead ranking-saved">
+            {rank === null ? t.rankingSavedOffBoard : t.rankingSaved(rank)}
+          </p>
+        )}
+
+        {!saved && (
+          <form className="ranking-form" onSubmit={submit}>
+            <label htmlFor="ranking-name">{t.rankingNameLabel}</label>
+            <input
+              id="ranking-name"
+              ref={inputRef}
+              type="text"
+              value={name}
+              maxLength={NAME_MAX_LENGTH * 2}
+              autoComplete="off"
+              placeholder={t.rankingNamePlaceholder}
+              onChange={(event) => setName(event.target.value)}
+              disabled={stage === 'sending'}
+            />
+            <button type="submit" className="primary-button" disabled={stage === 'sending'}>
+              {stage === 'sending' ? t.rankingSending : stage === 'error' ? t.rankingTryAgain : t.rankingSubmit}
+            </button>
+          </form>
+        )}
+
+        {notice && <p className="ranking-notice" role="alert">{notice}</p>}
+        {/* Only worth saying once the board is actually on screen, and only
+            when it is this browser's board rather than everyone's. */}
+        {entries !== null && source === 'local' && <p className="ranking-notice">{t.rankingLocalNote}</p>}
+
+        <div className="ranking-board">
+          <div className="ranking-row ranking-head">
+            <span>{t.rankingColRank}</span>
+            <span>{t.rankingColName}</span>
+            <span>{t.rankingColScore}</span>
+            <span>{t.rankingColTime}</span>
+          </div>
+          {entries === null && <p className="ranking-empty">{t.rankingLoading}</p>}
+          {entries !== null && entries.length === 0 && <p className="ranking-empty">{t.rankingEmpty}</p>}
+          {entries?.map((entry) => (
+            <div
+              key={`${entry.recordedAt}-${entry.name}-${entry.rank}`}
+              className="ranking-row"
+              data-mine={entry.recordedAt === mine}
+            >
+              <span>{entry.rank}</span>
+              <span className="ranking-name">
+                {entry.name}
+                {entry.recordedAt === mine && <i>{t.rankingYou}</i>}
+              </span>
+              <span>{Math.floor(entry.score).toLocaleString()}</span>
+              <span>{formatTime(entry.survivalTime)}</span>
+            </div>
+          ))}
+        </div>
+
+        <button type="button" className="ghost-button" onClick={onClose}>{t.rankingClose}</button>
+      </div>
+    </div>
+  )
+}
+
 function Results() {
   const { snapshot, restart, t } = useGame()
   const survived = snapshot.victory
+  const [ranking, setRanking] = useState(false)
   return (
     <div className={`overlay results-overlay ${survived ? 'victory' : 'defeat'}`}>
       <span className="eyebrow">{survived ? t.survivedTitle : t.collapsedTitle}</span>
@@ -329,7 +477,13 @@ function Results() {
         <span><b>{snapshot.absorbedCount}</b> {t.statAbsorbed}</span>
         <span><b>{snapshot.waveStage}</b> {t.statWave}</span>
       </div>
-      <button className="primary-button" onClick={restart}>{t.retry}</button>
+      {/* Replaying is still the primary action - the board is the detour, not
+          the destination - so it keeps the loud button and the first slot. */}
+      <div className="result-actions">
+        <button className="primary-button" onClick={restart}>{t.retry}</button>
+        <button type="button" className="ghost-button" onClick={() => setRanking(true)}>{t.rankingOpen}</button>
+      </div>
+      {ranking && <RankingPanel onClose={() => setRanking(false)} />}
     </div>
   )
 }
