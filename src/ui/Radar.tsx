@@ -4,21 +4,22 @@ import { isDroneMine } from '../core/enemies'
 import { projectToRadar } from './radarProjection'
 
 /**
- * Local contact radar.
+ * Threat radar.
  *
  * Drawn to a canvas from an animation frame rather than rendered as React
- * elements: there are dozens of contacts moving every frame, and re-rendering
- * that many nodes at speed costs far more than painting them.
+ * elements: contacts move every frame, and re-rendering that many nodes at
+ * speed costs far more than painting them.
  *
- * Colour carries the meaning, and the three groups map to the three decisions
- * the player is making at any moment:
+ * It used to plot every contact in the city - crowds, traffic, loose beam
+ * cargo, tankers - in four colours. On a 112px dial over a populated block
+ * that is several hundred dots, and the handful that could actually kill you
+ * were buried in them: the radar answered "what is around me" when the only
+ * question worth a glance mid-flight is "what is shooting at me". So it plots
+ * hostiles and nothing else. Everything it dropped is still visible out of
+ * the window, in far more detail than a dot could give.
  *
- *   green  - living. Absorb these; this is the score.
- *   amber  - inert. Cars and the like cannot be absorbed, so beaming one only
- *            hangs weight off the craft. Caution, not danger.
- *   orange - explosive. Inert too, but it detonates if it reaches you, so it
- *            sits between "junk" and "threat" and is drawn that way, pulsing.
- *   red    - hostile.
+ * The objective marker stays. It is not a contact - it is the arrow that says
+ * where the mission is, and without it a checkpoint run has no heading at all.
  *
  * Oriented to the craft's heading rather than north. The question being asked
  * is "what is in front of me", and a north-up radar makes the player do the
@@ -27,9 +28,6 @@ import { projectToRadar } from './radarProjection'
 
 const RADAR_RANGE = 170
 const COLORS = {
-  living: '#7cf08a',
-  inert: '#ffcf5c',
-  explosive: '#ff8a3d',
   hostile: '#ff4d6d',
   mine: '#ff2f5a',
   mission: '#fff06d',
@@ -79,26 +77,9 @@ export function Radar() {
         context.fillRect(px - radius, py - radius, radius * 2, radius * 2)
       }
 
-      for (const object of game.crowds.objects) {
-        if (!object.active) continue
-        dot(object.position.x, object.position.z, COLORS.living, object.kind === 'cat' ? 1.5 : 2)
-      }
-      for (const car of game.traffic.cars) {
-        if (!car.active) continue
-        dot(car.position.x, car.position.z, COLORS.inert, 2)
-      }
-      for (const object of game.beamObjects) {
-        if (!object.active) continue
-        dot(object.position.x, object.position.z, COLORS.inert, 2)
-      }
-      for (const hazard of game.hazards.objects) {
-        if (!hazard.active) continue
-        // Trucks share the pool but not the warning colour - they are freight,
-        // and painting them orange would undo the point of thinning the tankers
-        // out in the first place.
-        const truck = hazard.kind === 'truck'
-        dot(hazard.position.x, hazard.position.z, truck ? COLORS.inert : COLORS.explosive, truck ? 2 : 2.5)
-      }
+      // Hostiles only. Drones and fighters read a touch larger than they did
+      // now that nothing crowds them, because a lone 2px dot on an empty dial
+      // is easy to miss in the corner of an eye.
       for (const enemy of game.enemies.slots) {
         if (!enemy.active) continue
         const mine = isDroneMine(enemy)
@@ -106,7 +87,7 @@ export function Radar() {
           enemy.position.x,
           enemy.position.z,
           mine ? COLORS.mine : COLORS.hostile,
-          enemy.kind === 'boss' ? 4 : enemy.kind === 'drone' ? 2 : 2.5,
+          enemy.kind === 'boss' ? 5 : enemy.kind === 'drone' ? 2.5 : 3,
           mine,
         )
       }
@@ -157,10 +138,8 @@ export function Radar() {
     <div className="planet-radar">
       <div className="radar-orbit" />
       <canvas ref={canvas} width={112} height={112} className="radar-canvas" />
+      {/* One swatch, because there is one thing on the dial. */}
       <div className="radar-key">
-        <i style={{ background: COLORS.living }} />
-        <i style={{ background: COLORS.inert }} />
-        <i style={{ background: COLORS.explosive }} />
         <i style={{ background: COLORS.hostile }} />
       </div>
     </div>

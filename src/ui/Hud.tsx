@@ -6,6 +6,8 @@ import { LANGUAGES, LANGUAGE_LABELS, bulletinFor, formatMessage } from '../i18n'
 import { broadcastPhase, broadcastProgress } from '../core/broadcast'
 import { UPGRADE_DEFINITIONS, type UpgradeId } from '../core/upgrades'
 import { HowToPlay } from './HowToPlay'
+import { LifeHearts } from './LifeHearts'
+import { RichText, plainText } from './RichText'
 import { Radar } from './Radar'
 import { pilotFrameStyle } from '../render/pilotArt'
 import { getAudioVolumes, isLobbyMusicBlocked, onLobbyMusicBlockedChange, setBgmVolume, setSfxVolume, startLobbyMusic, stopLobbyMusic, unlockAudio } from '../audio'
@@ -100,6 +102,36 @@ function HoldButton({
       onPointerCancel={() => setMobileInput({ [field]: false, ...(field === 'laser' ? { laserContinuous: false } : {}) })}
       onPointerLeave={() => setMobileInput({ [field]: false, ...(field === 'laser' ? { laserContinuous: false } : {}) })}
     >{label}</button>
+  )
+}
+
+/**
+ * The control reminder, one line along the bottom edge.
+ *
+ * The field manual explains the controls once, in the lobby, and then the
+ * player never sees it again - so "which key was the beam" becomes a reason to
+ * quit back to the menu. One quiet line of text costs nothing to leave on
+ * screen and answers that without interrupting anything.
+ *
+ * Keyboard only: it is hidden on touch, where the buttons are already labelled
+ * and there is no key to name.
+ */
+function ControlStrip() {
+  const { t } = useGame()
+  const keys: [string, string][] = [
+    ['W/S', t.controlFly],
+    ['A/D', t.controlStrafe],
+    ['MOUSE', t.controlAim],
+    ['E', t.controlBeam],
+    ['Q', t.controlLaser],
+    ['SPACE', t.controlBoost],
+  ]
+  return (
+    <div className="control-strip">
+      {keys.map(([key, label]) => (
+        <span key={key}><b>{key}</b> {label}</span>
+      ))}
+    </div>
   )
 }
 
@@ -315,7 +347,7 @@ function BossBriefing() {
         <div className="briefing-panel">
           <span className="eyebrow">{t.briefingTitle}</span>
           {current.lines.map((line, index) => (
-            <p key={index}>{line}</p>
+            <p key={index}><RichText text={line} /></p>
           ))}
           {clickable && <span className="briefing-hint">{t.briefingContinue}</span>}
           {step === 0 && (
@@ -600,40 +632,56 @@ export function Hud() {
   return (
     <>
       <div className="hud" data-dazed={snapshot.daze > 0}>
-        {/* Two resources, two readouts. They used to be one - size was health -
-            and that made a hit rewind the best part of the game. */}
-        <section className={`time-card panel ${snapshot.healthRatio <= 0.25 ? 'time-warning' : ''}`}>
-          <span className="eyebrow">{t.mass}</span>
-          <strong className={snapshot.sizePulse > 0.01 ? 'mass-pulse' : ''}>×{snapshot.size.toFixed(2)}</strong>
-          <p>{t.massHint}</p>
-          <div className="health-bar" data-regen={snapshot.regenerating}>
-            {Array.from({ length: snapshot.healthMax }, (_, pip) => (
-              <i key={pip} data-state={snapshot.health >= pip + 1 ? 'full' : snapshot.health > pip ? 'part' : 'empty'} />
-            ))}
-          </div>
-          {snapshot.shieldMax > 0 && (
-            <div className="shield-bar" data-regen={snapshot.shieldRegenerating}>
-              {Array.from({ length: snapshot.shieldMax }, (_, pip) => (
-                <i key={pip} data-state={snapshot.shield >= pip + 1 ? 'full' : snapshot.shield > pip ? 'part' : 'empty'} />
-              ))}
-              <b>{t.shield} {snapshot.shield.toFixed(1)}/{snapshot.shieldMax}</b>
-            </div>
-          )}
-          <small>
-            {t.hull} {Math.ceil(snapshot.health)}/{snapshot.healthMax}
-            {snapshot.regenerating ? ` · ${t.repairing}` : ''} / {t.clock} {formatTime(snapshot.remainingTime)}
-          </small>
-        </section>
+        {/* Two resources, two corners. The left card is what keeps you alive;
+            the right card is what the run is scored on. They used to be one
+            card each way round - mass sat on the life card, which put the
+            number you are chasing next to the bar you are protecting and made
+            neither read. */}
+        <div className="hud-left">
+          <section className={`life-card panel ${snapshot.healthRatio <= 0.25 ? 'life-warning' : ''}`}>
+            <span className="eyebrow">{t.life}</span>
+            <LifeHearts
+              current={snapshot.health}
+              max={snapshot.healthMax}
+              regenerating={snapshot.regenerating}
+              label={t.life}
+            />
+            {snapshot.shieldMax > 0 && (
+              <div className="shield-bar" data-regen={snapshot.shieldRegenerating}>
+                {Array.from({ length: snapshot.shieldMax }, (_, pip) => (
+                  <i key={pip} data-state={snapshot.shield >= pip + 1 ? 'full' : snapshot.shield > pip ? 'part' : 'empty'} />
+                ))}
+                <b>{t.shield} {snapshot.shield.toFixed(1)}/{snapshot.shieldMax}</b>
+              </div>
+            )}
+            <small>
+              {t.hull} {Math.ceil(snapshot.health)}/{snapshot.healthMax}
+              {snapshot.regenerating ? ` · ${t.repairing}` : ''}
+            </small>
+            {/* Nothing on screen announces a building the way an enemy shot
+                announces itself, so the one hazard the player can fly into
+                blind gets said out loud, right under the hearts it costs. */}
+            <p className="hazard-note" title={plainText(t.hazardBuildings)}>
+              <i aria-hidden="true">!</i><RichText text={t.hazardBuildings} />
+            </p>
+          </section>
 
-        <MissionPanel />
+          <MissionPanel />
+        </div>
 
         <section className="score-card panel">
           <span className="eyebrow">{t.score}</span>
           <strong>{Math.floor(snapshot.score).toLocaleString()}</strong>
-          {/* The city clock, so "the run starts at six" is something the
-              player can read rather than something the sky merely implies. */}
-          <div><b>{t.wave} {snapshot.waveStage}</b> · {snapshot.daylightClock} {snapshot.daylightLabel}</div>
-          <time>{t.run} {formatTime(snapshot.survivalTime)}</time>
+          <div className="score-row" data-low={snapshot.remainingTime <= 30}>
+            <span>{t.clock}</span><b>{formatTime(snapshot.remainingTime)}</b>
+          </div>
+          {/* Mass rides with the score rather than with the hearts: it is the
+              multiplier the run is graded on, not a thing to defend. */}
+          <div className="score-row score-mass">
+            <span>{t.mass}</span>
+            <b className={snapshot.sizePulse > 0.01 ? 'mass-pulse' : ''}>×{snapshot.size.toFixed(2)}</b>
+          </div>
+          <p className="score-hint">{t.massHint}</p>
         </section>
 
         {/* The battleship's health, across the top of the screen.
@@ -679,13 +727,17 @@ export function Hud() {
           <div className="ballast-meter" data-warn={snapshot.overloadWarn > 0} data-critical={snapshot.overloadWarn >= 1}>
             <span>{t.drag} <b>{snapshot.overloadWarn >= 1 ? t.overloaded : `${Math.round(snapshot.cargoSlowdown * 100)}% ${t.slowdown}`}</b></span>
             <div><i style={{ width: `${Math.min(100, (snapshot.ballast / snapshot.ballastLimit) * 100)}%` }} /></div>
+            {/* The gauge shows how loaded you are; only the words say that
+                filling it drops the craft out of the sky. */}
+            <em className="meter-note"><RichText text={t.overloadHint} /></em>
           </div>
         </section>
+        <ControlStrip />
         <section className="pilot-card panel" data-expression={snapshot.pilotExpression} aria-label={`pilot expression ${snapshot.pilotExpression}`}>
           <div className="pilot-portrait" style={pilotFrameStyle(snapshot.pilotExpression)} />
           <div><span className="eyebrow">{t.pilotCam}</span><b>{snapshot.pilotExpression.toUpperCase()}</b></div>
         </section>
-        {snapshot.overloadWarn >= 1 && <div className="overload-alarm">{t.overloadAlarm}</div>}
+        {snapshot.overloadWarn >= 1 && <div className="overload-alarm"><RichText text={t.overloadAlarm} /></div>}
         {snapshot.waterAnchored && <div className="water-alarm">{t.waterAlarm}</div>}
         <BreakingNews />
         {snapshot.timeBonusPulse > 0 && <div className="time-bonus">+{snapshot.timeBonusAmount}s</div>}

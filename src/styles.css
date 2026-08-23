@@ -51,62 +51,73 @@ button { font: inherit; }
 
 .hud { position: fixed; inset: 0; z-index: 5; padding: 18px; pointer-events: none; filter: drop-shadow(3px 4px 0 rgba(22,17,40,.25)); }
 .panel { background: rgba(33, 27, 53, .91); border: 3px solid var(--cream); box-shadow: 5px 5px 0 var(--ink); }
-.eyebrow { display: block; color: var(--cyan); font-size: 9px; font-weight: 1000; letter-spacing: 2px; opacity: .88; }
+.eyebrow { display: block; color: var(--cyan); font-size: 13px; font-weight: 1000; letter-spacing: 2px; opacity: .88; }
 
-.time-card { position: absolute; top: 18px; left: 18px; width: 276px; padding: 12px 14px; border-top-color: var(--green); }
-.time-card strong { display: block; margin-top: 2px; color: var(--yellow); font-size: 32px; line-height: 1; letter-spacing: 1px; }
-.time-card p { margin: 6px 0 8px; color: var(--cream); font-size: 8px; font-weight: 900; }
-.time-card small { display: block; margin-top: 5px; color: var(--green); font-size: 8px; text-align: right; }
-.time-progress { height: 8px; overflow: hidden; background: #111426; border: 1px solid var(--cream); }
-.time-progress i { display: block; height: 100%; background: repeating-linear-gradient(90deg, var(--green) 0 10px, var(--cyan) 10px 13px); transition: width .15s linear; }
-.time-card.time-warning { border-color: var(--coral); box-shadow: 5px 5px 0 var(--coral); animation: time-warning .45s steps(2) infinite; }
-.time-card.time-warning strong { color: var(--coral); }
-@keyframes time-warning { 50% { filter: brightness(1.3); transform: translateX(2px); } }
+/* The left column is a stack rather than two pinned cards: the mission list
+   grows and shrinks with the run, and a magic top offset for the card above
+   it only ever holds while the text stays the size it was written at. */
+.hud-left { position: absolute; top: 18px; left: 18px; display: flex; flex-direction: column; gap: 10px; width: 366px; }
 
-.score-card { position: absolute; top: 18px; right: 18px; width: 226px; padding: 10px 13px; border-top-color: var(--yellow); }
-.score-card > strong { display: block; color: var(--yellow); font-size: 28px; line-height: 1.05; }
-.score-card > div { color: var(--cream); font-size: 9px; font-weight: 900; }
-.score-card > div b { color: var(--pink); font-size: 15px; }
-.score-card > div small { float: right; color: var(--cyan); }
-.score-card time { position: absolute; right: 12px; top: 9px; color: #fff; font-size: 15px; font-weight: 1000; }
+.life-card { width: 100%; padding: 12px 14px; border-top-color: var(--coral); }
+.life-card small { display: block; margin-top: 7px; color: var(--green); font-size: 12px; font-weight: 900; letter-spacing: .6px; text-align: right; }
+.life-card.life-warning { border-color: var(--coral); box-shadow: 5px 5px 0 var(--coral); animation: life-warning .45s steps(2) infinite; }
+@keyframes life-warning { 50% { filter: brightness(1.3); transform: translateX(2px); } }
 
-.mission-panel { position:absolute; top:164px; left:18px; width:310px; padding:10px 12px; border-left-color:var(--yellow); }
-.mission-panel .eyebrow { display:block; margin-bottom:7px; color:var(--yellow); font-size:9px; letter-spacing:2px; }
-.mission-panel > div { display:grid; grid-template-columns:14px minmax(0,1fr) auto; align-items:center; gap:5px; min-height:24px; color:var(--cream); border-top:1px dashed rgba(255,245,199,.24); font-size:8px; font-weight:900; }
-.mission-panel > div i { color:var(--yellow); font-style:normal; font-size:12px; }
-.mission-panel > div b { color:var(--cyan); font-size:9px; }
+/* Said in words because the city is scenery until it takes half a heart off
+   you. Sits under the hearts so the warning and its cost read together. */
+.hazard-note { display: flex; align-items: center; gap: 7px; margin: 9px 0 0; padding-top: 8px; border-top: 1px dashed rgba(255,245,199,.24); color: var(--cream); font-size: 12px; font-weight: 900; line-height: 1.4; }
+.hazard-note i { flex: 0 0 auto; display: flex; align-items: center; justify-content: center; width: 17px; height: 17px; color: var(--ink); background: var(--yellow); border: 2px solid var(--cream); font-size: 12px; font-style: normal; font-weight: 1000; }
+
+/* The clause a player must not skim past, in every panel that carries one. */
+.hud-warn { color: var(--coral); font-style: normal; font-weight: 1000; text-shadow: 0 0 8px rgba(255,95,124,.45); }
+
+.score-card { position: absolute; top: 18px; right: 18px; width: 300px; padding: 12px 14px; border-top-color: var(--yellow); }
+.score-card > strong { display: block; color: var(--yellow); font-size: 34px; line-height: 1.05; letter-spacing: 1px; }
+/* Score, clock and mass are the three numbers a run is read by, so they are
+   one label-and-value ladder rather than three differently shaped readouts. */
+.score-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-top: 7px; padding-top: 6px; border-top: 1px dashed rgba(255,245,199,.22); color: var(--cream); font-size: 13px; font-weight: 900; letter-spacing: .6px; }
+.score-row b { color: #fff; font-size: 21px; font-weight: 1000; letter-spacing: 1px; }
+.score-row[data-low="true"] b { color: var(--coral); animation: warning-pulse .5s steps(2) infinite; }
+.score-mass b { color: var(--green); }
+.score-hint { margin: 8px 0 0; color: var(--cream); font-size: 12px; font-weight: 900; line-height: 1.45; opacity: .92; }
+
+.mission-panel { width:100%; padding:11px 13px; border-left-color:var(--yellow); }
+.mission-panel .eyebrow { display:block; margin-bottom:9px; color:var(--yellow); font-size:16px; letter-spacing:2px; }
+.mission-panel > div { display:grid; grid-template-columns:20px minmax(0,1fr) auto; align-items:center; gap:7px; min-height:32px; color:var(--cream); border-top:1px dashed rgba(255,245,199,.24); font-size:15px; font-weight:900; line-height:1.4; }
+.mission-panel > div i { color:var(--yellow); font-style:normal; font-size:19px; }
+.mission-panel > div b { color:var(--cyan); font-size:16px; }
 .mission-panel > div[data-complete="true"] { color:rgba(183,255,99,.72); text-decoration:line-through; }
 .mission-panel > div[data-complete="true"] i,.mission-panel > div[data-complete="true"] b { color:var(--green); }
 .mission-panel.mission-pulse { animation:mission-pop .28s steps(3); }
-.tutorial-mission strong { display:block; color:var(--green); font-size:9px; line-height:1.55; }
-.tutorial-mission p { margin:7px 0 0; color:var(--cream); font-size:8px; }
-.tutorial-mission p b { color:var(--yellow); font-size:11px; }
-.mission-banner { padding:10px 18px; color:var(--ink); background:var(--yellow); border:4px solid var(--cream); box-shadow:6px 6px 0 var(--coral); font-size:12px; font-weight:1000; letter-spacing:1px; animation:mission-pop .28s steps(3); }
+.tutorial-mission strong { display:block; color:var(--green); font-size:17px; line-height:1.55; }
+.tutorial-mission p { margin:9px 0 0; color:var(--cream); font-size:15px; line-height:1.45; }
+.tutorial-mission p b { color:var(--yellow); font-size:19px; }
+.mission-banner { padding:10px 18px; color:var(--ink); background:var(--yellow); border:4px solid var(--cream); box-shadow:6px 6px 0 var(--coral); font-size:16px; font-weight:1000; letter-spacing:1px; animation:mission-pop .28s steps(3); }
 @keyframes mission-pop { from { opacity:0; transform:scale(.72) rotate(-2deg); } to { opacity:1; transform:scale(1); } }
 
 /* The battleship's health, above the wave banner. Deliberately the widest
    thing on screen: it is the only fight in the game with a health bar, and it
    should feel like the screen has been taken over. */
 .boss-bar { position: absolute; top: 7.2%; left: 50%; width: min(620px, 74vw); transform: translateX(-50%); text-align: center; }
-.boss-bar .eyebrow { display: block; margin-bottom: 4px; color: var(--cream); text-shadow: 2px 2px 0 rgba(22,17,40,.8); font-size: 9px; font-weight: 1000; letter-spacing: 2.4px; }
+.boss-bar .eyebrow { display: block; margin-bottom: 4px; color: var(--cream); text-shadow: 2px 2px 0 rgba(22,17,40,.8); font-size: 13px; font-weight: 1000; letter-spacing: 2.4px; }
 .boss-bar-track { height: 13px; background: rgba(22,17,40,.72); border: 3px solid var(--cream); box-shadow: 4px 4px 0 rgba(22,17,40,.55); }
 .boss-bar-track i { display: block; height: 100%; background: linear-gradient(90deg, #ff5f7c, #ffb45c); transition: width .12s linear; }
 
 .hud-center { position: absolute; top: 12.5%; left: 50%; display: flex; align-items: center; flex-direction: column; gap: 8px; transform: translateX(-50%); }
-.message { min-width: 250px; padding: 9px 19px; background: var(--cream); color: var(--ink); border: 4px solid var(--ink); box-shadow: 5px 5px 0 rgba(255,95,124,.75); font-size: 11px; font-weight: 1000; letter-spacing: 1.5px; text-align: center; animation: message-pop .18s steps(2); }
+.message { min-width: 250px; padding: 11px 22px; background: var(--cream); color: var(--ink); border: 4px solid var(--ink); box-shadow: 5px 5px 0 rgba(255,95,124,.75); font-size: 15px; font-weight: 1000; letter-spacing: 1.5px; text-align: center; animation: message-pop .18s steps(2); }
 .survive-banner { padding: 9px 18px; color: #fff; background: var(--coral); border: 3px solid #fff; box-shadow: 5px 5px 0 var(--ink); font-size: 18px; font-weight: 1000; letter-spacing: 2px; animation: warning-pulse .45s steps(2) infinite; }
 @keyframes message-pop { from { transform: scale(.72) rotate(-2deg); } to { transform: scale(1); } }
 @keyframes warning-pulse { 50% { transform: scale(1.045); filter: brightness(1.25); } }
 
-.systems-panel { position: absolute; right: 18px; bottom: 18px; width: 200px; padding: 10px 12px; border-right-color: var(--pink); }
+.systems-panel { position: absolute; right: 18px; bottom: 52px; width: 258px; padding: 11px 13px; border-right-color: var(--pink); }
 .shield-row { display: flex; align-items: center; gap: 5px; }
 .shield-row .eyebrow { margin-right: auto; }
 .shield-row i { color: #4b485c; font-size: 18px; font-style: normal; -webkit-text-stroke: 1px #b5aebd; }
 .shield-row i[data-active="true"] { color: var(--cyan); text-shadow: 0 0 9px #56f9f3; }
 .system-meter { margin-top: 6px; }
-.system-meter > span { display: flex; justify-content: space-between; color: var(--cream); font-size: 8px; font-weight: 1000; }
+.system-meter > span { display: flex; justify-content: space-between; color: var(--cream); font-size: 12px; font-weight: 1000; }
 .system-meter > span b { color: var(--yellow); }
-.system-meter > div { height: 7px; background: #111426; border: 1px solid var(--cream); }
+.system-meter > div { height: 9px; background: #111426; border: 1px solid var(--cream); }
 .system-meter > div i { display: block; height: 100%; background: repeating-linear-gradient(90deg,var(--yellow) 0 12px,#ff9d65 12px 15px); }
 .system-meter[data-active="true"] > span b { color: var(--cyan); animation: beam-blink .22s steps(1) infinite; }
 .system-meter[data-active="true"] > div i { background: repeating-linear-gradient(90deg,var(--cyan) 0 12px,#fff06d 12px 15px); }
@@ -114,29 +125,38 @@ button { font: inherit; }
    the turbo gauge's cyan/yellow - a fill level reads at a glance, the way a
    raw tonnage figure never did. */
 .ballast-meter { margin-top: 8px; }
-.ballast-meter > span { display: flex; justify-content: space-between; color: var(--cream); font-size: 8px; font-weight: 1000; }
+.ballast-meter > span { display: flex; justify-content: space-between; color: var(--cream); font-size: 12px; font-weight: 1000; }
 .ballast-meter > span b { color: var(--pink); }
-.ballast-meter > div { height: 7px; background: #111426; border: 1px solid var(--cream); }
+.ballast-meter > div { height: 9px; background: #111426; border: 1px solid var(--cream); }
 .ballast-meter > div i { display: block; height: 100%; background: var(--pink); transition: width .1s linear; }
 .ballast-meter[data-warn="true"] > span b { color: var(--coral); }
 .ballast-meter[data-warn="true"] > div i { background: var(--coral); }
 .ballast-meter[data-critical="true"] { animation: warning-pulse .35s steps(2) infinite; }
+/* The gauge says how loaded you are; this says what filling it costs. */
+.meter-note { display: block; margin-top: 4px; color: var(--cream); font-size: 11px; font-style: normal; font-weight: 900; letter-spacing: .4px; text-align: right; }
 @keyframes beam-blink { 50% { color: #fff; } }
 
 .time-bonus { position: absolute; top: 31%; left: 50%; padding: 10px 16px; color: var(--ink); background: var(--yellow); border: 3px solid var(--cream); box-shadow: 4px 4px 0 var(--ink); font-size: 18px; font-weight: 1000; letter-spacing: 1px; transform: translateX(-50%); animation: bonus-pop .8s steps(3) both; }
 @keyframes bonus-pop { from { opacity: 0; transform: translate(-50%, 18px) scale(.7); } 22% { opacity: 1; } to { opacity: 0; transform: translate(-50%, -36px) scale(1.06); } }
 
-.pilot-card { position:absolute; left:18px; bottom:18px; display:flex; align-items:center; gap:12px; width:230px; padding:10px; border-color:#ef8d96; background:rgba(58,50,76,.92); transform:rotate(-1deg); }
+/* One line, hard against the bottom edge, under everything else at the
+   bottom of the screen. Quiet on purpose: it is a reminder to glance at, not
+   a panel to read, so it is a rule of text rather than another card. */
+.control-strip { position:absolute; left:0; right:0; bottom:0; display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:6px 20px; padding:8px 16px; color:rgba(255,245,199,.86); background:rgba(20,16,32,.8); border-top:2px solid rgba(255,245,199,.3); font-size:13px; font-weight:900; letter-spacing:.6px; }
+.control-strip span { display:inline-flex; align-items:center; gap:6px; white-space:nowrap; }
+.control-strip b { padding:2px 7px; color:var(--ink); background:var(--yellow); border:2px solid rgba(255,245,199,.75); font-size:12px; font-weight:1000; letter-spacing:1px; }
+
+.pilot-card { position:absolute; left:18px; bottom:52px; display:flex; align-items:center; gap:12px; width:262px; padding:10px; border-color:#ef8d96; background:rgba(58,50,76,.92); transform:rotate(-1deg); }
 .pilot-portrait { flex:0 0 120px; width:120px; height:110px; border:2px solid var(--cream); background-repeat:no-repeat; image-rendering:pixelated; }
 .pilot-card > div:last-child { min-width:0; }
-.pilot-card b { display:block; margin-top:6px; overflow:hidden; color:#b9df78; font-size:12px; letter-spacing:.4px; text-overflow:ellipsis; }
+.pilot-card b { display:block; margin-top:6px; overflow:hidden; color:#b9df78; font-size:15px; letter-spacing:.4px; text-overflow:ellipsis; }
 .pilot-card[data-expression="surprise"], .pilot-card[data-expression="scream"] { animation:warning-pulse .3s steps(2) infinite; }
-.captive-rack { position: absolute; right: 18px; bottom: 89px; min-width: 126px; padding: 7px 10px; background: rgba(33,27,53,.85); border-bottom: 4px solid var(--green); text-align: right; }
+.captive-rack { position: absolute; right: 18px; bottom: 123px; min-width: 126px; padding: 7px 10px; background: rgba(33,27,53,.85); border-bottom: 4px solid var(--green); text-align: right; }
 .captive-rack .eyebrow { text-align: left; }
 .captive-rack i { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; margin-left: 3px; color: var(--pink); background: var(--cream); border: 2px solid var(--ink); border-radius: 50%; font-size: 13px; font-style: normal; }
-.captive-rack small { color: #9e99a8; font-size: 8px; }
+.captive-rack small { color: #9e99a8; font-size: 11px; }
 
-.planet-radar { position:absolute; left:274px; bottom:18px; width:112px; height:112px; overflow:hidden; border:3px solid var(--cream); border-radius:11px; background-color:#365e70; background-image:linear-gradient(rgba(255,245,199,.1) 1px,transparent 1px),linear-gradient(90deg,rgba(255,245,199,.1) 1px,transparent 1px),radial-gradient(circle at 50% 50%,#66977f 0 18%,#365e70 72%); background-size:22px 22px,22px 22px,100% 100%; box-shadow:5px 5px 0 var(--ink), inset 0 0 0 5px rgba(100,241,238,.14); }
+.planet-radar { position:absolute; left:306px; bottom:52px; width:112px; height:112px; overflow:hidden; border:3px solid var(--cream); border-radius:11px; background-color:#365e70; background-image:linear-gradient(rgba(255,245,199,.1) 1px,transparent 1px),linear-gradient(90deg,rgba(255,245,199,.1) 1px,transparent 1px),radial-gradient(circle at 50% 50%,#66977f 0 18%,#365e70 72%); background-size:22px 22px,22px 22px,100% 100%; box-shadow:5px 5px 0 var(--ink), inset 0 0 0 5px rgba(100,241,238,.14); }
 .radar-orbit { position:absolute; inset:12px; border:1px dashed rgba(255,245,199,.48); border-radius:4px; }
 .district-dot,.target-dot,.player-dot { position:absolute; z-index:2; width:5px; height:5px; border-radius:50%; transform:translate(-50%,-50%); }
 .district-dot { background:rgba(255,245,199,.62); }
@@ -153,8 +173,8 @@ button { font: inherit; }
 .reticle i:last-child::after { top:0; right:0; width:2px; height:8px; }
 
 .tutorial-e-prompt { position:absolute; display:flex; align-items:center; gap:6px; transform:translate(-50%, 24px); pointer-events:none; animation: warning-pulse .6s steps(2) infinite; }
-.tutorial-e-prompt b { display:flex; align-items:center; justify-content:center; width:26px; height:26px; background:var(--cream); color:var(--ink); border:2px solid var(--ink); border-radius:6px; font-size:14px; font-weight:1000; box-shadow:2px 2px 0 rgba(0,0,0,.4); }
-.tutorial-e-prompt span { padding:4px 9px; background:rgba(20,16,32,.88); color:var(--cream); border:2px solid var(--cream); font-size:9px; font-weight:1000; letter-spacing:.5px; white-space:nowrap; }
+.tutorial-e-prompt b { display:flex; align-items:center; justify-content:center; width:32px; height:32px; background:var(--cream); color:var(--ink); border:2px solid var(--ink); border-radius:6px; font-size:18px; font-weight:1000; box-shadow:2px 2px 0 rgba(0,0,0,.4); }
+.tutorial-e-prompt span { padding:5px 11px; background:rgba(20,16,32,.88); color:var(--cream); border:2px solid var(--cream); font-size:14px; font-weight:1000; letter-spacing:.5px; white-space:nowrap; }
 
 /* The general's tutorial briefing: a portrait plus a VN-style text box, sat
    where the old mission-banner/message pair used to (the same upper-center
@@ -167,18 +187,24 @@ button { font: inherit; }
    trap the mouse. */
 .briefing-touch { position:fixed; inset:0; z-index:8; pointer-events:none; }
 .briefing-touch.clickable { pointer-events:auto; cursor:pointer; }
-.briefing-box { position:absolute; left:50%; top:12.5%; display:flex; align-items:flex-start; gap:14px; width:min(700px,88vw); transform:translate(-50%, 0); animation:message-pop .18s steps(2); }
-.briefing-portrait { flex:0 0 auto; width:96px; height:96px; background:#11162a url(/boss/commander.png) center/cover no-repeat; border:4px solid var(--cream); box-shadow:5px 5px 0 var(--ink); }
-.briefing-panel { position:relative; flex:1 1 auto; min-width:0; padding:11px 16px; background:rgba(20,16,32,.94); border:4px solid var(--cream); box-shadow:6px 6px 0 var(--ink); }
+/* Sized and centred to the gap between the two HUD columns rather than to
+   the screen, so the general never talks over the hearts or the score. The
+   366px left stack and the 300px score card, plus their 18px insets and a
+   little air, are the 726px this subtracts. */
+.briefing-box { position:absolute; left:calc(50% + 33px); top:12.5%; display:flex; align-items:flex-start; gap:16px; width:min(760px,max(420px,calc(100vw - 726px)),94vw); transform:translate(-50%, 0); animation:message-pop .18s steps(2); }
+.briefing-portrait { flex:0 0 auto; width:112px; height:112px; background:#11162a url(/boss/commander.png) center/cover no-repeat; border:4px solid var(--cream); box-shadow:5px 5px 0 var(--ink); }
+.briefing-panel { position:relative; flex:1 1 auto; min-width:0; padding:13px 19px; background:rgba(20,16,32,.94); border:4px solid var(--cream); box-shadow:6px 6px 0 var(--ink); }
 .briefing-panel .eyebrow { display:block; margin-bottom:6px; }
-.briefing-panel p { margin:0 0 4px; color:var(--cream); font-size:11px; font-weight:900; line-height:1.5; }
+.briefing-panel p { margin:0 0 6px; color:var(--cream); font-size:16px; font-weight:900; line-height:1.6; }
 .briefing-panel p:last-of-type { margin-bottom:0; }
-.briefing-hint { display:block; margin-top:8px; color:var(--yellow); font-size:8px; font-weight:1000; letter-spacing:1px; text-align:right; animation: warning-pulse .8s steps(2) infinite; }
-.briefing-skip { position:absolute; top:-16px; right:-8px; padding:6px 10px; color:var(--ink); background:var(--yellow); border:3px solid var(--cream); box-shadow:3px 3px 0 var(--ink); font-size:9px; font-weight:1000; letter-spacing:1px; cursor:pointer; pointer-events:auto; }
+.briefing-hint { display:block; margin-top:9px; color:var(--yellow); font-size:12px; font-weight:1000; letter-spacing:1px; text-align:right; animation: warning-pulse .8s steps(2) infinite; }
+.briefing-skip { position:absolute; top:-16px; right:-8px; padding:6px 10px; color:var(--ink); background:var(--yellow); border:3px solid var(--cream); box-shadow:3px 3px 0 var(--ink); font-size:13px; font-weight:1000; letter-spacing:1px; cursor:pointer; pointer-events:auto; }
 @media (max-width: 760px) {
-  .briefing-box { bottom:auto; top:14px; width:calc(100vw - 28px); }
-  .briefing-portrait { width:64px; height:64px; }
-  .briefing-panel p { font-size:10px; }
+  .briefing-box { bottom:auto; left:50%; top:14px; gap:10px; width:calc(100vw - 28px); }
+  .briefing-portrait { width:72px; height:72px; }
+  .briefing-panel p { font-size:13px; line-height:1.55; }
+  .briefing-hint { font-size:11px; }
+  .briefing-skip { font-size:11px; }
 }
 
 .overlay { position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center; flex-direction: column; pointer-events: auto; }
@@ -243,7 +269,7 @@ button { font: inherit; }
    a gesture. One press is all it wants, and the cue disappears. */
 .lobby-sound-cue { z-index:2; display:flex; align-items:center; gap:8px; margin-top:13px; padding:8px 14px; color:var(--yellow); background:rgba(3,17,37,.72); border:2px solid rgba(255,224,95,.72); box-shadow:3px 3px 0 #031326; font-size:8px; font-weight:1000; letter-spacing:2.2px; cursor:pointer; }
 .lobby-sound-cue:hover { transform:translate(2px,2px); box-shadow:1px 1px 0 #031326; }
-.controls-card { z-index:2; display:flex; gap:13px; padding:9px 12px; color:var(--cream); background:rgba(41,35,63,.93); font-size:8px; }
+.controls-card { z-index:2; display:flex; gap:13px; padding:9px 12px; color:var(--cream); background:rgba(41,35,63,.93); font-size:12px; }
 .controls-card b { color:var(--yellow); }
 
 /* The field manual uses code-drawn diagrams over the same key art as the
@@ -255,33 +281,38 @@ button { font: inherit; }
 .howto-card::before,.howto-card::after { content:""; position:absolute; width:24px; height:24px; border-color:var(--yellow); }
 .howto-card::before { top:-1px; left:-1px; border-top:3px solid; border-left:3px solid; }
 .howto-card::after { right:-1px; bottom:-1px; border-right:3px solid; border-bottom:3px solid; }
-.howto-eyebrow { color:var(--cyan); font-size:7px; font-weight:1000; letter-spacing:3px; }
+.howto-eyebrow { color:var(--cyan); font-size:11px; font-weight:1000; letter-spacing:3px; }
 .howto-title { margin:0 0 2px; color:var(--cream); font-family:Impact,"Arial Black",sans-serif; font-size:clamp(28px,4vw,42px); letter-spacing:3px; text-shadow:3px 3px 0 rgba(255,103,81,.82); }
 .howto-panels { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; width:100%; }
 .howto-panel { position:relative; margin:0; padding:8px 9px 8px; overflow:hidden; background:linear-gradient(145deg,rgba(5,24,45,.96),rgba(8,34,54,.88)); border:1px solid rgba(100,241,238,.36); box-shadow:inset 0 1px 0 rgba(255,245,199,.08); }
 .howto-panel::after { content:""; position:absolute; top:0; left:0; width:42%; height:2px; background:linear-gradient(90deg,var(--yellow),transparent); }
 .howto-step { position:absolute; top:8px; left:8px; z-index:1; display:flex; align-items:center; justify-content:center; width:23px; height:23px; color:var(--ink); background:var(--yellow); border:1px solid var(--cream); font-size:10px; font-style:normal; font-weight:1000; }
 .howto-art { display:block; width:100%; height:auto; }
-.howto-panel figcaption { display:flex; flex-wrap:wrap; align-items:center; gap:7px; margin-top:4px; color:rgba(255,245,199,.82); font-size:8px; font-weight:1000; letter-spacing:1.1px; }
+.howto-panel figcaption { display:flex; flex-wrap:wrap; align-items:center; gap:7px; margin-top:4px; color:rgba(255,245,199,.82); font-size:12px; font-weight:1000; letter-spacing:1.1px; }
 .keycap-set { display:flex; gap:4px; }
-.keycap { padding:3px 7px; color:var(--cream); background:#142b43; border:1px solid rgba(100,241,238,.62); box-shadow:2px 2px 0 rgba(0,7,18,.74); font-size:9px; font-weight:1000; }
+.keycap { padding:3px 7px; color:var(--cream); background:#142b43; border:1px solid rgba(100,241,238,.62); box-shadow:2px 2px 0 rgba(0,7,18,.74); font-size:13px; font-weight:1000; }
 .keycap-wide { letter-spacing:2px; }
 .howto-divider { width:2px; height:15px; background:rgba(255,245,199,.35); }
 .howto-mouse { width:14px; height:19px; }
-.howto-keys { display:grid; grid-template-columns:repeat(6,auto); align-items:center; gap:0; width:100%; padding:9px 10px; color:rgba(255,245,199,.67); background:rgba(1,12,27,.72); border-top:1px solid rgba(100,241,238,.5); border-bottom:1px solid rgba(100,241,238,.24); font-size:7px; }
+.howto-keys { display:grid; grid-template-columns:repeat(6,auto); align-items:center; gap:0; width:100%; padding:9px 10px; color:rgba(255,245,199,.67); background:rgba(1,12,27,.72); border-top:1px solid rgba(100,241,238,.5); border-bottom:1px solid rgba(100,241,238,.24); font-size:11px; }
 .howto-keys span { padding:2px 9px; border-right:1px solid rgba(100,241,238,.22); text-align:center; white-space:nowrap; }
 .howto-keys span:last-child { border-right:0; }
-.howto-keys b { display:block; margin-bottom:3px; color:var(--cyan); font-size:9px; letter-spacing:1px; }
-.howto-card > .primary-button { margin-top:0; padding:9px 28px; background:linear-gradient(135deg,#ffe674,#ffc857); border:2px solid var(--cream); box-shadow:3px 3px 0 #031326; font-size:9px; }
+.howto-keys b { display:block; margin-bottom:3px; color:var(--cyan); font-size:13px; letter-spacing:1px; }
+/* The two ways a run ends that no diagram above can show: flying into the
+   city, and getting too heavy to stay over it. */
+.howto-hazards { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; width:100%; }
+.howto-hazards span { display:flex; align-items:center; gap:8px; padding:8px 11px; color:var(--cream); background:rgba(60,12,26,.5); border:1px solid rgba(255,95,124,.55); font-size:12px; font-weight:900; letter-spacing:.6px; line-height:1.4; }
+.howto-hazards i { flex:0 0 auto; display:flex; align-items:center; justify-content:center; width:19px; height:19px; color:var(--ink); background:var(--yellow); border:2px solid var(--cream); font-size:13px; font-style:normal; font-weight:1000; }
+.howto-card > .primary-button { margin-top:0; padding:11px 32px; background:linear-gradient(135deg,#ffe674,#ffc857); border:2px solid var(--cream); box-shadow:3px 3px 0 #031326; font-size:13px; }
 
 .results-overlay { color:var(--cream); background:linear-gradient(145deg,rgba(41,35,63,.98),rgba(15,24,42,.98)); }
 .results-overlay.victory { background:linear-gradient(145deg,rgba(40,47,74,.98),rgba(22,89,94,.98)); }
 .results-overlay h2 { max-width:90vw; margin:9px 0 8px; color:var(--yellow); font-family:Impact,sans-serif; font-size:clamp(48px,8vw,105px); font-style:italic; line-height:.88; text-align:center; text-shadow:6px 6px 0 var(--coral); }
 .final-score { color:#fff; font-size:clamp(52px,8vw,96px); line-height:1; }
-.results-overlay > p { margin:6px 0; font-size:10px; font-weight:900; letter-spacing:4px; }
+.results-overlay > p { margin:6px 0; font-size:14px; font-weight:900; letter-spacing:4px; }
 .result-stats { display:flex; gap:25px; margin:20px 0; }
-.result-stats span { min-width:90px; padding:10px; border-top:3px solid var(--cyan); font-size:9px; text-align:center; }
-.result-stats b { display:block; color:var(--yellow); font-size:23px; }
+.result-stats span { min-width:104px; padding:10px; border-top:3px solid var(--cyan); font-size:13px; text-align:center; }
+.result-stats b { display:block; color:var(--yellow); font-size:27px; }
 
 .mobile-controls { display:none; position:fixed; inset:0; z-index:7; pointer-events:none; }
 .joystick { position:absolute; left:26px; bottom:26px; width:112px; height:112px; border-radius:50%; border:4px solid rgba(255,245,199,.78); background:rgba(41,35,63,.48); pointer-events:auto; touch-action:none; }
@@ -327,50 +358,78 @@ button { font: inherit; }
 /* Upgrade cards. The run is frozen behind this, so it is allowed to own the
    screen the way the results overlay does. */
 .upgrade-overlay { gap:0; background:linear-gradient(150deg,rgba(24,20,44,.93),rgba(14,22,48,.95)); }
-.upgrade-overlay .eyebrow { color:var(--yellow); font-size:11px; letter-spacing:5px; }
-.upgrade-lead { margin:10px 0 22px; color:var(--cream); font-size:10px; font-weight:700; letter-spacing:.6px; }
-.upgrade-cards { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; width:min(92vw,780px); }
+.upgrade-overlay .eyebrow { color:var(--yellow); font-size:15px; letter-spacing:5px; }
+.upgrade-lead { margin:10px 0 22px; color:var(--cream); font-size:14px; font-weight:700; letter-spacing:.6px; }
+.upgrade-cards { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; width:min(94vw,900px); }
 .upgrade-card { position:relative; display:flex; flex-direction:column; min-height:150px; padding:15px 15px 13px; color:var(--cream); text-align:left; background:rgba(41,35,63,.9); border:3px solid rgba(255,245,199,.55); box-shadow:5px 5px 0 rgba(18,14,32,.7); cursor:pointer; transition:transform .08s steps(2),border-color .08s steps(2),background .08s steps(2); }
 .upgrade-card:hover, .upgrade-card:focus-visible { transform:translate(-2px,-2px); background:rgba(56,48,84,.94); border-color:var(--yellow); outline:none; }
 .upgrade-card i { position:absolute; top:-3px; right:-3px; display:flex; align-items:center; justify-content:center; width:24px; height:24px; color:var(--ink); background:var(--yellow); font-size:11px; font-style:normal; font-weight:1000; }
-.upgrade-card strong { display:block; margin-bottom:9px; color:var(--green); font-size:13px; letter-spacing:.8px; }
-.upgrade-card small { flex:1; font-size:9px; font-weight:700; line-height:1.7; }
-.upgrade-card b { margin-top:10px; padding-top:9px; color:var(--yellow); border-top:1px dashed rgba(255,245,199,.4); font-size:9px; letter-spacing:1px; }
-.upgrade-hint { margin-top:18px; color:rgba(255,245,199,.6); font-size:8px; font-weight:1000; letter-spacing:2px; }
+.upgrade-card strong { display:block; margin-bottom:9px; color:var(--green); font-size:17px; letter-spacing:.8px; }
+.upgrade-card small { flex:1; font-size:13px; font-weight:700; line-height:1.65; }
+.upgrade-card b { margin-top:10px; padding-top:9px; color:var(--yellow); border-top:1px dashed rgba(255,245,199,.4); font-size:13px; letter-spacing:1px; }
+.upgrade-hint { margin-top:18px; color:rgba(255,245,199,.6); font-size:12px; font-weight:1000; letter-spacing:2px; }
 
-/* Health pips. Discrete rather than a bar: five hits is a number the player can
-   hold in their head, and a smooth bar reads as a slow drain instead. */
-.health-bar { display:flex; gap:4px; margin:2px 0 6px; }
-.health-bar i { flex:1; height:9px; background:rgba(255,245,199,.14); border:2px solid rgba(255,245,199,.4); }
-.health-bar i[data-state="full"] { background:var(--green); border-color:var(--cream); }
-.health-bar i[data-state="part"] { background:linear-gradient(90deg,var(--green) 50%,rgba(255,245,199,.14) 50%); border-color:var(--cream); }
-.health-bar[data-regen="true"] i[data-state="empty"], .health-bar[data-regen="true"] i[data-state="part"] { animation:warning-pulse 1s steps(2) infinite; }
-.shield-bar { position:relative; display:flex; gap:3px; margin:3px 0 7px; padding-right:62px; }
-.shield-bar i { flex:1; height:7px; background:rgba(100,241,238,.12); border:1px solid rgba(100,241,238,.45); }
-.shield-bar i[data-state="full"] { background:var(--green); border-color:var(--cyan); }
-.shield-bar i[data-state="part"] { background:linear-gradient(90deg,var(--green) 50%,rgba(100,241,238,.12) 50%); }
-.shield-bar b { position:absolute; right:0; top:-1px; color:var(--green); font-size:7px; }
+/* Lives, as pixel hearts. Five green blocks in the mass card's own colour read
+   as "how full is this bar?"; a heart reads as "how many hits do I have left?"
+   before anyone gets to the label. Discrete either way - five is a number a
+   player can hold in their head, and a smooth bar reads as a slow drain. */
+.life-hearts { display:flex; align-items:flex-end; gap:6px; margin:6px 0 2px; }
+.pixel-heart { width:28px; height:auto; shape-rendering:crispEdges; filter:drop-shadow(2px 2px 0 rgba(22,17,40,.55)); }
+.pixel-heart .heart-shell { fill:rgba(255,245,199,.16); }
+.pixel-heart .heart-core { fill:var(--coral); }
+.pixel-heart[data-state="empty"] .heart-shell { fill:rgba(255,245,199,.1); }
+/* Only the hearts that are coming back move, so the row does not shimmer. */
+.life-hearts[data-regen="true"] .pixel-heart:not([data-state="full"]) { animation:warning-pulse 1s steps(2) infinite; }
+.life-hearts[data-critical="true"] .pixel-heart[data-state="full"],
+.life-hearts[data-critical="true"] .pixel-heart[data-state="part"] { animation:warning-pulse .5s steps(2) infinite; }
+
+/* Shields are cyan rather than green so they cannot be mistaken for the
+   life row they sit under - two resources, two colours. */
+.shield-bar { position:relative; display:flex; gap:3px; margin:9px 0 4px; padding-right:82px; }
+.shield-bar i { flex:1; height:9px; background:rgba(100,241,238,.12); border:1px solid rgba(100,241,238,.45); }
+.shield-bar i[data-state="full"] { background:var(--cyan); border-color:var(--cream); }
+.shield-bar i[data-state="part"] { background:linear-gradient(90deg,var(--cyan) 50%,rgba(100,241,238,.12) 50%); border-color:var(--cream); }
+.shield-bar b { position:absolute; right:0; top:-3px; color:var(--cyan); font-size:11px; font-weight:900; }
 .shield-bar[data-regen="true"] i[data-state="empty"],.shield-bar[data-regen="true"] i[data-state="part"] { animation:warning-pulse 1s steps(2) infinite; }
 
 /* Static on purpose - the pulse used to swap out the centring transform for
    a scale each keyframe step, so the box snapped half its own width sideways
    twice a second instead of pulsing in place. A message worth reading is
    worth holding still. */
-.overload-alarm { position:absolute; left:50%; top:24%; padding:9px 18px; color:var(--cream); background:rgba(196,44,64,.94); border:3px solid var(--cream); box-shadow:5px 5px 0 rgba(22,17,40,.6); font-size:11px; font-weight:1000; letter-spacing:1.6px; white-space:nowrap; transform:translateX(-50%); }
-.water-alarm { position:absolute; left:50%; top:32%; padding:9px 18px; color:var(--cream); background:rgba(38,110,168,.94); border:3px solid var(--cream); box-shadow:5px 5px 0 rgba(22,17,40,.6); font-size:11px; font-weight:1000; letter-spacing:1.6px; white-space:nowrap; transform:translateX(-50%); }
+.overload-alarm { position:absolute; left:50%; top:24%; padding:11px 22px; color:var(--cream); background:rgba(196,44,64,.94); border:3px solid var(--cream); box-shadow:5px 5px 0 rgba(22,17,40,.6); font-size:15px; font-weight:1000; letter-spacing:1.4px; white-space:nowrap; transform:translateX(-50%); }
+/* The alarm is already red, so the emphasised clause goes bright instead. */
+.overload-alarm .hud-warn { color:var(--yellow); text-shadow:0 0 8px rgba(255,224,95,.5); }
+.water-alarm { position:absolute; left:50%; top:32%; padding:11px 22px; color:var(--cream); background:rgba(38,110,168,.94); border:3px solid var(--cream); box-shadow:5px 5px 0 rgba(22,17,40,.6); font-size:15px; font-weight:1000; letter-spacing:1.4px; white-space:nowrap; transform:translateX(-50%); }
 
 @media (pointer: coarse), (max-width: 760px) {
   .mobile-controls { display:block; }
-  .time-card { top:8px; left:8px; width:190px; padding:7px 8px; }
-  .time-card strong { font-size:22px; }
-  .time-card p { margin:3px 0 5px; font-size:7px; }
-  .score-card { top:8px; right:8px; width:142px; padding:7px; }
-  .score-card > strong { font-size:19px; }
-  .score-card > div, .score-card time { font-size:7px; }
-  .score-card time { top:6px; right:7px; }
-  .mission-panel { top:116px; left:8px; width:min(310px,76vw); padding:7px 8px; }
-  .mission-panel > div { min-height:20px; font-size:7px; }
+  .hud-left { top:8px; left:8px; gap:7px; width:min(206px,52vw); }
+  .life-card { padding:7px 9px; }
+  .life-card small { margin-top:5px; font-size:10px; }
+  .life-hearts { gap:4px; margin:4px 0 1px; }
+  .pixel-heart { width:20px; }
+  .shield-bar { margin:6px 0 3px; padding-right:60px; }
+  .shield-bar b { font-size:9px; }
+  .hazard-note { gap:5px; margin-top:6px; padding-top:6px; font-size:10px; }
+  .hazard-note i { width:14px; height:14px; font-size:10px; }
+  .score-card { top:8px; right:8px; width:min(156px,40vw); padding:7px 9px; }
+  .score-card > strong { font-size:24px; }
+  .score-row { margin-top:5px; padding-top:4px; font-size:10px; }
+  .score-row b { font-size:15px; }
+  .score-hint { display:none; }
+  .mission-panel { padding:8px 9px; }
+  .mission-panel .eyebrow { margin-bottom:6px; font-size:13px; }
+  .mission-panel > div { grid-template-columns:16px minmax(0,1fr) auto; min-height:25px; font-size:12px; }
+  .mission-panel > div i { font-size:15px; }
+  .mission-panel > div b { font-size:13px; }
+  .tutorial-mission strong { font-size:13px; }
+  .tutorial-mission p { font-size:12px; }
+  .tutorial-mission p b { font-size:15px; }
   .systems-panel { display:none; }
+  .control-strip { display:none; }
+  /* No strip to sit above, so the pilot card goes back to the bottom edge,
+     at the width it had before the desktop cards grew. */
+  .pilot-card { bottom:18px; width:230px; }
   .captive-rack { display:none; }
   .planet-radar { display:none; }
   .boss-bar { top:11%; width:88vw; }
@@ -387,7 +446,9 @@ button { font: inherit; }
   .breaking-head strong { font-size:10px; }
   .breaking-body p { margin-top:7px; font-size:9px; line-height:1.6; }
   .hud-center { top:18%; }
-  .message { min-width:190px; padding:6px 9px; font-size:8px; }
+  .message { min-width:190px; padding:7px 11px; font-size:12px; }
+  .overload-alarm, .water-alarm { padding:8px 14px; font-size:12px; letter-spacing:.8px; white-space:normal; text-align:center; max-width:92vw; }
+  .mission-banner { padding:8px 14px; font-size:13px; }
   .controls-card { max-width:90vw; flex-wrap:wrap; justify-content:center; }
   .result-stats { flex-wrap:wrap; justify-content:center; gap:8px; max-width:90vw; }
 }
@@ -407,9 +468,12 @@ button { font: inherit; }
   .howto-title { font-size:28px; }
   .howto-panels { grid-template-columns:minmax(0,1fr); gap:8px; }
   .howto-panel { padding:7px 8px; }
-  .howto-keys { grid-template-columns:repeat(2,minmax(0,1fr)); max-width:none; padding:7px; }
+  .howto-keys { grid-template-columns:repeat(2,minmax(0,1fr)); max-width:none; padding:7px; font-size:10px; }
   .howto-keys span { border-right:0; border-bottom:1px solid rgba(100,241,238,.16); }
   .howto-keys span:nth-last-child(-n+2) { border-bottom:0; }
+  .howto-keys b { font-size:12px; }
+  .howto-hazards { grid-template-columns:minmax(0,1fr); }
+  .howto-hazards span { font-size:11px; }
   .intro-overlay { --lobby-edge:10px; background-image:url('/lobby/meowvasion-lobby-mobile.png'); background-position:center; }
   .intro-overlay::before { background:linear-gradient(180deg,rgba(1,8,18,.28) 0%,transparent 24%,rgba(1,8,18,.6) 34%,rgba(1,8,18,.26) 59%,rgba(1,8,18,.2) 100%); }
   .lobby-command-bar { top:8px; height:30px; padding:0 8px; font-size:6px; letter-spacing:1.4px; }
@@ -435,8 +499,9 @@ button { font: inherit; }
 }
 
 @media (max-width: 980px) and (min-width: 761px) {
-  .time-card { width:238px; }
-  .score-card { width:190px; }
+  .hud-left { width:308px; }
+  .score-card { width:224px; }
+  .pixel-heart { width:24px; }
 }
 
 .quality-picker { z-index:2; display:flex; align-items:center; gap:8px; margin-top:14px; padding:7px 12px; background:rgba(20,26,48,.82); border:3px solid var(--cream); box-shadow:4px 4px 0 var(--ink); }
@@ -468,7 +533,7 @@ button { font: inherit; }
 .volume-control { display:grid; grid-template-columns:minmax(120px, 1fr) 42px; align-items:center; gap:10px; width:min(58vw,250px); }
 .volume-control input { width:100%; accent-color:var(--cyan); cursor:pointer; }
 .volume-control output { color:var(--cyan); font-size:10px; font-weight:1000; letter-spacing:1px; text-align:right; }
-.result-lead { margin:0 0 10px; font-size:11px; font-weight:1000; letter-spacing:2px; opacity:.92; }
+.result-lead { margin:0 0 10px; font-size:15px; font-weight:1000; letter-spacing:2px; opacity:.92; }
 .results-overlay.defeat h2 { color:var(--coral); text-shadow:6px 6px 0 var(--ink); }
 .results-overlay.defeat .final-score { color:var(--cream); }
 

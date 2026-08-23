@@ -1,4 +1,5 @@
 import { useGame } from '../GameContext'
+import { RichText } from './RichText'
 
 /**
  * The lobby's control briefing.
@@ -208,6 +209,13 @@ export function HowToPlay({ onClose }: { onClose: () => void }) {
           <span><b>E</b> {t.controlBeam}</span>
           <span><b>Q</b> {t.controlLaser} · {t.hold}</span>
           <span><b>SPACE</b> {t.controlBoost}</span>
+        </div>
+        {/* The two ways a run ends that no panel above can draw: flying into
+            the city, and getting too heavy to stay above it. Both belong in
+            the manual, because both are learned the expensive way otherwise. */}
+        <div className="howto-hazards">
+          <span><i aria-hidden="true">!</i><RichText text={t.hazardBuildings} /></span>
+          <span><i aria-hidden="true">!</i><RichText text={t.overloadAlarm} /></span>
         </div>
         <button className="primary-button" onClick={onClose}>{t.close}</button>
       </div>
