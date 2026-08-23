@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { beamProfile, isInsideBeam, type BeamField, type BeamObject } from '../src/core/beam'
+import { beamLiftScale, beamProfile, isInsideBeam, stepBeamObjects, type BeamField, type BeamObject } from '../src/core/beam'
+import { WORLD_PROP_MASS } from '../src/core/worldProps'
 import { createDroneState, stepDrone, type DroneInput } from '../src/core/drone'
 import { sizeProfile, SIZE_MAX, SIZE_START } from '../src/core/size'
 
@@ -43,6 +44,67 @@ describe('beam ballast is where the speed penalty lives', () => {
     for (let frame = 0; frame < 8 * 60; frame += 1) state = stepDrone(state, INPUT, 1 / 60, 0, UPGRADES)
     expect(loaded).toBeLessThan(clean * 0.75)
     expect(state.speed).toBeGreaterThan(clean * 0.98)
+  })
+
+  it('charges nothing for a load the beam cannot move at all', () => {
+    // The rule: weight the beam cannot shift is not carried, so it must not be
+    // billed either. Ballast and the HUD load count both read `tether > 0.02`
+    // (see beamBallast and loadedCarCount in GameContext), and tether only
+    // grows inside the lifting branch - so this pins the property at the
+    // source rather than at the two places that sum it.
+    const mast = (mass: number): BeamObject => ({
+      id: `mast:${mass}`,
+      kind: 'power-pylon',
+      mass,
+      color: '#59616a',
+      position: { x: 0, y: 0, z: 0 },
+      velocity: { x: 0, y: 0, z: 0 },
+      rotation: { x: 0, y: 0, z: 0 },
+      angularVelocity: { x: 0, y: 0, z: 0 },
+      active: true,
+      inBeam: false,
+      tether: 0,
+      playerTouched: false,
+      destroying: false,
+      destroyTimer: 0,
+      explosionPending: false,
+      absorbing: false,
+      absorbTimer: 0,
+      freePhysics: false,
+      worldProp: {
+        id: `mast:${mass}`,
+        kind: 'power-pylon',
+        position: { x: 0, y: 0, z: 0 },
+        rotation: 0,
+        scale: { x: 1, y: 1, z: 1 },
+        variant: 0,
+      },
+    })
+    const hover = (object: BeamObject, gripStrength: number) => {
+      const beam: BeamField = {
+        active: true,
+        boosting: false,
+        position: { x: 0, y: 6, z: 0 },
+        velocity: { x: 0, y: 0, z: 0 },
+        gripStrength,
+      }
+      for (let frame = 0; frame < 180; frame += 1) stepBeamObjects([object], beam, 1 / 60)
+      return object
+    }
+
+    // Three seconds of beam on a pylon two rungs above the craft's strength.
+    const blocked = hover(mast(WORLD_PROP_MASS['power-pylon']), 3)
+    expect(beamLiftScale(blocked.mass, 3)).toBe(0)
+    // Caught by the cone - the beam is playing over it, which is what the
+    // player sees - but not moved, and so not weighed.
+    expect(blocked.inBeam).toBe(true)
+    expect(blocked.tether).toBe(0)
+    expect(blocked.position.y).toBe(0)
+
+    // One rung up, the same pylon is a real load and is charged for.
+    const carried = hover(mast(WORLD_PROP_MASS['power-pylon']), 5)
+    expect(carried.tether).toBeGreaterThan(0.02)
+    expect(carried.position.y).toBeGreaterThan(1)
   })
 
   it('keeps beam radius independent of craft growth', () => {
