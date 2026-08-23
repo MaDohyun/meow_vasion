@@ -1044,6 +1044,7 @@ function absorbBeamObject(game: GameRuntime, object: BeamObject) {
   if (object.kind === 'car') game.destroyedCars.add(object.id)
   if (object.kind === 'car') reportMissionEvent(game, { type: 'destroy-car' })
   if (object.kind === 'truck') reportMissionEvent(game, { type: 'destroy-truck' })
+  if (object.kind === 'rooftop-structure') reportMissionEvent(game, { type: 'absorb-rooftop-structure' })
   if (object.id.startsWith('enemy:')) {
     const enemy = game.enemies.slots.find((candidate) => candidate.id === object.id)
     if (enemy) {

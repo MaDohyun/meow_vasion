@@ -22,6 +22,7 @@ function completeEvent(id: MissionQuestId, target: number) {
   if (id === 'destroy-comms') return { type: 'destroy-comms', amount: target } as const
   if (id === 'destroy-drones') return { type: 'destroy-enemy', kind: 'drone', amount: target } as const
   if (id === 'destroy-fighters') return { type: 'destroy-enemy', kind: 'fighter', amount: target } as const
+  if (id === 'absorb-rooftop-structures') return { type: 'absorb-rooftop-structure', amount: target } as const
   if (id === 'air-checkpoints') return { type: 'pass-checkpoint', amount: target } as const
   throw new Error(`No stage-one/two event for ${id}`)
 }
@@ -46,6 +47,7 @@ describe('three-stage reconnaissance missions', () => {
     expect(state.quests).toHaveLength(3)
     expect(new Set(state.quests.map((quest) => quest.id)).size).toBe(3)
     for (const quest of state.quests) expect(MISSION_ONE_POOL).toContain(quest.id)
+    expect(state.quests.filter((quest) => quest.id === 'pass-mystery-circles')).toHaveLength(1)
   })
 
   it('runs all three quests in parallel and gates the next mission on all three', () => {
@@ -62,6 +64,7 @@ describe('three-stage reconnaissance missions', () => {
     expect(state.quests).toHaveLength(3)
     expect(new Set(state.quests.map((quest) => quest.id)).size).toBe(3)
     for (const quest of state.quests) expect(MISSION_TWO_POOL).toContain(quest.id)
+    expect(state.quests.some((quest) => quest.id === 'pass-mystery-circles')).toBe(false)
     expect(state.quests.filter((quest) => quest.id === 'destroy-gas-station' || quest.id === 'destroy-comms').length).toBeLessThanOrEqual(1)
   })
 
@@ -79,7 +82,7 @@ describe('three-stage reconnaissance missions', () => {
     expect(state.stage).toBe(4)
   })
 
-  it('counts only different circles and uses the stage-specific target', () => {
+  it('counts only different circles in mission one and removes the objective from mission two', () => {
     const state = createMissionState(41)
     startMissionOne(state, 0)
     const first = state.quests.find((quest) => quest.id === 'pass-mystery-circles')!
@@ -93,8 +96,8 @@ describe('three-stage reconnaissance missions', () => {
 
     // Complete the other two stage-one quests to open mission two.
     for (const quest of [...state.quests]) if (!quest.complete) completeQuest(state, quest, 20)
-    const second = state.quests.find((quest) => quest.id === 'pass-mystery-circles')!
-    expect(second.target).toBe(5)
+    expect(state.stage).toBe(2)
+    expect(state.quests.some((quest) => quest.id === 'pass-mystery-circles')).toBe(false)
   })
 
   it('randomizes the quest order in missions one and two', () => {
@@ -109,11 +112,32 @@ describe('three-stage reconnaissance missions', () => {
 
       for (const quest of [...state.quests]) completeQuest(state, quest, 20)
       expect(state.stage).toBe(2)
-      expect(state.quests.some((quest) => quest.id === 'pass-mystery-circles')).toBe(true)
+      expect(state.quests.some((quest) => quest.id === 'pass-mystery-circles')).toBe(false)
       secondStageSlots.add(state.quests[0]!.id)
     }
 
     expect(firstStageSlots.size).toBeGreaterThan(1)
     expect(secondStageSlots.size).toBeGreaterThan(1)
+  })
+
+  it('offers and tracks absorption of five rooftop structures in mission two', () => {
+    let selectedState: ReturnType<typeof createMissionState> | null = null
+    for (let seed = 1; seed <= 100 && !selectedState; seed += 1) {
+      const state = createMissionState(seed)
+      startMissionOne(state, 0)
+      for (const quest of [...state.quests]) completeQuest(state, quest, 20)
+      if (state.quests.some((quest) => quest.id === 'absorb-rooftop-structures')) selectedState = state
+    }
+
+    expect(MISSION_TWO_POOL).toContain('absorb-rooftop-structures')
+    expect(selectedState).not.toBeNull()
+    const quest = selectedState!.quests.find((candidate) => candidate.id === 'absorb-rooftop-structures')!
+    expect(quest.target).toBe(5)
+    recordMissionEvent(selectedState!, { type: 'absorb-rooftop-structure', amount: 4 }, 30)
+    expect(quest.progress).toBe(4)
+    expect(quest.complete).toBe(false)
+    recordMissionEvent(selectedState!, { type: 'absorb-rooftop-structure' }, 31)
+    expect(quest.progress).toBe(5)
+    expect(quest.complete).toBe(true)
   })
 })

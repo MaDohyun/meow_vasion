@@ -20,6 +20,7 @@ export type MissionQuestId =
   | 'destroy-comms'
   | 'destroy-drones'
   | 'destroy-fighters'
+  | 'absorb-rooftop-structures'
   | 'pass-mystery-circles'
   | 'air-checkpoints'
   | 'destroy-battleship'
@@ -55,6 +56,7 @@ export type MissionEvent =
   | { type: 'destroy-gas-station'; amount?: number }
   | { type: 'destroy-comms'; amount?: number }
   | { type: 'destroy-enemy'; kind: 'drone' | 'fighter' | 'boss' | string; amount?: number }
+  | { type: 'absorb-rooftop-structure'; amount?: number }
   | { type: 'pass-mystery-circle'; id: string }
   | { type: 'pass-checkpoint'; amount?: number }
 
@@ -73,7 +75,7 @@ export const MISSION_TWO_POOL: readonly MissionQuestId[] = [
   'destroy-comms',
   'destroy-drones',
   'destroy-fighters',
-  'pass-mystery-circles',
+  'absorb-rooftop-structures',
   'air-checkpoints',
 ]
 
@@ -100,6 +102,7 @@ export const MISSION_TARGETS: Record<MissionQuestId, number> = {
   'destroy-comms': 1,
   'destroy-drones': 10,
   'destroy-fighters': 5,
+  'absorb-rooftop-structures': 5,
   'pass-mystery-circles': 3,
   'air-checkpoints': 3,
   'destroy-battleship': 1,
@@ -134,11 +137,9 @@ export function pickDistinctMissionQuests(
   return picked
 }
 
-function makeQuest(id: MissionQuestId, stageStartedAt: number, stage: 1 | 2 | 3): MissionQuest {
+function makeQuest(id: MissionQuestId, stageStartedAt: number): MissionQuest {
   const target = id === 'survive-final'
     ? Math.max(0, MISSION_RUN_SECONDS - stageStartedAt)
-    : id === 'pass-mystery-circles'
-      ? stage === 2 ? 5 : 3
     : MISSION_TARGETS[id]
   return { id, progress: 0, target, complete: false }
 }
@@ -161,14 +162,16 @@ function assignStage(state: MissionState, stage: 1 | 2 | 3, elapsed: number) {
   const pool = stage === 1 ? MISSION_ONE_POOL : MISSION_TWO_POOL
   const ids = stage === 3
     ? [...MISSION_THREE_QUESTS]
-    : [
-        'pass-mystery-circles' as const,
-        ...pickDistinctMissionQuests(state, pool.filter((id) => id !== 'pass-mystery-circles'), 2),
-      ]
+    : stage === 1
+      ? [
+          'pass-mystery-circles' as const,
+          ...pickDistinctMissionQuests(state, pool.filter((id) => id !== 'pass-mystery-circles'), 2),
+        ]
+      : pickDistinctMissionQuests(state, pool, 3)
 
-  // Keep the circle objective available in stages 1/2, but randomize its
-  // position so the first HUD slot does not always show the same quest.
-  if (stage !== 3) {
+  // Mission one always contains the circle objective, but its HUD position
+  // changes so the first slot does not always show the same quest.
+  if (stage === 1) {
     for (let index = ids.length - 1; index > 0; index -= 1) {
       const swapIndex = Math.floor(random(state) * (index + 1))
       const current = ids[index]!
@@ -176,7 +179,7 @@ function assignStage(state: MissionState, stage: 1 | 2 | 3, elapsed: number) {
       ids[swapIndex] = current
     }
   }
-  state.quests = ids.map((id) => makeQuest(id, elapsed, stage))
+  state.quests = ids.map((id) => makeQuest(id, elapsed))
   state.mysteryCircleIds = []
   state.completedQuest = null
   state.revision += 1
@@ -224,6 +227,7 @@ export function recordMissionEvent(state: MissionState, event: MissionEvent, ela
   else if (event.type === 'ruin-building') changed = addProgress(state, 'ruin-buildings', amount)
   else if (event.type === 'destroy-gas-station') changed = addProgress(state, 'destroy-gas-station', amount)
   else if (event.type === 'destroy-comms') changed = addProgress(state, 'destroy-comms', amount)
+  else if (event.type === 'absorb-rooftop-structure') changed = addProgress(state, 'absorb-rooftop-structures', amount)
   else if (event.type === 'pass-mystery-circle') {
     const quest = state.quests.find((candidate) => candidate.id === 'pass-mystery-circles')
     if (quest && !quest.complete && !state.mysteryCircleIds.includes(event.id)) {
