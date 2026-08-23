@@ -42,6 +42,7 @@ import {
   type LaserProjectile,
   type LaserSphereTarget,
 } from './core/laser'
+import { createFireballPool, stepFireballs, triggerFireball, type Fireball } from './core/fireball'
 import { requestedPilotExpression, updatePilotExpression, type PilotExpression } from './core/pilot'
 import {
   type ActiveWorld,
@@ -147,6 +148,7 @@ export type GameRuntime = {
   laserShotsFired: number
   laserProjectiles: LaserProjectile[]
   laserBursts: LaserBurst[]
+  fireballs: Fireball[]
   laserTargets: LaserSphereTarget[]
   enemies: EnemyState
   enemiesDown: number
@@ -514,6 +516,7 @@ function makeRuntime(): GameRuntime {
     laserShotsFired: 0,
     laserProjectiles: createLaserPool(),
     laserBursts: createLaserBurstPool(),
+    fireballs: createFireballPool(),
     laserTargets: [],
     enemies,
     enemiesDown: 0,
@@ -1359,6 +1362,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     }
     game.laserFlash = Math.max(0, game.laserFlash - d)
     stepLaserBursts(game.laserBursts, d)
+    stepFireballs(game.fireballs, d)
     stepLaserProjectiles(game.laserProjectiles, d)
     // One end condition for the clock. It used to fire here AND again on
     // sessionTime, and since the round length and the target were the same
@@ -1524,6 +1528,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
     const mineExplosion = game.enemies.mineExplosion
     if (mineExplosion) {
       triggerLaserBurst(game.laserBursts, 'impact', mineExplosion.position, '#ff4f62')
+      // The fire covers exactly what the blast killed, so the shell the mine
+      // was drawing beforehand and the explosion agree with each other.
+      triggerFireball(game.fireballs, mineExplosion.position, mineExplosion.radius, Math.round(game.sessionTime * 60))
       game.impactFlash = 1
       const distance = Math.hypot(
         mineExplosion.position.x - game.drone.position.x,

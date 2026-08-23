@@ -37,6 +37,13 @@ import {
   LASER_MAX_PROJECTILES,
   LASER_MAX_BURSTS,
 } from '../core/laser'
+import {
+  FIREBALL_MAX,
+  FIREBALL_PUFFS,
+  fireballPuffCentre,
+  fireballPuffProgress,
+  fireballPuffRadius,
+} from '../core/fireball'
 import { TRAFFIC_MAX_CARS } from '../core/traffic'
 import { WORLD_MAX_CARS } from '../core/world'
 import { City, applyCityDaylight } from './City'
@@ -1529,6 +1536,166 @@ function LaserProjectiles() {
   )
 }
 
+/**
+ * The billowing blast a mine leaves behind.
+ *
+ * One lumpy lobe geometry, instanced once per puff, with the puff's own life
+ * fed in per instance. Everything that makes it read as fire is in the ramp:
+ * white-hot at the moment a lobe erupts, flame within a third of its life,
+ * ember, then smoke - and because the lobes are staggered (see core/fireball),
+ * the outer ones are still erupting white through the gaps while the first
+ * ones are already going dark. That is the "driven from inside" look; scaling
+ * a single sphere up cannot produce it.
+ *
+ * The hot end is deliberately far above 1.0 so the bloom pass in PostFx picks
+ * it up and the core blows out, while the smoke stays under the threshold and
+ * settles into the night instead of glowing.
+ */
+const fireballVertex = `
+attribute float aLife;
+attribute float aSeed;
+varying float vLife;
+varying float vSeed;
+varying vec3 vWorldNormal;
+varying vec3 vViewNormal;
+varying vec3 vViewPosition;
+varying vec3 vLocal;
+void main() {
+  vLife = aLife;
+  vSeed = aSeed;
+  vLocal = position;
+  vec3 instanced = mat3(instanceMatrix) * normal;
+  vWorldNormal = normalize(instanced);
+  vViewNormal = normalize(normalMatrix * instanced);
+  vec4 view = modelViewMatrix * instanceMatrix * vec4(position, 1.0);
+  vViewPosition = view.xyz;
+  gl_Position = projectionMatrix * view;
+}
+`
+
+const fireballFragment = `
+varying float vLife;
+varying float vSeed;
+varying vec3 vWorldNormal;
+varying vec3 vViewNormal;
+varying vec3 vViewPosition;
+varying vec3 vLocal;
+
+void main() {
+  float life = clamp(vLife, 0.0, 1.0);
+
+  // Cheap smooth mottling so a lobe has creases instead of reading as a ball.
+  float mottle = 0.74 + 0.26
+    * sin(vLocal.x * 6.1 + vSeed)
+    * sin(vLocal.y * 5.3 + vSeed * 1.7)
+    * sin(vLocal.z * 6.7 + vSeed * 2.3);
+
+  vec3 core  = vec3(4.2, 3.1, 1.4);
+  vec3 flame = vec3(2.6, 0.80, 0.10);
+  vec3 ember = vec3(0.72, 0.15, 0.03);
+  vec3 smoke = vec3(0.16, 0.145, 0.14);
+  vec3 tint = life < 0.26
+    ? mix(core, flame, life / 0.26)
+    : life < 0.58
+      ? mix(flame, ember, (life - 0.26) / 0.32)
+      : mix(ember, smoke, (life - 0.58) / 0.42);
+
+  // Lit from above, which is what separates the crowns of the lobes from the
+  // shadowed undersides and gives the cluster its depth.
+  float up = clamp(vWorldNormal.y * 0.5 + 0.5, 0.0, 1.0);
+  tint *= mottle * (0.46 + up * 0.74);
+
+  // A hot edge while it is young: the fire wrapping around each lobe.
+  float facing = abs(dot(normalize(vViewNormal), normalize(-vViewPosition)));
+  tint += flame * pow(1.0 - facing, 3.0) * (1.0 - life) * 0.9;
+
+  float birth = smoothstep(0.0, 0.07, life);
+  float death = 1.0 - smoothstep(0.68, 1.0, life);
+  float alpha = birth * death * mix(1.0, 0.62, smoothstep(0.5, 1.0, life));
+  gl_FragColor = vec4(tint, alpha);
+}
+`
+
+/** A lobe: a sphere pushed around by two octaves of smooth noise, so the
+ *  silhouette is cauliflower rather than a ball. */
+const fireballPuffGeometry = (() => {
+  const geometry = new THREE.IcosahedronGeometry(1, 3)
+  const positions = geometry.getAttribute('position')
+  const vertex = new THREE.Vector3()
+  for (let index = 0; index < positions.count; index += 1) {
+    vertex.fromBufferAttribute(positions, index)
+    const coarse = Math.sin(vertex.x * 2.4) * Math.sin(vertex.y * 2.1 + 1.3) * Math.sin(vertex.z * 2.7 + 2.1)
+    const fine = Math.sin(vertex.x * 6.3 + 0.7) * Math.sin(vertex.y * 5.9 + 2.4) * Math.sin(vertex.z * 6.7 + 4.2)
+    vertex.multiplyScalar(1 + coarse * 0.26 + fine * 0.1)
+    positions.setXYZ(index, vertex.x, vertex.y, vertex.z)
+  }
+  geometry.computeVertexNormals()
+  return geometry
+})()
+
+const FIREBALL_CAPACITY = FIREBALL_MAX * FIREBALL_PUFFS
+
+function FireballPool() {
+  const { runtime } = useGame()
+  const ref = useRef<THREE.InstancedMesh>(null)
+  const matrix = useMemo(() => new THREE.Matrix4(), [])
+  const position = useMemo(() => new THREE.Vector3(), [])
+  const centre = useMemo(() => ({ x: 0, y: 0, z: 0 }), [])
+  const scale = useMemo(() => new THREE.Vector3(), [])
+  const rotation = useMemo(() => new THREE.Quaternion(), [])
+  const euler = useMemo(() => new THREE.Euler(), [])
+  const life = useMemo(() => new THREE.InstancedBufferAttribute(new Float32Array(FIREBALL_CAPACITY), 1), [])
+  const seed = useMemo(() => new THREE.InstancedBufferAttribute(new Float32Array(FIREBALL_CAPACITY), 1), [])
+  const geometry = useMemo(() => {
+    const lobe = fireballPuffGeometry.clone()
+    lobe.setAttribute('aLife', life)
+    lobe.setAttribute('aSeed', seed)
+    return lobe
+  }, [life, seed])
+  const material = useMemo(() => new THREE.ShaderMaterial({
+    vertexShader: fireballVertex,
+    fragmentShader: fireballFragment,
+    transparent: true,
+    depthWrite: false,
+    toneMapped: false,
+  }), [])
+
+  useFrame(() => {
+    const mesh = ref.current
+    if (!mesh) return
+    let count = 0
+    for (const fireball of runtime.current.fireballs) {
+      if (!fireball.active) continue
+      for (const puff of fireball.puffs) {
+        if (count >= FIREBALL_CAPACITY) break
+        const progress = fireballPuffProgress(fireball, puff)
+        // Not erupted yet, or already gone. Drawing either would put a lobe
+        // at full size on frame one and leave a smoke ball hanging after.
+        if (progress < 0 || progress > 1) continue
+        fireballPuffCentre(fireball, puff, progress, centre)
+        position.set(centre.x, centre.y, centre.z)
+        euler.set(puff.seed * 1.7, puff.seed * 2.3, puff.seed * 0.9)
+        rotation.setFromEuler(euler)
+        const radius = fireballPuffRadius(fireball, puff, progress)
+        scale.set(radius, radius * (0.86 + (puff.seed % 1) * 0.28), radius)
+        matrix.compose(position, rotation, scale)
+        mesh.setMatrixAt(count, matrix)
+        life.array[count] = progress
+        seed.array[count] = puff.seed
+        count += 1
+      }
+    }
+    mesh.count = count
+    mesh.instanceMatrix.needsUpdate = true
+    life.needsUpdate = true
+    seed.needsUpdate = true
+  })
+
+  return (
+    <instancedMesh ref={ref} args={[geometry, material, FIREBALL_CAPACITY]} frustumCulled={false} renderOrder={6} onUpdate={(mesh) => { mesh.count = 0 }} />
+  )
+}
+
 function LaserBursts() {
   const { runtime } = useGame()
   const rings = useRef<THREE.InstancedMesh>(null)
@@ -2056,6 +2223,7 @@ export function DroneScene() {
       <EnemyProjectiles />
       <LaserProjectiles />
       <LaserBursts />
+      <FireballPool />
       <TractorBeam />
       <UfoGroundPool />
       <Ufo />

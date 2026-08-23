@@ -60,10 +60,26 @@ function run(options: {
   return hits
 }
 
-/** The same course flown against a whole wave rather than one enemy type. */
+const MIXED_WAVE_SEEDS = [0xa11, 0x5c3, 0x77b]
+
+/**
+ * The same course flown against a whole wave rather than one enemy type,
+ * averaged over several spawn seeds.
+ *
+ * One seed decides where a hundred enemies stand, so a single run swings by
+ * several hits on nothing more than a different draw - and every enemy budget
+ * change reshuffles the draw. These tests guard the ordering of the three
+ * courses, so they average rather than pinning themselves to one city.
+ */
 function mixedWave(options: { speed: number; hitRadius?: number; jink?: boolean; altitude?: number }) {
+  let total = 0
+  for (const seed of MIXED_WAVE_SEEDS) total += mixedWaveRun(seed, options)
+  return total / MIXED_WAVE_SEEDS.length
+}
+
+function mixedWaveRun(seed: number, options: { speed: number; hitRadius?: number; jink?: boolean; altitude?: number }) {
   const { speed, hitRadius = 1.05, jink = false, altitude = 12 } = options
-  const state = createEnemyState(0xa11)
+  const state = createEnemyState(seed)
   const player = { x: 0, y: altitude, z: 0 }
   const velocity = { x: 0, y: 0, z: speed }
   const at = ENEMY_WAVE_STAGES[5]!.at

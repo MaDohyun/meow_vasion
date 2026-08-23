@@ -134,8 +134,16 @@ export const DRONE_MINE_TARGETS = [0, 8, 14, 19, 22, 25, 27, 30]
  * event as arming it. Two numbers here would mean the shell lies about one or
  * the other.
  */
-export const DRONE_MINE_BLAST_RADIUS = 7
-export const DRONE_MINE_FUSE = 2.4
+export const DRONE_MINE_BLAST_RADIUS = 9
+/**
+ * A second, and no more.
+ *
+ * It used to be 2.4, which at cruising speed is seventy metres of escape - the
+ * mine was a noise the player flew away from rather than a thing that went off.
+ * One second is still enough to break away if the shell was read before
+ * crossing it, which is the whole point of drawing the shell.
+ */
+export const DRONE_MINE_FUSE = 1
 
 /** Mines are bigger than a passing drone; a hazard that holds still has to be
  *  spotted from a distance rather than discovered by hitting it. */
