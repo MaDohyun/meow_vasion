@@ -109,6 +109,28 @@ type Strings = {
   statAbsorbed: string
   statWave: string
   retry: string
+  /** Ranking board: the results-screen button, the name form and the table. */
+  rankingOpen: string
+  rankingTitle: string
+  rankingLead: string
+  rankingNameLabel: string
+  rankingNamePlaceholder: string
+  rankingSubmit: string
+  rankingSending: string
+  rankingClose: string
+  rankingTryAgain: string
+  rankingLoading: string
+  rankingEmpty: string
+  rankingFailed: string
+  rankingLocalNote: string
+  rankingSaved: (rank: number) => string
+  rankingSavedOffBoard: string
+  rankingNameRequired: string
+  rankingColRank: string
+  rankingColName: string
+  rankingColScore: string
+  rankingColTime: string
+  rankingYou: string
   bandGround: string
   bandArmor: string
   bandAa: string
@@ -280,6 +302,27 @@ export const STRINGS: Record<Language, Strings> = {
     statAbsorbed: '흡수',
     statWave: '웨이브',
     retry: '다시 하기',
+    rankingOpen: '랭킹 등록',
+    rankingTitle: '명예의 전당',
+    rankingLead: '이름을 남기면 이번 기록이 랭킹에 올라갑니다',
+    rankingNameLabel: '이름',
+    rankingNamePlaceholder: '이름 (최대 12자)',
+    rankingSubmit: '기록하기',
+    rankingSending: '전송 중...',
+    rankingClose: '닫기',
+    rankingTryAgain: '다시 시도',
+    rankingLoading: '랭킹 불러오는 중...',
+    rankingEmpty: '아직 기록이 없습니다. 첫 번째가 되어보세요!',
+    rankingFailed: '기록을 전송하지 못했습니다. 다시 시도해 주세요.',
+    rankingLocalNote: '시트가 연결되지 않아 이 브라우저에만 저장했습니다',
+    rankingSaved: (rank: number) => `${rank}위로 기록했습니다!`,
+    rankingSavedOffBoard: '기록했습니다! 아직 순위권에는 들지 못했어요.',
+    rankingNameRequired: '이름을 한 글자 이상 적어주세요',
+    rankingColRank: '순위',
+    rankingColName: '이름',
+    rankingColScore: '점수',
+    rankingColTime: '시간',
+    rankingYou: '나',
     bandGround: '지상 고도',
     bandArmor: '중간 고도',
     bandAa: '고공',
@@ -425,6 +468,27 @@ export const STRINGS: Record<Language, Strings> = {
     statAbsorbed: '吸収',
     statWave: 'ウェーブ',
     retry: 'もう一度',
+    rankingOpen: 'ランキング登録',
+    rankingTitle: '殿堂',
+    rankingLead: '名前を残すと、今回の記録がランキングに載ります',
+    rankingNameLabel: '名前',
+    rankingNamePlaceholder: '名前 (12文字まで)',
+    rankingSubmit: '登録する',
+    rankingSending: '送信中...',
+    rankingClose: '閉じる',
+    rankingTryAgain: '再試行',
+    rankingLoading: 'ランキング読み込み中...',
+    rankingEmpty: 'まだ記録がありません。最初の一人になりましょう!',
+    rankingFailed: '記録を送信できませんでした。もう一度お試しください。',
+    rankingLocalNote: 'シート未接続のため、このブラウザにのみ保存しました',
+    rankingSaved: (rank: number) => `${rank}位で登録しました!`,
+    rankingSavedOffBoard: '登録しました! 今回はランク圏外です。',
+    rankingNameRequired: '名前を1文字以上入力してください',
+    rankingColRank: '順位',
+    rankingColName: '名前',
+    rankingColScore: 'スコア',
+    rankingColTime: '時間',
+    rankingYou: '自分',
     bandGround: '地上高度',
     bandArmor: '中間高度',
     bandAa: '高高度',
@@ -570,6 +634,27 @@ export const STRINGS: Record<Language, Strings> = {
     statAbsorbed: 'ABSORBED',
     statWave: 'WAVE',
     retry: 'RAID AGAIN',
+    rankingOpen: 'SUBMIT SCORE',
+    rankingTitle: 'HALL OF FAME',
+    rankingLead: 'Sign this run and it goes on the board',
+    rankingNameLabel: 'NAME',
+    rankingNamePlaceholder: 'NAME (12 CHARS MAX)',
+    rankingSubmit: 'RECORD IT',
+    rankingSending: 'SENDING...',
+    rankingClose: 'CLOSE',
+    rankingTryAgain: 'TRY AGAIN',
+    rankingLoading: 'LOADING BOARD...',
+    rankingEmpty: 'NO RECORDS YET. BE THE FIRST!',
+    rankingFailed: 'COULD NOT SEND THE RECORD. TRY AGAIN.',
+    rankingLocalNote: 'NO SHEET CONNECTED - SAVED TO THIS BROWSER ONLY',
+    rankingSaved: (rank: number) => `RECORDED AT #${rank}!`,
+    rankingSavedOffBoard: 'RECORDED! JUST OFF THE BOARD THIS TIME.',
+    rankingNameRequired: 'ENTER AT LEAST ONE CHARACTER',
+    rankingColRank: 'RANK',
+    rankingColName: 'NAME',
+    rankingColScore: 'SCORE',
+    rankingColTime: 'TIME',
+    rankingYou: 'YOU',
     bandGround: 'GROUND BAND',
     bandArmor: 'ARMOR BAND',
     bandAa: 'AA BAND',
