@@ -26,7 +26,7 @@ import {
 } from './core/hazards'
 import { SIZE_MIN, SIZE_START, type SizeGainKind, type SizeProfile, clampSize, growSize, growSizeBy, sizeProfile } from './core/size'
 import { HEALTH_LOSS, createHealthState, healthRatio, isDead, isRegenerating, stepHealth, type HealthLossKind, type HealthState } from './core/health'
-import { BATTLESHIP_TURRETS, activeEnemyCount, battleshipTurretPoint, createEnemyState, hitEnemy, resolveEnemyContacts, stepEnemies, stepEnemyProjectiles, syncAntiAirEnemies, syncEnemyTiers, waveLabelForTime, waveStageForTime, type EnemyState } from './core/enemies'
+import { BATTLESHIP_TURRETS, activeEnemyCount, battleshipTurretPoint, createEnemyState, hitEnemy, resolveEnemyContacts, stepEnemies, stepEnemyProjectiles, syncAntiAirEnemies, syncEnemyTiers, waveLabelForTime, waveStageForTime, type EnemyKind, type EnemyState } from './core/enemies'
 import {
   createLaserPool,
   createLaserBurstPool,
@@ -42,7 +42,7 @@ import {
   type LaserProjectile,
   type LaserSphereTarget,
 } from './core/laser'
-import { createFireballPool, stepFireballs, triggerFireball, type Fireball } from './core/fireball'
+import { BLAST_PROFILE, createFireballPool, stepFireballs, triggerFireball, type BlastKind, type Fireball } from './core/fireball'
 import { requestedPilotExpression, updatePilotExpression, type PilotExpression } from './core/pilot'
 import {
   type ActiveWorld,
@@ -451,6 +451,28 @@ function makeWorldPropBeamObject(worldProp: BeamWorldProp): BeamObject {
     freePhysics: false,
     worldProp,
   }
+}
+
+/**
+ * Which blast a downed enemy leaves, if any.
+ *
+ * Every remaining enemy is a machine, but the scale of its blast still follows
+ * its silhouette so a drone pop cannot read like a tank going up.
+ */
+const ENEMY_BLAST: Partial<Record<EnemyKind, BlastKind>> = {
+  drone: 'aircraft',
+  helicopter: 'aircraft',
+  fighter: 'aircraft',
+  'anti-air': 'vehicle',
+  tank: 'vehicle',
+  boss: 'landmark',
+}
+
+/** Varies one blast from the next without the caller having to carry a
+ *  counter. The clock is fine: two blasts in the same frame are the same
+ *  explosion as far as the eye is concerned. */
+function blastSeed(game: GameRuntime) {
+  return Math.round(game.sessionTime * 60) + game.laserShotsFired
 }
 
 function makeRuntime(): GameRuntime {
@@ -864,6 +886,10 @@ function registerEnemyHit(game: GameRuntime, id: string, damage: number) {
     }
     game.impactFlash = 1
   }
+  // A drone, helicopter or tank leaves a blast sized to the machine.
+  if (result.enemy && ENEMY_BLAST[result.kind]) {
+    triggerFireball(game.fireballs, ENEMY_BLAST[result.kind]!, result.enemy.position, undefined, blastSeed(game))
+  }
   // The ship is worth about two and a half times what it was: it now takes
   // sixty-four laser hits instead of twenty-five, and a reward that did not
   // move with that would make the fight cost more than it pays.
@@ -908,6 +934,7 @@ function destroyHeavyVehicle(game: GameRuntime, id: string) {
   }
   game.score += hazard.kind === 'truck' ? 90 : 140
   triggerLaserBurst(game.laserBursts, 'impact', hazard.position, '#ff8a45')
+  triggerFireball(game.fireballs, 'vehicle', hazard.position, undefined, blastSeed(game))
   return true
 }
 
@@ -917,6 +944,13 @@ function registerBuildingLaserHit(game: GameRuntime, id: string) {
   const result = damageBuilding(game.buildingHealth, building, upgradeMultiplier(game.upgrades, 'laser-power'))
   triggerLaserBurst(game.laserBursts, 'impact', building.position, '#ffca63')
   if (!result.destroyed) return true
+  // A tower's own blast is centred on the tower, not on the point that was
+  // shot: it is the whole thing failing, not the last hit landing.
+  triggerFireball(game.fireballs, 'ruin', {
+    x: building.position.x,
+    y: building.position.y + building.size.y * 0.28,
+    z: building.position.z,
+  }, Math.min(BLAST_PROFILE.landmark.radius, Math.max(building.size.x, building.size.z) * 0.6), blastSeed(game))
   game.destroyedBuildings.add(building.id)
   removeRooftopProp(game, building.id)
   game.ruinedBuildings.set(building.id, createBuildingRuin(building))
@@ -939,6 +973,7 @@ function detonateLandmark(game: GameRuntime, landmark: DestructibleLandmark) {
       z: point.z + (burst < 2 ? -2 : 2),
     }, burst % 2 ? '#ffcf63' : '#ff6a45')
   }
+  triggerFireball(game.fireballs, 'landmark', { x: point.x, y: point.y + 3, z: point.z }, undefined, blastSeed(game))
   const knock = (object: BeamObject) => {
     if (!object.active) return
     const dx = object.position.x - point.x
@@ -1530,7 +1565,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       triggerLaserBurst(game.laserBursts, 'impact', mineExplosion.position, '#ff4f62')
       // The fire covers exactly what the blast killed, so the shell the mine
       // was drawing beforehand and the explosion agree with each other.
-      triggerFireball(game.fireballs, mineExplosion.position, mineExplosion.radius, Math.round(game.sessionTime * 60))
+      triggerFireball(game.fireballs, 'mine', mineExplosion.position, mineExplosion.radius, blastSeed(game))
       game.impactFlash = 1
       const distance = Math.hypot(
         mineExplosion.position.x - game.drone.position.x,
@@ -1614,6 +1649,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     const detonated = detonateReachedHazard(game.hazards, game.drone.position)
     if (detonated) {
       triggerLaserBurst(game.laserBursts, 'impact', detonated.position, '#ff7a3d')
+      triggerFireball(game.fireballs, 'vehicle', detonated.position, undefined, blastSeed(game))
       wound(game, 'explosive')
       // Only re-arm from zero: chained dazes would compound into a stun by
       // another name.
@@ -1629,6 +1665,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       if (object.explosionPending) {
         object.explosionPending = false
         triggerLaserBurst(game.laserBursts, 'impact', object.position, '#ff8a45')
+        triggerFireball(game.fireballs, 'vehicle', object.position, undefined, blastSeed(game))
       }
       if (object.id.startsWith('traffic:')) releaseTrafficSlot(game.traffic, object.id)
       game.beamObjects.splice(index, 1)
@@ -1670,6 +1707,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
       const projectile = fireLaserBeam(game.laserProjectiles, game.drone.position, aim.point)
       triggerLaserBurst(game.laserBursts, 'muzzle', projectile.position)
       if (aim.targetKind) triggerLaserBurst(game.laserBursts, 'impact', aim.point, aim.targetKind === 'car' ? '#ffb24d' : aim.targetKind === 'fighter' ? '#ff557f' : aim.targetKind === 'building' ? '#6deeff' : '#fff0a1')
+      // Every shot that lands spits a little fire off the surface, right where
+      // it hit. It is over inside the 0.27s between shots, so holding the
+      // trigger on a tower burns along the wall rather than piling up.
+      if (aim.targetKind) triggerFireball(game.fireballs, 'strike', aim.point, undefined, blastSeed(game))
       if (aim.targetKind === 'fighter' && aim.targetId) registerEnemyLaserHit(game, aim.targetId)
       if (aim.targetKind === 'building' && aim.targetId) registerBuildingLaserHit(game, aim.targetId)
       if (aim.targetKind === 'landmark' && aim.targetId) {
@@ -1696,6 +1737,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
       game.enemiesDown += game.enemies.contactKills
       game.score += game.enemies.contactKills * 35
       triggerLaserBurst(game.laserBursts, 'impact', game.enemies.lastContactPoint, '#ff9a3d')
+      // Ploughing through a drone detonates it just as surely as shooting it.
+      triggerFireball(game.fireballs, 'aircraft', game.enemies.lastContactPoint, undefined, blastSeed(game))
     }
     if (contactDamage > 0) registerImpact(game, 'ENEMY', 'contact')
     const previousMissionStage = game.mission.stage

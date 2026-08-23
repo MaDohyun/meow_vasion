@@ -127,14 +127,16 @@ export const DRONE_MINE_TARGETS = [0, 8, 14, 19, 22, 25, 27, 30]
  */
 export const DRONE_MINE_BLAST_RADIUS = 9
 /**
- * A second, and no more.
+ * Three tenths of a second, which at cruising speed is about the width of the
+ * shell itself.
  *
- * It used to be 2.4, which at cruising speed is seventy metres of escape - the
- * mine was a noise the player flew away from rather than a thing that went off.
- * One second is still enough to break away if the shell was read before
- * crossing it, which is the whole point of drawing the shell.
+ * It used to be 2.4, and a mine was a noise the player flew away from rather
+ * than a thing that went off. This is short enough that crossing the shell is
+ * the decision - break away the instant it is touched and the craft is clear;
+ * fly through it and the blast is already going up. Reading the shell before
+ * touching it is the whole point of drawing it a full second's flight wide.
  */
-export const DRONE_MINE_FUSE = 1
+export const DRONE_MINE_FUSE = 0.3
 
 /** Mines are bigger than a passing drone; a hazard that holds still has to be
  *  spotted from a distance rather than discovered by hitting it. */
@@ -261,7 +263,45 @@ export type EnemyState = {
 }
 
 const ORDER: EnemyKind[] = ['drone', 'helicopter', 'fighter', 'anti-air', 'tank', 'boss']
-const SPAWN_ORDER: EnemyKind[] = ['boss', 'tank', 'anti-air', 'fighter', 'helicopter', 'drone']
+
+/**
+ * Who gets the next free spawn.
+ *
+ * This was a fixed priority list with the newest, scariest unit at the front
+ * and drones at the back, which is exactly backwards once the roster is big.
+ * The spawner hands out a few units a second; the heavy end of the list is
+ * small and fills immediately, and everything behind it only gets a slot on
+ * the ticks when nothing ahead of it needs one. By the fighter wave a player
+ * flying one heading met tanks and fighters and no drones at all - the wave
+ * table said fifty-two drones and the sky delivered none, because they were
+ * last in the queue and something ahead of them was always dying.
+ *
+ * The queue is by shortfall now, as a share of each kind's own target, so
+ * every population fills at the same rate and stays there. A wave adding tanks
+ * no longer starves the drones the earlier waves introduced: it just adds
+ * tanks to the mix, which is what the table already said it did.
+ */
+function neediestKind(state: EnemyState, elapsed: number) {
+  let best: EnemyKind | null = null
+  let bestShare = 0
+  let bestShort = 0
+  for (const kind of ORDER) {
+    if (kind === 'anti-air') continue
+    const target = targetForKind(kind, elapsed)
+    if (target <= 0) continue
+    const short = target - activeCount(state, kind)
+    if (short <= 0) continue
+    // The boss is one unit and the fight does not start without it.
+    if (kind === 'boss') return kind
+    const share = short / target
+    if (share > bestShare || (share === bestShare && short > bestShort)) {
+      best = kind
+      bestShare = share
+      bestShort = short
+    }
+  }
+  return best
+}
 
 export const ENEMY_DIAMETER: Record<EnemyKind, number> = {
   drone: 1.6,
@@ -511,12 +551,32 @@ function activeMineCount(state: EnemyState) {
   return count
 }
 
+/**
+ * How fast the spawner can hand out units, and how many it may catch up with
+ * in one tick.
+ *
+ * The roster grew to something like a hundred and fifty units at the last
+ * wave while the cadence stayed where it was set for a much smaller one, so
+ * the sky could never actually reach the table: refilling it from empty took
+ * the better part of a minute, and a player moving at cruise leaves units
+ * behind faster than that. The steady state is still whatever the wave table
+ * says - only the time to get there changes.
+ */
+const SPAWN_BURST_LIMIT = 8
+
+function spawnIntervalForStage(stage: number) {
+  return Math.max(0.03, 0.2 - stage * 0.022)
+}
+
 export function syncEnemyTiers(state: EnemyState, elapsed: number, player: Vec3, heading: number, dt: number) {
   const stage = waveStageForTime(elapsed)
   const stageChanged = stage > state.waveStage
   state.waveStage = stage
   state.spawnTimer -= Math.min(Math.max(0, dt), 0.05)
   if (stageChanged) state.spawnTimer = 0
+  // Nothing in the sky yet: get the opening pair out without waiting on the
+  // cadence. Drones are the first wave's only unit, so their count is the
+  // whole test - it does not need to name a kind a later wave might drop.
   const initialBurst = state.spawnTimer <= 0 && activeEnemyCount(state, 'drone') === 0
   for (const enemy of state.slots) {
     if (enemy.respawn > 0) enemy.respawn = Math.max(0, enemy.respawn - dt)
@@ -524,20 +584,17 @@ export function syncEnemyTiers(state: EnemyState, elapsed: number, player: Vec3,
     if (target === 0 && enemy.active && enemy.kind !== 'anti-air') enemy.active = false
   }
   let spawned = 0
-  const burstLimit = stage === 0 ? 2 : 4
+  const burstLimit = stage === 0 ? 2 : SPAWN_BURST_LIMIT
   while ((state.spawnTimer <= 0 || (initialBurst && spawned < 2)) && spawned < burstLimit) {
-    let didSpawn = false
-    for (const kind of SPAWN_ORDER) {
-      if (kind === 'anti-air') continue
-      if (activeCount(state, kind) >= targetForKind(kind, elapsed)) continue
-      // Mines come out of the drone pool, and they come out of it first: a
-      // passer is gone in seconds, so letting them win the race for free slots
-      // is what used to leave the sky with almost no hovering mines in it.
-      const asMine = kind === 'drone' && activeMineCount(state) < mineTargetForTime(elapsed)
-      if (spawnOne(state, kind, player, heading, asMine)) { didSpawn = true; spawned += 1; break }
-    }
-    if (!didSpawn) break
-    state.spawnTimer += Math.max(0.055, 0.42 - stage * 0.038)
+    const kind = neediestKind(state, elapsed)
+    if (!kind) break
+    // Mines come out of the drone pool, and they come out of it first: a
+    // passer is gone in seconds, so letting them win the race for free slots
+    // is what used to leave the sky with almost no hovering mines in it.
+    const asMine = kind === 'drone' && activeMineCount(state) < mineTargetForTime(elapsed)
+    if (!spawnOne(state, kind, player, heading, asMine)) break
+    spawned += 1
+    state.spawnTimer += spawnIntervalForStage(stage)
   }
   return state
 }
