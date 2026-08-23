@@ -28,6 +28,9 @@ import {
   BATTLESHIP_TURRETS,
   ENEMY_CAPS,
   isDroneMine,
+  DRONE_MINE_BLAST_RADIUS,
+  DRONE_MINE_FUSE,
+  DRONE_MINE_MODEL_SCALE,
   type EnemyKind,
 } from '../core/enemies'
 import {
@@ -1031,6 +1034,133 @@ function TutorialCatMarker() {
   )
 }
 
+/**
+ * The red shell around a mine: what it will destroy, drawn at exactly that size.
+ *
+ * A mine used to announce itself only by its own pulse, which is a couple of
+ * metres of model against a whole sky - by the time it was read, the player was
+ * usually already inside the trigger. This draws DRONE_MINE_BLAST_RADIUS
+ * directly, so the rule is legible without being explained: what is inside the
+ * shell dies, and crossing it is the same act as arming the fuse.
+ *
+ * It breathes rather than sitting on, so a field of mines does not turn the sky
+ * into a wall of red. Once armed it stops breathing and goes hard and fast,
+ * brightening as the fuse runs down.
+ */
+const blastFieldVertex = `
+attribute float aCharge;
+varying vec3 vViewNormal;
+varying vec3 vViewPosition;
+varying vec2 vUv;
+varying float vCharge;
+void main() {
+  vCharge = aCharge;
+  vUv = uv;
+  vec4 world = instanceMatrix * vec4(position, 1.0);
+  vec4 view = modelViewMatrix * world;
+  vViewNormal = normalize(normalMatrix * (mat3(instanceMatrix) * normal));
+  vViewPosition = view.xyz;
+  gl_Position = projectionMatrix * view;
+}
+`
+
+const blastFieldFragment = `
+varying vec3 vViewNormal;
+varying vec3 vViewPosition;
+varying vec2 vUv;
+varying float vCharge;
+
+const vec2 HEX = vec2(1.0, 1.7320508);
+
+float hexEdge(vec2 p) {
+  p = abs(p);
+  return max(dot(p, normalize(vec2(1.0, 1.7320508))), p.x);
+}
+
+/** Distance to the nearest cell wall of a hex lattice, 0 at a wall. */
+float hexWall(vec2 uv) {
+  vec2 a = mod(uv, HEX) - HEX * 0.5;
+  vec2 b = mod(uv - HEX * 0.5, HEX) - HEX * 0.5;
+  vec2 cell = dot(a, a) < dot(b, b) ? a : b;
+  return 0.5 - hexEdge(cell);
+}
+
+void main() {
+  // Sphere UVs pinch at the poles; the aspect fix keeps cells roughly regular
+  // around the equator, where the shell is actually read from.
+  vec2 grid = vec2(vUv.x * 34.0, vUv.y * 17.0);
+  float wall = hexWall(grid);
+  float lattice = 1.0 - smoothstep(0.0, 0.09, wall);
+
+  // Face-on the shell is nearly invisible and the mine inside stays readable;
+  // edge-on it reads as a hard bubble.
+  float facing = abs(dot(normalize(vViewNormal), normalize(-vViewPosition)));
+  float rim = pow(1.0 - facing, 2.4);
+
+  float alpha = (rim * 0.85 + lattice * (0.16 + rim * 0.5) + 0.025) * vCharge;
+  // Runs white-hot as the fuse closes rather than just brighter red.
+  vec3 tint = mix(vec3(1.0, 0.17, 0.24), vec3(1.0, 0.78, 0.6), clamp(vCharge - 1.0, 0.0, 1.0));
+  gl_FragColor = vec4(tint * (0.6 + vCharge * 0.9), clamp(alpha, 0.0, 1.0));
+}
+`
+
+function MineBlastFieldPool() {
+  const { runtime } = useGame()
+  const ref = useRef<THREE.InstancedMesh>(null)
+  const matrix = useMemo(() => new THREE.Matrix4(), [])
+  const position = useMemo(() => new THREE.Vector3(), [])
+  const rotation = useMemo(() => new THREE.Quaternion(), [])
+  const scale = useMemo(() => new THREE.Vector3(), [])
+  const charge = useMemo(() => new THREE.InstancedBufferAttribute(new Float32Array(ENEMY_CAPS.drone), 1), [])
+  const geometry = useMemo(() => {
+    const sphere = new THREE.SphereGeometry(1, 28, 18)
+    sphere.setAttribute('aCharge', charge)
+    return sphere
+  }, [charge])
+  const material = useMemo(() => new THREE.ShaderMaterial({
+    vertexShader: blastFieldVertex,
+    fragmentShader: blastFieldFragment,
+    transparent: true,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    blending: THREE.AdditiveBlending,
+    toneMapped: false,
+  }), [])
+
+  useFrame(({ clock }) => {
+    const mesh = ref.current
+    if (!mesh) return
+    let count = 0
+    for (const enemy of runtime.current.enemies.slots) {
+      if (!enemy.active || !isDroneMine(enemy)) continue
+      position.set(enemy.position.x, enemy.position.y, enemy.position.z)
+      scale.setScalar(DRONE_MINE_BLAST_RADIUS)
+      matrix.compose(position, rotation, scale)
+      mesh.setMatrixAt(count, matrix)
+      // Idle: a slow swell in and out, each mine on its own phase so a cluster
+      // does not blink in unison. Armed: hard, fast, and climbing.
+      const fuse = enemy.mineArmed ? 1 - Math.max(0, enemy.mineFuse) / DRONE_MINE_FUSE : 0
+      const breath = 0.5 + 0.5 * Math.sin(clock.elapsedTime * 0.85 + enemy.phase * 3.1)
+      charge.array[count] = enemy.mineArmed
+        ? (0.85 + fuse * 0.95) * (0.86 + 0.14 * Math.sin(clock.elapsedTime * 19))
+        : 0.1 + breath * breath * 0.62
+      count += 1
+    }
+    mesh.count = count
+    mesh.instanceMatrix.needsUpdate = true
+    charge.needsUpdate = true
+  })
+
+  return (
+    <instancedMesh
+      ref={ref}
+      args={[geometry, material, ENEMY_CAPS.drone]}
+      frustumCulled={false}
+      renderOrder={4}
+    />
+  )
+}
+
 function MinePool() {
   const { runtime } = useGame()
   const ref = useRef<THREE.InstancedMesh>(null)
@@ -1050,7 +1180,7 @@ function MinePool() {
       rotation.set(0, enemy.phase + clock.elapsedTime * 0.15, Math.sin(clock.elapsedTime * 1.3 + enemy.phase) * 0.04)
       quaternion.setFromEuler(rotation)
       const pulse = enemy.mineArmed ? 1 + Math.sin(clock.elapsedTime * 15) * 0.1 : 1
-      scale.setScalar(0.62 * pulse)
+      scale.setScalar(DRONE_MINE_MODEL_SCALE * pulse)
       matrix.compose(position, quaternion, scale)
       mesh.setMatrixAt(count, matrix)
       const glow = enemy.mineArmed ? 0.55 + 0.45 * Math.sin(clock.elapsedTime * 15) ** 2 : 0.28
@@ -1159,6 +1289,7 @@ function EnemyPools() {
       <EnemyPool kind="tank" />
       <EnemyPool kind="boss" />
       <MinePool />
+      <MineBlastFieldPool />
     </group>
   )
 }

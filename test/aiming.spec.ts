@@ -36,7 +36,10 @@ function run(options: {
   const player = { x: 0, y: altitude, z: 0 }
   const velocity = { x: 0, y: 0, z: speed }
   const at = ENEMY_WAVE_STAGES[5]!.at
-  for (let tick = 0; tick < 400; tick += 1) syncEnemyTiers(state, at, player, 0, 0.05)
+  // Long enough for the wave to actually fill. The spawner hands out a few
+  // slots a second across every kind, so a short warm-up measures a half-built
+  // wave and moves whenever any kind's budget changes.
+  for (let tick = 0; tick < 1600; tick += 1) syncEnemyTiers(state, at, player, 0, 0.05)
   for (const enemy of state.slots) if (enemy.active && enemy.kind !== kind) enemy.active = false
   let hits = 0
   const d = 1 / 60
@@ -64,7 +67,10 @@ function mixedWave(options: { speed: number; hitRadius?: number; jink?: boolean;
   const player = { x: 0, y: altitude, z: 0 }
   const velocity = { x: 0, y: 0, z: speed }
   const at = ENEMY_WAVE_STAGES[5]!.at
-  for (let tick = 0; tick < 400; tick += 1) syncEnemyTiers(state, at, player, 0, 0.05)
+  // Long enough for the wave to actually fill. The spawner hands out a few
+  // slots a second across every kind, so a short warm-up measures a half-built
+  // wave and moves whenever any kind's budget changes.
+  for (let tick = 0; tick < 1600; tick += 1) syncEnemyTiers(state, at, player, 0, 0.05)
   let hits = 0
   const d = 1 / 60
   for (let tick = 0; tick < 60 * 60; tick += 1) {

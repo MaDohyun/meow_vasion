@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
-  DRONE_MINE_SHARE,
+  DRONE_MINE_BLAST_RADIUS,
+  DRONE_MINE_FUSE,
+  DRONE_MINE_HIT_RADIUS,
   ENEMY_CONTACT_DAMAGE,
   ENEMY_WAVE_STAGES,
   createEnemyState,
   isDroneMine,
+  mineTargetForTime,
   resolveEnemyContacts,
   stepEnemies,
   syncEnemyTiers,
@@ -27,9 +30,74 @@ describe('suicide drones', () => {
     expect(drones.length).toBeGreaterThan(8)
     expect(mines.length).toBeGreaterThan(0)
     expect(mines.length).toBeLessThan(drones.length)
-    // Roughly the configured share, with room for a small sample.
-    expect(mines.length / drones.length).toBeGreaterThan(DRONE_MINE_SHARE - 0.3)
-    expect(mines.length / drones.length).toBeLessThan(DRONE_MINE_SHARE + 0.3)
+    // Mines are a quota, not a share of whatever the drone budget happens to
+    // be: the hovering population is the same whether or not the passers are
+    // mid-cycle, which is what keeps them findable early in a run.
+    expect(mines.length).toBe(mineTargetForTime(ENEMY_WAVE_STAGES[3]!.at))
+  })
+
+  it('keeps mines in front of a player who holds one heading', () => {
+    // The complaint this answers: fly one direction and you would cross a
+    // single crust of mines and then meet nothing. They are seeded across a
+    // band and weighted toward the heading, so the population travels with the
+    // player instead of being left behind.
+    const state = createEnemyState(0x51de)
+    const at = ENEMY_WAVE_STAGES[3]!.at
+    let player = { x: 0, y: 12, z: 0 }
+    const nearby: number[] = []
+    for (let tick = 0; tick < 1500; tick += 1) {
+      player = { x: 0, y: 12, z: tick * 0.5 }
+      syncEnemyTiers(state, at, player, 0, 0.05)
+      stepEnemies(state, player, 0.05)
+      if (tick < 600 || tick % 100 !== 0) continue
+      nearby.push(state.slots.filter((enemy) =>
+        enemy.active && isDroneMine(enemy)
+        && Math.hypot(enemy.position.x - player.x, enemy.position.z - player.z) < 150).length)
+    }
+    // Six hundred metres of straight flight later, and at every sample along
+    // the way, there are still mines in reach.
+    expect(nearby.length).toBeGreaterThan(5)
+    expect(Math.min(...nearby)).toBeGreaterThan(3)
+  })
+
+  it('arms at exactly the radius it destroys, so the warning shell cannot lie', () => {
+    const state = createEnemyState()
+    const mine = state.slots.find((enemy) => enemy.kind === 'drone')!
+    mine.active = true
+    mine.mode = 'fixed'
+    mine.position = { x: 0, y: 20, z: 0 }
+    mine.target = { x: 0, y: 20, z: 0 }
+    mine.hitRadius = DRONE_MINE_HIT_RADIUS
+
+    // Just outside: nothing happens, however long the player loiters.
+    const outside = { x: 0, y: 20, z: DRONE_MINE_BLAST_RADIUS + 0.5 }
+    for (let tick = 0; tick < 200; tick += 1) stepEnemies(state, outside, 1 / 60)
+    expect(mine.mineArmed).toBe(false)
+    expect(mine.active).toBe(true)
+
+    // Just inside: armed at once, and it holds for the fuse before going off.
+    const inside = { x: 0, y: 20, z: DRONE_MINE_BLAST_RADIUS - 0.5 }
+    stepEnemies(state, inside, 1 / 60)
+    expect(mine.mineArmed).toBe(true)
+    expect(mine.mineFuse).toBeGreaterThan(DRONE_MINE_FUSE - 0.1)
+    // Backing off does not disarm it.
+    for (let tick = 0; tick < Math.round(DRONE_MINE_FUSE * 60) - 4; tick += 1) {
+      stepEnemies(state, { x: 0, y: 20, z: 400 }, 1 / 60)
+      expect(state.mineExplosion, `${tick}`).toBe(null)
+    }
+    for (let tick = 0; tick < 8 && state.mineExplosion === null; tick += 1) {
+      stepEnemies(state, { x: 0, y: 20, z: 400 }, 1 / 60)
+    }
+    expect(state.mineExplosion?.radius).toBe(DRONE_MINE_BLAST_RADIUS)
+    expect(mine.active).toBe(false)
+  })
+
+  it('makes a hovering mine bigger than a drone that is only passing through', () => {
+    const { state } = droneWave()
+    const mine = state.slots.find((enemy) => enemy.active && isDroneMine(enemy))!
+    const passer = state.slots.find((enemy) => enemy.active && enemy.kind === 'drone' && !isDroneMine(enemy))!
+    expect(mine.hitRadius).toBe(DRONE_MINE_HIT_RADIUS)
+    expect(mine.hitRadius).toBeGreaterThan(passer.hitRadius)
   })
 
   it('holds a mine on its spot no matter where the player goes', () => {
