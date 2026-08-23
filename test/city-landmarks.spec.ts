@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { getProceduralCell, isLakeAt, WORLD_CELL_SIZE, type ProceduralBuilding } from '../src/core/world'
+import { beamLiftScale } from '../src/core/beam'
+import { WORLD_PROP_MASS } from '../src/core/worldProps'
 import {
+  GAS_STATION_BEAM_MASS,
   groundLandmarkForCell,
   hasBusStop,
   NEWS_SCREEN_HEIGHT,
@@ -86,6 +89,18 @@ describe('render-only city landmarks', () => {
     // about eight in a single district - at that rate it is street furniture.
     expect(warningScreens).toBeGreaterThan(0)
     expect(warningScreens / tall).toBeLessThan(0.05)
+  })
+
+  it('prices a gas station on the same beam weight ladder as the rest of the city', () => {
+    // A landmark used to come apart the instant the cone touched it, whatever
+    // the craft. It now costs real pull: the opening beam plays over a
+    // forecourt without setting it off, and a station sits between a pylon and
+    // a comms mast on the ladder.
+    expect(beamLiftScale(GAS_STATION_BEAM_MASS, 1)).toBe(0)
+    expect(beamLiftScale(GAS_STATION_BEAM_MASS, 5)).toBe(0)
+    expect(beamLiftScale(GAS_STATION_BEAM_MASS, 8)).toBeGreaterThan(0)
+    expect(GAS_STATION_BEAM_MASS).toBeGreaterThan(WORLD_PROP_MASS['power-pylon'])
+    expect(GAS_STATION_BEAM_MASS).toBeLessThan(WORLD_PROP_MASS.communications)
   })
 
   it('keeps at least three interactive cars in every generated parking lot', () => {

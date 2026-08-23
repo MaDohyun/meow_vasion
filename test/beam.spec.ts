@@ -209,6 +209,67 @@ describe('tractor beam physics', () => {
     expect(car.absorbing).toBe(true)
   })
 
+  it('leaves city dressing standing when the beam is too weak to lift it', () => {
+    // The reported bug: a beam that could not shift a bus shelter by a
+    // millimetre still made one vanish the moment the craft skimmed past it,
+    // because absorption asked only "in the cone, close enough" and never
+    // asked the weight question the lifting ladder is built on.
+    const shelter = (): BeamObject => {
+      const object = makeCar('bus-stop:1', 0, 0, 0)
+      object.kind = 'bus-stop'
+      object.mass = 5
+      object.diameter = 7.2
+      object.inBeam = true
+      object.freePhysics = false
+      object.worldProp = {
+        id: 'bus-stop:1',
+        kind: 'bus-stop',
+        position: { x: 0, y: 0, z: 0 },
+        rotation: 0,
+        scale: { x: 1, y: 1, z: 1 },
+        variant: 0,
+      }
+      return object
+    }
+
+    // The craft the player actually flies: beam on, skimming the pavement the
+    // shelter stands on, one frame of the cone playing over it.
+    const skim = (strength: number) => {
+      const object = shelter()
+      const beam: BeamField = {
+        active: true,
+        boosting: false,
+        position: { x: 0, y: 2.6, z: 0 },
+        velocity: { x: 0, y: 0, z: 0 },
+        gripStrength: strength,
+      }
+      stepBeamObjects([object], beam, 1 / 60)
+      expect(object.inBeam).toBe(true)
+      const eaten = beginNearbyBeamObjectAbsorption([object], beam.position, Number.POSITIVE_INFINITY, 3.48, strength)
+      return { object, eaten }
+    }
+
+    const weak = skim(2)
+    expect(beamLiftScale(5, 2)).toBe(0)
+    expect(weak.eaten).toBeNull()
+    expect(weak.object.absorbing).toBe(false)
+    // Still standing exactly where the city put it, so the static pool keeps
+    // drawing it (see isWorldPropDisplaced).
+    expect(weak.object.position).toEqual({ x: 0, y: 0, z: 0 })
+
+    // A beam that can actually haul the shelter still eats it.
+    const strong = skim(5)
+    expect(strong.eaten).toBe(strong.object)
+    expect(strong.object.absorbing).toBe(true)
+
+    // Loose objects keep the old rule - a car has no spot in the city to be
+    // taken off, so bumping into one with the beam on is still a meal.
+    const car = makeCar('loose', 0, 2.4, 0)
+    car.mass = 5
+    car.inBeam = true
+    expect(beginNearbyBeamObjectAbsorption([car], { x: 0, y: 2.6, z: 0 }, Number.POSITIVE_INFINITY, 3.48, 2)).toBe(car)
+  })
+
   it('awards more base score for a larger absorbed object', () => {
     const person = makeCar('person')
     person.kind = 'pedestrian'

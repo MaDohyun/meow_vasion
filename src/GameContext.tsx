@@ -7,6 +7,7 @@ import {
   type BeamWorldProp,
   CAR_MASS,
   absorptionScore,
+  beamLiftScale,
   beamObjectDiameter,
   beamProfile,
   beginCarDestruction,
@@ -15,7 +16,7 @@ import {
   stepBeamObjects,
 } from './core/beam'
 import { createCrowdState, finishTutorialCrowd, prepareTutorialCrowd, primeCrowds, stepCrowds, type CrowdState } from './core/crowds'
-import { type CrowdSpawnZone, canAbsorbBuilding, crowdSpawnZonesAround, destructibleLandmarksAround, nearestDestructibleLandmark, parkingCarsAround, type DestructibleLandmark } from './core/cityLandmarks'
+import { type CrowdSpawnZone, GAS_STATION_BEAM_MASS, canAbsorbBuilding, crowdSpawnZonesAround, destructibleLandmarksAround, nearestDestructibleLandmark, parkingCarsAround, type DestructibleLandmark } from './core/cityLandmarks'
 import { STRINGS, readStoredLanguage, storeLanguage, type Language, type MessageKey } from './i18n'
 import { createDaylightSample, daylightClock, sampleDaylight, type DaylightSample } from './core/daylight'
 import {
@@ -1127,6 +1128,13 @@ function absorbBeamObject(game: GameRuntime, object: BeamObject) {
   if (object.kind === 'car') reportMissionEvent(game, { type: 'destroy-car' })
   if (object.kind === 'truck') reportMissionEvent(game, { type: 'destroy-truck' })
   if (object.kind === 'rooftop-structure') reportMissionEvent(game, { type: 'absorb-rooftop-structure' })
+  // Carrying a mast off cuts communications exactly as surely as shooting it
+  // down, and it is now the only way the beam can take one - so the mission
+  // has to count it, and the marker has to move on to the next mast.
+  if (object.worldProp?.kind === 'communications') {
+    reportMissionEvent(game, { type: 'destroy-comms' })
+    updateMissionTarget(game)
+  }
   if (object.id.startsWith('enemy:')) {
     const enemy = game.enemies.slots.find((candidate) => candidate.id === object.id)
     if (enemy) {
@@ -1738,8 +1746,23 @@ export function GameProvider({ children }: { children: ReactNode }) {
       // falling through it into the street.
       colliders: game.worldColliders,
     }
-    if (game.beamActive) {
+    // What the beam does to a rare landmark, and what it takes.
+    //
+    // Touching one used to detonate it: sweep the cone across a forecourt or a
+    // comms mast and it went up in a full blast, at any craft size, from a
+    // graze nobody aimed. The beam is a tractor beam, so contact alone must
+    // never be a demolition.
+    //
+    // A comms mast is city dressing with a weight in WORLD_PROP_MASS, so it is
+    // not handled here at all any more - a beam strong enough tears it out of
+    // the ground and carries it off like any other prop (see the lifted comms
+    // pool), and the laser is what blows it up. A gas station has no lifted
+    // model to carry, so the beam route for it stays a demolition - but it now
+    // costs the same weight ladder everything else does, rather than a brush
+    // of the cone.
+    if (game.beamActive && beamLiftScale(GAS_STATION_BEAM_MASS, beamStrength(game)) > 0) {
       for (const landmark of destructibleLandmarksAround(game.drone.position, 1)) {
+        if (landmark.kind !== 'gas-station') continue
         if (game.destroyedLandmarks.has(landmark.id)) continue
         const contact = { position: { x: landmark.position.x, y: 0.65, z: landmark.position.z } }
         if (isInsideBeam(contact, beamField)) detonateLandmark(game, landmark)
@@ -1763,13 +1786,17 @@ export function GameProvider({ children }: { children: ReactNode }) {
     stepBeamObjects(game.hazards.objects, beamField, d)
     stepBeamObjects(game.enemies.slots, beamField, d)
     const maxAbsorbDiameter = Number.POSITIVE_INFINITY
+    // The same integer the lifting ladder runs on. City dressing the beam
+    // cannot lift is not swallowed either, so flying low over a shelter it
+    // could never shift leaves it standing rather than eating it on contact.
+    const absorbStrength = beamStrength(game)
     const absorbFrom = (objects: BeamObject[]) => {
-      let object = beginNearbyBeamObjectAbsorption(objects, game.drone.position, maxAbsorbDiameter, game.sizeProfile.absorbDistance)
+      let object = beginNearbyBeamObjectAbsorption(objects, game.drone.position, maxAbsorbDiameter, game.sizeProfile.absorbDistance, absorbStrength)
       while (object) {
         triggerLaserBurst(game.laserBursts, 'impact', object.position, object.kind === 'cat' || object.kind === 'pedestrian' ? '#fff06d' : '#6deeff')
         if (object.kind === 'cat' || object.kind === 'pedestrian') absorbCrowd(game, object.kind)
         else absorbBeamObject(game, object)
-        object = beginNearbyBeamObjectAbsorption(objects, game.drone.position, maxAbsorbDiameter, game.sizeProfile.absorbDistance)
+        object = beginNearbyBeamObjectAbsorption(objects, game.drone.position, maxAbsorbDiameter, game.sizeProfile.absorbDistance, absorbStrength)
       }
     }
     absorbFrom(game.crowds.objects)
