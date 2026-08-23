@@ -160,6 +160,18 @@ const MINE_FORWARD_ARC = 1.7
 
 /** Mines drift up and down a little so they read as alive, not as scenery. */
 const MINE_BOB = 1.4
+
+/**
+ * How fast a mine closes once the craft is inside its blast radius.
+ *
+ * A fifth of cruising speed: it cannot catch anyone, and it is not meant to.
+ * What it does is take back some of the ground a player needs to cover in the
+ * three tenths of a second the fuse gives them, so reacting at the shell is no
+ * longer the same as being clear of it. Outside the radius it does not move at
+ * all - a mine that followed you across the map would just be a tax on having
+ * been seen, which is the reason drones never chase in the first place.
+ */
+const MINE_CREEP_SPEED = 6
 const AIR_TURN_RATE: Record<'drone' | 'helicopter', number> = { drone: 0.05, helicopter: 0.22 }
 const AIR_DESPAWN_DISTANCE = 240
 
@@ -791,7 +803,18 @@ function stepAirEnemy(enemy: EnemySlot, player: Vec3, d: number) {
   // repositioning stops being a decision.
   enemy.age += d
   if (isDroneMine(enemy)) {
-    // Holds station. The bob is cosmetic; the hazard is that it does not move.
+    // Holds station until the craft is inside the radius it kills in, and then
+    // creeps. The bob is cosmetic; the hazard is where it is.
+    const dx = player.x - enemy.position.x
+    const dy = player.y - enemy.target.y
+    const dz = player.z - enemy.position.z
+    const reach = Math.hypot(dx, dy, dz)
+    if (reach <= DRONE_MINE_BLAST_RADIUS && reach > 0.0001) {
+      const step = Math.min(MINE_CREEP_SPEED * d, reach)
+      enemy.position.x += dx / reach * step
+      enemy.position.z += dz / reach * step
+      enemy.target.y += dy / reach * step
+    }
     enemy.position.y = enemy.target.y + Math.sin(enemy.age * 1.3 + enemy.phase) * MINE_BOB
     // Mines are only cleared by leaving them far behind, never by waiting.
     if (!enemy.mineArmed && distanceToPlayer(enemy, player) > AIR_DESPAWN_DISTANCE) enemy.active = false
@@ -944,7 +967,7 @@ function stepBattleshipGuns(state: EnemyState, enemy: EnemySlot, player: Vec3, p
   aimProjectile(state, enemy, player, playerVelocity, 'shell', PROJECTILE_SPEED.shell, 4, 0.42, TURRET_POINT)
 }
 
-export function stepEnemies(state: EnemyState, player: Vec3, dt: number, playerVelocity: Vec3 = STILL) {
+export function stepEnemies(state: EnemyState, player: Vec3, dt: number, playerVelocity: Vec3 = STILL, playerRadius = 1.4) {
   const d = Math.min(Math.max(0, dt), 0.05)
   state.mineExplosion = null
   for (const enemy of state.slots) {
@@ -952,10 +975,17 @@ export function stepEnemies(state: EnemyState, player: Vec3, dt: number, playerV
     const mine = enemy.kind === 'drone' && isDroneMine(enemy)
     if (mine) {
       const distance = distanceToPlayer(enemy, player)
-      if (!enemy.mineArmed && distance <= DRONE_MINE_BLAST_RADIUS) {
+      // Hitting the casing sets it off there and then. The fuse is what a
+      // player gets for entering the field and having a moment to leave it;
+      // flying into the thing itself is not something to be given a moment
+      // for, and a mine that sat ticking under the hull for a third of a
+      // second read as a dud rather than as a hit.
+      const struck = distance <= enemy.hitRadius + playerRadius
+      if (!enemy.mineArmed && (struck || distance <= DRONE_MINE_BLAST_RADIUS)) {
         enemy.mineArmed = true
         enemy.mineFuse = DRONE_MINE_FUSE
       }
+      if (struck) enemy.mineFuse = 0
       if (enemy.mineArmed) {
         enemy.mineFuse -= d
         if (enemy.mineFuse <= 0) {

@@ -1186,11 +1186,9 @@ const blastFieldVertex = `
 attribute float aCharge;
 varying vec3 vViewNormal;
 varying vec3 vViewPosition;
-varying vec2 vUv;
 varying float vCharge;
 void main() {
   vCharge = aCharge;
-  vUv = uv;
   vec4 world = instanceMatrix * vec4(position, 1.0);
   vec4 view = modelViewMatrix * world;
   vViewNormal = normalize(normalMatrix * (mat3(instanceMatrix) * normal));
@@ -1202,37 +1200,23 @@ void main() {
 const blastFieldFragment = `
 varying vec3 vViewNormal;
 varying vec3 vViewPosition;
-varying vec2 vUv;
 varying float vCharge;
 
-const vec2 HEX = vec2(1.0, 1.7320508);
-
-float hexEdge(vec2 p) {
-  p = abs(p);
-  return max(dot(p, normalize(vec2(1.0, 1.7320508))), p.x);
-}
-
-/** Distance to the nearest cell wall of a hex lattice, 0 at a wall. */
-float hexWall(vec2 uv) {
-  vec2 a = mod(uv, HEX) - HEX * 0.5;
-  vec2 b = mod(uv - HEX * 0.5, HEX) - HEX * 0.5;
-  vec2 cell = dot(a, a) < dot(b, b) ? a : b;
-  return 0.5 - hexEdge(cell);
-}
-
 void main() {
-  // Sphere UVs pinch at the poles; the aspect fix keeps cells roughly regular
-  // around the equator, where the shell is actually read from.
-  vec2 grid = vec2(vUv.x * 34.0, vUv.y * 17.0);
-  float wall = hexWall(grid);
-  float lattice = 1.0 - smoothstep(0.0, 0.09, wall);
-
-  // Face-on the shell is nearly invisible and the mine inside stays readable;
-  // edge-on it reads as a hard bubble.
+  // A plain red bubble, not a shield.
+  //
+  // This carried a hex lattice, which is the visual language of something that
+  // stops shots - the wrong promise entirely for a line that means "inside
+  // this you die". Without it there is nothing to read but the shape and the
+  // colour, which is all the warning needs to say.
+  //
+  // Face-on it is a thin haze, so the mine inside stays visible; edge-on the
+  // fresnel closes it into a hard sphere, which is what makes the boundary
+  // itself legible from outside.
   float facing = abs(dot(normalize(vViewNormal), normalize(-vViewPosition)));
-  float rim = pow(1.0 - facing, 2.4);
+  float rim = pow(1.0 - facing, 2.2);
 
-  float alpha = (rim * 0.85 + lattice * (0.16 + rim * 0.5) + 0.025) * vCharge;
+  float alpha = (rim * 0.82 + 0.085) * vCharge;
   // Runs white-hot as the fuse closes rather than just brighter red.
   vec3 tint = mix(vec3(1.0, 0.17, 0.24), vec3(1.0, 0.78, 0.6), clamp(vCharge - 1.0, 0.0, 1.0));
   gl_FragColor = vec4(tint * (0.6 + vCharge * 0.9), clamp(alpha, 0.0, 1.0));
@@ -1711,15 +1695,24 @@ void main() {
     * sin(vLocal.y * 5.3 + vSeed * 1.7)
     * sin(vLocal.z * 6.7 + vSeed * 2.3);
 
-  vec3 core  = vec3(4.2, 3.1, 1.4);
-  vec3 flame = vec3(2.6, 0.80, 0.10);
-  vec3 ember = vec3(0.72, 0.15, 0.03);
+  // Kept in the city's own amber, not pushed to white.
+  //
+  // Bloom in PostFx keys on luminance, so the way to make a core glow is to
+  // put it over the threshold - but raising all three channels to get there
+  // clips to white and the fire loses its colour, which is what turned the
+  // middle of a blast into a flat blown-out disc. Red and green carry it
+  // instead and blue is held well down, so the core saturates to the warm
+  // yellow the streetlights and signs already use and blooms on hue rather
+  // than on white.
+  vec3 core  = vec3(1.72, 1.16, 0.34);
+  vec3 flame = vec3(1.78, 0.70, 0.10);
+  vec3 ember = vec3(0.62, 0.15, 0.035);
   vec3 smoke = vec3(0.16, 0.145, 0.14);
-  vec3 tint = life < 0.26
-    ? mix(core, flame, life / 0.26)
-    : life < 0.58
-      ? mix(flame, ember, (life - 0.26) / 0.32)
-      : mix(ember, smoke, (life - 0.58) / 0.42);
+  vec3 tint = life < 0.18
+    ? mix(core, flame, life / 0.18)
+    : life < 0.56
+      ? mix(flame, ember, (life - 0.18) / 0.38)
+      : mix(ember, smoke, (life - 0.56) / 0.44);
 
   // Lit from above, which is what separates the crowns of the lobes from the
   // shadowed undersides and gives the cluster its depth.
@@ -1728,7 +1721,7 @@ void main() {
 
   // A hot edge while it is young: the fire wrapping around each lobe.
   float facing = abs(dot(normalize(vViewNormal), normalize(-vViewPosition)));
-  tint += flame * pow(1.0 - facing, 3.0) * (1.0 - life) * 0.9;
+  tint += flame * pow(1.0 - facing, 3.0) * (1.0 - life) * 0.45;
 
   float birth = smoothstep(0.0, 0.07, life);
   float death = 1.0 - smoothstep(0.68, 1.0, life);

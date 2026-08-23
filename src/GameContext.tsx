@@ -1559,7 +1559,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     }
     // The craft's velocity goes in with its position: enemies lead the shot,
     // and the lead is computed from how it is actually moving.
-    if (!tutorialAtStart) stepEnemies(game.enemies, game.drone.position, d, game.drone.velocity)
+    if (!tutorialAtStart) stepEnemies(game.enemies, game.drone.position, d, game.drone.velocity, game.sizeProfile.hitRadius)
     const mineExplosion = game.enemies.mineExplosion
     if (mineExplosion) {
       triggerLaserBurst(game.laserBursts, 'impact', mineExplosion.position, '#ff4f62')
