@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { collideDrone, createDroneState, DRONE_DEFAULTS, stepDrone, type Aabb, type DroneInput, type DroneState, type Vec3 } from './core/drone'
+import { absoluteAim, dragAim, type AimPoint } from './core/aim'
 import {
   type BeamField,
   type BeamObject,
@@ -308,6 +309,21 @@ type MobileInput = PlayerInput & { active: boolean }
 export type RenderQuality = 'high' | 'low'
 
 const QUALITY_STORAGE_KEY = 'ufo-attack-quality'
+
+/**
+ * HUD surfaces that own the touches landing on them: the movement stick, the
+ * altitude arrows, the fire buttons, and every overlay control. A drag that
+ * starts on one of these is that control's input, not an aiming swipe.
+ */
+const HUD_CONTROLS = '.mobile-controls, button, input, select, textarea, label, a'
+
+/**
+ * Mirrors the query that reveals `.mobile-controls` in styles.css. The drag
+ * reticle is part of that control scheme, so it turns up exactly where the
+ * stick and the fire buttons do; a desktop that happens to have a touchscreen
+ * keeps the cursor mapping for its taps.
+ */
+const TOUCH_CONTROL_QUERY = '(pointer: coarse), (max-width: 760px)'
 
 function readStoredQuality(): RenderQuality {
   if (typeof window === 'undefined') return 'high'
@@ -1327,39 +1343,93 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const [quality, setQualityState] = useState<RenderQuality>(readStoredQuality)
   const [language, setLanguageState] = useState<Language>(readStoredLanguage)
   const keys = useRef<Record<string, boolean>>({})
-  const pointer = useRef({ x: 0, y: 0 })
+  const pointer = useRef<AimPoint>({ x: 0, y: 0 })
+  // The finger that currently owns the reticle, and where it last was. Null
+  // whenever no drag is in flight, which is most of the time on a phone.
+  const touchAim = useRef<{ pointerId: number; x: number; y: number } | null>(null)
   const mobile = useRef<MobileInput>({ throttle: 0, steer: 0, strafe: 0, lookPitch: 0, vertical: 0, special: false, beam: false, laser: false, active: false })
   const publishAccumulator = useRef(0)
   const publish = useCallback(() => setSnapshot(snapshotOf(runtime.current)), [])
 
   useEffect(() => {
+    /**
+     * Whether the keystroke belongs to a text field rather than to the craft.
+     *
+     * The flight controls are bare letters on `window`, which is right for a
+     * game that is played with no chrome - but the results screen now has a
+     * name box in it, and without this check typing a name would fly the ship
+     * and, worse, the space bar's `preventDefault` would refuse to type a
+     * space at all.
+     */
+    const editing = (target: EventTarget | null) => {
+      const element = target as HTMLElement | null
+      if (!element || typeof element.tagName !== 'string') return false
+      const tag = element.tagName.toLowerCase()
+      return tag === 'input' || tag === 'textarea' || tag === 'select' || element.isContentEditable === true
+    }
     const down = (event: KeyboardEvent) => {
+      if (editing(event.target)) return
       keys.current[event.code] = true
       if (event.key.length === 1) keys.current[`Key${event.key.toUpperCase()}`] = true
       if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.code)) event.preventDefault()
     }
     const up = (event: KeyboardEvent) => {
+      // Releases are always honoured, even from a text field: a key that went
+      // down on the canvas and came up in the box must not stay held.
       keys.current[event.code] = false
       if (event.key.length === 1) keys.current[`Key${event.key.toUpperCase()}`] = false
     }
+    const aimBounds = () => document.querySelector<HTMLCanvasElement>('.game-shell canvas')?.getBoundingClientRect() ?? null
+    // `matches` stays live, so this is read rather than re-queried per event.
+    const touchControls = window.matchMedia?.(TOUCH_CONTROL_QUERY) ?? null
+    // See core/aim: a cursor puts the reticle where it is, a finger pushes the
+    // reticle by how far it moved.
+    const drags = (event: PointerEvent) => event.pointerType === 'touch' && Boolean(touchControls?.matches)
     const move = (event: PointerEvent) => {
-      const canvas = document.querySelector<HTMLCanvasElement>('.game-shell canvas')
-      const bounds = canvas?.getBoundingClientRect()
+      const bounds = aimBounds()
       if (!bounds) return
-      pointer.current.x = Math.max(-1, Math.min(1, (event.clientX - bounds.left) / Math.max(1, bounds.width) * 2 - 1))
-      pointer.current.y = Math.max(-1, Math.min(1, (event.clientY - bounds.top) / Math.max(1, bounds.height) * 2 - 1))
+      if (drags(event)) {
+        const drag = touchAim.current
+        if (!drag || drag.pointerId !== event.pointerId) return
+        const to = { x: event.clientX, y: event.clientY }
+        pointer.current = dragAim(pointer.current, drag, to, bounds)
+        drag.x = to.x
+        drag.y = to.y
+        return
+      }
+      pointer.current = absoluteAim({ x: event.clientX, y: event.clientY }, bounds)
     }
-    const leave = () => { pointer.current.x = 0; pointer.current.y = 0 }
+    const press = (event: PointerEvent) => {
+      if (!drags(event)) { move(event); return }
+      // A thumb on the stick or a fire button is already saying something; it
+      // must not drag the reticle across the city on the way.
+      if (event.target instanceof Element && event.target.closest(HUD_CONTROLS)) return
+      touchAim.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY }
+      // An aiming drag is a mobile control like any other. Without this the
+      // same swipe would also reach the mouse-steer path below and bank the
+      // craft towards whichever side of the screen the thumb ended up on.
+      mobile.current.active = true
+    }
+    const lift = (event: PointerEvent) => {
+      // The reticle stays where the finger left it: aim with one thumb, fire
+      // with the other.
+      if (touchAim.current?.pointerId === event.pointerId) touchAim.current = null
+    }
+    const leave = () => { pointer.current = { x: 0, y: 0 } }
     window.addEventListener('keydown', down, { passive: false })
     window.addEventListener('keyup', up)
     window.addEventListener('pointermove', move)
-    window.addEventListener('pointerdown', move)
+    window.addEventListener('pointerdown', press)
+    window.addEventListener('pointerup', lift)
+    window.addEventListener('pointercancel', lift)
     document.documentElement.addEventListener('mouseleave', leave)
     return () => {
       window.removeEventListener('keydown', down)
       window.removeEventListener('keyup', up)
       window.removeEventListener('pointermove', move)
-      window.removeEventListener('pointerdown', move)
+      window.removeEventListener('pointerdown', press)
+      window.removeEventListener('pointerup', lift)
+      window.removeEventListener('pointercancel', lift)
       document.documentElement.removeEventListener('mouseleave', leave)
     }
   }, [])
@@ -1824,6 +1894,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     stopLobbyMusic()
     startGameplayMusic()
     pointer.current = { x: 0, y: 0 }
+    touchAim.current = null
     const game = runtime.current
     game.phase = 'playing'
     publish()
@@ -1865,6 +1936,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     stopLobbyMusic()
     startGameplayMusic()
     pointer.current = { x: 0, y: 0 }
+    touchAim.current = null
     runtime.current = makeRuntime()
     runtime.current.phase = 'playing'
     publish()

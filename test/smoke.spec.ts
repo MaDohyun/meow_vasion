@@ -60,3 +60,76 @@ test('loads first frame and validates combat and high-altitude flight', async ({
   await page.screenshot({ path: testInfo.outputPath('high-altitude.png') })
   expect(errors).toEqual([])
 })
+
+/**
+ * A finger aims by dragging, not by pointing: see src/core/aim. The maths is
+ * unit tested; what only a browser can show is the wiring - that a drag on the
+ * open city moves the reticle, and that a drag on the stick or a fire button
+ * belongs to that control and leaves the reticle where it was.
+ */
+test.describe('touch aiming', () => {
+  // A phone-sized viewport with a real touchscreen, which is what both the
+  // .mobile-controls media query and the drag reticle key off.
+  test.use({ viewport: { width: 412, height: 915 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true })
+
+  test('drags the reticle with the finger and leaves the HUD controls alone', async ({ context, page }) => {
+    await page.goto('/')
+    await page.locator('.intro-actions .primary-button').tap()
+    await expect(page.locator('canvas').first()).toBeVisible()
+    await expect(page.locator('.joystick')).toBeVisible()
+
+    // Percentages straight off the reticle, which is positioned from the same
+    // aim the laser raycast uses.
+    const aim = async () => {
+      const style = (await page.locator('.reticle').getAttribute('style')) ?? ''
+      return {
+        x: Number(/left:\s*([-\d.]+)%/.exec(style)?.[1]),
+        y: Number(/top:\s*([-\d.]+)%/.exec(style)?.[1]),
+      }
+    }
+
+    // Playwright's touchscreen only taps, and a mouse drag would arrive as a
+    // mouse pointer and take the cursor path instead.
+    const touch = await context.newCDPSession(page)
+    const drag = async (from: { x: number; y: number }, to: { x: number; y: number }) => {
+      await touch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: from.x, y: from.y, id: 1 }] })
+      for (let step = 1; step <= 10; step += 1) {
+        const at = step / 10
+        const x = from.x + (to.x - from.x) * at
+        const y = from.y + (to.y - from.y) * at
+        await touch.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y, id: 1 }] })
+      }
+      await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+      await page.waitForTimeout(120)
+    }
+
+    const view = page.viewportSize()!
+    const middle = { x: view.width / 2, y: view.height * 0.4 }
+    expect(await aim()).toEqual({ x: 50, y: 50 })
+
+    // Landing is not aiming. An absolute mapping would snap the reticle onto
+    // the thumb here, which is how it used to end up parked on a fire button.
+    await page.touchscreen.tap(view.width * 0.8, view.height * 0.2)
+    await page.waitForTimeout(120)
+    expect(await aim()).toEqual({ x: 50, y: 50 })
+
+    await drag(middle, { x: middle.x + view.width * 0.22, y: middle.y - view.height * 0.14 })
+    const dragged = await aim()
+    expect(dragged.x).toBeGreaterThan(60)
+    expect(dragged.y).toBeLessThan(40)
+
+    // The finger is gone and the reticle stays: aim with one thumb, fire with
+    // the other.
+    await page.waitForTimeout(400)
+    expect(await aim()).toEqual(dragged)
+
+    const stick = (await page.locator('.joystick').boundingBox())!
+    const knob = { x: stick.x + stick.width / 2, y: stick.y + stick.height / 2 }
+    await drag(knob, { x: knob.x + 38, y: knob.y - 38 })
+    expect(await aim()).toEqual(dragged)
+
+    await page.locator('.laser-button').tap()
+    await page.waitForTimeout(120)
+    expect(await aim()).toEqual(dragged)
+  })
+})

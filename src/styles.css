@@ -471,3 +471,45 @@ button { font: inherit; }
 .result-lead { margin:0 0 10px; font-size:11px; font-weight:1000; letter-spacing:2px; opacity:.92; }
 .results-overlay.defeat h2 { color:var(--coral); text-shadow:6px 6px 0 var(--ink); }
 .results-overlay.defeat .final-score { color:var(--cream); }
+
+/* Ranking board.
+   The results screen keeps its column layout, so the two buttons sit in a row
+   of their own and the board arrives as a panel on top rather than as another
+   block pushing the score off a short screen. */
+.result-actions { display:flex; align-items:center; gap:12px; flex-wrap:wrap; justify-content:center; }
+.ghost-button { z-index:2; margin-top:15px; padding:14px 24px; color:var(--cream); background:transparent; border:4px solid var(--cream); box-shadow:7px 7px 0 var(--ink); font-weight:1000; letter-spacing:2px; cursor:pointer; }
+.ghost-button:hover { color:var(--ink); background:var(--cyan); transform:translate(2px,2px); box-shadow:5px 5px 0 var(--ink); }
+
+.ranking-overlay { z-index:12; background:rgba(9,13,26,.86); padding:16px; }
+.ranking-panel { display:flex; flex-direction:column; align-items:center; width:min(94vw,470px); max-height:88vh; overflow-y:auto; padding:20px 18px 22px; color:var(--cream); background:linear-gradient(160deg,rgba(41,35,63,.99),rgba(15,24,42,.99)); border:4px solid var(--cream); box-shadow:10px 10px 0 rgba(0,0,0,.45); }
+.ranking-lead { margin:10px 0 4px; font-size:10px; font-weight:1000; letter-spacing:2px; text-align:center; opacity:.9; }
+.ranking-saved { color:var(--yellow); font-size:13px; letter-spacing:1px; opacity:1; }
+.ranking-form { display:flex; flex-direction:column; align-items:center; gap:6px; width:100%; margin-top:10px; }
+.ranking-form label { font-size:9px; font-weight:1000; letter-spacing:3px; color:var(--cyan); }
+.ranking-form input { width:min(100%,290px); padding:11px 12px; color:var(--cream); background:rgba(9,13,26,.85); border:3px solid rgba(233,231,214,.5); font:inherit; font-size:15px; letter-spacing:1px; text-align:center; }
+.ranking-form input:focus { border-color:var(--cyan); outline:none; }
+.ranking-form input:disabled { opacity:.55; }
+.ranking-form .primary-button { margin-top:8px; padding:11px 24px; }
+.ranking-form .primary-button:disabled { cursor:progress; opacity:.6; transform:none; }
+.ranking-notice { margin:9px 0 0; font-size:9px; font-weight:900; letter-spacing:1px; text-align:center; color:var(--coral); }
+
+.ranking-board { width:100%; margin:16px 0 4px; }
+/* Four columns, sized so a twelve-character name never squeezes the numbers. */
+.ranking-row { display:grid; grid-template-columns:34px 1fr 78px 54px; align-items:center; gap:8px; padding:7px 6px; border-bottom:2px solid rgba(233,231,214,.13); font-size:12px; }
+.ranking-row span:first-child { color:var(--cyan); font-weight:1000; text-align:center; }
+.ranking-row span:nth-child(3), .ranking-row span:nth-child(4) { text-align:right; font-variant-numeric:tabular-nums; }
+.ranking-head { border-bottom:3px solid var(--cyan); font-size:9px; font-weight:1000; letter-spacing:2px; color:var(--cyan); }
+.ranking-head span:first-child { color:var(--cyan); }
+.ranking-name { overflow:hidden; display:flex; align-items:center; gap:6px; white-space:nowrap; text-overflow:ellipsis; }
+.ranking-name i { flex:none; padding:2px 5px; color:var(--ink); background:var(--yellow); font-size:8px; font-style:normal; font-weight:1000; letter-spacing:1px; }
+.ranking-row[data-mine="true"] { color:var(--yellow); background:rgba(255,224,95,.12); }
+.ranking-row[data-mine="true"] span:first-child { color:var(--yellow); }
+.ranking-empty { margin:16px 0 6px; font-size:10px; font-weight:900; letter-spacing:1px; text-align:center; opacity:.75; }
+.ranking-panel .ghost-button { margin-top:14px; padding:10px 22px; }
+
+@media (max-width: 760px) {
+  .ranking-panel { padding:16px 12px 18px; }
+  .ranking-row { grid-template-columns:28px 1fr 66px 48px; gap:6px; font-size:11px; }
+  .result-actions { gap:8px; }
+  .ghost-button, .result-actions .primary-button { padding:11px 18px; font-size:12px; }
+}
