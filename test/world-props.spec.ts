@@ -1,7 +1,20 @@
 import { describe, expect, it } from 'vitest'
 import { beamLiftScale } from '../src/core/beam'
+import { busStopAnchor } from '../src/core/cityLandmarks'
 import { WORLD_PROP_MASS, parkTreesAround, trashBinsAround, utilityPolesAround, worldPropsAround } from '../src/core/worldProps'
-import { createActiveWorld, WORLD_CELL_SIZE } from '../src/core/world'
+import { BUILDING_PODIUM_SPREAD, createActiveWorld, getProceduralCell, WORLD_CELL_SIZE, worldCellCoord } from '../src/core/world'
+
+/** Distance from a ground point to the building's rendered ground footprint
+ *  (podium bulge included); zero when the point is inside it. */
+function buildingFootprintDistance(x: number, z: number) {
+  const cell = getProceduralCell(worldCellCoord(x), worldCellCoord(z))
+  const building = cell.building
+  if (!building) return Number.POSITIVE_INFINITY
+  const bulge = building.form === 'podium' ? BUILDING_PODIUM_SPREAD : 1
+  const dx = Math.abs(x - building.position.x) - (building.size.x / 2) * bulge
+  const dz = Math.abs(z - building.position.z) - (building.size.z / 2) * bulge
+  return Math.max(dx, dz)
+}
 
 describe('beam-capable city dressing', () => {
   it('keeps the requested weight ladder', () => {
@@ -40,6 +53,45 @@ describe('beam-capable city dressing', () => {
     }
     const props = worldPropsAround(createActiveWorld({ x: 0, z: 0 }), { x: 0, z: 0 })
     expect(props.some((prop) => prop.kind === 'trash-bin')).toBe(true)
+  })
+
+  it('keeps street furniture out of buildings, shelters and parked cars', () => {
+    // Sweep several districts: no lamp or bin may stand inside a building's
+    // rendered ground footprint (podium bulge included), a bus shelter, or a
+    // kerbside parked car - the overlaps players actually saw.
+    for (const centre of [{ x: 0, z: 0 }, { x: 400, z: -300 }, { x: -700, z: 900 }]) {
+      const furniture = [...utilityPolesAround(centre, 8), ...trashBinsAround(centre, 8)]
+      expect(furniture.length).toBeGreaterThan(0)
+      for (const item of furniture) {
+        const { x, z } = item.position
+        expect(buildingFootprintDistance(x, z)).toBeGreaterThan(0)
+        const cell = getProceduralCell(worldCellCoord(x), worldCellCoord(z))
+        if (cell.car) {
+          expect(Math.hypot(x - cell.car.position.x, z - cell.car.position.z)).toBeGreaterThan(3)
+        }
+        const stop = cell.building ? busStopAnchor(cell.building) : null
+        if (stop) expect(Math.hypot(x - stop.x, z - stop.z)).toBeGreaterThan(4)
+      }
+    }
+  })
+
+  it('keeps every bus shelter on the pavement interior', () => {
+    // A shelter pushed past a face close to the road used to land on the
+    // carriageway or the lamp line; those anchors are dropped now.
+    for (let cellZ = -20; cellZ <= 20; cellZ += 1) {
+      for (let cellX = -20; cellX <= 20; cellX += 1) {
+        const building = getProceduralCell(cellX, cellZ).building
+        if (!building) continue
+        const stop = busStopAnchor(building)
+        if (!stop) continue
+        const localX = stop.x - cellX * WORLD_CELL_SIZE
+        const localZ = stop.z - cellZ * WORLD_CELL_SIZE
+        expect(localX).toBeGreaterThanOrEqual(6)
+        expect(localX).toBeLessThanOrEqual(WORLD_CELL_SIZE - 6)
+        expect(localZ).toBeGreaterThanOrEqual(6)
+        expect(localZ).toBeLessThanOrEqual(WORLD_CELL_SIZE - 6)
+      }
+    }
   })
 
   it('includes rooftop props separately from their host buildings', () => {

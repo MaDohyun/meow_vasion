@@ -1,17 +1,21 @@
 import type { Vec3 } from './drone'
 import type { BeamObject, BeamWorldProp } from './beam'
 import {
+  busStopAnchor,
   groundLandmarkForCell,
   lakeShoreTreesAround,
   landmarkId,
 } from './cityLandmarks'
 import {
+  BUILDING_PODIUM_SPREAD,
+  getProceduralCell,
   groundCellsAround,
   lakeClusterForCell,
   parkClusterForCell,
   seedForWorldCell,
   WORLD_CELL_SIZE,
   type ActiveWorld,
+  type ProceduralCell,
 } from './world'
 
 /** Integer beam weights for city dressing that is independent of its host lot. */
@@ -69,6 +73,45 @@ export function parkTreesAround(position: Pick<Vec3, 'x' | 'z'>, radius = LANDMA
   return trees
 }
 
+/**
+ * Street furniture must not stand inside anything else on the lot.
+ *
+ * The building test uses the rendered ground footprint, not the tower's: a
+ * podium base draws wider than building.size, and a lamp placed against the
+ * tower used to end up buried in - and poking out the top of - the low slab.
+ * The bus shelter and the lot's parked car are the other fixed occupants.
+ */
+function kerbSpotIsClear(cell: ProceduralCell, x: number, z: number, margin: number) {
+  const building = cell.building
+  if (building) {
+    const bulge = building.form === 'podium' ? BUILDING_PODIUM_SPREAD : 1
+    const halfX = (building.size.x / 2) * bulge + margin
+    const halfZ = (building.size.z / 2) * bulge + margin
+    if (
+      x > building.position.x - halfX && x < building.position.x + halfX
+      && z > building.position.z - halfZ && z < building.position.z + halfZ
+    ) return false
+    const stop = busStopAnchor(building)
+    if (stop && Math.hypot(x - stop.x, z - stop.z) < 4.2) return false
+  }
+  if (cell.car && Math.hypot(x - cell.car.position.x, z - cell.car.position.z) < 3.4) return false
+  return true
+}
+
+/** The kerbside lamp spots a cell rolled, shared so bins can avoid them. */
+function lampSpotsForCell(cellX: number, cellZ: number) {
+  const spots: { x: number; z: number; rotation: number; spotIndex: number }[] = []
+  const candidates = [
+    { x: cellX * WORLD_CELL_SIZE + 4.6, z: (cellZ + 0.5) * WORLD_CELL_SIZE, rotation: -Math.PI / 2 },
+    { x: (cellX + 0.5) * WORLD_CELL_SIZE, z: cellZ * WORLD_CELL_SIZE + 4.6, rotation: Math.PI },
+  ]
+  for (const [spotIndex, candidate] of candidates.entries()) {
+    if (seedForWorldCell(cellX, cellZ, 0x51a9 + spotIndex) % 3 !== 0) continue
+    spots.push({ ...candidate, spotIndex })
+  }
+  return spots
+}
+
 /** Street lamps are treated as utility poles for the beam, with the same stable thinning as the render pool. */
 export function utilityPolesAround(position: Pick<Vec3, 'x' | 'z'>, radius = STREETLIGHT_RADIUS_CELLS) {
   const poles: BeamWorldProp[] = []
@@ -79,18 +122,15 @@ export function utilityPolesAround(position: Pick<Vec3, 'x' | 'z'>, radius = STR
       const cellX = centreX + dx
       const cellZ = centreZ + dz
       if (parkClusterForCell(cellX, cellZ) || lakeClusterForCell(cellX, cellZ)) continue
-      const spots: [number, number, number][] = [
-        [cellX * WORLD_CELL_SIZE + 4.6, (cellZ + 0.5) * WORLD_CELL_SIZE, -Math.PI / 2],
-        [(cellX + 0.5) * WORLD_CELL_SIZE, cellZ * WORLD_CELL_SIZE + 4.6, Math.PI],
-      ]
-      for (const [spotIndex, [x, z, rotation]] of spots.entries()) {
-        if (seedForWorldCell(cellX, cellZ, 0x51a9 + spotIndex) % 3 !== 0) continue
+      const cell = getProceduralCell(cellX, cellZ)
+      for (const spot of lampSpotsForCell(cellX, cellZ)) {
+        if (!kerbSpotIsClear(cell, spot.x, spot.z, 1)) continue
         poles.push(prop({
-          id: `utility-pole:${cellX}:${cellZ}:${spotIndex}`,
+          id: `utility-pole:${cellX}:${cellZ}:${spot.spotIndex}`,
           kind: 'utility-pole',
-          position: { x, y: 0, z },
-          rotation,
-          variant: spotIndex,
+          position: { x: spot.x, y: 0, z: spot.z },
+          rotation: spot.rotation,
+          variant: spot.spotIndex,
         }))
       }
     }
@@ -117,6 +157,12 @@ export function trashBinsAround(position: Pick<Vec3, 'x' | 'z'>, radius = STREET
       const cellX = centreX + dx
       const cellZ = centreZ + dz
       if (parkClusterForCell(cellX, cellZ) || lakeClusterForCell(cellX, cellZ)) continue
+      const cell = getProceduralCell(cellX, cellZ)
+      // Landmark yards (car parks, gas stations, pylons...) carry their own
+      // authored dressing; a bin standing in a painted parking bay reads as a
+      // glitch rather than street furniture.
+      if (groundLandmarkForCell(cell)) continue
+      const lampSpots = lampSpotsForCell(cellX, cellZ)
       for (let spotIndex = 0; spotIndex < 2; spotIndex += 1) {
         const seed = seedForWorldCell(cellX, cellZ, 0x7b1a5 + spotIndex)
         if (seed % 7 !== 0) continue
@@ -127,6 +173,8 @@ export function trashBinsAround(position: Pick<Vec3, 'x' | 'z'>, radius = STREET
         const [x, z, rotation] = spotIndex === 0
           ? [cellX * WORLD_CELL_SIZE + inset, cellZ * WORLD_CELL_SIZE + along, -Math.PI / 2]
           : [cellX * WORLD_CELL_SIZE + along, cellZ * WORLD_CELL_SIZE + inset, Math.PI]
+        if (!kerbSpotIsClear(cell, x, z, 0.8)) continue
+        if (lampSpots.some((lamp) => Math.hypot(x - lamp.x, z - lamp.z) < 2.6)) continue
         bins.push(prop({
           id: `trash-bin:${cellX}:${cellZ}:${spotIndex}`,
           kind: 'trash-bin',

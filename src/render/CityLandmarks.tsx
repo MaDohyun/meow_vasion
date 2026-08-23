@@ -8,7 +8,7 @@ import { bulletinFor } from '../i18n'
 import { BUILDING, GROUND } from '../constants/palette'
 import {
   groundLandmarkForCell,
-  hasBusStop,
+  busStopAnchor,
   isNewsTower,
   isConvenienceStore,
   landmarkId,
@@ -974,15 +974,14 @@ function TransitUtilityPool() {
       }
     }
     for (const building of world.buildings) {
-      if (!hasBusStop(building)) continue
-      const onX = building.sign.side === 'x'
-      const seed = seedForWorldCell(building.cellX, building.cellZ, 0xb0570)
-      const side = seed % 2 === 0 ? -1 : 1
+      // The shared anchor also rejects shelters that would stand in the road
+      // or on the lamp/bin lines - placement and render must agree on both.
+      const anchor = busStopAnchor(building)
+      if (!anchor) continue
+      const { x, z, onX, side } = anchor
       const yaw = onX ? Math.PI / 2 : 0
       euler.set(0, yaw, 0)
       rotation.setFromEuler(euler)
-      const x = building.position.x + (onX ? side * (building.size.x / 2 + 3.5) : 0)
-      const z = building.position.z + (!onX ? side * (building.size.z / 2 + 3.5) : 0)
       position.set(x, 0, z)
       scale.set(0.82, 0.82, 0.82)
       matrix.compose(position, rotation, scale)

@@ -83,6 +83,12 @@ export const PARKED_CAR_COLORS = ['#f38ca0', '#83cde3', '#f2cf7d', '#b6a0e1'] as
  * almost entirely in those two places.
  */
 export type BuildingForm = 'plain' | 'podium' | 'setback'
+
+/** How much wider a podium base renders than the tower it carries. Shared with
+ *  street-furniture placement, which must treat the bulge as part of the lot:
+ *  a lamp or bin placed against the tower's own footprint used to end up
+ *  buried in - or standing on top of - the low podium slab. */
+export const BUILDING_PODIUM_SPREAD = 1.14
 /** Recognisable authored building families layered over the shared facade. */
 export type BuildingSpecialty = 'factory' | 'department-store'
 

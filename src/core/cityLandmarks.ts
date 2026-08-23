@@ -114,6 +114,33 @@ export function hasBusStop(building: ProceduralBuilding) {
   return seedForWorldCell(building.cellX, building.cellZ, 0xb0570) % 100 < 14
 }
 
+export type BusStopAnchor = { x: number; z: number; onX: boolean; side: -1 | 1 }
+
+/**
+ * Where a building's bus shelter actually stands, or null when it cannot.
+ *
+ * The shelter goes a bench-length past one building face. A face close to the
+ * road used to push the bench out onto the carriageway - straight through the
+ * lamp and bin lines - so an anchor that cannot keep a pavement-interior
+ * margin is dropped rather than clamped (clamping would shove the bench back
+ * through its own building's wall). Placement and render share this anchor,
+ * and other street furniture keeps clear of it.
+ */
+export function busStopAnchor(building: ProceduralBuilding): BusStopAnchor | null {
+  if (!hasBusStop(building)) return null
+  const onX = building.sign.side === 'x'
+  const seed = seedForWorldCell(building.cellX, building.cellZ, 0xb0570)
+  const side: -1 | 1 = seed % 2 === 0 ? -1 : 1
+  const x = building.position.x + (onX ? side * (building.size.x / 2 + 3.5) : 0)
+  const z = building.position.z + (!onX ? side * (building.size.z / 2 + 3.5) : 0)
+  const margin = 6
+  const localX = x - building.cellX * WORLD_CELL_SIZE
+  const localZ = z - building.cellZ * WORLD_CELL_SIZE
+  if (localX < margin || localX > WORLD_CELL_SIZE - margin) return null
+  if (localZ < margin || localZ > WORLD_CELL_SIZE - margin) return null
+  return { x, z, onX, side }
+}
+
 export function crowdSpawnZonesAround(position: Pick<Vec3, 'x' | 'z'>, radius = 6): CrowdSpawnZone[] {
   const zones: CrowdSpawnZone[] = []
   for (const cell of groundCellsAround(position, radius)) {

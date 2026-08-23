@@ -29,6 +29,7 @@ import {
   WORLD_CELL_SIZE,
   WORLD_GROUND_RADIUS_CELLS,
   WORLD_MAX_BUILDINGS,
+  BUILDING_PODIUM_SPREAD,
   WORLD_MAX_DISTANT_BUILDINGS,
   WORLD_SPAWN_RADIUS,
   WORLD_LOD_RADIUS,
@@ -820,7 +821,7 @@ const ENTRANCE_HEIGHT = 4.6
 /** How far a podium stands proud of its tower, and how tall it is. Declared
  *  here because the ground-floor front has to sit on the podium's face when
  *  there is one. */
-const PODIUM_SPREAD = 1.14
+const PODIUM_SPREAD = BUILDING_PODIUM_SPREAD
 const PODIUM_HEIGHT = 5.4
 
 function EntrancePool() {
