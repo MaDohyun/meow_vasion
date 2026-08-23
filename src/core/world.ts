@@ -64,13 +64,18 @@ const BUILDING_STYLE_PICK_ORDER = [
   2, 7, 10,
 ] as const
 
-export const BUILDING_SIGN_LABELS = [
+export const BUILDING_NEON_SIGN_LABELS = [
   'RAMEN', 'HOTEL', 'ARCADE', 'CAFE 24', 'MARKET',
   'DINER', 'VIDEO', 'SKY', 'CLINIC', 'DEPOT',
+  'KARAOKE', 'MOON BAR', 'GAME', 'MUSIC', 'PAW 24', 'SUSHI',
+] as const
+
+export const BUILDING_SIGN_LABELS = [
+  ...BUILDING_NEON_SIGN_LABELS,
   'MEGA MART', 'FACTORY', 'DEPT STORE',
 ] as const
 
-export const BUILDING_SIGN_COLORS = ['#ffe66b', '#ff7bbf', '#78ffcf', '#ffdb5d', '#81ffd1'] as const
+export const BUILDING_SIGN_COLORS = ['#ffe66b', '#ff69c7', '#5fffd4', '#ff8d66', '#69bfff', '#c8ff69'] as const
 export const PARKED_CAR_COLORS = ['#f38ca0', '#83cde3', '#f2cf7d', '#b6a0e1'] as const
 
 /**
@@ -450,7 +455,7 @@ export function getProceduralCell(cellX: number, cellZ: number, worldSeed = WORL
             ? 'DEPT STORE'
             : largeFootprint
               ? 'MEGA MART'
-              : BUILDING_SIGN_LABELS[(seed >>> 19) % 10]!,
+              : BUILDING_NEON_SIGN_LABELS[(seed >>> 19) % BUILDING_NEON_SIGN_LABELS.length]!,
         color: BUILDING_SIGN_COLORS[(seed >>> 23) % BUILDING_SIGN_COLORS.length]!,
         side: (seed & 0x40000000) === 0 ? 'z' : 'x',
       },

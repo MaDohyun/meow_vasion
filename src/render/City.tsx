@@ -9,6 +9,7 @@ import { BUILDING, FX, GROUND } from '../constants/palette'
 import { radialGlowTexture } from './textures'
 import { CityLandmarks, applyLandmarkDaylight } from './CityLandmarks'
 import {
+  buildingNeonSignLayout,
   groundLandmarkForCell,
   isNewsTower,
   isConvenienceStore,
@@ -358,6 +359,8 @@ const cityDaylightMaterials = {
   streetPool: null as THREE.MeshBasicMaterial | null,
   beacon: null as THREE.MeshBasicMaterial | null,
   road: null as THREE.MeshBasicMaterial | null,
+  horizontalNeonSign: null as THREE.ShaderMaterial | null,
+  verticalNeonSign: null as THREE.ShaderMaterial | null,
 }
 
 /**
@@ -380,6 +383,9 @@ export function applyCityDaylight(nightFactor: number) {
   if (materials.streetlight) materials.streetlight.opacity = 0.1 + Math.pow(nightFactor, 1.25) * 0.9
   if (materials.streetPool) materials.streetPool.opacity = 0.012 + Math.pow(nightFactor, 1.35) * 0.42
   if (materials.beacon) materials.beacon.opacity = 0.2 + nightFactor * 0.78
+  const neonStrength = 0.16 + nightFactor * 1.48
+  if (materials.horizontalNeonSign) materials.horizontalNeonSign.uniforms.glowStrength!.value = neonStrength
+  if (materials.verticalNeonSign) materials.verticalNeonSign.uniforms.glowStrength!.value = neonStrength
   applyLandmarkDaylight(nightFactor)
 }
 
@@ -408,13 +414,196 @@ const signAtlas = pixelTexture((context) => {
     const y = Math.floor(index / SIGN_COLUMNS) * slotHeight
     context.fillStyle = '#302942'
     context.fillRect(x, y, slotWidth, slotHeight)
-    context.strokeStyle = BUILDING_SIGN_COLORS[index % BUILDING_SIGN_COLORS.length]!
-    context.lineWidth = 5
+    const color = BUILDING_SIGN_COLORS[index % BUILDING_SIGN_COLORS.length]!
+    context.strokeStyle = color
+    context.lineWidth = 4
     context.strokeRect(x + 3, y + 3, slotWidth - 6, slotHeight - 6)
-    context.fillStyle = BUILDING_SIGN_COLORS[index % BUILDING_SIGN_COLORS.length]!
+    context.fillStyle = color
     context.fillText(label, x + slotWidth / 2, y + slotHeight / 2)
   })
 }, 512, 384)
+
+// Text and border only. The shader adds this map as emission, so the lettering
+// glows without adding point lights or changing the scene's fixed light count.
+const signGlowAtlas = pixelTexture((context) => {
+  const slotWidth = context.canvas.width / SIGN_COLUMNS
+  const slotHeight = context.canvas.height / SIGN_ROWS
+  context.fillStyle = '#000000'
+  context.fillRect(0, 0, context.canvas.width, context.canvas.height)
+  context.textAlign = 'center'
+  context.textBaseline = 'middle'
+  context.font = 'bold 22px monospace'
+  BUILDING_SIGN_LABELS.forEach((label, index) => {
+    const x = index % SIGN_COLUMNS * slotWidth
+    const y = Math.floor(index / SIGN_COLUMNS) * slotHeight
+    const color = BUILDING_SIGN_COLORS[index % BUILDING_SIGN_COLORS.length]!
+    context.save()
+    context.shadowColor = color
+    context.shadowBlur = 10
+    context.strokeStyle = color
+    context.lineWidth = 3
+    context.strokeRect(x + 6, y + 6, slotWidth - 12, slotHeight - 12)
+    context.fillStyle = color
+    context.fillText(label, x + slotWidth / 2, y + slotHeight / 2)
+    context.restore()
+  })
+}, 512, 384)
+
+const VERTICAL_SIGN_COLUMNS = 3
+const VERTICAL_SIGN_DESIGNS = ['HORSE', 'BEER', '24H', 'NOVA', 'PAW', 'BAR'] as const
+const VERTICAL_SIGN_ROWS = Math.ceil(VERTICAL_SIGN_DESIGNS.length / VERTICAL_SIGN_COLUMNS)
+const VERTICAL_SIGN_COLORS = ['#69bfff', '#ffe66b', '#ff69c7', '#5fffd4', '#c8ff69', '#ff8d66'] as const
+
+function drawVerticalNeonDesign(
+  context: CanvasRenderingContext2D,
+  design: typeof VERTICAL_SIGN_DESIGNS[number],
+  index: number,
+  glowOnly: boolean,
+) {
+  const slotWidth = context.canvas.width / VERTICAL_SIGN_COLUMNS
+  const slotHeight = context.canvas.height / VERTICAL_SIGN_ROWS
+  const x = index % VERTICAL_SIGN_COLUMNS * slotWidth
+  const y = Math.floor(index / VERTICAL_SIGN_COLUMNS) * slotHeight
+  const color = VERTICAL_SIGN_COLORS[index % VERTICAL_SIGN_COLORS.length]!
+  const cx = x + slotWidth / 2
+
+  context.save()
+  if (!glowOnly) {
+    context.fillStyle = '#241d36'
+    context.fillRect(x, y, slotWidth, slotHeight)
+  }
+  context.strokeStyle = color
+  context.fillStyle = color
+  context.lineWidth = 5
+  context.lineCap = 'round'
+  context.lineJoin = 'round'
+  if (glowOnly) {
+    context.shadowColor = color
+    context.shadowBlur = 13
+  }
+  context.strokeRect(x + 7, y + 7, slotWidth - 14, slotHeight - 14)
+
+  if (design === 'HORSE') {
+    context.beginPath()
+    context.moveTo(cx - 30, y + 82)
+    context.lineTo(cx - 23, y + 38)
+    context.lineTo(cx - 7, y + 55)
+    context.lineTo(cx + 12, y + 38)
+    context.lineTo(cx + 27, y + 80)
+    context.quadraticCurveTo(cx + 29, y + 132, cx + 8, y + 160)
+    context.lineTo(cx - 13, y + 160)
+    context.quadraticCurveTo(cx - 31, y + 130, cx - 30, y + 82)
+    context.stroke()
+    context.beginPath()
+    context.arc(cx - 11, y + 92, 4, 0, Math.PI * 2)
+    context.arc(cx + 11, y + 92, 4, 0, Math.PI * 2)
+    context.fill()
+    context.font = 'bold 21px monospace'
+    context.textAlign = 'center'
+    context.fillText('HORSE', cx, y + 211)
+  } else if (design === 'BEER') {
+    context.strokeRect(cx - 28, y + 60, 54, 105)
+    context.beginPath()
+    context.arc(cx + 27, y + 108, 24, -Math.PI / 2, Math.PI / 2)
+    context.stroke()
+    for (const [dx, dy, radius] of [[-22, 56, 12], [0, 49, 15], [22, 56, 12]] as const) {
+      context.beginPath()
+      context.arc(cx + dx, y + dy, radius, 0, Math.PI * 2)
+      context.stroke()
+    }
+    context.font = 'bold 25px monospace'
+    context.textAlign = 'center'
+    context.fillText('BEER', cx, y + 211)
+  } else if (design === '24H') {
+    context.font = 'bold 66px monospace'
+    context.textAlign = 'center'
+    context.fillText('24', cx, y + 116)
+    context.font = 'bold 56px monospace'
+    context.fillText('H', cx, y + 185)
+  } else if (design === 'NOVA') {
+    context.font = 'bold 47px monospace'
+    context.textAlign = 'center'
+    ;['N', 'O', 'V', 'A'].forEach((letter, letterIndex) => {
+      context.fillText(letter, cx, y + 58 + letterIndex * 46)
+    })
+  } else if (design === 'PAW') {
+    context.beginPath()
+    context.ellipse(cx, y + 128, 34, 29, 0, 0, Math.PI * 2)
+    context.stroke()
+    for (const [dx, dy] of [[-32, 85], [-11, 69], [13, 69], [34, 88]] as const) {
+      context.beginPath()
+      context.arc(cx + dx, y + dy, 11, 0, Math.PI * 2)
+      context.stroke()
+    }
+    context.font = 'bold 27px monospace'
+    context.textAlign = 'center'
+    context.fillText('PAW', cx, y + 210)
+  } else {
+    context.beginPath()
+    context.moveTo(cx - 38, y + 60)
+    context.lineTo(cx + 38, y + 60)
+    context.lineTo(cx, y + 121)
+    context.closePath()
+    context.stroke()
+    context.beginPath()
+    context.moveTo(cx, y + 121)
+    context.lineTo(cx, y + 160)
+    context.moveTo(cx - 24, y + 160)
+    context.lineTo(cx + 24, y + 160)
+    context.stroke()
+    context.font = 'bold 30px monospace'
+    context.textAlign = 'center'
+    context.fillText('BAR', cx, y + 211)
+  }
+  context.restore()
+}
+
+const verticalSignAtlas = pixelTexture((context) => {
+  VERTICAL_SIGN_DESIGNS.forEach((design, index) => drawVerticalNeonDesign(context, design, index, false))
+}, 384, 512)
+
+const verticalSignGlowAtlas = pixelTexture((context) => {
+  context.fillStyle = '#000000'
+  context.fillRect(0, 0, context.canvas.width, context.canvas.height)
+  VERTICAL_SIGN_DESIGNS.forEach((design, index) => drawVerticalNeonDesign(context, design, index, true))
+}, 384, 512)
+
+function createNeonSignMaterial(
+  map: THREE.Texture,
+  glowMap: THREE.Texture,
+  columns: number,
+  rows: number,
+) {
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      map: { value: map },
+      glowMap: { value: glowMap },
+      glowStrength: { value: 0.45 },
+    },
+    vertexShader: `
+      attribute float signSlot;
+      varying vec2 vAtlasUv;
+      void main() {
+        float column = mod(signSlot, ${columns.toFixed(1)});
+        float row = floor(signSlot / ${columns.toFixed(1)});
+        vAtlasUv = vec2((uv.x + column) / ${columns.toFixed(1)}, (uv.y + (${(rows - 1).toFixed(1)} - row)) / ${rows.toFixed(1)});
+        gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform sampler2D map;
+      uniform sampler2D glowMap;
+      uniform float glowStrength;
+      varying vec2 vAtlasUv;
+      void main() {
+        vec3 panel = texture2D(map, vAtlasUv).rgb;
+        vec3 emission = texture2D(glowMap, vAtlasUv).rgb;
+        gl_FragColor = vec4(panel + emission * glowStrength, 1.0);
+      }
+    `,
+    toneMapped: false,
+  })
+}
 
 const distantBuildingMaterial = (() => {
   const material = new THREE.MeshToonMaterial({
@@ -1199,6 +1388,7 @@ function BuildingPool() {
   const bodies = useRef<THREE.InstancedMesh>(null)
   const roofs = useRef<THREE.InstancedMesh>(null)
   const signs = useRef<THREE.InstancedMesh>(null)
+  const verticalSigns = useRef<THREE.InstancedMesh>(null)
   const shadows = useRef<THREE.InstancedMesh>(null)
   const lastKey = useRef('')
   const matrix = useMemo(() => new THREE.Matrix4(), [])
@@ -1273,27 +1463,30 @@ function BuildingPool() {
     geometry.setAttribute('signSlot', new THREE.InstancedBufferAttribute(signSlots, 1))
     return geometry
   }, [signSlots])
-  const signMaterial = useMemo(() => new THREE.ShaderMaterial({
-    uniforms: { map: { value: signAtlas } },
-    vertexShader: `
-      attribute float signSlot;
-      varying vec2 vAtlasUv;
-      void main() {
-        float column = mod(signSlot, ${SIGN_COLUMNS.toFixed(1)});
-        float row = floor(signSlot / ${SIGN_COLUMNS.toFixed(1)});
-        vAtlasUv = vec2((uv.x + column) / ${SIGN_COLUMNS.toFixed(1)}, (uv.y + (${(SIGN_ROWS - 1).toFixed(1)} - row)) / ${SIGN_ROWS.toFixed(1)});
-        gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
-      }
-    `,
-    fragmentShader: `
-      uniform sampler2D map;
-      varying vec2 vAtlasUv;
-      void main() { gl_FragColor = texture2D(map, vAtlasUv); }
-    `,
-  }), [])
+  const verticalSignSlots = useMemo(() => new Float32Array(WORLD_MAX_BUILDINGS), [])
+  const verticalSignGeometry = useMemo(() => {
+    const geometry = new THREE.BoxGeometry(1, 1, 1)
+    geometry.setAttribute('signSlot', new THREE.InstancedBufferAttribute(verticalSignSlots, 1))
+    return geometry
+  }, [verticalSignSlots])
+  const signMaterial = useMemo(() => {
+    const material = createNeonSignMaterial(signAtlas, signGlowAtlas, SIGN_COLUMNS, SIGN_ROWS)
+    cityDaylightMaterials.horizontalNeonSign = material
+    return material
+  }, [])
+  const verticalSignMaterial = useMemo(() => {
+    const material = createNeonSignMaterial(
+      verticalSignAtlas,
+      verticalSignGlowAtlas,
+      VERTICAL_SIGN_COLUMNS,
+      VERTICAL_SIGN_ROWS,
+    )
+    cityDaylightMaterials.verticalNeonSign = material
+    return material
+  }, [])
 
   useFrame(() => {
-    if (!bodies.current || !roofs.current || !signs.current || !shadows.current) return
+    if (!bodies.current || !roofs.current || !signs.current || !verticalSigns.current || !shadows.current) return
     const world = runtime.current.world
     if (world.key === lastKey.current) return
     lastKey.current = world.key
@@ -1319,31 +1512,59 @@ function BuildingPool() {
       roofs.current!.setColorAt(index, color.set(building.roof).lerp(pastelRoof, 0.42))
 
       const signOnX = building.sign.side === 'x'
-      const hasFeatureSign = isConvenienceStore(building) || isNewsTower(building)
+      const neonLayout = buildingNeonSignLayout(building)
+      const neonSeed = seedForWorldCell(building.cellX, building.cellZ, 0x4e30a)
+      const signWidth = Math.min(12, (signOnX ? building.size.z : building.size.x) * (0.38 + (neonSeed % 17) / 100))
+      const signHeight = 2.6 + ((neonSeed >>> 9) % 11) / 10
+      const signHeightRatio = 0.34 + ((neonSeed >>> 15) % 27) / 100
       position.set(
         building.position.x + (signOnX ? building.size.x / 2 + 0.22 : 0),
-        Math.min(building.size.y - 2.5, Math.max(4.2, building.size.y * 0.46)),
+        Math.min(building.size.y - 2.5, Math.max(4.2, building.size.y * signHeightRatio)),
         building.position.z + (!signOnX ? building.size.z / 2 + 0.22 : 0),
       )
       scale.set(
-        hasFeatureSign ? 0 : Math.min(13, (signOnX ? building.size.z : building.size.x) * 0.62),
-        hasFeatureSign ? 0 : 3.8,
-        hasFeatureSign ? 0 : 0.32,
+        neonLayout === 'horizontal' ? signWidth : 0,
+        neonLayout === 'horizontal' ? signHeight : 0,
+        neonLayout === 'horizontal' ? 0.32 : 0,
       )
       matrix.compose(position, signOnX ? sideRotation : rotation, scale)
       signs.current!.setMatrixAt(index, matrix)
       signSlots[index] = Math.max(0, BUILDING_SIGN_LABELS.indexOf(building.sign.text as typeof BUILDING_SIGN_LABELS[number]))
+
+      const faceSpan = signOnX ? building.size.z : building.size.x
+      const verticalWidth = Math.min(4.4, Math.max(3, faceSpan * 0.21))
+      const verticalHeight = Math.min(11.5, Math.max(4.8, building.size.y * 0.44))
+      const edgeRoom = Math.max(0, faceSpan / 2 - verticalWidth / 2 - 0.9)
+      const alongOffset = (((neonSeed >>> 20) % 201) / 100 - 1) * edgeRoom
+      const verticalY = Math.min(
+        building.size.y - verticalHeight / 2 - 0.65,
+        Math.max(verticalHeight / 2 + 0.65, building.size.y * signHeightRatio),
+      )
+      position.set(
+        building.position.x + (signOnX ? building.size.x / 2 + 0.23 : alongOffset),
+        verticalY,
+        building.position.z + (!signOnX ? building.size.z / 2 + 0.23 : alongOffset),
+      )
+      scale.set(
+        neonLayout === 'vertical' ? verticalWidth : 0,
+        neonLayout === 'vertical' ? verticalHeight : 0,
+        neonLayout === 'vertical' ? 0.34 : 0,
+      )
+      matrix.compose(position, signOnX ? sideRotation : rotation, scale)
+      verticalSigns.current!.setMatrixAt(index, matrix)
+      verticalSignSlots[index] = (neonSeed >>> 24) % VERTICAL_SIGN_DESIGNS.length
 
       position.set(building.position.x + 1.1, 0.035, building.position.z + 1.2)
       scale.set(building.size.x * 0.88, building.size.z * 0.88, 1)
       matrix.compose(position, planeRotation, scale)
       shadows.current!.setMatrixAt(index, matrix)
     })
-    for (const mesh of [bodies.current, roofs.current, signs.current, shadows.current]) {
+    for (const mesh of [bodies.current, roofs.current, signs.current, verticalSigns.current, shadows.current]) {
       mesh.count = world.buildings.length
       mesh.instanceMatrix.needsUpdate = true
     }
     signGeometry.getAttribute('signSlot').needsUpdate = true
+    verticalSignGeometry.getAttribute('signSlot').needsUpdate = true
     bodyGeometry.getAttribute('facadeSlot').needsUpdate = true
     bodyGeometry.getAttribute('facadeFloors').needsUpdate = true
     if (bodies.current.instanceColor) bodies.current.instanceColor.needsUpdate = true
@@ -1361,6 +1582,7 @@ function BuildingPool() {
       <instancedMesh ref={bodies} args={[bodyGeometry, bodyMaterial, WORLD_MAX_BUILDINGS]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }} />
       <instancedMesh ref={roofs} args={[roundedRoofGeometry, roofMaterial, WORLD_MAX_BUILDINGS]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }} />
       <instancedMesh ref={signs} args={[signGeometry, signMaterial, WORLD_MAX_BUILDINGS]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }} />
+      <instancedMesh ref={verticalSigns} args={[verticalSignGeometry, verticalSignMaterial, WORLD_MAX_BUILDINGS]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }} />
     </group>
   )
 }
@@ -1771,8 +1993,8 @@ function LiftedUtilityPolePool() {
   </instancedMesh>
 }
 
-/** Bakes one flat colour into a part so the bin pair renders its charcoal
- *  bodies, dark openings and pale labels from a single instanced mesh. */
+/** Bakes one flat colour into a part so the bin pair renders its warm general
+ *  waste and teal recycling bodies from a single instanced mesh. */
 function tintedBinPart(geometry: THREE.BufferGeometry, colorValue: string) {
   const result = geometry.index ? geometry.toNonIndexed() : geometry
   if (result !== geometry) geometry.dispose()
@@ -1787,20 +2009,21 @@ function tintedBinPart(geometry: THREE.BufferGeometry, colorValue: string) {
   return result
 }
 
-// The kerbside sorting station: two charcoal cabinets side by side - a waste
-// slot on the left, two round-ish drop holes on the right - with pale label
-// plates on the doors. Front faces +z before the per-spot rotation.
+// The kerbside sorting station follows the reference bins: warm taupe general
+// waste on the left and bright teal recycling on the right. Front faces +z
+// before the per-spot rotation.
 const trashBinGeometry = mergeGeometries([
-  tintedBinPart(new THREE.BoxGeometry(1.44, 0.06, 0.54).translate(0, 0.03, 0), '#33383f'),
-  tintedBinPart(new THREE.BoxGeometry(0.66, 1.0, 0.56).translate(-0.36, 0.53, 0), '#4a5058'),
-  tintedBinPart(new THREE.BoxGeometry(0.66, 1.0, 0.56).translate(0.36, 0.53, 0), '#4a5058'),
-  tintedBinPart(new THREE.BoxGeometry(0.7, 0.1, 0.6).translate(-0.36, 1.06, 0), '#3d434b'),
-  tintedBinPart(new THREE.BoxGeometry(0.7, 0.1, 0.6).translate(0.36, 1.06, 0), '#3d434b'),
-  tintedBinPart(new THREE.BoxGeometry(0.34, 0.12, 0.04).translate(-0.36, 0.86, 0.28), '#14171c'),
-  tintedBinPart(new THREE.CylinderGeometry(0.09, 0.09, 0.04, 8).rotateX(Math.PI / 2).translate(0.22, 0.87, 0.28), '#14171c'),
-  tintedBinPart(new THREE.CylinderGeometry(0.09, 0.09, 0.04, 8).rotateX(Math.PI / 2).translate(0.5, 0.87, 0.28), '#14171c'),
-  tintedBinPart(new THREE.BoxGeometry(0.42, 0.28, 0.03).translate(-0.36, 0.5, 0.285), '#d8dce0'),
-  tintedBinPart(new THREE.BoxGeometry(0.42, 0.28, 0.03).translate(0.36, 0.5, 0.285), '#d8dce0'),
+  tintedBinPart(new THREE.BoxGeometry(0.7, 0.06, 0.54).translate(-0.36, 0.03, 0), '#5d554b'),
+  tintedBinPart(new THREE.BoxGeometry(0.7, 0.06, 0.54).translate(0.36, 0.03, 0), '#08776e'),
+  tintedBinPart(new THREE.BoxGeometry(0.66, 1.0, 0.56).translate(-0.36, 0.53, 0), '#756b5e'),
+  tintedBinPart(new THREE.BoxGeometry(0.66, 1.0, 0.56).translate(0.36, 0.53, 0), '#079b8d'),
+  tintedBinPart(new THREE.BoxGeometry(0.7, 0.1, 0.6).translate(-0.36, 1.06, 0), '#918473'),
+  tintedBinPart(new THREE.BoxGeometry(0.7, 0.1, 0.6).translate(0.36, 1.06, 0), '#12b6a3'),
+  tintedBinPart(new THREE.BoxGeometry(0.34, 0.12, 0.04).translate(-0.36, 0.86, 0.28), '#24211e'),
+  tintedBinPart(new THREE.CylinderGeometry(0.09, 0.09, 0.04, 8).rotateX(Math.PI / 2).translate(0.22, 0.87, 0.28), '#063f3b'),
+  tintedBinPart(new THREE.CylinderGeometry(0.09, 0.09, 0.04, 8).rotateX(Math.PI / 2).translate(0.5, 0.87, 0.28), '#063f3b'),
+  tintedBinPart(new THREE.BoxGeometry(0.42, 0.28, 0.03).translate(-0.36, 0.5, 0.285), '#ddd5c8'),
+  tintedBinPart(new THREE.BoxGeometry(0.42, 0.28, 0.03).translate(0.36, 0.5, 0.285), '#d8eee8'),
 ], false)!
 
 const trashBinMaterial = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: toonGradient })

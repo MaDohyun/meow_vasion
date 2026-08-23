@@ -68,6 +68,31 @@ export function isNewsTower(building: ProceduralBuilding) {
   return seedForWorldCell(building.cellX, building.cellZ, 0x0f0a11) % 100 < 26
 }
 
+/** Authored silhouettes and landmark storefronts keep their own identity. */
+export function isSpecialBuilding(building: ProceduralBuilding) {
+  return Boolean(
+    building.specialty
+    || building.largeFootprint
+    || isConvenienceStore(building)
+    || isNewsTower(building),
+  )
+}
+
+/** Ordinary buildings receive neon deterministically, without saved state. */
+export function hasBuildingNeonSign(building: ProceduralBuilding) {
+  if (isSpecialBuilding(building)) return false
+  return seedForWorldCell(building.cellX, building.cellZ, 0x4e30a) % 100 < 70
+}
+
+export type BuildingNeonSignLayout = 'horizontal' | 'vertical'
+
+/** Signed ordinary buildings mix broad wordmarks with tall illustrated signs. */
+export function buildingNeonSignLayout(building: ProceduralBuilding): BuildingNeonSignLayout | null {
+  if (!hasBuildingNeonSign(building)) return null
+  const seed = seedForWorldCell(building.cellX, building.cellZ, 0x4e30a)
+  return (seed >>> 9) % 3 === 0 ? 'vertical' : 'horizontal'
+}
+
 /**
  * Whether the beam can tear this building out of the ground.
  *

@@ -393,7 +393,7 @@ const WORLD_PROP_COLORS: Record<BeamWorldProp['kind'], string> = {
   'utility-pole': '#aeb5b8',
   'power-pylon': '#aeb5b8',
   communications: '#d7d1c5',
-  'trash-bin': '#565d66',
+  'trash-bin': '#079b8d',
   'park-bench': '#c58b68',
   'bus-stop': '#78aebc',
 }

@@ -7,7 +7,7 @@ import {
   updateActiveWorld,
   type ProceduralBuilding,
 } from '../src/core/world'
-import { canAbsorbBuilding, isNewsTower } from '../src/core/cityLandmarks'
+import { buildingNeonSignLayout, canAbsorbBuilding, hasBuildingNeonSign, isNewsTower, isSpecialBuilding } from '../src/core/cityLandmarks'
 import { BEAM_STRENGTH_MAX } from '../src/core/size'
 
 const canEat = (building: ProceduralBuilding, strength: number) =>
@@ -25,6 +25,25 @@ function everyBuilding() {
 }
 
 describe('eating buildings', () => {
+  it('puts deterministic neon signs only on a random subset of ordinary buildings', () => {
+    const buildings = everyBuilding()
+    const ordinary = buildings.filter((building) => !isSpecialBuilding(building))
+    const special = buildings.filter(isSpecialBuilding)
+    const signed = ordinary.filter(hasBuildingNeonSign)
+
+    expect(ordinary.length).toBeGreaterThan(0)
+    expect(special.length).toBeGreaterThan(0)
+    expect(signed.length).toBeGreaterThan(0)
+    expect(signed.length).toBeLessThan(ordinary.length)
+    expect(signed.length / ordinary.length).toBeGreaterThan(0.64)
+    expect(signed.length / ordinary.length).toBeLessThan(0.76)
+    expect(special.some(hasBuildingNeonSign)).toBe(false)
+    expect(new Set(signed.map(buildingNeonSignLayout))).toEqual(new Set(['horizontal', 'vertical']))
+    expect(special.some((building) => buildingNeonSignLayout(building) !== null)).toBe(false)
+    const decisions = new Map(buildings.map((building) => [building.id, hasBuildingNeonSign(building)]))
+    for (const building of everyBuilding()) expect(hasBuildingNeonSign(building)).toBe(decisions.get(building.id))
+  })
+
   it('maps the four existing height bands to weights 8 through 11', () => {
     const buildings = everyBuilding()
     const masses = buildings.map(buildingMass).sort((a, b) => a - b)
