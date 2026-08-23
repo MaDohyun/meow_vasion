@@ -5,33 +5,27 @@
  * the sky is put on the same clock. You can see how deep into the run you are
  * without looking at a number.
  *
- * It starts at six in the evening, not at dawn. This game is at its best in the
- * dark: lit windows, streetlights, and additive beams and explosions all need a
- * background that has stopped competing with them. A cycle that opened in
- * morning light spent the whole first half of the run - the half where a player
- * forms their impression of the game - under a bright blue sky.
+ * It opens at night and it ends at the deepest point of one: night, late
+ * night, dawn, morning, noon, afternoon, evening, dusk, back into night, and
+ * down onto the floor. This game is at its best in the dark - lit windows,
+ * streetlights, and additive beams and explosions all need a background that
+ * has stopped competing with them - and the two moments that decide how a run
+ * is remembered are the first frame and the last. Both are now dark, and the
+ * last is the darkest sky in the cycle. The daylight in the middle is there to
+ * be left behind.
  *
- * And it does not stop. The cycle runs evening, night, dawn, morning, noon,
- * afternoon and back to evening, and then goes round again. It used to take
- * the whole run to get round once, which made the sky change too slowly to
- * notice; at a fraction of the length the light is always visibly on the move.
+ * The seam of the ring sits inside the night rather than at either edge of it.
+ * That is the part that matters: the first keyframe and the last are the same
+ * sky, value for value, so the wrap is invisible, and the deepening on either
+ * side of it is one continuous fall rather than a stretch of frozen sky
+ * waiting for the run to end. The run then carries a little past that seam, so
+ * its final stretch is the far side of the same fall.
  *
- * A run is one and three fifths of a lap, which is chosen for where it stops.
- * Two whole laps put the last frame of the run back on the opening evening -
- * the brightest sky in the cycle - right as the craft is meant to be slipping
- * away. At 1.6 laps the run plays evening, night, dawn, morning, noon,
- * evening, night, and then ends as the second dawn breaks: still dark, stars
- * still out, the horizon only starting to go warm.
- *
- * Night is also the longest phase by some way. A third of the lap is spent
- * between the NIGHT and LATE NIGHT keyframes, and it is deepening the whole
- * time rather than arriving dark and sitting there - the sky, the fog and the
- * fill light all keep dropping until LATE NIGHT bottoms out.
- *
- * The loop closes, which is the part that matters. A cycle that ends at noon
- * has to either stop there - a sky sitting still for half the run - or snap
- * back to evening. Carrying it through the afternoon means the last keyframe
- * hands off to the first and progress can simply wrap.
+ * The day is deliberately compressed into the middle half. Night has to be
+ * back before the dreadnought launches at a hundred and eighty seconds, which
+ * is why dusk lands just before it and full night about twenty seconds into
+ * the fight: the whole boss fight is fought in the dark and the run ends
+ * there.
  *
  * Pure data and scalars only - no Three.js. The render layer turns the hex
  * strings into colours and does the interpolation in linear space, so this file
@@ -62,9 +56,10 @@ export type DaylightKeyframe = {
    * City time at this keyframe, in hours since the run opened at six.
    *
    * Carried as data rather than derived from a constant rate because the cycle
-   * is not evenly paced - night takes a third of the run on its own. A clock
-   * ticking at a fixed rate would put an eight-in-the-morning reading on a
-   * screen that is plainly still dark.
+   * is not evenly paced - the day is squeezed into the middle half and the
+   * closing night takes a third of the run on its own. A clock ticking at a
+   * fixed rate would put a mid-morning reading on a screen that is plainly
+   * still dark.
    */
   hour: number
   colors: DaylightColors
@@ -90,180 +85,103 @@ export type DaylightKeyframe = {
 }
 
 /**
+ * Where the run's last frame lands in the cycle: the floor of the night.
+ *
+ * The seam of the ring is a little way above the floor - dark, but the point
+ * the night is still falling toward. Running the sky a touch faster than the
+ * run carries the last frame past the seam and down onto the floor itself, so
+ * a run ends on the darkest sky it has, not on the one it opened with.
+ */
+const RUN_CLOSES_ON = 0.1
+
+/** The five minute run. Mirrors RUN_SECONDS in GameContext, which is a React
+ *  module this one must not import; the daylight test keeps the two in step. */
+const RUN_LENGTH_SECONDS = 300
+
+/**
  * Seconds for one full turn of the sky.
  *
- * Five eighths of the three hundred second run, so a run is exactly 1.6 laps:
- * two nights, and the last one still on screen when the clock runs out. An
- * even divisor of the run length would land the final frame back on the
- * opening evening instead.
+ * A shade over nine tenths of the run, which is what puts the final frame on
+ * RUN_CLOSES_ON. It also lands the dreadnought's launch at a hundred and
+ * eighty seconds exactly on the nightfall keyframe.
  */
-export const DAY_CYCLE_SECONDS = 187.5
+export const DAY_CYCLE_SECONDS = RUN_LENGTH_SECONDS / (1 + RUN_CLOSES_ON)
 
-/** The hour the run opens on. */
-export const DAYLIGHT_START_HOUR = 18
+/** The hour the run opens on. Night, not evening. */
+export const DAYLIGHT_START_HOUR = 21
 
 export const DAYLIGHT_KEYFRAMES: DaylightKeyframe[] = [
   {
+    // The seam of the ring sits inside the night, which is what lets a run
+    // open and close on the same dark sky without the last stretch freezing:
+    // this keyframe is both the first and the last, and the deepening either
+    // side of it is continuous across the wrap.
     at: 0,
-    phase: 'golden',
-    label: 'EVENING',
-    hour: 0,
-    colors: {
-      background: '#c9a385',
-      horizon: '#ffcf9c',
-      middle: '#b79ba7',
-      top: '#5c6aa6',
-      fog: '#c3a396',
-      ambient: '#ffeed6',
-      hemiSky: '#ffe3c2',
-      hemiGround: '#8f6a6a',
-      sun: '#ffd79a',
-      cloud: '#ffe4c6',
-    },
-    ambientIntensity: 0.5,
-    hemiIntensity: 0.72,
-    sunIntensity: 1.3,
-    sunAltitude: 0.2,
-    moonAltitude: -0.55,
-    sunOpacity: 1,
-    moonOpacity: 0,
-    // The city is already switching its lights on at six. Starting at a flat
-    // zero would make the first minute the only one with no warmth in it.
-    nightFactor: 0.09,
-    starIntensity: 0,
-    fogNear: 200,
-    fogFar: 700,
-  },
-  {
-    at: 0.07,
-    phase: 'golden',
-    label: 'SUNSET',
-    hour: 1,
-    colors: {
-      background: '#e58a6e',
-      horizon: '#ffb072',
-      middle: '#d0776f',
-      top: '#4a4f8f',
-      fog: '#d98a70',
-      ambient: '#ffd9b8',
-      hemiSky: '#ffc79a',
-      hemiGround: '#6b4a58',
-      sun: '#ff9c4d',
-      cloud: '#ffc9a1',
-    },
-    ambientIntensity: 0.44,
-    hemiIntensity: 0.62,
-    sunIntensity: 1.05,
-    sunAltitude: 0.06,
-    moonAltitude: -0.18,
-    sunOpacity: 1,
-    moonOpacity: 0.25,
-    nightFactor: 0.26,
-    starIntensity: 0.05,
-    fogNear: 190,
-    fogFar: 660,
-  },
-  {
-    at: 0.15,
-    phase: 'dusk',
-    label: 'DUSK',
-    hour: 2,
-    colors: {
-      background: '#3d3a6a',
-      horizon: '#8a5570',
-      middle: '#37396d',
-      top: '#1a1f45',
-      fog: '#45406f',
-      ambient: '#a9a6d8',
-      hemiSky: '#8a86c4',
-      hemiGround: '#2f2740',
-      sun: '#ff7a5c',
-      cloud: '#6a5885',
-    },
-    ambientIntensity: 0.28,
-    hemiIntensity: 0.4,
-    sunIntensity: 0.65,
-    sunAltitude: -0.1,
-    moonAltitude: 0.1,
-    sunOpacity: 0.5,
-    moonOpacity: 0.7,
-    nightFactor: 0.6,
-    starIntensity: 0.42,
-    fogNear: 175,
-    fogFar: 620,
-  },
-  {
-    at: 0.22,
     phase: 'night',
     label: 'NIGHT',
-    hour: 3.5,
+    hour: 0,
     colors: {
-      background: '#16193c',
-      horizon: '#3b4a78',
-      middle: '#1b2350',
-      top: '#0b0f26',
-      fog: '#222f56',
-      ambient: '#7686bd',
-      hemiSky: '#59709f',
-      hemiGround: '#1d2134',
-      sun: '#d99a86',
-      cloud: '#3a4468',
-    },
-    ambientIntensity: 0.18,
-    hemiIntensity: 0.27,
-    sunIntensity: 0.42,
-    sunAltitude: -0.4,
-    moonAltitude: 0.45,
-    sunOpacity: 0.08,
-    moonOpacity: 0.95,
-    // By the time the label says NIGHT it has to look like night; the walk on
-    // to LATE NIGHT is the sky getting deeper, not the lights coming on.
-    nightFactor: 0.96,
-    starIntensity: 0.9,
-    fogNear: 160,
-    fogFar: 585,
-  },
-  {
-    // The floor of the cycle, and a third of a lap away from NIGHT - the long
-    // stretch the sky spends getting darker rather than being dark. Pushed
-    // well below the old floor so that walk is worth watching: the city's own
-    // lights and the beam are the only bright things left by the time it lands.
-    at: 0.55,
-    phase: 'night',
-    label: 'LATE NIGHT',
-    hour: 9.5,
-    colors: {
-      background: '#05081a',
-      horizon: '#1a2c4e',
-      middle: '#0a1430',
-      top: '#03050f',
-      fog: '#0d1830',
-      ambient: '#495e94',
-      hemiSky: '#32497c',
-      hemiGround: '#0f1220',
-      sun: '#b9caff',
-      cloud: '#1e2740',
+      background: '#080c22',
+      horizon: '#243456',
+      middle: '#0d1434',
+      top: '#040713',
+      fog: '#131f3c',
+      ambient: '#546a9f',
+      hemiSky: '#3a5286',
+      hemiGround: '#111420',
+      sun: '#c2b2d8',
+      cloud: '#232d48',
     },
     ambientIntensity: 0.085,
     hemiIntensity: 0.13,
-    sunIntensity: 0.18,
-    sunAltitude: -0.7,
-    moonAltitude: 0.8,
+    sunIntensity: 0.19,
+    sunAltitude: -0.6,
+    moonAltitude: 0.7,
+    sunOpacity: 0.01,
+    moonOpacity: 1,
+    nightFactor: 0.99,
+    starIntensity: 0.98,
+    fogNear: 142,
+    fogFar: 520,
+  },
+  {
+    // The floor, and where a run ends: the sky turns a shade faster than the
+    // run so the last frame lands here rather than back on the seam. Pushed
+    // below the old floor again - the city's own windows, the streetlights and
+    // the beam are meant to be the only bright things left in it.
+    at: RUN_CLOSES_ON,
+    phase: 'night',
+    label: 'LATE NIGHT',
+    hour: 4.5,
+    colors: {
+      background: '#03050f',
+      horizon: '#152643',
+      middle: '#070f27',
+      top: '#02030a',
+      fog: '#0a1428',
+      ambient: '#3f5486',
+      hemiSky: '#2a4070',
+      hemiGround: '#0b0e1a',
+      sun: '#b9caff',
+      cloud: '#18203a',
+    },
+    ambientIntensity: 0.05,
+    hemiIntensity: 0.08,
+    sunIntensity: 0.11,
+    sunAltitude: -0.72,
+    moonAltitude: 0.82,
     sunOpacity: 0,
     moonOpacity: 1,
     nightFactor: 1,
     starIntensity: 1,
-    fogNear: 138,
-    fogFar: 515,
+    fogNear: 130,
+    fogFar: 495,
   },
   {
-    // Where the run ends, on its second lap: the boss arrives on the closing
-    // evening and the fight runs the whole way down into the dark, so the last
-    // frame is this sky just after it takes over from LATE NIGHT.
-    at: 0.64,
+    at: 0.19,
     phase: 'dawn',
     label: 'DAWN',
-    hour: 11.5,
+    hour: 7.5,
     colors: {
       background: '#4a4a72',
       horizon: '#e08b86',
@@ -289,10 +207,10 @@ export const DAYLIGHT_KEYFRAMES: DaylightKeyframe[] = [
     fogFar: 615,
   },
   {
-    at: 0.73,
+    at: 0.26,
     phase: 'morning',
     label: 'MORNING',
-    hour: 14,
+    hour: 9.5,
     colors: {
       background: '#a8d9d5',
       horizon: '#ffd0ac',
@@ -318,10 +236,10 @@ export const DAYLIGHT_KEYFRAMES: DaylightKeyframe[] = [
     fogFar: 700,
   },
   {
-    at: 0.81,
+    at: 0.34,
     phase: 'day',
     label: 'MIDDAY',
-    hour: 18,
+    hour: 15,
     colors: {
       background: '#8fcbdc',
       horizon: '#cfe9e2',
@@ -347,10 +265,10 @@ export const DAYLIGHT_KEYFRAMES: DaylightKeyframe[] = [
     fogFar: 760,
   },
   {
-    at: 0.9,
+    at: 0.42,
     phase: 'day',
     label: 'AFTERNOON',
-    hour: 21,
+    hour: 18,
     colors: {
       background: '#a7c9d2',
       horizon: '#f0dcbd',
@@ -376,12 +294,10 @@ export const DAYLIGHT_KEYFRAMES: DaylightKeyframe[] = [
     fogFar: 730,
   },
   {
-    // Closes the ring. Identical to the opening keyframe so the last handoff
-    // is seamless and the cycle can simply wrap round to it.
-    at: 1,
+    at: 0.49,
     phase: 'golden',
     label: 'EVENING',
-    hour: 24,
+    hour: 20.5,
     colors: {
       background: '#c9a385',
       horizon: '#ffcf9c',
@@ -405,6 +321,128 @@ export const DAYLIGHT_KEYFRAMES: DaylightKeyframe[] = [
     starIntensity: 0,
     fogNear: 200,
     fogFar: 700,
+  },
+  {
+    at: 0.53,
+    phase: 'golden',
+    label: 'SUNSET',
+    hour: 21.5,
+    colors: {
+      background: '#e58a6e',
+      horizon: '#ffb072',
+      middle: '#d0776f',
+      top: '#4a4f8f',
+      fog: '#d98a70',
+      ambient: '#ffd9b8',
+      hemiSky: '#ffc79a',
+      hemiGround: '#6b4a58',
+      sun: '#ff9c4d',
+      cloud: '#ffc9a1',
+    },
+    ambientIntensity: 0.44,
+    hemiIntensity: 0.62,
+    sunIntensity: 1.05,
+    sunAltitude: 0.06,
+    moonAltitude: -0.18,
+    sunOpacity: 1,
+    moonOpacity: 0.25,
+    nightFactor: 0.26,
+    starIntensity: 0.05,
+    fogNear: 190,
+    fogFar: 660,
+  },
+  {
+    // The last light, about twenty seconds before the dreadnought launches.
+    at: 0.58,
+    phase: 'dusk',
+    label: 'DUSK',
+    hour: 22,
+    colors: {
+      background: '#3d3a6a',
+      horizon: '#8a5570',
+      middle: '#37396d',
+      top: '#1a1f45',
+      fog: '#45406f',
+      ambient: '#a9a6d8',
+      hemiSky: '#8a86c4',
+      hemiGround: '#2f2740',
+      sun: '#ff7a5c',
+      cloud: '#6a5885',
+    },
+    ambientIntensity: 0.28,
+    hemiIntensity: 0.4,
+    sunIntensity: 0.65,
+    sunAltitude: -0.1,
+    moonAltitude: 0.1,
+    sunOpacity: 0.5,
+    moonOpacity: 0.7,
+    nightFactor: 0.6,
+    starIntensity: 0.42,
+    fogNear: 175,
+    fogFar: 620,
+  },
+  {
+    // Night falls on the second the dreadnought launches, and the rest of the
+    // run - the whole boss fight - is spent going deeper into it, past the
+    // seam and down onto the floor.
+    at: 0.66,
+    phase: 'night',
+    label: 'NIGHT',
+    hour: 23,
+    colors: {
+      background: '#16193c',
+      horizon: '#3b4a78',
+      middle: '#1b2350',
+      top: '#0b0f26',
+      fog: '#222f56',
+      ambient: '#7686bd',
+      hemiSky: '#59709f',
+      hemiGround: '#1d2134',
+      sun: '#d99a86',
+      cloud: '#3a4468',
+    },
+    ambientIntensity: 0.18,
+    hemiIntensity: 0.27,
+    sunIntensity: 0.42,
+    sunAltitude: -0.4,
+    moonAltitude: 0.45,
+    sunOpacity: 0.08,
+    moonOpacity: 0.95,
+    nightFactor: 0.96,
+    starIntensity: 0.9,
+    fogNear: 160,
+    fogFar: 585,
+  },
+  {
+    // Closes the ring on the opening keyframe, value for value, so the wrap is
+    // seamless and a run ends on exactly the sky it started on.
+    at: 1,
+    phase: 'night',
+    label: 'NIGHT',
+    hour: 24,
+    colors: {
+      background: '#080c22',
+      horizon: '#243456',
+      middle: '#0d1434',
+      top: '#040713',
+      fog: '#131f3c',
+      ambient: '#546a9f',
+      hemiSky: '#3a5286',
+      hemiGround: '#111420',
+      sun: '#c2b2d8',
+      cloud: '#232d48',
+    },
+    ambientIntensity: 0.085,
+    hemiIntensity: 0.13,
+    sunIntensity: 0.19,
+    sunAltitude: -0.6,
+    moonAltitude: 0.7,
+    sunOpacity: 0.01,
+    moonOpacity: 1,
+    nightFactor: 0.99,
+    starIntensity: 0.98,
+    fogNear: 142,
+    fogFar: 520,
   },
 ]
 
@@ -443,9 +481,9 @@ function ease(t: number) {
 /**
  * Position in the cycle, wrapping rather than clamping.
  *
- * It used to stop at 1 and hold the last keyframe forever. Now that the
- * keyframes carry on through the afternoon and back to evening, the sky can
- * just keep turning, and the same point in two different laps is the same sky.
+ * It used to stop at 1 and hold the last keyframe forever. Now that the ring
+ * closes on the sky it opened with, progress can simply keep turning, and the
+ * same point in two different laps is the same sky.
  */
 export function daylightProgress(elapsed: number) {
   if (!Number.isFinite(elapsed) || elapsed <= 0) return 0

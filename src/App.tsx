@@ -49,19 +49,25 @@ function LoadingScreen({ stage }: { stage: LoadingStage }) {
   return (
     <div className="loading-overlay" role="status" aria-live="polite">
       <div className="loading-grid" />
-      <div className="loading-ufo" aria-hidden="true"><i /><i /><i /></div>
-      <span className="loading-kicker">침략할거냥 · PRE-FLIGHT CHECK</span>
-      <h1>LOADING<br /><b>THE GRID</b></h1>
-      <div className="loading-progress" aria-label={`${Math.round(progress)} percent loaded`}>
-        <i style={{ width: `${progress}%` }} />
-      </div>
-      <div className="loading-status"><span>{stage.label}</span><b>{Math.round(progress)}%</b></div>
-      <div className="loading-checks">
-        <span data-ready={progress >= 32}>WORLD CELLS</span>
-        <span data-ready={progress >= 58}>CITY SHADERS</span>
-        <span data-ready={progress >= 82}>TRACTOR ARRAY</span>
-        <span data-ready={progress >= 96}>FLIGHT CAMERA</span>
-      </div>
+      <div className="loading-frame" aria-hidden="true" />
+      <section className="loading-console">
+        <div className="loading-emblem" aria-hidden="true">
+          <span className="paw-sigil"><i /><i /><i /><i /><b /></span>
+        </div>
+        <span className="loading-kicker">CAT FLEET · SECURE UPLINK</span>
+        <h1>MEOWVASION</h1>
+        <span className="loading-subtitle">EARTH RAID SYSTEM // SECTOR 34</span>
+        <div className="loading-progress" aria-label={`${Math.round(progress)} percent loaded`}>
+          <i style={{ width: `${progress}%` }} />
+        </div>
+        <div className="loading-status"><span>{stage.label}</span><b>{Math.round(progress)}%</b></div>
+        <div className="loading-checks">
+          <span data-ready={progress >= 32}>WORLD CELLS</span>
+          <span data-ready={progress >= 58}>CITY SHADERS</span>
+          <span data-ready={progress >= 82}>TRACTOR ARRAY</span>
+          <span data-ready={progress >= 96}>FLIGHT CAMERA</span>
+        </div>
+      </section>
     </div>
   )
 }

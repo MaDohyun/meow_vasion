@@ -39,6 +39,10 @@ type Strings = {
   start: string
   options: string
   close: string
+  howTo: string
+  howToTitle: string
+  howToMove: string
+  howToAim: string
   graphics: string
   qualityHigh: string
   qualityLow: string
@@ -181,6 +185,10 @@ export const STRINGS: Record<Language, Strings> = {
     start: '게임 시작',
     options: '옵션',
     close: '닫기',
+    howTo: '하는 방법',
+    howToTitle: 'UFO CONTROLS',
+    howToMove: '이동',
+    howToAim: '마우스 조준',
     graphics: '그래픽',
     qualityHigh: '높음',
     qualityLow: '낮음',
@@ -322,6 +330,10 @@ export const STRINGS: Record<Language, Strings> = {
     start: 'ゲーム開始',
     options: 'オプション',
     close: '閉じる',
+    howTo: '遊び方',
+    howToTitle: 'UFO CONTROLS',
+    howToMove: '移動',
+    howToAim: 'マウス照準',
     graphics: 'グラフィック',
     qualityHigh: '高',
     qualityLow: '低',
@@ -463,6 +475,10 @@ export const STRINGS: Record<Language, Strings> = {
     start: 'START SURVIVAL',
     options: 'OPTIONS',
     close: 'CLOSE',
+    howTo: 'HOW TO PLAY',
+    howToTitle: 'UFO CONTROLS',
+    howToMove: 'MOVE',
+    howToAim: 'MOUSE AIM',
     graphics: 'GRAPHICS',
     qualityHigh: 'HIGH',
     qualityLow: 'LOW',
