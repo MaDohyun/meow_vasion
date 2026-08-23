@@ -17,6 +17,7 @@ let beamSound: HTMLAudioElement | null = null
 let boosterSound: HTMLAudioElement | null = null
 let mysteryCircleSound: HTMLAudioElement | null = null
 let nearbyCatCrySound: HTMLAudioElement | null = null
+let menuHoverSound: HTMLAudioElement | null = null
 let gameplayFadeFrame: number | null = null
 let effectsMasterGain: GainNode | null = null
 
@@ -28,6 +29,7 @@ const BEAM_VOLUME = 0.2
 const BOOSTER_VOLUME = 0.4
 const MYSTERY_CIRCLE_VOLUME = 0.7
 const CAT_CRY_VOLUME = 0.62
+const MENU_HOVER_VOLUME = 0.5
 const BGM_VOLUME_STORAGE_KEY = 'beam-bandit-bgm-volume'
 const SFX_VOLUME_STORAGE_KEY = 'beam-bandit-sfx-volume'
 
@@ -81,6 +83,7 @@ export function setSfxVolume(value: number) {
   if (boosterSound) boosterSound.volume = BOOSTER_VOLUME * sfxVolume
   if (mysteryCircleSound) mysteryCircleSound.volume = MYSTERY_CIRCLE_VOLUME * sfxVolume
   if (nearbyCatCrySound) nearbyCatCrySound.volume = CAT_CRY_VOLUME * sfxVolume
+  if (menuHoverSound) menuHoverSound.volume = MENU_HOVER_VOLUME * sfxVolume
   if (context && effectsMasterGain) {
     effectsMasterGain.gain.setValueAtTime(sfxVolume, context.currentTime)
   }
@@ -223,6 +226,17 @@ function nearbyCatCryTrack() {
     nearbyCatCrySound.volume = CAT_CRY_VOLUME * sfxVolume
   }
   return nearbyCatCrySound
+}
+
+function menuHoverTrack() {
+  if (typeof Audio === 'undefined') return null
+  if (!menuHoverSound) {
+    menuHoverSound = new Audio('/audio/menu-hover.wav')
+    menuHoverSound.loop = false
+    menuHoverSound.preload = 'auto'
+    menuHoverSound.volume = MENU_HOVER_VOLUME * sfxVolume
+  }
+  return menuHoverSound
 }
 
 /* Autoplay is refused until the browser has seen a real gesture, so the lobby
@@ -464,6 +478,17 @@ export function playNearbyCatCrySound(volumeScale = 1) {
   if (!track) return
   track.currentTime = 0
   track.volume = CAT_CRY_VOLUME * sfxVolume * Math.max(0.16, Math.min(1, volumeScale))
+  void track.play().catch(() => undefined)
+}
+
+/** Play the supplied hover cue once each time the pointer settles on a lobby
+ * menu button. A sweep across the menu restarts the cue from the top instead
+ * of layering copies. Before the browser has seen a gesture the request is
+ * refused - swallowing that keeps the first hover from throwing. */
+export function playMenuHoverSound() {
+  const track = menuHoverTrack()
+  if (!track) return
+  track.currentTime = 0
   void track.play().catch(() => undefined)
 }
 

@@ -5,7 +5,7 @@ export type BeamObjectKind =
   | 'rooftop-structure' | 'tree' | 'utility-pole' | 'power-pylon' | 'communications'
   | 'trash-bin' | 'park-bench' | 'bus-stop'
   | 'drone' | 'helicopter'
-  | 'fighter' | 'anti-air' | 'tank' | 'boss'
+  | 'fighter' | 'anti-air' | 'boss'
 
 export type BeamWorldProp = {
   id: string
@@ -60,7 +60,6 @@ const DEFAULT_DIAMETER: Record<BeamObjectKind, number> = {
   truck: 4.2,
   fighter: 4.4,
   helicopter: 4.6,
-  tank: 4.8,
   explosive: 5.1,
   'anti-air': 5.2,
   'rooftop-structure': 6.2,
@@ -78,7 +77,8 @@ const DEFAULT_DIAMETER: Record<BeamObjectKind, number> = {
 
 /** Building-mounted anti-air emplacements and the battleship are the beam
  *  objects treated as architecture. Everything else is eligible once it is no
- *  wider than a third of the current UFO diameter. */
+ *  wider than a third of the current UFO diameter - though no enemy qualifies
+ *  in practice any more: every one of them is flagged `beamImmune`. */
 export function isAbsorbable(kind: BeamObjectKind, diameter = DEFAULT_DIAMETER[kind], maxDiameter = Number.POSITIVE_INFINITY) {
   // The battleship is excluded by kind rather than by size. Gating it on
   // diameter would make it edible to a craft at the size cap, and it is meant

@@ -14,7 +14,7 @@ import { DRONE_DEFAULTS } from '../src/core/drone'
 
 /** Each enemy only shoots in its own altitude band. */
 const BAND: Partial<Record<EnemyKind, number>> = {
-  helicopter: 12, tank: 12, fighter: 12, 'anti-air': 40,
+  helicopter: 12, fighter: 12, 'anti-air': 40,
 }
 
 /**
@@ -35,7 +35,7 @@ function run(options: {
   const altitude = BAND[kind] ?? 12
   const player = { x: 0, y: altitude, z: 0 }
   const velocity = { x: 0, y: 0, z: speed }
-  const at = ENEMY_WAVE_STAGES[5]!.at
+  const at = ENEMY_WAVE_STAGES[4]!.at
   // Long enough for the wave to actually fill. The spawner hands out a few
   // slots a second across every kind, so a short warm-up measures a half-built
   // wave and moves whenever any kind's budget changes.
@@ -82,7 +82,7 @@ function mixedWaveRun(seed: number, options: { speed: number; hitRadius?: number
   const state = createEnemyState(seed)
   const player = { x: 0, y: altitude, z: 0 }
   const velocity = { x: 0, y: 0, z: speed }
-  const at = ENEMY_WAVE_STAGES[5]!.at
+  const at = ENEMY_WAVE_STAGES[4]!.at
   // Long enough for the wave to actually fill. The spawner hands out a few
   // slots a second across every kind, so a short warm-up measures a half-built
   // wave and moves whenever any kind's budget changes.
@@ -118,7 +118,7 @@ describe('lead aiming', () => {
     // The point of the whole change. Flying in a straight line at full speed
     // used to be perfect safety.
     expect(run({ kind: 'helicopter', speed: DRONE_DEFAULTS.maxSpeed })).toBeGreaterThan(0)
-    expect(run({ kind: 'tank', speed: DRONE_DEFAULTS.maxSpeed })).toBeGreaterThan(0)
+    expect(run({ kind: 'fighter', speed: DRONE_DEFAULTS.maxSpeed })).toBeGreaterThan(0)
   })
 
   it('misses a craft that breaks its heading', () => {
@@ -163,8 +163,8 @@ describe('lead aiming', () => {
   it('leads worse the lower the enemy tier', () => {
     // The wave ladder is the difficulty curve: the first minute teaches the
     // rule, the anti-air network enforces it.
-    expect(LEAD_ACCURACY.helicopter).toBeLessThan(LEAD_ACCURACY.tank)
-    expect(LEAD_ACCURACY.tank).toBeLessThan(LEAD_ACCURACY['anti-air'])
+    expect(LEAD_ACCURACY.helicopter).toBeLessThan(LEAD_ACCURACY.fighter)
+    expect(LEAD_ACCURACY.fighter).toBeLessThan(LEAD_ACCURACY['anti-air'])
     expect(LEAD_ACCURACY['anti-air']).toBe(1)
     expect(LEAD_ACCURACY.drone).toBe(0)
   })

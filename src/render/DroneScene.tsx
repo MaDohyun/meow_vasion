@@ -36,7 +36,6 @@ import {
   BATTLESHIP_LENGTH,
   BATTLESHIP_TURRETS,
   ENEMY_CAPS,
-  isDroneMine,
   DRONE_MINE_BLAST_RADIUS,
   DRONE_MINE_FUSE,
   DRONE_MINE_MODEL_SCALE,
@@ -302,17 +301,9 @@ function fighterGeometry() {
   ])
 }
 
-function droneGeometry() {
-  return mergeModel([
-    coloredPart(new THREE.SphereGeometry(0.58, 8, 6).scale(1.2, 0.62, 1.2), '#5b83a6'),
-    coloredPart(new THREE.ConeGeometry(0.3, 0.68, 6).translate(0, 0.42, 0), '#8ee8e8'),
-    coloredPart(new THREE.BoxGeometry(1.65, 0.08, 0.16), '#ffcf68'),
-  ])
-}
-
-// A fixed drone is a proximity mine, not a recon saucer. The cross-frame and
-// four propellers make its silhouette readable before the red fuse pulse; the
-// suspended bomb gives the armed state a clear centre of mass.
+// Every drone is a proximity mine. The cross-frame and four propellers make
+// its silhouette readable before the red fuse pulse; the suspended bomb gives
+// the armed state a clear centre of mass.
 const mineGeometry = mergeModel([
   coloredPart(new THREE.BoxGeometry(2.1, 0.12, 0.18), '#596273'),
   coloredPart(new THREE.BoxGeometry(0.18, 0.12, 2.1), '#596273'),
@@ -329,14 +320,6 @@ const mineMaterial = new THREE.MeshToonMaterial({
   emissive: new THREE.Color('#6d1e34'),
   emissiveIntensity: 0.35,
 })
-
-function tankGeometry() {
-  return mergeModel([
-    coloredPart(new RoundedBoxGeometry(3.4, 0.9, 4.6, 2, 0.2), '#596453'),
-    coloredPart(new THREE.CylinderGeometry(1.2, 1.2, 0.82, 10).translate(0, 0.86, 0), '#7d8360'),
-    coloredPart(new THREE.CylinderGeometry(0.16, 0.2, 3.9, 8).rotateX(Math.PI / 2).translate(0, 1.08, 1.55), '#343b35'),
-  ])
-}
 
 /**
  * Earth's last resort - a flying capital ship, built along +Z so the hull's
@@ -1281,7 +1264,7 @@ function MineBlastFieldPool() {
     if (!mesh) return
     let count = 0
     for (const enemy of runtime.current.enemies.slots) {
-      if (!enemy.active || !isDroneMine(enemy)) continue
+      if (!enemy.active || enemy.kind !== 'drone') continue
       position.set(enemy.position.x, enemy.position.y, enemy.position.z)
       scale.setScalar(DRONE_MINE_BLAST_RADIUS)
       matrix.compose(position, rotation, scale)
@@ -1324,7 +1307,7 @@ function MinePool() {
     if (!mesh) return
     let count = 0
     for (const enemy of runtime.current.enemies.slots) {
-      if (!enemy.active || !isDroneMine(enemy)) continue
+      if (!enemy.active || enemy.kind !== 'drone') continue
       position.set(enemy.position.x, enemy.position.y, enemy.position.z)
       rotation.set(0, enemy.phase + clock.elapsedTime * 0.15, Math.sin(clock.elapsedTime * 1.3 + enemy.phase) * 0.04)
       quaternion.setFromEuler(rotation)
@@ -1344,16 +1327,19 @@ function MinePool() {
   return <instancedMesh ref={ref} args={[mineGeometry, mineMaterial, ENEMY_CAPS.drone]} frustumCulled={false} />
 }
 
-const enemyGeometry: Record<EnemyKind, THREE.BufferGeometry> = {
-  drone: droneGeometry(),
+/** Enemies drawn from a shared model pool. Drones are not among them: every
+ *  drone is a mine, and MinePool draws those with their own model and fuse
+ *  pulse. */
+type PooledEnemyKind = Exclude<EnemyKind, 'drone'>
+
+const enemyGeometry: Record<PooledEnemyKind, THREE.BufferGeometry> = {
   helicopter: helicopterGeometry(),
   'anti-air': antiAirGeometry(),
   fighter: fighterGeometry(),
-  tank: tankGeometry(),
   boss: bossGeometry(),
 }
 
-function EnemyPool({ kind }: { kind: EnemyKind }) {
+function EnemyPool({ kind }: { kind: PooledEnemyKind }) {
   const { runtime } = useGame()
   const ref = useRef<THREE.InstancedMesh>(null)
   const matrix = useMemo(() => new THREE.Matrix4(), [])
@@ -1369,24 +1355,19 @@ function EnemyPool({ kind }: { kind: EnemyKind }) {
     let count = 0
     for (const enemy of runtime.current.enemies.slots) {
       if (!enemy.active || enemy.kind !== kind) continue
-      if (kind === 'drone' && isDroneMine(enemy)) continue
       position.set(enemy.position.x, enemy.position.y, enemy.position.z)
       const yaw = Math.atan2(player.x - enemy.position.x, player.z - enemy.position.z)
-      const horizontalDistance = Math.hypot(player.x - enemy.position.x, player.z - enemy.position.z)
-      const groundUnit = kind === 'tank'
-      const lookUp = groundUnit && player.y > 5.5 && horizontalDistance < 60
-      const pitch = lookUp ? -Math.atan2(Math.max(0, player.y - enemy.position.y), Math.max(0.1, horizontalDistance)) : 0
       // The battleship steers itself: its heading is its course, not a stare
       // at the player. Facing the player would put a seventy-metre hull
       // bow-on and hide the whole broadside.
       if (kind === 'boss') rotation.set(0, enemy.rotation.y, enemy.rotation.z)
       else if (enemy.inBeam || enemy.tether > 0.02 || enemy.absorbing) rotation.set(enemy.rotation.x, enemy.rotation.y, enemy.rotation.z)
-      else rotation.set(pitch, yaw, kind === 'fighter' ? Math.sin(enemy.phase) * 0.22 : 0)
+      else rotation.set(0, yaw, kind === 'fighter' ? Math.sin(enemy.phase) * 0.22 : 0)
       quaternion.setFromEuler(rotation)
       // The battleship's geometry is authored at true scale, so it is the one
       // pool that must not be scaled - the turret positions the guns fire from
       // are in world metres.
-      const size = kind === 'boss' ? 1 : kind === 'drone' ? 0.45 : kind === 'helicopter' ? 0.82 : kind === 'fighter' ? 1.18 : kind === 'tank' ? 1.45 : kind === 'anti-air' ? 2.35 : 1.8
+      const size = kind === 'boss' ? 1 : kind === 'helicopter' ? 0.82 : kind === 'fighter' ? 1.18 : kind === 'anti-air' ? 2.35 : 1.8
       const absorbScale = enemy.absorbing ? Math.max(0.04, enemy.absorbTimer / BEAM_ABSORB_TIME) : 1
       scale.setScalar(size * absorbScale)
       matrix.compose(position, quaternion, scale)
@@ -1398,15 +1379,7 @@ function EnemyPool({ kind }: { kind: EnemyKind }) {
       // almost continuously, so it would be red for the entire fight. Its
       // warning is the turret ring and the aim line instead.
       if (enemy.aiming && kind !== 'boss') color.set('#ff6573')
-      else if (kind === 'drone') {
-        // A motionless mine is only fair if it announces itself. Passing drones
-        // stay cyan; mines pulse red so the sky can be read before entering it.
-        if (isDroneMine(enemy)) {
-          const pulse = 0.55 + 0.45 * Math.sin(runtime.current.sessionTime * 6 + enemy.phase)
-          color.setRGB(1, 0.24 * pulse, 0.28 * pulse)
-        } else color.set('#68e4ec')
-      }
-      else if (kind === 'tank' || kind === 'anti-air') color.set('#7f8765')
+      else if (kind === 'anti-air') color.set('#7f8765')
       else if (kind === 'boss') color.set('#eef2f6')
       else color.setRGB(0.84 + (enemy.slot % 3) * 0.07, 0.84 + (enemy.slot % 3) * 0.07, 0.84 + (enemy.slot % 3) * 0.07)
       mesh.setColorAt(count, color)
@@ -1424,11 +1397,9 @@ function EnemyPool({ kind }: { kind: EnemyKind }) {
 function EnemyPools() {
   return (
     <group>
-      <EnemyPool kind="drone" />
       <EnemyPool kind="helicopter" />
       <EnemyPool kind="anti-air" />
       <EnemyPool kind="fighter" />
-      <EnemyPool kind="tank" />
       <EnemyPool kind="boss" />
       <MinePool />
       <MineBlastFieldPool />
@@ -1535,7 +1506,7 @@ function EnemyAimLines() {
       scale.set(0.09 + charge * 0.16, length, 0.09 + charge * 0.16)
       matrix.compose(position, quaternion, scale)
       mesh.setMatrixAt(count, matrix)
-      color.set(enemy.kind === 'anti-air' ? '#ffdf5c' : enemy.kind === 'boss' ? '#ff5f7c' : enemy.kind === 'tank' ? '#ff9c54' : enemy.kind === 'fighter' ? '#ff78bd' : '#fff3a3')
+      color.set(enemy.kind === 'anti-air' ? '#ffdf5c' : enemy.kind === 'boss' ? '#ff5f7c' : enemy.kind === 'fighter' ? '#ff78bd' : '#fff3a3')
       mesh.setColorAt(count, color)
       count += 1
     }

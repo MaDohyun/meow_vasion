@@ -29,7 +29,7 @@ function launch(playerY = 30) {
 describe("earth's last resort", () => {
   it('sends exactly one ship, and only at the last wave', () => {
     const early = createEnemyState(3)
-    for (let tick = 0; tick < 720; tick += 1) syncEnemyTiers(early, ENEMY_WAVE_STAGES[6]!.at, { x: 0, y: 20, z: 0 }, 0, 0.05)
+    for (let tick = 0; tick < 720; tick += 1) syncEnemyTiers(early, ENEMY_WAVE_STAGES.at(-2)!.at, { x: 0, y: 20, z: 0 }, 0, 0.05)
     expect(early.slots.filter((enemy) => enemy.kind === 'boss' && enemy.active)).toHaveLength(0)
     const { state } = launch()
     expect(state.slots.filter((enemy) => enemy.kind === 'boss' && enemy.active)).toHaveLength(1)

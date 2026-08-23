@@ -17,7 +17,8 @@ test('loads first frame and validates combat and high-altitude flight', async ({
   await expect(page.locator('.tutorial-mission')).toBeVisible()
 
   // Nothing is broadcast yet: the sighting report waits until the player has
-  // had ten seconds in the air, which is longer than this run stays alive.
+  // had ten seconds of game time, and the clock does not start until the
+  // tutorial cat is rescued.
   await expect(page.locator('.breaking-band')).toHaveCount(0)
 
   await page.keyboard.down('q')

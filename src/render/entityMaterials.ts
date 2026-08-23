@@ -82,7 +82,6 @@ const ENEMY_GLOW: Record<EnemyKind, string> = {
   helicopter: ENTITY.HELICOPTER_GLOW,
   fighter: ENTITY.FIGHTER_GLOW,
   'anti-air': ENTITY.ANTI_AIR_GLOW,
-  tank: ENTITY.TANK_GLOW,
   boss: ENTITY.BOSS_GLOW,
 }
 

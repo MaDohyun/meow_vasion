@@ -70,6 +70,7 @@ import { MYSTERY_BOOST_DURATION, MYSTERY_BOOST_MAX_MULTIPLIER, mysteryBoostMulti
 import { shouldCrashFromOverload } from './core/overload'
 import { DRONE_BLAST_TRAUMA, addShakeTrauma, createShakeState, stepShake, type ShakeState } from './core/shake'
 import { worldPropMass, worldPropsAround } from './core/worldProps'
+import { endingForTimeUp, isVictory, type RunEnding } from './core/ending'
 import { playBoosterSound, playBuildingCollapseSound, playDroneExplosionSound, playLaserSound, playMysteryCircleSound, playNearbyCatCrySound, startBeamSound, startGameplayMusic, stopBeamSound, stopGameplayMusic, stopLobbyMusic, tone, unlockAudio } from './audio'
 
 export type GamePhase = 'intro' | 'playing' | 'upgrade' | 'results'
@@ -216,6 +217,7 @@ export type GameRuntime = {
   timeBonusAmount: number
   resultTitle: string
   victory: boolean
+  ending: RunEnding | null
   pilotExpression: PilotExpression
   pilotHoldUntil: number
   pilotPreviousCars: number
@@ -296,6 +298,7 @@ export type GameSnapshot = {
   timeBonusAmount: number
   resultTitle: string
   victory: boolean
+  ending: RunEnding | null
   pilotExpression: PilotExpression
 }
 
@@ -487,14 +490,13 @@ function makeWorldPropBeamObject(worldProp: BeamWorldProp): BeamObject {
  * Which blast a downed enemy leaves, if any.
  *
  * Every remaining enemy is a machine, but the scale of its blast still follows
- * its silhouette so a drone pop cannot read like a tank going up.
+ * its silhouette so a mine pop cannot read like the battleship going up.
  */
 const ENEMY_BLAST: Partial<Record<EnemyKind, BlastKind>> = {
   drone: 'aircraft',
   helicopter: 'aircraft',
   fighter: 'aircraft',
   'anti-air': 'vehicle',
-  tank: 'vehicle',
   boss: 'landmark',
 }
 
@@ -620,6 +622,7 @@ function makeRuntime(): GameRuntime {
     timeBonusAmount: 0,
     resultTitle: '',
     victory: false,
+    ending: null,
     pilotExpression: 'normal',
     pilotHoldUntil: 0,
     pilotPreviousCars: 0,
@@ -920,14 +923,14 @@ function registerEnemyHit(game: GameRuntime, id: string, damage: number) {
       triggerLaserBurst(game.laserBursts, 'impact', BATTLESHIP_HIT_POINT, station % 2 === 0 ? '#ff8a45' : '#ffe07a')
     }
   }
-  // A drone, helicopter or tank leaves a blast sized to the machine.
+  // A mine, helicopter or fighter leaves a blast sized to the machine.
   if (result.enemy && ENEMY_BLAST[result.kind]) {
     triggerFireball(game.fireballs, ENEMY_BLAST[result.kind]!, result.enemy.position, undefined, blastSeed(game))
   }
   // The ship is worth about two and a half times what it was: it now takes
   // sixty-four laser hits instead of twenty-five, and a reward that did not
   // move with that would make the fight cost more than it pays.
-  const reward = result.kind === 'boss' ? 3200 : result.kind === 'tank' ? 260 : result.kind === 'anti-air' ? 180 : result.kind === 'fighter' ? 140 : result.kind === 'helicopter' ? 80 : 35
+  const reward = result.kind === 'boss' ? 3200 : result.kind === 'anti-air' ? 180 : result.kind === 'fighter' ? 140 : result.kind === 'helicopter' ? 80 : 35
   game.enemiesDown += 1
   game.score += reward
   reportMissionEvent(game, { type: 'destroy-enemy', kind: result.kind })
@@ -1055,7 +1058,7 @@ function wound(game: GameRuntime, kind: HealthLossKind) {
   game.impactFlash = 1
   game.health.current = Math.max(0, game.health.current - HEALTH_LOSS[kind])
   game.health.sinceHit = 0
-  if (isDead(game.health)) endRun(game, 'CRAFT DOWN', false)
+  if (isDead(game.health)) endRun(game, 'CRAFT DOWN', 'downed')
 }
 
 /**
@@ -1272,6 +1275,7 @@ function snapshotOf(game: GameRuntime): GameSnapshot {
     timeBonusAmount: game.timeBonusAmount,
     resultTitle: game.resultTitle,
     victory: game.victory,
+    ending: game.ending,
     pilotExpression: game.pilotExpression,
   }
 }
@@ -1315,12 +1319,13 @@ function setMessage(game: GameRuntime, key: MessageKey, seconds: number, arg = 0
   game.messageTime = seconds
 }
 
-function endRun(game: GameRuntime, title: string, victory: boolean) {
+function endRun(game: GameRuntime, title: string, ending: RunEnding) {
   stopGameplayMusic()
   stopBeamSound()
   game.phase = 'results'
   game.resultTitle = title
-  game.victory = victory
+  game.ending = ending
+  game.victory = isVictory(ending)
   game.beamActive = false
   game.laserActive = false
   // The run is over; a bulletin about the next wave would be reporting on a
@@ -1512,7 +1517,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
     game.laserCooldown = Math.max(0, game.laserCooldown - d)
     game.broadcastTime = Math.max(0, game.broadcastTime - d)
     stepHealth(game.health, d)
-    // The city reports the sighting once the player has had a moment to fly.
+    // Ten seconds of game time, which the tutorial holds at zero: the report
+    // is about a craft loose over the city, and during the tutorial the craft
+    // is parked over a cat with its flight controls inert. Nothing has
+    // happened for the anchor to report yet.
     if (!tutorialAtStart && !game.openingBroadcastDone && game.sessionTime >= BROADCAST_OPENING_AT) {
       game.openingBroadcastDone = true
       raiseBroadcast(game, 0)
@@ -1529,7 +1537,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       const previousRevision = game.mission.revision
       const complete = syncMissionState(game.mission, game.sessionTime, game.score)
       presentMissionChange(game, previousStage, previousRevision)
-      endRun(game, complete ? 'EARTH RECON COMPLETE' : 'EARTH WAS WEIRDER THAN EXPECTED', complete)
+      endRun(game, complete ? 'EARTH RECON COMPLETE' : 'EARTH RECON FAILED', endingForTimeUp(complete))
       updatePilotStatus(game)
       publish()
       return
@@ -1620,7 +1628,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     if (overload > 0) {
       flightInput.vertical = Math.min(flightInput.vertical, 0) - Math.min(1, overload / 12)
       if (shouldCrashFromOverload(game.beamActive, game.ballast, capacity, game.drone.position.y)) {
-        endRun(game, 'CRUSHED BY THE LOAD', false)
+        endRun(game, 'CRUSHED BY THE LOAD', 'downed')
         updatePilotStatus(game)
         publish()
         return

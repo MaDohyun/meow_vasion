@@ -3,8 +3,6 @@ import {
   ENEMY_CAPS,
   ENEMY_WAVE_STAGES,
   createEnemyState,
-  isDroneMine,
-  mineTargetForTime,
   stepEnemies,
   syncEnemyTiers,
   type EnemyKind,
@@ -16,7 +14,7 @@ import {
  * Anti-air is left out because it is attached to buildings rather than
  * spawned, and the boss because there is only ever one.
  */
-const LASTING: EnemyKind[] = ['drone', 'helicopter', 'fighter', 'tank']
+const LASTING: EnemyKind[] = ['drone', 'helicopter', 'fighter']
 
 function targetAt(kind: EnemyKind, stage: number) {
   const targets = ENEMY_WAVE_STAGES[stage]!.targets as Partial<Record<EnemyKind, number>>
@@ -27,8 +25,8 @@ function targetAt(kind: EnemyKind, stage: number) {
  * Fly one heading at cruise while killing what a player kills, and report what
  * is within sight at each sample.
  *
- * The distinction this exists to catch: the wave table promising fifty-two
- * drones and the spawner delivering none is invisible to a test that only
+ * The distinction this exists to catch: the wave table promising thirty-odd
+ * mines and the spawner delivering none is invisible to a test that only
  * reads the table.
  */
 function flyPast(untilStage: number) {
@@ -53,10 +51,7 @@ function flyPast(untilStage: number) {
   const inSight = (match: (enemy: (typeof state.slots)[number]) => boolean) => state.slots.filter((enemy) =>
     enemy.active && match(enemy)
     && Math.hypot(enemy.position.x - player.x, enemy.position.z - player.z) < 150).length
-  return {
-    mines: inSight(isDroneMine),
-    of: (kind: EnemyKind) => inSight((enemy) => enemy.kind === kind),
-  }
+  return { of: (kind: EnemyKind) => inSight((enemy) => enemy.kind === kind) }
 }
 
 describe('the wave mix', () => {
@@ -77,27 +72,24 @@ describe('the wave mix', () => {
     // And the earliest unit is still the bulk of the sky at the end, rather
     // than a rounding error next to the newest one.
     const last = ENEMY_WAVE_STAGES.length - 1
-    expect(targetAt('drone', last)).toBeGreaterThan(targetAt('tank', last) * 3)
+    expect(targetAt('drone', last)).toBeGreaterThan(targetAt('helicopter', last) * 2)
   })
 
   it('actually puts those units in front of a player who keeps flying', () => {
     // The spawner used to run a fixed priority list with drones at the back,
-    // so by the fighter wave a player holding one heading met tanks and
-    // fighters and no drones at all - the table said fifty-two and the sky
+    // so by the fighter wave a player holding one heading met fighters and
+    // helicopters and no drones at all - the table said dozens and the sky
     // delivered none. Sampled after a long straight run with kills going in
     // the whole way, which is the case that exposed it.
     const early = flyPast(1)
     const late = flyPast(ENEMY_WAVE_STAGES.length - 1)
 
     expect(early.of('drone')).toBeGreaterThan(2)
-    expect(early.mines).toBeGreaterThan(1)
     // Later waves add to that rather than crowding it out.
     expect(late.of('drone')).toBeGreaterThan(early.of('drone'))
-    expect(late.mines).toBeGreaterThan(early.mines)
-    expect(late.mines).toBeGreaterThan(mineTargetForTime(ENEMY_WAVE_STAGES.at(-1)!.at) * 0.4)
+    expect(late.of('drone')).toBeGreaterThan(targetAt('drone', ENEMY_WAVE_STAGES.length - 1) * 0.4)
     // The newer waves are there too - this is a mix, not drones winning.
     expect(late.of('helicopter')).toBeGreaterThan(0)
     expect(late.of('fighter')).toBeGreaterThan(0)
-    expect(late.of('tank')).toBeGreaterThan(0)
   })
 })
