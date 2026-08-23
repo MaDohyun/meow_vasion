@@ -31,7 +31,7 @@ export const LANGUAGE_LABELS: Record<Language, string> = {
 
 export const DEFAULT_LANGUAGE: Language = 'ko'
 
-type Strings = {
+export type Strings = {
   titleKicker: string
   titleLine1: string
   titleLine2: string
@@ -101,8 +101,10 @@ type Strings = {
   shield: string
   radar: string
   survivedTitle: string
+  missionFailedTitle: string
   collapsedTitle: string
   survivedLead: string
+  missionFailedLead: string
   collapsedLead: string
   finalScore: string
   statSurvived: string
@@ -295,8 +297,10 @@ export const STRINGS: Record<Language, Strings> = {
     shield: '쉴드',
     radar: '주변 탐지 · 실시간',
     survivedTitle: '지구 정찰 완료',
+    missionFailedTitle: '정찰 임무 실패',
     collapsedTitle: '지구가 좀 치네?',
-    survivedLead: '장군님이 보고서를 대충 읽고 아주 만족했습니다',
+    survivedLead: '지구 정찰에 성공했습니다 냐앗호!',
+    missionFailedLead: '시간내에 미션을 완수하지 못해서 지구 정찰 임무에 실패했습니다.',
     collapsedLead: '정찰은 망했지만 고양이 얘기는 건졌습니다',
     finalScore: '최종 점수',
     statSurvived: '생존 시간',
@@ -462,8 +466,10 @@ export const STRINGS: Record<Language, Strings> = {
     shield: 'シールド',
     radar: '周辺探知・リアルタイム',
     survivedTitle: '地球偵察完了',
+    missionFailedTitle: '偵察任務 失敗',
     collapsedTitle: '地球、意外とやるな',
-    survivedLead: '将軍は報告書を半分しか読まず、大満足です',
+    survivedLead: '地球偵察に成功しました、ニャッホー！',
+    missionFailedLead: '時間内にミッションを達成できず、地球偵察任務は失敗しました。',
     collapsedLead: '偵察は失敗。でも猫の話は持ち帰れます',
     finalScore: '最終スコア',
     statSurvived: '生存時間',
@@ -629,8 +635,10 @@ export const STRINGS: Record<Language, Strings> = {
     shield: 'SHIELD',
     radar: 'LOCAL GRID · LIVE',
     survivedTitle: 'EARTH RECON COMPLETE',
+    missionFailedTitle: 'RECON MISSION FAILED',
     collapsedTitle: 'EARTH HAD NOTES',
-    survivedLead: 'The general skimmed the report and loved every word',
+    survivedLead: 'Earth recon successful. Meow-hoo!',
+    missionFailedLead: 'The clock ran out with the mission unfinished. Earth recon failed.',
     collapsedLead: 'Recon failed, but at least you brought back the cat story',
     finalScore: 'FINAL SCORE',
     statSurvived: 'SURVIVED',

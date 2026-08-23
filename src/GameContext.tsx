@@ -71,6 +71,7 @@ import { absorbShieldDamage, createShieldState, isShieldRegenerating, setShieldC
 import { shouldCrashFromOverload } from './core/overload'
 import { DRONE_BLAST_TRAUMA, addShakeTrauma, createShakeState, stepShake, type ShakeState } from './core/shake'
 import { worldPropMass, worldPropsAround } from './core/worldProps'
+import { endingForTimeUp, isVictory, type RunEnding } from './core/ending'
 import { playBoosterSound, playBuildingCollapseSound, playDroneExplosionSound, playLaserSound, playMysteryCircleSound, playNearbyCatCrySound, startBeamSound, startGameplayMusic, stopBeamSound, stopGameplayMusic, stopLobbyMusic, tone, unlockAudio } from './audio'
 
 export type GamePhase = 'intro' | 'playing' | 'upgrade' | 'results'
@@ -218,6 +219,7 @@ export type GameRuntime = {
   timeBonusAmount: number
   resultTitle: string
   victory: boolean
+  ending: RunEnding | null
   pilotExpression: PilotExpression
   pilotHoldUntil: number
   pilotPreviousCars: number
@@ -302,6 +304,7 @@ export type GameSnapshot = {
   timeBonusAmount: number
   resultTitle: string
   victory: boolean
+  ending: RunEnding | null
   pilotExpression: PilotExpression
 }
 
@@ -627,6 +630,7 @@ function makeRuntime(): GameRuntime {
     timeBonusAmount: 0,
     resultTitle: '',
     victory: false,
+    ending: null,
     pilotExpression: 'normal',
     pilotHoldUntil: 0,
     pilotPreviousCars: 0,
@@ -1065,7 +1069,7 @@ function wound(game: GameRuntime, kind: HealthLossKind) {
     game.health.current = Math.max(0, game.health.current - hullDamage)
     game.health.sinceHit = 0
   }
-  if (isDead(game.health)) endRun(game, 'CRAFT DOWN', false)
+  if (isDead(game.health)) endRun(game, 'CRAFT DOWN', 'downed')
 }
 
 /**
@@ -1286,6 +1290,7 @@ function snapshotOf(game: GameRuntime): GameSnapshot {
     timeBonusAmount: game.timeBonusAmount,
     resultTitle: game.resultTitle,
     victory: game.victory,
+    ending: game.ending,
     pilotExpression: game.pilotExpression,
   }
 }
@@ -1329,12 +1334,13 @@ function setMessage(game: GameRuntime, key: MessageKey, seconds: number, arg = 0
   game.messageTime = seconds
 }
 
-function endRun(game: GameRuntime, title: string, victory: boolean) {
+function endRun(game: GameRuntime, title: string, ending: RunEnding) {
   stopGameplayMusic()
   stopBeamSound()
   game.phase = 'results'
   game.resultTitle = title
-  game.victory = victory
+  game.ending = ending
+  game.victory = isVictory(ending)
   game.beamActive = false
   game.laserActive = false
   // The run is over; a bulletin about the next wave would be reporting on a
@@ -1544,7 +1550,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       const previousRevision = game.mission.revision
       const complete = syncMissionState(game.mission, game.sessionTime, game.score)
       presentMissionChange(game, previousStage, previousRevision)
-      endRun(game, complete ? 'EARTH RECON COMPLETE' : 'EARTH WAS WEIRDER THAN EXPECTED', complete)
+      endRun(game, complete ? 'EARTH RECON COMPLETE' : 'EARTH RECON FAILED', endingForTimeUp(complete))
       updatePilotStatus(game)
       publish()
       return
@@ -1635,7 +1641,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     if (overload > 0) {
       flightInput.vertical = Math.min(flightInput.vertical, 0) - Math.min(1, overload / 12)
       if (shouldCrashFromOverload(game.beamActive, game.ballast, capacity, game.drone.position.y)) {
-        endRun(game, 'CRUSHED BY THE LOAD', false)
+        endRun(game, 'CRUSHED BY THE LOAD', 'downed')
         updatePilotStatus(game)
         publish()
         return

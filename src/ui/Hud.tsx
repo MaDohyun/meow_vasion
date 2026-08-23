@@ -2,8 +2,9 @@ import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent as Re
 import { NAME_MAX_LENGTH, isNameAcceptable, makeEntry, type RankedEntry } from '../core/leaderboard'
 import { leaderboard, type LeaderboardSource } from '../net/leaderboard'
 import { useGame } from '../GameContext'
-import { LANGUAGES, LANGUAGE_LABELS, bulletinFor, formatMessage } from '../i18n'
+import { LANGUAGES, LANGUAGE_LABELS, bulletinFor, formatMessage, type Strings } from '../i18n'
 import { broadcastPhase, broadcastProgress } from '../core/broadcast'
+import type { RunEnding } from '../core/ending'
 import { UPGRADE_DEFINITIONS, type UpgradeId } from '../core/upgrades'
 import { HowToPlay } from './HowToPlay'
 import { Radar } from './Radar'
@@ -474,17 +475,33 @@ function RankingPanel({ onClose }: { onClose: () => void }) {
   )
 }
 
+/**
+ * What the run is told it was.
+ *
+ * Three endings, not two: outlasting the clock with the mission unfinished is
+ * its own result, and reporting it as a shoot-down told the player they had
+ * died when they had in fact flown the whole window and simply not finished
+ * the job. A run that ends early has no mission verdict to give, so it keeps
+ * the screen it always had.
+ */
+function resultCopy(t: Strings, ending: RunEnding | null) {
+  if (ending === 'recon') return { title: t.survivedTitle, lead: t.survivedLead }
+  if (ending === 'missionFailed') return { title: t.missionFailedTitle, lead: t.missionFailedLead }
+  return { title: t.collapsedTitle, lead: t.collapsedLead }
+}
+
 function Results() {
   const { snapshot, restart, t } = useGame()
   const survived = snapshot.victory
+  const { title, lead } = resultCopy(t, snapshot.ending)
   const [ranking, setRanking] = useState(false)
   return (
     <div className={`overlay results-overlay ${survived ? 'victory' : 'defeat'}`}>
-      <span className="eyebrow">{survived ? t.survivedTitle : t.collapsedTitle}</span>
-      <h2>{survived ? t.survivedTitle : t.collapsedTitle}</h2>
-      {/* Saying why it ended matters more on the losing screen: collapse is a
-          slow failure the player may not have felt arriving. */}
-      <p className="result-lead">{survived ? t.survivedLead : t.collapsedLead}</p>
+      <span className="eyebrow">{title}</span>
+      <h2>{title}</h2>
+      {/* Saying why it ended matters more on the losing screens: the clock and
+          the mission fail for different reasons, and neither is a collapse. */}
+      <p className="result-lead">{lead}</p>
       <strong className="final-score">{Math.floor(snapshot.score).toLocaleString()}</strong>
       <p>{t.finalScore}</p>
       <div className="result-stats">
