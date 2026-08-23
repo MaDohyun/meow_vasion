@@ -42,6 +42,7 @@ import {
   lakeClusterForCell,
   parkClusterForCell,
   sameLandmarkCluster,
+  type ActiveWorld,
   type BuildingHeightTier,
   type BuildingSpecialty,
   type GroundVariant,
@@ -1400,6 +1401,13 @@ function BuildingPool() {
   const color = useMemo(() => new THREE.Color(), [])
   const pastelWall = useMemo(() => new THREE.Color(BUILDING.FACADE_WALL), [])
   const pastelRoof = useMemo(() => new THREE.Color(BUILDING.ROOF), [])
+  const hitTint = useMemo(() => new THREE.Color(BUILDING.LASER_HIT), [])
+  /** Where each building sits in the instanced pool, so a hit can find it
+   *  without walking the world list every frame. */
+  const bodySlots = useRef(new Map<string, number>())
+  /** Buildings whose colour is currently overridden, so it can be put back
+   *  exactly once when the flash ends. */
+  const litBodies = useRef(new Set<string>())
   const facadeSlots = useMemo(() => new Float32Array(WORLD_MAX_BUILDINGS), [])
   const facadeFloors = useMemo(() => new Float32Array(WORLD_MAX_BUILDINGS), [])
   const bodyGeometry = useMemo(() => {
@@ -1485,12 +1493,52 @@ function BuildingPool() {
     return material
   }, [])
 
+  /**
+   * Light a building that has just been shot.
+   *
+   * Only the handful currently flashing are touched, and each is put back to
+   * its own wall colour exactly once when its flash ends - repainting the whole
+   * pool every frame would undo the point of caching it on the world key.
+   */
+  const paintLaserHits = (world: ActiveWorld) => {
+    const mesh = bodies.current
+    if (!mesh) return
+    const flashes = runtime.current.buildingHitFlash
+    let dirty = false
+    const baseColour = (index: number) => color.set(world.buildings[index]!.color).lerp(pastelWall, 0.42)
+    for (const id of litBodies.current) {
+      if (flashes.has(id)) continue
+      const index = bodySlots.current.get(id)
+      if (index !== undefined && world.buildings[index]) {
+        mesh.setColorAt(index, baseColour(index))
+        dirty = true
+      }
+      litBodies.current.delete(id)
+    }
+    for (const [id, flash] of flashes) {
+      const index = bodySlots.current.get(id)
+      if (index === undefined || !world.buildings[index]) continue
+      // Deliberately light. The tower has to answer the shot without turning
+      // into a red block, which would read as it being on fire rather than hit.
+      mesh.setColorAt(index, baseColour(index).lerp(hitTint, Math.min(1, flash) * 0.5))
+      litBodies.current.add(id)
+      dirty = true
+    }
+    if (dirty && mesh.instanceColor) mesh.instanceColor.needsUpdate = true
+  }
+
   useFrame(() => {
     if (!bodies.current || !roofs.current || !signs.current || !verticalSigns.current || !shadows.current) return
     const world = runtime.current.world
+    // The laser flash runs every frame; the rest of the pool only rebuilds when
+    // the streamed world changes, so it comes first and does its own repaint.
+    paintLaserHits(world)
     if (world.key === lastKey.current) return
     lastKey.current = world.key
+    bodySlots.current.clear()
+    litBodies.current.forEach((id) => litBodies.current.delete(id))
     world.buildings.forEach((building, index) => {
+      bodySlots.current.set(building.id, index)
       position.set(building.position.x, building.position.y, building.position.z)
       scale.set(building.size.x, building.size.y, building.size.z)
       matrix.compose(position, rotation, scale)

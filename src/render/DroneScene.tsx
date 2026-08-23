@@ -1811,6 +1811,9 @@ function FireballPool() {
   )
 }
 
+/** How much bigger a landing round reads than it used to. */
+const IMPACT_BURST_SCALE = 1.5
+
 function LaserBursts() {
   const { runtime } = useGame()
   const rings = useRef<THREE.InstancedMesh>(null)
@@ -1829,9 +1832,12 @@ function LaserBursts() {
     for (const burst of runtime.current.laserBursts) {
       if (!burst.active) continue
       const remaining = burst.life / burst.duration
+      // The impact half is half again the size it was: a round landing on a
+      // tower has to be visible against the tower.
+      const hit = burst.kind === 'muzzle' ? 1 : IMPACT_BURST_SCALE
       const ringSize = burst.kind === 'muzzle'
         ? 0.35 + remaining * 0.9
-        : 0.25 + (1 - remaining) * 2.35
+        : (0.25 + (1 - remaining) * 2.35) * hit
       position.set(burst.position.x, burst.position.y, burst.position.z)
       scale.setScalar(ringSize)
       matrix.compose(position, camera.quaternion, scale)
@@ -1841,12 +1847,12 @@ function LaserBursts() {
       quaternion.copy(camera.quaternion)
       spin.setFromAxisAngle(forward, count * 1.91 + (1 - remaining) * 1.4)
       quaternion.multiply(spin)
-      scale.set(0.12 + remaining * 0.14, 0.8 + (1 - remaining) * 2.8, 0.12)
+      scale.set((0.12 + remaining * 0.14) * hit, (0.8 + (1 - remaining) * 2.8) * hit, 0.12 * hit)
       matrix.compose(position, quaternion, scale)
       sparks.current.setMatrixAt(count, matrix)
       sparks.current.setColorAt(count, color.set(burst.color).multiplyScalar(0.75 + remaining * 0.5))
 
-      scale.setScalar((burst.kind === 'muzzle' ? 0.5 : 1.25) * remaining)
+      scale.setScalar((burst.kind === 'muzzle' ? 0.5 : 1.25 * IMPACT_BURST_SCALE) * remaining)
       matrix.compose(position, camera.quaternion, scale)
       flashes.current.setMatrixAt(count, matrix)
       flashes.current.setColorAt(count, color.set(burst.color).multiplyScalar(0.7 + remaining))

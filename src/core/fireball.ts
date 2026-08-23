@@ -49,7 +49,9 @@ export const BLAST_PROFILE: Record<BlastKind, { radius: number; duration: number
   aircraft: { radius: 3, duration: 0.3, puffs: 8 },
   // A hit that did not kill: a spit of fire off the surface and gone before
   // the next shot lands, so holding the trigger on a tower does not bury it.
-  strike: { radius: 1.15, duration: 0.26, puffs: 5 },
+  // Half again the size it started at - at the first sizing a hit on a tower
+  // barely registered against the tower.
+  strike: { radius: 1.72, duration: 0.26, puffs: 5 },
 }
 
 export const FIREBALL_DURATION = BLAST_PROFILE.mine.duration

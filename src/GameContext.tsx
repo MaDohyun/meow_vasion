@@ -82,6 +82,8 @@ export type MissionBanner =
 /** Five minutes. It was three, which was a number chosen to fit a judging
  *  slot rather than to fit the game. */
 export const RUN_SECONDS = 300
+/** A laser hit lights a building for about a fifth of a second. */
+export const BUILDING_HIT_FLASH_FADE = 5
 export const SURVIVAL_TARGET_TIME = RUN_SECONDS
 
 export type GameRuntime = {
@@ -163,6 +165,15 @@ export type GameRuntime = {
   /** Static city dressing that has been absorbed by the tractor beam. */
   destroyedWorldProps: Set<string>
   buildingHealth: Map<string, number>
+  /**
+   * Buildings currently lit up by a laser hit, keyed by id, 1 down to 0.
+   *
+   * The hit used to be told entirely on the craft: a tower taking a shot -
+   * or coming down - turned the saucer red, which is the same signal the game
+   * uses for the player being hurt. It said the wrong thing about who was
+   * taking damage. The flash belongs on whatever was shot.
+   */
+  buildingHitFlash: Map<string, number>
   ruinedBuildings: Map<string, BuildingRuin>
   destroyedLandmarks: Set<string>
   crowdThreats: Vec3[]
@@ -550,6 +561,7 @@ function makeRuntime(): GameRuntime {
     destroyedBuildings: new Set<string>(),
     destroyedWorldProps: new Set<string>(),
     buildingHealth: new Map<string, number>(),
+    buildingHitFlash: new Map<string, number>(),
     ruinedBuildings: new Map<string, BuildingRuin>(),
     destroyedLandmarks: new Set<string>(),
     crowdThreats,
@@ -884,7 +896,6 @@ function registerEnemyHit(game: GameRuntime, id: string, damage: number) {
       battleshipTurretPoint(result.enemy, station, BATTLESHIP_HIT_POINT)
       triggerLaserBurst(game.laserBursts, 'impact', BATTLESHIP_HIT_POINT, station % 2 === 0 ? '#ff8a45' : '#ffe07a')
     }
-    game.impactFlash = 1
   }
   // A drone, helicopter or tank leaves a blast sized to the machine.
   if (result.enemy && ENEMY_BLAST[result.kind]) {
@@ -942,6 +953,7 @@ function registerBuildingLaserHit(game: GameRuntime, id: string) {
   const building = game.world.buildings.find((candidate) => candidate.id === id)
   if (!building || game.destroyedBuildings.has(id)) return false
   const result = damageBuilding(game.buildingHealth, building, upgradeMultiplier(game.upgrades, 'laser-power'))
+  game.buildingHitFlash.set(building.id, 1)
   triggerLaserBurst(game.laserBursts, 'impact', building.position, '#ffca63')
   if (!result.destroyed) return true
   // A tower's own blast is centred on the tower, not on the point that was
@@ -958,7 +970,7 @@ function registerBuildingLaserHit(game: GameRuntime, id: string) {
   reportMissionEvent(game, { type: 'ruin-building' })
   game.world = updateActiveWorld(game.world, game.drone.position, true, game.destroyedBuildings)
   refreshWorldGeometry(game)
-  game.impactFlash = 1
+  game.buildingHitFlash.delete(building.id)
   return true
 }
 
@@ -991,7 +1003,6 @@ function detonateLandmark(game: GameRuntime, landmark: DestructibleLandmark) {
   game.score += 650
   reportMissionEvent(game, { type: landmark.kind === 'gas-station' ? 'destroy-gas-station' : 'destroy-comms' })
   updateMissionTarget(game)
-  game.impactFlash = 1
   return true
 }
 
@@ -1376,6 +1387,13 @@ export function GameProvider({ children }: { children: ReactNode }) {
     game.pilotClock += d
     game.messageTime = Math.max(0, game.messageTime - d)
     game.impactFlash = Math.max(0, game.impactFlash - d * 5)
+    // Short enough to be over before the laser can fire again, so holding the
+    // trigger on a tower reads as repeated hits rather than a solid red block.
+    for (const [id, flash] of game.buildingHitFlash) {
+      const next = flash - d * BUILDING_HIT_FLASH_FADE
+      if (next <= 0) game.buildingHitFlash.delete(id)
+      else game.buildingHitFlash.set(id, next)
+    }
     game.pickupPulse = Math.max(0, game.pickupPulse - d * 3.2)
     game.missionPulse = Math.max(0, game.missionPulse - d * 3.2)
     game.missionBannerTime = Math.max(0, game.missionBannerTime - d)
@@ -1566,7 +1584,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
       // The fire covers exactly what the blast killed, so the shell the mine
       // was drawing beforehand and the explosion agree with each other.
       triggerFireball(game.fireballs, 'mine', mineExplosion.position, mineExplosion.radius, blastSeed(game))
-      game.impactFlash = 1
       const distance = Math.hypot(
         mineExplosion.position.x - game.drone.position.x,
         mineExplosion.position.y - game.drone.position.y,
@@ -1654,7 +1671,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
       // Only re-arm from zero: chained dazes would compound into a stun by
       // another name.
       if (game.daze <= 0) game.daze = DAZE_TIME
-      game.impactFlash = 1
       tone('warning')
     }
     game.loadedCars = loadedCarCount(game)
