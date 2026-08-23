@@ -107,9 +107,10 @@ describe('beam ballast is where the speed penalty lives', () => {
     expect(carried.position.y).toBeGreaterThan(1)
   })
 
-  it('keeps beam radius independent of craft growth', () => {
-    // This is the actual cost of growing: the wider cone sweeps up people
-    // faster, and sweeps up cars faster too.
+  it('widens the beam as the craft grows, now that the radius cards are gone', () => {
+    // Aperture used to be a card-only stat; with the deck removed it rides on
+    // size like strength and lift do. A target just outside the opening cone
+    // is comfortably inside the grown one.
     const ufo = { x: 0, y: 6, z: 0 }
     const field = (size: number): BeamField => ({
       active: true, boosting: false, position: ufo,
@@ -117,8 +118,8 @@ describe('beam ballast is where the speed penalty lives', () => {
     })
     const junk = objectAt(7.4, 0)
     expect(isInsideBeam(junk, field(SIZE_START))).toBe(false)
-    expect(isInsideBeam(junk, field(SIZE_MAX))).toBe(false)
+    expect(isInsideBeam(junk, field(SIZE_MAX))).toBe(true)
     expect(beamProfile(false, sizeProfile(SIZE_MAX).beamScale).baseRadius)
-      .toBe(beamProfile(false, sizeProfile(SIZE_START).beamScale).baseRadius)
+      .toBeGreaterThan(beamProfile(false, sizeProfile(SIZE_START).beamScale).baseRadius)
   })
 })

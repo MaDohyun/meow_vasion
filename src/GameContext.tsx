@@ -27,7 +27,7 @@ import {
   type HazardState,
 } from './core/hazards'
 import { SIZE_MIN, SIZE_START, type SizeGainKind, type SizeProfile, clampSize, growSize, growSizeBy, sizeProfile } from './core/size'
-import { HEALTH_LOSS, createHealthState, healthRatio, isDead, isRegenerating, stepHealth, type HealthLossKind, type HealthState } from './core/health'
+import { createHealthState, damageHealth, healHealth, healthRatio, isDead, isRegenerating, stepHealth, type HealthLossKind, type HealthState } from './core/health'
 import { BATTLESHIP_TURRETS, activeEnemyCount, battleshipTurretPoint, createEnemyState, hitEnemy, resolveEnemyContacts, stepEnemies, stepEnemyProjectiles, syncAntiAirEnemies, syncEnemyTiers, waveLabelForTime, waveStageForTime, type EnemyKind, type EnemyState } from './core/enemies'
 import {
   createLaserPool,
@@ -62,19 +62,30 @@ import {
 } from './core/world'
 import { captureTrafficCar, createTrafficState, primeTraffic, releaseTrafficSlot, stepTraffic, TRAFFIC_MAX_CARS, type TrafficCar, type TrafficState } from './core/traffic'
 import { BROADCAST_OPENING_AT, BROADCAST_SECONDS } from './core/broadcast'
-import { applyUpgrade, createUpgradeState, isUpgradeDue, rollUpgradeChoices, upgradeBonus, upgradeMultiplier, type UpgradeId, type UpgradeState } from './core/upgrades'
+import {
+  BOON_FULL_SCORE,
+  BOON_HEAL_PIPS,
+  BOON_PICKUP_RADIUS,
+  BOON_PICKUP_VERTICAL,
+  boonBonus,
+  boonHoverY,
+  boonMultiplier,
+  claimBoon,
+  createBoonState,
+  type BoonId,
+  type BoonState,
+} from './core/boons'
 import { createBuildingRuin, damageBuilding, ruinCollider, type BuildingRuin } from './core/buildings'
 import { stepLakeAbsorption } from './core/lakes'
 import { createMissionState, isInsideAirCheckpoint, missionHasQuest, recordMissionEvent, startMissionOne, syncMissionState, type MissionQuest, type MissionState } from './core/missions'
 import { MYSTERY_BOOST_DURATION, MYSTERY_BOOST_MAX_MULTIPLIER, mysteryBoostMultiplier } from './core/mysteryCircles'
-import { absorbShieldDamage, createShieldState, isShieldRegenerating, setShieldCapacity, shieldRatio, stepShield, type ShieldState } from './core/shield'
 import { shouldCrashFromOverload } from './core/overload'
 import { DRONE_BLAST_TRAUMA, addShakeTrauma, createShakeState, stepShake, type ShakeState } from './core/shake'
 import { worldPropMass, worldPropsAround } from './core/worldProps'
 import { endingForTimeUp, isVictory, type RunEnding } from './core/ending'
 import { playBoosterSound, playBuildingCollapseSound, playDroneExplosionSound, playLaserSound, playMysteryCircleSound, playNearbyCatCrySound, startBeamSound, startGameplayMusic, stopBeamSound, stopGameplayMusic, stopLobbyMusic, tone, unlockAudio } from './audio'
 
-export type GamePhase = 'intro' | 'playing' | 'upgrade' | 'results'
+export type GamePhase = 'intro' | 'playing' | 'results'
 
 export type MissionBanner =
   | { type: 'stage-complete'; previousStage: number; nextStage: number }
@@ -112,7 +123,8 @@ export type GameRuntime = {
   /** 0 until the load starts to matter, 1 at the point the craft cannot hold
    *  altitude. Drives the visual overload meter. */
   overloadWarn: number
-  upgrades: UpgradeState
+  /** Levels eaten off mystery-circle pickups, plus which circles are spent. */
+  boons: BoonState
   /** The opening sighting report is time-triggered rather than raised by a
    *  wave boundary, so it needs its own one-shot latch. */
   openingBroadcastDone: boolean
@@ -198,7 +210,6 @@ export type GameRuntime = {
   size: number
   sizeProfile: SizeProfile
   health: HealthState
-  shield: ShieldState
   sizePulse: number
   absorbedCount: number
   ballast: number
@@ -239,12 +250,10 @@ export type GameSnapshot = {
   /** The wave bulletin currently on air, or null when nothing is. */
   broadcastStage: number | null
   broadcastRemaining: number
-  /** Cards currently on offer. Empty unless the phase is 'upgrade'. */
-  upgradeChoices: UpgradeId[]
-  upgradeLevels: Record<UpgradeId, number>
-  upgradeNextAt: number
-  /** Published so the render layer can size the beam without reaching into
-   *  the runtime for the upgrade state. */
+  /** Pickup levels, published for the HUD and tests. */
+  boonLevels: Record<BoonId, number>
+  /** Published so the render layer can size the beam without recomputing the
+   *  size profile. */
   beamRadiusScale: number
   beamReachScale: number
   daylightLabel: string
@@ -259,10 +268,6 @@ export type GameSnapshot = {
   healthMax: number
   healthRatio: number
   regenerating: boolean
-  shield: number
-  shieldMax: number
-  shieldRatio: number
-  shieldRegenerating: boolean
   maxAltitude: number
   sizePulse: number
   absorbedCount: number
@@ -346,7 +351,6 @@ type GameContextValue = {
   advance: (dt: number) => void
   start: () => void
   restart: () => void
-  chooseUpgrade: (id: UpgradeId) => void
   unlockTutorialBeam: () => void
   quality: RenderQuality
   setQuality: (quality: RenderQuality) => void
@@ -362,6 +366,14 @@ const UFO_UPGRADES = { speed: 0, stability: 0, rack: 0, special: 'none' as const
 const HITSTOP_TIME = 0.05
 const CAT_CRY_HEAR_DISTANCE = 18
 const CAT_CRY_INTERVAL = 4.5
+/** Which callout each pickup raises. The words live in i18n like every other
+ *  mid-run message. */
+const BOON_MESSAGE_KEY: Record<BoonId, MessageKey> = {
+  'laser-power': 'msgBoonLaser',
+  speed: 'msgBoonSpeed',
+  'turbo-recharge': 'msgBoonTurboRecharge',
+  'turbo-capacity': 'msgBoonTurboCapacity',
+}
 /**
  * Converts hanging mass into flight load.
  *
@@ -551,7 +563,7 @@ function makeRuntime(): GameRuntime {
     broadcastStage: 0,
     broadcastTime: 0,
     overloadWarn: 0,
-    upgrades: createUpgradeState((Math.random() * 0xffffffff) >>> 0),
+    boons: createBoonState(),
     openingBroadcastDone: false,
     loadedCars: 0,
     damageCooldown: 0,
@@ -609,7 +621,6 @@ function makeRuntime(): GameRuntime {
     size: SIZE_START,
     sizeProfile: sizeProfile(SIZE_START),
     health: createHealthState(),
-    shield: createShieldState(),
     sizePulse: 0,
     absorbedCount: 0,
     ballast: 0,
@@ -640,12 +651,16 @@ function makeRuntime(): GameRuntime {
   return runtime
 }
 
+/** Hanging weight the craft can hold. Pure size now - the lift cards are
+ *  gone, so growing is the one way to carry more. */
 function liftLimit(game: GameRuntime) {
-  return game.sizeProfile.liftCapacity + upgradeBonus(game.upgrades, 'lift')
+  return game.sizeProfile.liftCapacity
 }
 
+/** The integer grip rung. Pure size as well: 1 at the opening saucer, 12 at
+ *  the ceiling, and the whole weight ladder hangs off it. */
 function beamStrength(game: GameRuntime) {
-  return game.sizeProfile.beamStrength + upgradeBonus(game.upgrades, 'beam-grip')
+  return game.sizeProfile.beamStrength
 }
 
 function refreshWorldGeometry(game: GameRuntime) {
@@ -947,7 +962,7 @@ function registerEnemyHit(game: GameRuntime, id: string, damage: number) {
 }
 
 function registerEnemyLaserHit(game: GameRuntime, id: string) {
-  registerEnemyHit(game, id, upgradeMultiplier(game.upgrades, 'laser-power'))
+  registerEnemyHit(game, id, boonMultiplier(game.boons, 'laser-power'))
 }
 
 function destroyCar(game: GameRuntime, id: string, direction: Vec3) {
@@ -986,7 +1001,7 @@ function destroyHeavyVehicle(game: GameRuntime, id: string) {
 function registerBuildingLaserHit(game: GameRuntime, id: string) {
   const building = game.world.buildings.find((candidate) => candidate.id === id)
   if (!building || game.destroyedBuildings.has(id)) return false
-  const result = damageBuilding(game.buildingHealth, building, upgradeMultiplier(game.upgrades, 'laser-power'))
+  const result = damageBuilding(game.buildingHealth, building, boonMultiplier(game.boons, 'laser-power'))
   game.buildingHitFlash.set(building.id, 1)
   triggerLaserBurst(game.laserBursts, 'impact', building.position, '#ffca63')
   if (!result.destroyed) return true
@@ -1064,30 +1079,8 @@ function growBy(game: GameRuntime, amount: number) {
 function wound(game: GameRuntime, kind: HealthLossKind) {
   game.impactKind = kind
   game.impactFlash = 1
-  const hullDamage = absorbShieldDamage(game.shield, HEALTH_LOSS[kind])
-  if (hullDamage > 0) {
-    game.health.current = Math.max(0, game.health.current - hullDamage)
-    game.health.sinceHit = 0
-  }
+  damageHealth(game.health, kind)
   if (isDead(game.health)) endRun(game, 'CRAFT DOWN', 'downed')
-}
-
-/**
- * Called after every absorption. Stops the run dead when a card is due.
- *
- * This fires from the middle of a tick, which is the same shape of bug the
- * results screen had: the next tick returns early on the phase check before it
- * publishes, so without the forced publish on a phase change the card screen
- * would appear or not depending on where the throttle happened to be.
- */
-function offerUpgradeIfDue(game: GameRuntime) {
-  if (game.phase !== 'playing') return
-  if (!isUpgradeDue(game.upgrades, game.absorbedCount)) return
-  rollUpgradeChoices(game.upgrades)
-  stopBeamSound()
-  game.beamActive = false
-  game.phase = 'upgrade'
-  tone('upgrade')
 }
 
 function absorbCrowd(game: GameRuntime, kind: 'cat' | 'pedestrian') {
@@ -1111,7 +1104,6 @@ function absorbCrowd(game: GameRuntime, kind: 'cat' | 'pedestrian') {
   }
   if (!tutorialCat) setMessage(game, kind === 'cat' ? 'msgAbsorbedCat' : 'msgAbsorbedPerson', 1.25, reward)
   tone('pickup')
-  offerUpgradeIfDue(game)
 }
 
 function absorbBeamObject(game: GameRuntime, object: BeamObject) {
@@ -1127,7 +1119,6 @@ function absorbBeamObject(game: GameRuntime, object: BeamObject) {
   game.absorbedCount += 1
   game.score += reward
   game.pickupPulse = 1
-  offerUpgradeIfDue(game)
   if (object.kind === 'car') game.destroyedCars.add(object.id)
   if (object.kind === 'car') reportMissionEvent(game, { type: 'destroy-car' })
   if (object.kind === 'truck') reportMissionEvent(game, { type: 'destroy-truck' })
@@ -1230,10 +1221,8 @@ function snapshotOf(game: GameRuntime): GameSnapshot {
     waveStage: game.waveStage,
     broadcastStage: game.broadcastTime > 0 ? game.broadcastStage : null,
     broadcastRemaining: game.broadcastTime,
-    upgradeChoices: game.upgrades.offered,
-    upgradeLevels: game.upgrades.levels,
-    upgradeNextAt: game.upgrades.nextAt,
-    beamRadiusScale: upgradeMultiplier(game.upgrades, 'beam-radius'),
+    boonLevels: game.boons.levels,
+    beamRadiusScale: game.sizeProfile.beamScale,
     beamReachScale: 1,
     daylightLabel: game.daylight.label,
     daylightClock: daylightClock(game.sessionTime),
@@ -1247,10 +1236,6 @@ function snapshotOf(game: GameRuntime): GameSnapshot {
     healthMax: game.health.max,
     healthRatio: healthRatio(game.health),
     regenerating: isRegenerating(game.health),
-    shield: game.shield.current,
-    shieldMax: game.shield.max,
-    shieldRatio: shieldRatio(game.shield),
-    shieldRegenerating: isShieldRegenerating(game.shield),
     maxAltitude: game.sizeProfile.maxAltitude,
     sizePulse: game.sizePulse,
     absorbedCount: game.absorbedCount,
@@ -1532,7 +1517,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
     game.laserCooldown = Math.max(0, game.laserCooldown - d)
     game.broadcastTime = Math.max(0, game.broadcastTime - d)
     stepHealth(game.health, d)
-    stepShield(game.shield, d)
     // The city reports the sighting once the player has had a moment to fly.
     if (!tutorialAtStart && !game.openingBroadcastDone && game.sessionTime >= BROADCAST_OPENING_AT) {
       game.openingBroadcastDone = true
@@ -1562,9 +1546,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
     if (turboActive) {
       if (boostPressed) playBoosterSound()
       if (game.drone.boostRemaining <= 0) { setMessage(game, 'msgTurbo', 1.2); tone('upgrade') }
-      // Halved from the old 5s base: a full gauge used to be enough that
-      // tapping the trigger just before it emptied kept it topped up forever.
-      const duration = 2.5 + upgradeBonus(game.upgrades, 'turbo-capacity')
+      // Back to the 5s base by design: turbo depth is now bought at mystery
+      // circles rather than dealt by cards, and the circles themselves refill
+      // the gauge - so the base has to be worth spending between them.
+      const duration = 5 + boonBonus(game.boons, 'turbo-capacity')
       game.turbo = Math.max(0, game.turbo - d / duration)
       game.drone.boostRemaining = Math.max(game.drone.boostRemaining, 0.12)
       // <= 0.02, not <= 0: that is the same floor turboActive itself checks,
@@ -1580,7 +1565,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         setMessage(game, 'msgTurboOverload', 2)
         tone('warning')
       }
-    } else game.turbo = Math.min(1, game.turbo + d * 0.13 * upgradeMultiplier(game.upgrades, 'turbo-recharge'))
+    } else game.turbo = Math.min(1, game.turbo + d * 0.13 * boonMultiplier(game.boons, 'turbo-recharge'))
 
     const mysteryCircle = mysteryCircleAt(game.drone.position)
     if (mysteryCircle) {
@@ -1607,6 +1592,36 @@ export function GameProvider({ children }: { children: ReactNode }) {
     } else {
       game.mysteryCircleId = null
       game.mysteryBoostRemaining = Math.max(0, game.mysteryBoostRemaining - d)
+    }
+    // The pickup hovering over an unspent circle. Eaten by flying into it:
+    // the circle itself triggers at any altitude, the item only at its own
+    // height, so the surge is a drive-through and the boon is an approach.
+    if (mysteryCircle && !tutorialAtStart && !game.boons.claimed.has(mysteryCircle.id)) {
+      const itemY = boonHoverY(game.sessionTime, mysteryCircle.id)
+      const slack = game.sizeProfile.hitRadius * 0.4
+      const horizontal = Math.hypot(game.drone.position.x - mysteryCircle.x, game.drone.position.z - mysteryCircle.z)
+      if (horizontal <= BOON_PICKUP_RADIUS + slack && Math.abs(game.drone.position.y - itemY) <= BOON_PICKUP_VERTICAL + slack) {
+        const granted = claimBoon(game.boons, mysteryCircle.id)
+        if (granted) {
+          game.pickupPulse = 1
+          game.mysteryFlash = Math.max(game.mysteryFlash, 0.65)
+          if (granted.kind === 'stat') {
+            setMessage(game, BOON_MESSAGE_KEY[granted.id], 2.2, granted.level)
+            tone('upgrade')
+          } else if (game.health.current < game.health.max) {
+            // Every stat is capped, so the item patches the hull instead.
+            healHealth(game.health, BOON_HEAL_PIPS)
+            setMessage(game, 'msgBoonHeal', 2.2)
+            tone('upgrade')
+          } else {
+            // Capped and healthy: the pickup pays out like a meal would.
+            const reward = Math.round(BOON_FULL_SCORE * game.sizeProfile.scoreMultiplier)
+            game.score += reward
+            setMessage(game, 'msgBoonScore', 2.2, reward)
+            tone('pickup')
+          }
+        }
+      }
     }
     const mysterySpeedMultiplier = mysteryBoostMultiplier(game.mysteryBoostRemaining)
     const flightInput: DroneInput = { ...input, special: false, speedMultiplier: mysterySpeedMultiplier }
@@ -1654,8 +1669,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
     // Keep the visual overload meter, but do not repeat an audio warning.
     const stepped = stepDrone(game.drone, flightInput, d, game.ballast * BALLAST_DRAG + (game.daze > 0 ? DAZE_DRAG : 0), {
       ...UFO_UPGRADES,
-      speed: upgradeBonus(game.upgrades, 'speed') / 0.12,
-      stability: game.upgrades.levels.turn,
+      // stepDrone's own speed coefficient is 0.12 per level; dividing the
+      // pickup bonus by it feeds the exact 8%-per-level the boon promises.
+      speed: boonBonus(game.boons, 'speed') / 0.12,
     })
     if (game.waterAnchored) {
       stepped.speed *= lake.speedScale
@@ -1739,14 +1755,12 @@ export function GameProvider({ children }: { children: ReactNode }) {
       boosting: turboActive,
       position: game.drone.position,
       velocity: game.drone.velocity,
-      // Radius follows the hull and the upgrade multiplies it; reach is
-      // upgrade-only now, so a bigger craft gets a wider beam but not a longer
-      // one unless it spent a card on length.
-      radiusScale: upgradeMultiplier(game.upgrades, 'beam-radius'),
+      // Radius follows the hull: the aperture multiplier is read off the size
+      // profile, so a bigger craft sweeps a wider cone with no card involved.
+      radiusScale: game.sizeProfile.beamScale,
       reachScale: 1,
-      // Natural grip from size, multiplied by whatever the player spent cards
-      // on. Growing alone makes the beam stronger; cards make it stronger
-      // sooner.
+      // Natural grip from size, and nothing else - the whole 1..12 ladder is
+      // growth now.
       gripStrength: beamStrength(game),
       // So a dropped load lands on the roof it was dropped over rather than
       // falling through it into the street.
@@ -1947,17 +1961,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
     storeLanguage(next)
   }, [])
 
-  const chooseUpgrade = useCallback((id: UpgradeId) => {
-    const game = runtime.current
-    if (game.phase !== 'upgrade') return
-    if (!game.upgrades.offered.includes(id)) return
-    applyUpgrade(game.upgrades, id)
-    if (id === 'shield') setShieldCapacity(game.shield, game.upgrades.levels.shield)
-    game.phase = 'playing'
-    tone('pickup')
-    publish()
-  }, [publish])
-
   const unlockTutorialBeam = useCallback(() => {
     runtime.current.tutorialBriefingReady = true
     publish()
@@ -1976,7 +1979,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   }, [publish])
 
   const setMobileInput = useCallback((input: Partial<MobileInput>) => { Object.assign(mobile.current, input) }, [])
-  const value = useMemo<GameContextValue>(() => ({ runtime, snapshot, readInput, advance, start, restart, chooseUpgrade, unlockTutorialBeam, setMobileInput, quality, setQuality, language, setLanguage, t: STRINGS[language] }), [advance, quality, readInput, restart, chooseUpgrade, unlockTutorialBeam, setMobileInput, setQuality, snapshot, start, language, setLanguage])
+  const value = useMemo<GameContextValue>(() => ({ runtime, snapshot, readInput, advance, start, restart, unlockTutorialBeam, setMobileInput, quality, setQuality, language, setLanguage, t: STRINGS[language] }), [advance, quality, readInput, restart, unlockTutorialBeam, setMobileInput, setQuality, snapshot, start, language, setLanguage])
   return <GameContext.Provider value={value}>{children}</GameContext.Provider>
 }
 

@@ -17,7 +17,7 @@ export type PilotSignals = {
   threatLevel: number
   threatIncreased: boolean
   cargoIncreased: boolean
-  phase: 'intro' | 'playing' | 'upgrade' | 'results'
+  phase: 'intro' | 'playing' | 'results'
   victory: boolean
   boost: boolean
   beam: boolean

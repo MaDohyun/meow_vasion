@@ -283,17 +283,25 @@ export function lakeClusterForCell(cellX: number, cellZ: number) {
   return member ? `lake:${sectorX}:${sectorZ}` : null
 }
 
+/** The one cell of a sector that may carry a circle, before the tutorial,
+ *  park and lake exclusions have had their say. */
+function mysteryAnchorForSector(sectorX: number, sectorZ: number) {
+  const seed = seedForWorldCell(sectorX, sectorZ, 0x6d797374)
+  if (seed % 100 >= 24) return null
+  return {
+    cellX: sectorX * MYSTERY_SECTOR_SIZE + 1 + ((seed >>> 9) % (MYSTERY_SECTOR_SIZE - 2)),
+    cellZ: sectorZ * MYSTERY_SECTOR_SIZE + 1 + ((seed >>> 13) % (MYSTERY_SECTOR_SIZE - 2)),
+  }
+}
+
 /** Returns the deterministic empty tile carrying a mystery-circle signal. */
 export function mysteryCircleForCell(cellX: number, cellZ: number) {
   if (isTutorialCell(cellX, cellZ)) return null
   if (parkClusterForCell(cellX, cellZ) || lakeClusterForCell(cellX, cellZ)) return null
   const sectorX = Math.floor(cellX / MYSTERY_SECTOR_SIZE)
   const sectorZ = Math.floor(cellZ / MYSTERY_SECTOR_SIZE)
-  const seed = seedForWorldCell(sectorX, sectorZ, 0x6d797374)
-  if (seed % 100 >= 24) return null
-  const anchorX = sectorX * MYSTERY_SECTOR_SIZE + 1 + ((seed >>> 9) % (MYSTERY_SECTOR_SIZE - 2))
-  const anchorZ = sectorZ * MYSTERY_SECTOR_SIZE + 1 + ((seed >>> 13) % (MYSTERY_SECTOR_SIZE - 2))
-  return cellX === anchorX && cellZ === anchorZ ? `mystery:${sectorX}:${sectorZ}` : null
+  const anchor = mysteryAnchorForSector(sectorX, sectorZ)
+  return anchor && cellX === anchor.cellX && cellZ === anchor.cellZ ? `mystery:${sectorX}:${sectorZ}` : null
 }
 
 /** Adjacent cells in one landmark cluster do not need an internal road seam. */
@@ -317,6 +325,37 @@ export function isMysteryCircleAt(position: Pick<Vec3, 'x' | 'z'>) {
 }
 
 export type MysteryCircleHit = { id: string; x: number; z: number }
+
+/**
+ * Every circle whose centre lies within `radius` of a position.
+ *
+ * Sector-indexed rather than cell-scanned: the radar and the pickup renderer
+ * ask this every frame, and a sector is thirty-six cells, so the whole sweep
+ * is a handful of hash rolls. Each candidate anchor is re-validated through
+ * mysteryCircleForCell so the tutorial, park and lake exclusions apply here
+ * exactly as they do on the ground.
+ */
+export function mysteryCirclesAround(position: Pick<Vec3, 'x' | 'z'>, radius: number): MysteryCircleHit[] {
+  const sectorSpan = MYSTERY_SECTOR_SIZE * WORLD_CELL_SIZE
+  const minSectorX = Math.floor((position.x - radius) / sectorSpan)
+  const maxSectorX = Math.floor((position.x + radius) / sectorSpan)
+  const minSectorZ = Math.floor((position.z - radius) / sectorSpan)
+  const maxSectorZ = Math.floor((position.z + radius) / sectorSpan)
+  const hits: MysteryCircleHit[] = []
+  for (let sectorZ = minSectorZ; sectorZ <= maxSectorZ; sectorZ += 1) {
+    for (let sectorX = minSectorX; sectorX <= maxSectorX; sectorX += 1) {
+      const anchor = mysteryAnchorForSector(sectorX, sectorZ)
+      if (!anchor) continue
+      const id = mysteryCircleForCell(anchor.cellX, anchor.cellZ)
+      if (!id) continue
+      const x = worldCellCenter(anchor.cellX)
+      const z = worldCellCenter(anchor.cellZ)
+      if (Math.hypot(x - position.x, z - position.z) > radius) continue
+      hits.push({ id, x, z })
+    }
+  }
+  return hits
+}
 
 /** Returns the circle under a craft, ignoring its altitude. */
 export function mysteryCircleAt(position: Pick<Vec3, 'x' | 'z'>): MysteryCircleHit | null {

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
+  BEAM_APERTURE_MAX,
+  BEAM_STRENGTH_MAX,
   CAMERA_GROWTH_PULL_BACK,
   CAMERA_REST_DISTANCE,
   SIZE_MAX,
@@ -9,6 +11,7 @@ import {
   clampSize,
   growSize,
   growSizeBy,
+  liftCapacityForSize,
   maxAltitude,
   sizeProfile,
   sizeCameraLift,
@@ -55,20 +58,38 @@ describe('craft size as growth, not as health', () => {
     }
   })
 
-  it('grows strength and lift without secretly widening the beam', () => {
+  it('grows strength, lift and aperture off the hull alone', () => {
+    // The card deck is gone: every beam number the player can grow now reads
+    // straight off size, spanning the whole range the cards used to add.
     const start = sizeProfile(SIZE_START)
     const big = sizeProfile(SIZE_MAX)
-    expect(big.beamScale).toBe(start.beamScale)
-    expect(start.liftCapacity).toBe(2)
+    expect(start.beamScale).toBe(1)
+    expect(big.beamScale).toBeCloseTo(BEAM_APERTURE_MAX)
+    expect(start.beamStrength).toBe(1)
+    expect(big.beamStrength).toBe(BEAM_STRENGTH_MAX)
+    expect(start.liftCapacity).toBe(1)
+    expect(big.liftCapacity).toBe(40)
     expect(big.beamPower).toBeGreaterThan(start.beamPower)
-    expect(big.beamStrength).toBe(7)
-    expect(big.liftCapacity).toBe(26)
     expect(big.absorbDistance).toBeGreaterThan(start.absorbDistance)
     expect(big.absorbDistance).toBe(ABSORB_DISTANCE_MAX)
     expect(big.scoreMultiplier).toBeGreaterThan(start.scoreMultiplier)
     // ...and pays only by being a bigger target. Speed is deliberately not a
     // cost of growth; that tax belongs to beam ballast instead.
     expect(big.hitRadius).toBeGreaterThan(start.hitRadius)
+  })
+
+  it('front-loads lift so the opening craft escapes one-bin capacity quickly', () => {
+    // The curve's exponent sits below 1: early growth buys proportionally
+    // more capacity than late growth, but the 1..40 endpoints are exact.
+    const quarter = SIZE_START + (SIZE_MAX - SIZE_START) * 0.25
+    const linearQuarter = 1 + 0.25 * 39
+    expect(liftCapacityForSize(quarter)).toBeGreaterThan(linearQuarter)
+    let previous = 0
+    for (let size = SIZE_START; size <= SIZE_MAX; size += 0.2) {
+      const capacity = liftCapacityForSize(size)
+      expect(capacity).toBeGreaterThanOrEqual(previous)
+      previous = capacity
+    }
   })
 
   it('never charges speed for growing', () => {

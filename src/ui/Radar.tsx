@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useGame } from '../GameContext'
 import { isDroneMine } from '../core/enemies'
+import { mysteryCirclesAround } from '../core/world'
 import { projectToRadar } from './radarProjection'
 
 /**
@@ -15,8 +16,12 @@ import { projectToRadar } from './radarProjection'
  * that is several hundred dots, and the handful that could actually kill you
  * were buried in them: the radar answered "what is around me" when the only
  * question worth a glance mid-flight is "what is shooting at me". So it plots
- * hostiles and nothing else. Everything it dropped is still visible out of
- * the window, in far more detail than a dot could give.
+ * hostiles, and one exception: mystery circles still holding their pickup.
+ * The pickups are the run's only stat upgrades and they live at fixed spots,
+ * so without a blip finding them is luck rather than routing - which is the
+ * whole skill they are meant to ask for. A claimed circle drops off the dial.
+ * Everything else the radar dropped is still visible out of the window, in
+ * far more detail than a dot could give.
  *
  * The objective marker stays. It is not a contact - it is the arrow that says
  * where the mission is, and without it a checkpoint run has no heading at all.
@@ -32,6 +37,7 @@ const COLORS = {
   mine: '#ff2f5a',
   mission: '#fff06d',
   checkpoint: '#b7ff63',
+  boon: '#ffb347',
 }
 
 export function Radar() {
@@ -77,7 +83,14 @@ export function Radar() {
         context.fillRect(px - radius, py - radius, radius * 2, radius * 2)
       }
 
-      // Hostiles only. Drones and fighters read a touch larger than they did
+      // Unspent pickups first, under the hostiles: gold hollow squares, the
+      // "parked, go there when you choose" shape, in a colour no threat uses.
+      for (const circle of mysteryCirclesAround(player, RADAR_RANGE)) {
+        if (game.boons.claimed.has(circle.id)) continue
+        dot(circle.x, circle.z, COLORS.boon, 3, true)
+      }
+
+      // Hostiles. Drones and fighters read a touch larger than they did
       // now that nothing crowds them, because a lone 2px dot on an empty dial
       // is easy to miss in the corner of an eye.
       for (const enemy of game.enemies.slots) {
@@ -138,9 +151,10 @@ export function Radar() {
     <div className="planet-radar">
       <div className="radar-orbit" />
       <canvas ref={canvas} width={112} height={112} className="radar-canvas" />
-      {/* One swatch, because there is one thing on the dial. */}
+      {/* Threats, and the gold of a waiting pickup. */}
       <div className="radar-key">
         <i style={{ background: COLORS.hostile }} />
+        <i style={{ background: COLORS.boon }} />
       </div>
     </div>
   )

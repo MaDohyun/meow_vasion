@@ -406,8 +406,8 @@ declare global {
       size: number
       activeEnemyProjectiles: number
       laserShotsFired: number
-      /** Upgrade levels, so a card's effect can be verified from outside. */
-      upgradeLevels: Record<string, number>
+      /** Pickup levels, so a boon's effect can be verified from outside. */
+      boonLevels: Record<string, number>
       beamReachScale: number
       height: number
       missionStage: number
@@ -675,9 +675,9 @@ function TractorBeam() {
   // Same scales the physics uses. These were left at their defaults, so the
   // drawn beam never widened or lengthened with the craft while the pickup
   // volume did - the visible beam and the beam that actually catches things
-  // were two different shapes.
-  const size = runtime.current.sizeProfile
-  const profile = beamProfile(snapshot.boostActive, size.beamScale * snapshot.beamRadiusScale, snapshot.beamReachScale)
+  // were two different shapes. beamRadiusScale IS the size profile's aperture
+  // now, so it is applied once, not multiplied in twice.
+  const profile = beamProfile(snapshot.boostActive, snapshot.beamRadiusScale, snapshot.beamReachScale)
   const length = Math.max(0.8, beamVisualLength(runtime.current.drone.position.y, profile.maxDrop))
   const radius = profile.baseRadius + length * profile.coneSpread
   useFrame(() => {
@@ -2019,7 +2019,7 @@ function PerformanceProbe() {
       size: runtime.current.size,
       activeEnemyProjectiles: runtime.current.enemies.projectiles.filter((projectile) => projectile.active).length,
       laserShotsFired: runtime.current.laserShotsFired,
-      upgradeLevels: { ...runtime.current.upgrades.levels },
+      boonLevels: { ...runtime.current.boons.levels },
       beamReachScale: 1,
       height: runtime.current.drone.position.y,
       missionStage: runtime.current.mission.stage,

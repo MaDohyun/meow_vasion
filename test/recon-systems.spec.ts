@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import { buildingMaxHealth, createBuildingRuin, damageBuilding, ruinCollider } from '../src/core/buildings'
 import { LAKE_BEAM_SPEED_SCALE, stepLakeAbsorption } from '../src/core/lakes'
 import { shouldCrashFromOverload } from '../src/core/overload'
-import { absorbShieldDamage, createShieldState, setShieldCapacity, stepShield } from '../src/core/shield'
 import type { ProceduralBuilding } from '../src/core/world'
 
 const building = (height: number): ProceduralBuilding => ({
@@ -13,18 +12,6 @@ const building = (height: number): ProceduralBuilding => ({
 })
 
 describe('recon overhaul support systems', () => {
-  it('puts regenerating shield in front of hull damage', () => {
-    const shield = createShieldState()
-    setShieldCapacity(shield, 2)
-    expect(absorbShieldDamage(shield, 1.5)).toBe(0)
-    expect(shield.current).toBe(0.5)
-    expect(absorbShieldDamage(shield, 1)).toBe(0.5)
-    stepShield(shield, 3.9)
-    expect(shield.current).toBe(0)
-    stepShield(shield, 1.1)
-    expect(shield.current).toBeCloseTo(0.5)
-  })
-
   it('absorbs lake water only while beaming and never returns ballast', () => {
     expect(stepLakeAbsorption(0, 1, false, 20)).toEqual({ litres: 0, absorbed: 0, speedScale: 1, anchored: false })
     const active = stepLakeAbsorption(20, 2, true, 20)

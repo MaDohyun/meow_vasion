@@ -1,4 +1,3 @@
-import type { UpgradeId } from './core/upgrades'
 import type { MissionQuestId } from './core/missions'
 /**
  * UI strings, in one dictionary.
@@ -110,7 +109,6 @@ export type Strings = {
   tutorialBriefing: readonly TutorialBriefingStep[]
   missionStageComplete: (previous: number, next: number) => string
   reconComplete: string
-  shield: string
   radar: string
   survivedTitle: string
   missionFailedTitle: string
@@ -160,14 +158,16 @@ export type Strings = {
   msgCarLaunched: string
   msgTurbo: string
   msgTurboOverload: string
+  /** The mystery-circle pickup callouts. One per stat, one for the heal a
+   *  fully-upgraded craft gets instead, one for the score fallback. */
+  msgBoonLaser: (level: number) => string
+  msgBoonSpeed: (level: number) => string
+  msgBoonTurboRecharge: (level: number) => string
+  msgBoonTurboCapacity: (level: number) => string
+  msgBoonHeal: string
+  msgBoonScore: (reward: number) => string
   breakingFlag: string
   broadcast: BulletinSet
-  upgradeTitle: string
-  upgradeLead: string
-  upgradeHint: string
-  upgradeLevel: string
-  upgradeMaxed: string
-  upgrades: Record<UpgradeId, UpgradeCopy>
 }
 
 export type TutorialBriefingStep = {
@@ -175,9 +175,6 @@ export type TutorialBriefingStep = {
   wait?: 'beam'
   auto?: number
 }
-
-/** One upgrade card's wording. The card itself is data in core/upgrades. */
-export type UpgradeCopy = { name: string; detail: string }
 
 /**
  * One wave bulletin: a short headline for the caption bar on the city's news
@@ -309,7 +306,6 @@ export const STRINGS: Record<Language, Strings> = {
     ],
     missionStageComplete: (previous, next) => `미션 ${previous} 완료 · 미션 ${next}, 골라서 해!`,
     reconComplete: '지구 정찰 완료 · 장군님 퇴근 준비 끝!',
-    shield: '쉴드',
     radar: '주변 탐지 · 실시간',
     survivedTitle: '지구 정찰 완료',
     missionFailedTitle: '정찰 임무 실패',
@@ -358,6 +354,12 @@ export const STRINGS: Record<Language, Strings> = {
     msgCarLaunched: '자동차 파괴 · +50',
     msgTurbo: '터보 가동',
     msgTurboOverload: '터보 과부하 · 잠시 사용 불가',
+    msgBoonLaser: (level) => `UFO부붐! 레이저 위력 Lv.${level}`,
+    msgBoonSpeed: (level) => `UFO부붐! 속도 Lv.${level}`,
+    msgBoonTurboRecharge: (level) => `UFO부붐! 터보 게이지 충전 Lv.${level}`,
+    msgBoonTurboCapacity: (level) => `UFO부붐! 터보 양 Lv.${level}`,
+    msgBoonHeal: 'UFO부붐! 선체 회복',
+    msgBoonScore: (reward) => `UFO부붐! 보너스 +${reward}`,
     breakingFlag: '속보',
     broadcast: [
       { headline: '미확인 비행물체 도심 출현', line: '속보입니다. 미확인 비행물체가 도심 상공에 출현했습니다.\n정부는 요격을 위해 자폭 드론을 배치했습니다.' },
@@ -369,22 +371,6 @@ export const STRINGS: Record<Language, Strings> = {
       { headline: '기갑 부대 진입', line: '속보입니다. 기갑 부대가\n시내로 진입했습니다.' },
       { headline: '공중전함 출격', line: '속보입니다. 군이 최종 병기 공중전함을 출격시켰습니다.\n하늘을 뒤덮은 함체가 도심으로 향하고 있습니다.' },
     ],
-    upgradeTitle: '강화 선택',
-    upgradeLead: '흡수한 만큼 기체가 진화합니다. 하나를 고르세요.',
-    upgradeHint: '클릭 또는 1 / 2 / 3',
-    upgradeLevel: 'Lv',
-    upgradeMaxed: '최대',
-    upgrades: {
-      'laser-power': { name: '레이저 위력', detail: '한 단계마다 피해량 +20%. 지구 건물도 이제 얌전하지 않습니다.' },
-      shield: { name: '쉴드', detail: '선체 앞에 초록 쉴드 1칸. 맞지 않으면 알아서 다시 찹니다.' },
-      'beam-radius': { name: '빔 범위', detail: '빔 반경 +15%. 기체가 커져도 범위는 이 카드로만 늘어납니다.' },
-      'beam-grip': { name: '빔 흡수력', detail: '흡수력 +1. 숫자가 무게보다 높을수록 덜 낑낑댑니다.' },
-      lift: { name: '양력', detail: '들고 버틸 수 있는 총 무게 +2. 욕심도 비행 기술입니다.' },
-      speed: { name: '속도', detail: '기본 최고속도가 소폭 올라갑니다.' },
-      'turbo-recharge': { name: '터보 게이지', detail: '터보 재충전 속도가 빨라집니다.' },
-      'turbo-capacity': { name: '터보 양', detail: '터보 지속시간 +1.5초. 도망은 길수록 좋습니다.' },
-      turn: { name: '회전력', detail: '마우스 추종 회전 응답 +15%.' },
-    },
   },
   ja: {
     titleKicker: 'MEOWVASION',
@@ -481,7 +467,6 @@ export const STRINGS: Record<Language, Strings> = {
     ],
     missionStageComplete: (previous, next) => `ミッション${previous}完了 · ミッション${next}、好きなものを選べ！`,
     reconComplete: '地球偵察完了 · 将軍も帰宅準備完了！',
-    shield: 'シールド',
     radar: '周辺探知・リアルタイム',
     survivedTitle: '地球偵察完了',
     missionFailedTitle: '偵察任務 失敗',
@@ -530,6 +515,12 @@ export const STRINGS: Record<Language, Strings> = {
     msgCarLaunched: '車を破壊 · +50',
     msgTurbo: 'ターボ作動',
     msgTurboOverload: 'ターボ過負荷 · 一時使用不可',
+    msgBoonLaser: (level) => `UFOブブーン！レーザー威力 Lv.${level}`,
+    msgBoonSpeed: (level) => `UFOブブーン！速度 Lv.${level}`,
+    msgBoonTurboRecharge: (level) => `UFOブブーン！ターボ充填 Lv.${level}`,
+    msgBoonTurboCapacity: (level) => `UFOブブーン！ターボ容量 Lv.${level}`,
+    msgBoonHeal: 'UFOブブーン！船体を回復',
+    msgBoonScore: (reward) => `UFOブブーン！ボーナス +${reward}`,
     breakingFlag: '速報',
     broadcast: [
       { headline: '未確認飛行物体が都心に出現', line: '速報です。未確認飛行物体が都心の上空に出現しました。\n政府は迎撃のため自爆ドローンを配備しました。' },
@@ -541,22 +532,6 @@ export const STRINGS: Record<Language, Strings> = {
       { headline: '機甲部隊が市内に進入', line: '速報です。機甲部隊が\n市内に進入しました。' },
       { headline: '空中戦艦が出撃', line: '速報です。軍が最終兵器の空中戦艦を出撃させました。\n空を覆う艦体が都心へ向かっています。' },
     ],
-    upgradeTitle: '強化選択',
-    upgradeLead: '吸収した分だけ機体が進化します。ひとつ選んでください。',
-    upgradeHint: 'クリック または 1 / 2 / 3',
-    upgradeLevel: 'Lv',
-    upgradeMaxed: '最大',
-    upgrades: {
-      'laser-power': { name: 'レーザー威力', detail: 'レベルごとにダメージ+20%。' },
-      shield: { name: 'シールド', detail: '船体の前に再生するシールドを1つ追加。' },
-      'beam-radius': { name: 'ビーム範囲', detail: 'ビーム半径+15%。' },
-      'beam-grip': { name: '吸引力', detail: '整数の吸引力+1。' },
-      lift: { name: '揚力', detail: '運べる総重量+2。' },
-      speed: { name: '速度', detail: '基本最高速度が少し上がります。' },
-      'turbo-recharge': { name: 'ターボ充填', detail: 'ターボの回復が速くなります。' },
-      'turbo-capacity': { name: 'ターボ容量', detail: 'ターボ持続時間+1.5秒。' },
-      turn: { name: '旋回力', detail: 'マウス追従の旋回応答+15%。' },
-    },
   },
   en: {
     titleKicker: 'ALIEN RECON CAT-BOT',
@@ -653,7 +628,6 @@ export const STRINGS: Record<Language, Strings> = {
     ],
     missionStageComplete: (previous, next) => `MISSION ${previous} COMPLETE · MISSION ${next}, PICK YOUR OBJECTIVES!`,
     reconComplete: 'EARTH RECON COMPLETE · THE GENERAL IS READY TO CLOCK OUT!',
-    shield: 'SHIELD',
     radar: 'LOCAL GRID · LIVE',
     survivedTitle: 'EARTH RECON COMPLETE',
     missionFailedTitle: 'RECON MISSION FAILED',
@@ -702,6 +676,12 @@ export const STRINGS: Record<Language, Strings> = {
     msgCarLaunched: 'CAR LAUNCHED · +50',
     msgTurbo: 'TURBO ENGAGED',
     msgTurboOverload: 'TURBO OVERLOAD · OFFLINE BRIEFLY',
+    msgBoonLaser: (level) => `UFO BOOM! LASER POWER LV.${level}`,
+    msgBoonSpeed: (level) => `UFO BOOM! SPEED LV.${level}`,
+    msgBoonTurboRecharge: (level) => `UFO BOOM! TURBO RECHARGE LV.${level}`,
+    msgBoonTurboCapacity: (level) => `UFO BOOM! TURBO CAPACITY LV.${level}`,
+    msgBoonHeal: 'UFO BOOM! HULL RESTORED',
+    msgBoonScore: (reward) => `UFO BOOM! BONUS +${reward}`,
     breakingFlag: 'BREAKING',
     broadcast: [
       { headline: 'UFO SIGHTED OVER THE CITY', line: 'Breaking news. An unidentified craft has appeared over the city.\nThe government has deployed suicide drones to intercept it.' },
@@ -713,22 +693,6 @@ export const STRINGS: Record<Language, Strings> = {
       { headline: 'ARMOUR ROLLS IN', line: 'Breaking news. Armoured units\nhave entered the city.' },
       { headline: 'SKY DREADNOUGHT LAUNCHED', line: 'Breaking news. The military has launched its last resort.\nA flying battleship is now bearing down on the city centre.' },
     ],
-    upgradeTitle: 'UPGRADE',
-    upgradeLead: 'What you absorbed has changed the craft. Take one.',
-    upgradeHint: 'click or 1 / 2 / 3',
-    upgradeLevel: 'Lv',
-    upgradeMaxed: 'MAX',
-    upgrades: {
-      'laser-power': { name: 'LASER POWER', detail: '+20% damage per level.' },
-      shield: { name: 'SHIELD', detail: 'Adds one regenerating shield pip ahead of the hull.' },
-      'beam-radius': { name: 'BEAM RANGE', detail: '+15% beam radius.' },
-      'beam-grip': { name: 'PULL STRENGTH', detail: '+1 integer pull strength.' },
-      lift: { name: 'LIFT', detail: '+2 total hanging-weight capacity.' },
-      speed: { name: 'SPEED', detail: 'A small increase to base top speed.' },
-      'turbo-recharge': { name: 'TURBO RECHARGE', detail: 'Refills turbo faster.' },
-      'turbo-capacity': { name: 'TURBO CAPACITY', detail: '+1.5 seconds of turbo.' },
-      turn: { name: 'TURN RESPONSE', detail: '+15% mouse-following turn response.' },
-    },
   },
 }
 

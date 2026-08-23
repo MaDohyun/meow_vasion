@@ -63,9 +63,13 @@ describe('eating buildings', () => {
     const tall = buildings.reduce((a, b) => (a.size.y > b.size.y ? a : b))
 
     expect(buildings.some((building) => canEat(building, 1))).toBe(false)
-    expect(canEat(short, BEAM_STRENGTH_MAX)).toBe(true)
-    expect(canEat(tall, BEAM_STRENGTH_MAX)).toBe(false)
-    expect(canEat(tall, BEAM_STRENGTH_MAX + 5)).toBe(true)
+    // The whole ladder lives on size now: the lightest block opens partway up
+    // the 1..12 rungs, the tallest near the top of it - no card required.
+    expect(canEat(short, buildingMass(short) - 2)).toBe(false)
+    expect(canEat(short, buildingMass(short) - 1)).toBe(true)
+    expect(canEat(tall, buildingMass(tall) - 2)).toBe(false)
+    expect(canEat(tall, buildingMass(tall) - 1)).toBe(true)
+    expect(canEat(tall, BEAM_STRENGTH_MAX)).toBe(true)
     expect(buildingMass(short)).toBeLessThan(buildingMass(tall))
   })
 

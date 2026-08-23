@@ -14,9 +14,10 @@
  * 1. A bigger craft is a bigger target. The hit radius scales, and since shots
  *    are led and fast enough to arrive, a grown craft holding a heading takes
  *    several times the fire a small one does. Weaving is the answer.
- * 2. A bigger craft gains integer beam strength and lift capacity, which opens
- *    heavier targets. Beam radius remains a card-only stat, so growth never
- *    changes the aiming footprint behind the player's back.
+ * 2. A bigger craft gains integer beam strength, lift capacity and beam
+ *    aperture. With the card deck gone these are size's job alone: every
+ *    physical property of the beam is read straight off the hull, so "how
+ *    strong am I" always has the same answer as "how big am I".
  *
  * Size also decides how high the craft can fly, which is less a limit than a
  * change of scenery: a small saucer is pinned among the buildings and threads
@@ -74,7 +75,8 @@ export type SizeProfile = {
   size: number
   /** 0 at the death threshold, 1 at maximum. Drives HUD and audio. */
   ratio: number
-  /** Beam cone radius multiplier. Size never changes it; only cards do. */
+  /** Beam cone radius multiplier. Grows with the hull - the cards that used
+   *  to own this stat are gone. See beamApertureForSize. */
   beamScale: number
   /**
    * Natural grip on whatever the beam has hold of, before any upgrade.
@@ -110,23 +112,53 @@ export type SizeProfile = {
  *  layer so the pull-back rule below is one number applied to one number. */
 export const CAMERA_REST_DISTANCE = 12
 
-/** The seven integer strength rungs shared by the HUD and beam simulation. */
-export const BEAM_STRENGTH_MAX = 7
-// Give the opening craft one extra unit of usable lift so a basic pull does
-// not immediately look overloaded. The maximum remains unchanged.
-export const LIFT_CAPACITY_MIN = 2
-export const LIFT_CAPACITY_MAX = 26
+/**
+ * The twelve integer strength rungs shared by the HUD and beam simulation.
+ *
+ * This used to top out at 7 with cards adding up to +5 on the side; the cards
+ * are gone, so the whole 1..12 ladder now lives on size alone. The heaviest
+ * liftables keep their old meaning: a supertall block (mass 11) still needs a
+ * craft near the ceiling, it just no longer needs a lucky deck as well.
+ */
+export const BEAM_STRENGTH_MAX = 12
+/**
+ * One. The opening saucer carries one unit of hanging weight and not a gram
+ * more - a single trash bin is a full load, which is exactly the "barely a
+ * predator" the start of the run is selling.
+ */
+export const LIFT_CAPACITY_MIN = 1
+/** Forty by the ceiling. Self-limiting long before that: ballast drag prices
+ *  a full hold at well under half speed, so the cap is ambition, not power. */
+export const LIFT_CAPACITY_MAX = 40
+/**
+ * Below 1 so lift front-loads: the exponent lifts the early curve, putting
+ * the opening craft past a car's worth of capacity within the first stretch
+ * of growth instead of leaving it pinned at one bin for a quarter of the run.
+ * The endpoints are untouched - pow(0) and pow(1) are still 0 and 1.
+ */
+export const LIFT_GROWTH_EXPONENT = 0.75
+
+/** Beam cone multiplier at the ceiling, absorbing the old radius cards'
+ *  headroom (x1.75) into growth itself. */
+export const BEAM_APERTURE_MAX = 1.75
+
+function sizeGrowthProgress(size: number) {
+  return Math.max(0, Math.min(1, (clampSize(size) - SIZE_START) / (SIZE_MAX - SIZE_START)))
+}
 
 export function beamStrengthForSize(size: number) {
   const clamped = clampSize(size)
   if (clamped < SIZE_START) return 0
-  const progress = Math.max(0, Math.min(1, (clamped - SIZE_START) / (SIZE_MAX - SIZE_START)))
-  return Math.min(BEAM_STRENGTH_MAX, 1 + Math.round(progress * (BEAM_STRENGTH_MAX - 1)))
+  return Math.min(BEAM_STRENGTH_MAX, 1 + Math.round(sizeGrowthProgress(clamped) * (BEAM_STRENGTH_MAX - 1)))
 }
 
 export function liftCapacityForSize(size: number) {
-  const progress = Math.max(0, Math.min(1, (clampSize(size) - SIZE_START) / (SIZE_MAX - SIZE_START)))
+  const progress = Math.pow(sizeGrowthProgress(size), LIFT_GROWTH_EXPONENT)
   return LIFT_CAPACITY_MIN + progress * (LIFT_CAPACITY_MAX - LIFT_CAPACITY_MIN)
+}
+
+export function beamApertureForSize(size: number) {
+  return 1 + sizeGrowthProgress(size) * (BEAM_APERTURE_MAX - 1)
 }
 
 /**
@@ -148,9 +180,7 @@ export function clampSize(size: number) {
 export function sizeProfile(size: number): SizeProfile {
   const clamped = clampSize(size)
   const ratio = Math.min(1, Math.max(0, (clamped - SIZE_MIN) / (SIZE_MAX - SIZE_MIN)))
-  // Aperture is a card stat now. Growing the hull must not secretly widen the
-  // beam and pay the player twice for the same progression.
-  const beamScale = 1
+  const beamScale = beamApertureForSize(clamped)
   const beamStrength = beamStrengthForSize(clamped)
   return {
     size: clamped,

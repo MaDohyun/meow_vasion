@@ -5,7 +5,6 @@ import { useGame } from '../GameContext'
 import { LANGUAGES, LANGUAGE_LABELS, bulletinFor, formatMessage, type Strings } from '../i18n'
 import { broadcastPhase, broadcastProgress } from '../core/broadcast'
 import type { RunEnding } from '../core/ending'
-import { UPGRADE_DEFINITIONS, type UpgradeId } from '../core/upgrades'
 import { HowToPlay } from './HowToPlay'
 import { LifeHearts } from './LifeHearts'
 import { RichText, plainText } from './RichText'
@@ -586,61 +585,13 @@ function BreakingNews() {
   )
 }
 
-/**
- * The upgrade card screen.
- *
- * The run is stopped behind this - not slowed, stopped. A card that slid past
- * while drones were converging would be taken by whichever hand was already
- * moving, and that is not a choice. Three cards, one taken, back to flying.
- *
- * Number keys as well as clicks: the whole game is played on the keyboard with
- * the mouse aiming, so reaching for a button mid-run is the awkward option and
- * has to be the alternative rather than the only way.
- */
-function UpgradeCards() {
-  const { snapshot, chooseUpgrade, t } = useGame()
-  const choices = snapshot.upgradeChoices
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      const index = Number(event.key) - 1
-      if (index >= 0 && index < choices.length) chooseUpgrade(choices[index]!)
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [choices, chooseUpgrade])
-  return (
-    <div className="overlay upgrade-overlay">
-      <span className="eyebrow">{t.upgradeTitle}</span>
-      <p className="upgrade-lead">{t.upgradeLead}</p>
-      <div className="upgrade-cards">
-        {choices.map((id, index) => {
-          const level = snapshot.upgradeLevels[id] ?? 0
-          const max = UPGRADE_DEFINITIONS[id].maxLevel
-          const copy = t.upgrades[id]
-          return (
-            <button key={id} className="upgrade-card" type="button" onClick={() => chooseUpgrade(id)}>
-              <i>{index + 1}</i>
-              <strong>{copy.name}</strong>
-              <small>{copy.detail}</small>
-              <b>{level + 1 >= max ? t.upgradeMaxed : `${t.upgradeLevel}.${level} → ${t.upgradeLevel}.${level + 1}`}</b>
-            </button>
-          )
-        })}
-      </div>
-      <span className="upgrade-hint">{t.upgradeHint}</span>
-    </div>
-  )
-}
-
 export function Hud() {
   const { snapshot, t } = useGame()
   const [briefingRun, setBriefingRun] = useState(0)
   const prevPhase = useRef(snapshot.phase)
   useEffect(() => {
-    // A fresh run (from the intro or a restart) gets a new briefing. Passing
-    // through 'upgrade' and back does not - that would replay the whole
-    // sequence from the top if a card happened to land mid-briefing.
-    if (snapshot.phase === 'playing' && prevPhase.current !== 'playing' && prevPhase.current !== 'upgrade') {
+    // A fresh run (from the intro or a restart) gets a new briefing.
+    if (snapshot.phase === 'playing' && prevPhase.current !== 'playing') {
       setBriefingRun((run) => run + 1)
     }
     prevPhase.current = snapshot.phase
@@ -663,14 +614,6 @@ export function Hud() {
               regenerating={snapshot.regenerating}
               label={t.life}
             />
-            {snapshot.shieldMax > 0 && (
-              <div className="shield-bar" data-regen={snapshot.shieldRegenerating}>
-                {Array.from({ length: snapshot.shieldMax }, (_, pip) => (
-                  <i key={pip} data-state={snapshot.shield >= pip + 1 ? 'full' : snapshot.shield > pip ? 'part' : 'empty'} />
-                ))}
-                <b>{t.shield} {snapshot.shield.toFixed(1)}/{snapshot.shieldMax}</b>
-              </div>
-            )}
             <small>
               {t.hull} {Math.ceil(snapshot.health)}/{snapshot.healthMax}
               {snapshot.regenerating ? ` · ${t.repairing}` : ''}
@@ -775,10 +718,9 @@ export function Hud() {
             <span>{t.tutorialPressE}</span>
           </div>
         )}
-        {(snapshot.phase === 'playing' || snapshot.phase === 'upgrade') && <BossBriefing key={briefingRun} />}
+        {snapshot.phase === 'playing' && <BossBriefing key={briefingRun} />}
       </div>
       <MobileControls />
-      {snapshot.phase === 'upgrade' && <UpgradeCards />}
       {snapshot.phase === 'results' && <Results />}
     </>
   )

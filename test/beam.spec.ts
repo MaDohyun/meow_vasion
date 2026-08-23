@@ -77,12 +77,14 @@ describe('tractor beam physics', () => {
     expect(beamProfile(true).maxDrop).toBeGreaterThan(beamProfile(false).maxDrop)
   })
 
-  it('keeps both beam radius and length independent of craft growth', () => {
+  it('widens the beam with growth but keeps its length out of it', () => {
+    // Aperture rides on size now that the radius cards are gone; reach stays
+    // put, so a bigger craft sweeps a wider cone, not a longer one.
     const small = sizeProfile(SIZE_MIN)
     const large = sizeProfile(SIZE_MAX)
-    expect(large.beamScale).toBe(small.beamScale)
+    expect(large.beamScale).toBeGreaterThan(small.beamScale)
     expect(beamProfile(false, large.beamScale).baseRadius)
-      .toBe(beamProfile(false, small.beamScale).baseRadius)
+      .toBeGreaterThan(beamProfile(false, small.beamScale).baseRadius)
     expect(beamProfile(false, large.beamScale).maxDrop)
       .toBe(beamProfile(false, small.beamScale).maxDrop)
   })

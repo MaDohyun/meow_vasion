@@ -110,10 +110,6 @@ button { font: inherit; }
 @keyframes warning-pulse { 50% { transform: scale(1.045); filter: brightness(1.25); } }
 
 .systems-panel { position: absolute; right: 18px; bottom: 52px; width: 258px; padding: 11px 13px; border-right-color: var(--pink); }
-.shield-row { display: flex; align-items: center; gap: 5px; }
-.shield-row .eyebrow { margin-right: auto; }
-.shield-row i { color: #4b485c; font-size: 18px; font-style: normal; -webkit-text-stroke: 1px #b5aebd; }
-.shield-row i[data-active="true"] { color: var(--cyan); text-shadow: 0 0 9px #56f9f3; }
 .system-meter { margin-top: 6px; }
 .system-meter > span { display: flex; justify-content: space-between; color: var(--cream); font-size: 12px; font-weight: 1000; }
 .system-meter > span b { color: var(--yellow); }
@@ -355,20 +351,6 @@ button { font: inherit; }
 .breaking-body p { margin:10px 0 0; color:var(--cream); font-size:10px; font-weight:700; line-height:1.7; white-space:pre-line; word-break:keep-all; }
 .breaking-timer { position:absolute; left:0; bottom:0; height:3px; background:var(--cyan); }
 
-/* Upgrade cards. The run is frozen behind this, so it is allowed to own the
-   screen the way the results overlay does. */
-.upgrade-overlay { gap:0; background:linear-gradient(150deg,rgba(24,20,44,.93),rgba(14,22,48,.95)); }
-.upgrade-overlay .eyebrow { color:var(--yellow); font-size:15px; letter-spacing:5px; }
-.upgrade-lead { margin:10px 0 22px; color:var(--cream); font-size:14px; font-weight:700; letter-spacing:.6px; }
-.upgrade-cards { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; width:min(94vw,900px); }
-.upgrade-card { position:relative; display:flex; flex-direction:column; min-height:150px; padding:15px 15px 13px; color:var(--cream); text-align:left; background:rgba(41,35,63,.9); border:3px solid rgba(255,245,199,.55); box-shadow:5px 5px 0 rgba(18,14,32,.7); cursor:pointer; transition:transform .08s steps(2),border-color .08s steps(2),background .08s steps(2); }
-.upgrade-card:hover, .upgrade-card:focus-visible { transform:translate(-2px,-2px); background:rgba(56,48,84,.94); border-color:var(--yellow); outline:none; }
-.upgrade-card i { position:absolute; top:-3px; right:-3px; display:flex; align-items:center; justify-content:center; width:24px; height:24px; color:var(--ink); background:var(--yellow); font-size:11px; font-style:normal; font-weight:1000; }
-.upgrade-card strong { display:block; margin-bottom:9px; color:var(--green); font-size:17px; letter-spacing:.8px; }
-.upgrade-card small { flex:1; font-size:13px; font-weight:700; line-height:1.65; }
-.upgrade-card b { margin-top:10px; padding-top:9px; color:var(--yellow); border-top:1px dashed rgba(255,245,199,.4); font-size:13px; letter-spacing:1px; }
-.upgrade-hint { margin-top:18px; color:rgba(255,245,199,.6); font-size:12px; font-weight:1000; letter-spacing:2px; }
-
 /* Lives, as pixel hearts. Five green blocks in the mass card's own colour read
    as "how full is this bar?"; a heart reads as "how many hits do I have left?"
    before anyone gets to the label. Discrete either way - five is a number a
@@ -382,15 +364,6 @@ button { font: inherit; }
 .life-hearts[data-regen="true"] .pixel-heart:not([data-state="full"]) { animation:warning-pulse 1s steps(2) infinite; }
 .life-hearts[data-critical="true"] .pixel-heart[data-state="full"],
 .life-hearts[data-critical="true"] .pixel-heart[data-state="part"] { animation:warning-pulse .5s steps(2) infinite; }
-
-/* Shields are cyan rather than green so they cannot be mistaken for the
-   life row they sit under - two resources, two colours. */
-.shield-bar { position:relative; display:flex; gap:3px; margin:9px 0 4px; padding-right:82px; }
-.shield-bar i { flex:1; height:9px; background:rgba(100,241,238,.12); border:1px solid rgba(100,241,238,.45); }
-.shield-bar i[data-state="full"] { background:var(--cyan); border-color:var(--cream); }
-.shield-bar i[data-state="part"] { background:linear-gradient(90deg,var(--cyan) 50%,rgba(100,241,238,.12) 50%); border-color:var(--cream); }
-.shield-bar b { position:absolute; right:0; top:-3px; color:var(--cyan); font-size:11px; font-weight:900; }
-.shield-bar[data-regen="true"] i[data-state="empty"],.shield-bar[data-regen="true"] i[data-state="part"] { animation:warning-pulse 1s steps(2) infinite; }
 
 /* Static on purpose - the pulse used to swap out the centring transform for
    a scale each keyframe step, so the box snapped half its own width sideways

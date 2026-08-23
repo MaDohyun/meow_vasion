@@ -16,10 +16,12 @@ import {
 } from '../core/cityLandmarks'
 import {
   groundCellsAround,
+  mysteryCircleForCell,
   seedForWorldCell,
   WORLD_CELL_SIZE,
   WORLD_MAX_BUILDINGS,
 } from '../core/world'
+import { BOON_COLORS, BOON_HEAL_COLOR, boonForCircle, boonHoverY } from '../core/boons'
 import {
   busStopsAround,
   isWorldPropDisplaced,
@@ -326,6 +328,22 @@ mysteryParticleColorAttribute.setUsage(THREE.DynamicDrawUsage)
 mysteryParticleGeometry.setAttribute('position', mysteryParticlePositionAttribute)
 mysteryParticleGeometry.setAttribute('color', mysteryParticleColorAttribute)
 mysteryParticleGeometry.setDrawRange(0, 0)
+
+/**
+ * The pickup saucer hovering over an unclaimed circle: a flattened hull with
+ * a little dome, one merged geometry so the whole pool is a single draw. The
+ * stat it grants is said with instance colour (see core/boons BOON_COLORS);
+ * a soft uniform emissive keeps it readable inside the night-time beacon.
+ */
+const boonSaucerGeometry = mergeGeometries([
+  new THREE.SphereGeometry(1.55, 14, 10).scale(1, 0.4, 1),
+  new THREE.SphereGeometry(0.72, 12, 8).translate(0, 0.42, 0),
+], false)!
+const boonSaucerMaterial = new THREE.MeshToonMaterial({
+  color: '#ffffff',
+  emissive: new THREE.Color('#5a4618'),
+  emissiveIntensity: 0.6,
+})
 
 const mysteryParticleMaterial = new THREE.PointsMaterial({
   color: '#ffe7a2',
@@ -762,6 +780,52 @@ function MysterySignalPool() {
   return <points geometry={mysteryParticleGeometry} material={mysteryParticleMaterial} frustumCulled={false} renderOrder={4} />
 }
 
+/**
+ * One pickup saucer per circle that has not been eaten yet.
+ *
+ * Bob height comes from core/boons fed with the runtime's own clock, so the
+ * item is drawn exactly where the simulation will eat it. Colour is looked up
+ * per frame rather than cached: when a stat maxes out mid-run, a circle that
+ * carried it re-deals to whatever is still open, and the item has to show it.
+ */
+function BoonPickupPool() {
+  const { runtime } = useGame()
+  const ref = useRef<THREE.InstancedMesh>(null)
+  const matrix = useMemo(() => new THREE.Matrix4(), [])
+  const position = useMemo(() => new THREE.Vector3(), [])
+  const scale = useMemo(() => new THREE.Vector3(1, 1, 1), [])
+  const rotation = useMemo(() => new THREE.Quaternion(), [])
+  const euler = useMemo(() => new THREE.Euler(), [])
+  const color = useMemo(() => new THREE.Color(), [])
+
+  useFrame(() => {
+    const mesh = ref.current
+    if (!mesh) return
+    const game = runtime.current
+    let count = 0
+    for (const cell of groundCellsAround(game.drone.position, LANDMARK_RADIUS_CELLS)) {
+      if (groundLandmarkForCell(cell) !== 'mystery-circle') continue
+      const id = mysteryCircleForCell(cell.cellX, cell.cellZ)
+      if (!id || game.boons.claimed.has(id)) continue
+      const centerX = (cell.cellX + 0.5) * WORLD_CELL_SIZE
+      const centerZ = (cell.cellZ + 0.5) * WORLD_CELL_SIZE
+      const seed = seedForWorldCell(cell.cellX, cell.cellZ, 0x626f6f6e)
+      euler.set(0, game.sessionTime * 1.6 + (seed % 628) / 100, 0)
+      rotation.setFromEuler(euler)
+      position.set(centerX, boonHoverY(game.sessionTime, id), centerZ)
+      matrix.compose(position, rotation, scale)
+      mesh.setMatrixAt(count, matrix)
+      const boon = boonForCircle(game.boons, id)
+      mesh.setColorAt(count, color.set(boon ? BOON_COLORS[boon] : BOON_HEAL_COLOR))
+      count += 1
+      if (count >= LANDMARK_CELL_COUNT) break
+    }
+    setPoolCount(mesh, count, true)
+  })
+
+  return <instancedMesh ref={ref} args={[boonSaucerGeometry, boonSaucerMaterial, LANDMARK_CELL_COUNT]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }} />
+}
+
 function mergedBoxes(parts: [number, number, number, number, number, number][]) {
   return mergeGeometries(parts.map(([sx, sy, sz, x, y, z]) => new THREE.BoxGeometry(sx, sy, sz).translate(x, y, z)), false)!
 }
@@ -1171,6 +1235,7 @@ export const CityLandmarks = memo(function CityLandmarks() {
       <ParkPool />
       <MysteryCirclePool />
       <MysterySignalPool />
+      <BoonPickupPool />
       <TransitUtilityPool />
       <ParkingLotPool />
     </group>
