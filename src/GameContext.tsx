@@ -68,6 +68,7 @@ import { createMissionState, isInsideAirCheckpoint, missionHasQuest, recordMissi
 import { MYSTERY_BOOST_DURATION, MYSTERY_BOOST_MAX_MULTIPLIER, mysteryBoostMultiplier } from './core/mysteryCircles'
 import { absorbShieldDamage, createShieldState, isShieldRegenerating, setShieldCapacity, shieldRatio, stepShield, type ShieldState } from './core/shield'
 import { shouldCrashFromOverload } from './core/overload'
+import { DRONE_BLAST_TRAUMA, addShakeTrauma, createShakeState, stepShake, type ShakeState } from './core/shake'
 import { worldPropMass, worldPropsAround } from './core/worldProps'
 import { playBoosterSound, playBuildingCollapseSound, playDroneExplosionSound, playLaserSound, playMysteryCircleSound, playNearbyCatCrySound, startBeamSound, startGameplayMusic, stopBeamSound, stopGameplayMusic, stopLobbyMusic, tone, unlockAudio } from './audio'
 
@@ -188,6 +189,10 @@ export type GameRuntime = {
   impactFlash: number
   impactKind: HealthLossKind
   hitstop: number
+  /** Decaying kick applied to the hull and the camera by a blast. Read
+   *  straight off the runtime by the render layer: at 60Hz the throttled
+   *  snapshot would sample it about four times over its whole life. */
+  shake: ShakeState
   size: number
   sizeProfile: SizeProfile
   health: HealthState
@@ -596,6 +601,7 @@ function makeRuntime(): GameRuntime {
     impactFlash: 0,
     impactKind: 'contact',
     hitstop: 0,
+    shake: createShakeState(),
     size: SIZE_START,
     sizeProfile: sizeProfile(SIZE_START),
     health: createHealthState(),
@@ -1178,13 +1184,21 @@ function updateNearbyCatCry(game: GameRuntime, dt: number) {
   game.catCryCooldown = CAT_CRY_INTERVAL
 }
 
-function registerImpact(game: GameRuntime, source: 'ENEMY' | 'BUILDING', loss?: HealthLossKind) {
+/**
+ * `trauma` is the blast shake, and only explosive hits pass one: a scrape
+ * along a tower still reads as the freeze alone. It is spent here rather than
+ * at the call site so a hit swallowed by the damage cooldown shakes nothing -
+ * that is not a hit the player took.
+ */
+function registerImpact(game: GameRuntime, source: 'ENEMY' | 'BUILDING', loss?: HealthLossKind, trauma = 0) {
   if (game.damageCooldown > 0 || game.phase !== 'playing') return
   game.damageCooldown = 1.05
   game.impactFlash = 1
   // Replaces the old continuous camera shake: a single short freeze reads as a
-  // hit without leaving the whole late game permanently vibrating.
+  // hit without leaving the whole late game permanently vibrating. A blast
+  // adds its own decaying kick on top of the freeze - see core/shake.
   game.hitstop = HITSTOP_TIME
+  if (trauma > 0) addShakeTrauma(game.shake, trauma)
   wound(game, source === 'BUILDING' ? 'building' : loss ?? 'contact')
   tone(source === 'BUILDING' ? 'impact' : 'warning')
   if ('vibrate' in navigator) navigator.vibrate?.([35, 20, 35])
@@ -1465,6 +1479,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     game.pilotClock += d
     game.messageTime = Math.max(0, game.messageTime - d)
     game.impactFlash = Math.max(0, game.impactFlash - d * 5)
+    stepShake(game.shake, d)
     // Short enough to be over before the laser can fire again, so holding the
     // trigger on a tower reads as repeated hits rather than a solid red block.
     for (const [id, flash] of game.buildingHitFlash) {
@@ -1668,7 +1683,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         mineExplosion.position.y - game.drone.position.y,
         mineExplosion.position.z - game.drone.position.z,
       )
-      if (distance <= mineExplosion.radius) registerImpact(game, 'ENEMY', 'contact')
+      if (distance <= mineExplosion.radius) registerImpact(game, 'ENEMY', 'contact', DRONE_BLAST_TRAUMA)
     }
     if (collision.hit && collision.impulse > 2.5 && game.collisionCooldown <= 0) { game.collisionCooldown = 0.45; registerImpact(game, 'BUILDING') }
 
@@ -1829,15 +1844,20 @@ export function GameProvider({ children }: { children: ReactNode }) {
     // A bigger craft is a bigger target: the same stream of fire is harder to
     // survive once fat, which is what stops growth from being free.
     const contactDamage = resolveEnemyContacts(game.enemies, game.drone.position, game.sizeProfile.hitRadius)
-    if (game.enemies.contactKills > 0) {
+    // A drone only ever dies on contact by going off, so its kill count is
+    // also the count of blasts that just went off against the hull.
+    const contactBlasts = game.enemies.contactKills
+    if (contactBlasts > 0) {
       playDroneExplosionSound()
-      game.enemiesDown += game.enemies.contactKills
-      game.score += game.enemies.contactKills * 35
+      game.enemiesDown += contactBlasts
+      game.score += contactBlasts * 35
       triggerLaserBurst(game.laserBursts, 'impact', game.enemies.lastContactPoint, '#ff9a3d')
       // Ploughing through a drone detonates it just as surely as shooting it.
       triggerFireball(game.fireballs, 'aircraft', game.enemies.lastContactPoint, undefined, blastSeed(game))
     }
-    if (contactDamage > 0) registerImpact(game, 'ENEMY', 'contact')
+    // Contact damage can come from anything solid; only a drone detonation
+    // earns the shake, so the trauma rides on the blast, not on the damage.
+    if (contactDamage > 0) registerImpact(game, 'ENEMY', 'contact', contactBlasts > 0 ? DRONE_BLAST_TRAUMA : 0)
     const previousMissionStage = game.mission.stage
     const previousMissionRevision = game.mission.revision
     syncMissionState(game.mission, game.sessionTime, game.score)

@@ -16,6 +16,15 @@ import {
   crowdMaterial,
   enemyMaterial,
 } from './entityMaterials'
+import {
+  SHAKE_CAMERA_PITCH,
+  SHAKE_CAMERA_ROLL,
+  SHAKE_CAMERA_YAW,
+  SHAKE_CRAFT_OFFSET,
+  SHAKE_CRAFT_ROLL,
+  createShakeSample,
+  sampleShake,
+} from '../core/shake'
 import { setRimNightFactor } from './rimLight'
 import { radialGlowTexture } from './textures'
 import { BEAM_ABSORB_TIME, beamLiftScale, beamObjectDiameter, beamProfile, beamVisualLength, type BeamObject } from '../core/beam'
@@ -764,15 +773,27 @@ function Ufo() {
   const domeBaseColor = useMemo(() => new THREE.Color(ENTITY.UFO_DOME), [])
   const domeMysteryColor = useMemo(() => new THREE.Color('#ffe59b'), [])
   const domeColor = useMemo(() => new THREE.Color(), [])
+  const shake = useMemo(() => createShakeSample(), [])
   const { camera } = useThree()
 
   useFrame((_, dt) => {
     const game = runtime.current
+    // One sample drives both the hull and the camera, so the craft rattling
+    // and the frame rattling are the same blast rather than two effects that
+    // happen to overlap. Zero unless something just went off - see core/shake.
+    sampleShake(game.shake, shake)
     if (root.current) {
-      root.current.position.set(game.drone.position.x, game.drone.position.y, game.drone.position.z)
-      root.current.rotation.x = -game.drone.pitch
-      root.current.rotation.y = game.drone.heading
-      root.current.rotation.z = game.drone.visualTilt * 0.72
+      // Offset in hull radii: the shake is a share of the craft, so growing
+      // does not turn a rattle into a lurch.
+      const craftShake = SHAKE_CRAFT_OFFSET * game.sizeProfile.size
+      root.current.position.set(
+        game.drone.position.x + shake.x * craftShake,
+        game.drone.position.y + shake.y * craftShake,
+        game.drone.position.z + shake.z * craftShake,
+      )
+      root.current.rotation.x = -game.drone.pitch + shake.pitch * SHAKE_CRAFT_ROLL
+      root.current.rotation.y = game.drone.heading + shake.yaw * SHAKE_CRAFT_ROLL
+      root.current.rotation.z = game.drone.visualTilt * 0.72 + shake.roll * SHAKE_CRAFT_ROLL
       const pickupPop = Math.sin((1 - snapshot.pickupPulse) * Math.PI) * snapshot.pickupPulse
       // The craft IS the health bar: its size is the run's only resource, so it
       // has to be read off the body rather than a gauge.
@@ -831,6 +852,15 @@ function Ufo() {
       game.drone.position.z + forwardZ * (5.5 + speedRatio * 3),
     )
     camera.lookAt(cameraTarget)
+    // Rotate after the look-at rather than shoving the chase position around:
+    // the position is lerped, which would eat most of a short kick, and
+    // rolling the frame reads as the hit without ever moving the rig off the
+    // craft. lookAt rewrites the quaternion every frame, so this cannot drift.
+    if (shake.yaw !== 0 || shake.pitch !== 0 || shake.roll !== 0) {
+      camera.rotateX(shake.pitch * SHAKE_CAMERA_PITCH)
+      camera.rotateY(shake.yaw * SHAKE_CAMERA_YAW)
+      camera.rotateZ(shake.roll * SHAKE_CAMERA_ROLL)
+    }
     if (camera instanceof THREE.PerspectiveCamera) {
       const targetFov = game.drone.boostRemaining > 0 ? 82 : 58 + speedRatio * 11
       camera.fov += (targetFov - camera.fov) * (1 - Math.exp(-5 * dt))
