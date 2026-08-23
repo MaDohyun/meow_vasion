@@ -29,7 +29,7 @@ const BEAM_VOLUME = 0.2
 const BOOSTER_VOLUME = 0.4
 const MYSTERY_CIRCLE_VOLUME = 0.7
 const CAT_CRY_VOLUME = 0.62
-const MENU_HOVER_VOLUME = 0.5
+const MENU_HOVER_VOLUME = 0.3
 const BGM_VOLUME_STORAGE_KEY = 'beam-bandit-bgm-volume'
 const SFX_VOLUME_STORAGE_KEY = 'beam-bandit-sfx-volume'
 
