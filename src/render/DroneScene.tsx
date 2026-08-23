@@ -340,9 +340,11 @@ function PullableCars() {
     let visibleCount = 0
     let glowCount = 0
     for (const object of runtime.current.beamObjects) {
-      // Buildings ride the same pipeline but are drawn by the city, which owns
-      // the facade material they have to keep looking like.
-      if (!object.active || object.kind === 'building') continue
+      // beamObjects also carries buildings and every piece of city dressing
+      // (trees, lamps, bins, benches, shelters). Those own their own render
+      // pools; drawing them here stamped a full car body, cabin, lightbar and
+      // ground shadow onto each one, which read as a car jammed into the prop.
+      if (!object.active || object.kind !== 'car') continue
       position.set(object.position.x, object.position.y, object.position.z)
       if (camera.position.distanceToSquared(position) > 180 * 180) continue
       sphere.center.copy(position)

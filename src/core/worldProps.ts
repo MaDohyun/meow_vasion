@@ -57,6 +57,12 @@ function prop(
   }
 }
 
+/** Crown-to-crown clearance between two trees sharing a park cell. */
+export const PARK_TREE_SPACING = 4.4
+/** Clearance a tree keeps from the cell's bench so neither grows through it. */
+export const PARK_BENCH_CLEARANCE = 3.4
+const PARK_TREE_PLACEMENT_TRIES = 8
+
 /** The park tree transforms are shared by the simulation and its instanced render pool. */
 export function parkTreesAround(position: Pick<Vec3, 'x' | 'z'>, radius = LANDMARK_RADIUS_CELLS) {
   const trees: Array<BeamWorldProp & { height: number; crown: number }> = []
@@ -64,17 +70,32 @@ export function parkTreesAround(position: Pick<Vec3, 'x' | 'z'>, radius = LANDMA
     if (groundLandmarkForCell(cell) !== 'park') continue
     const centerX = (cell.cellX + 0.5) * WORLD_CELL_SIZE
     const centerZ = (cell.cellZ + 0.5) * WORLD_CELL_SIZE
+    const benchZ = centerZ + PARK_BENCH_OFFSET_Z
+    const placed: { x: number; z: number }[] = []
     for (let tree = 0; tree < PARK_TREE_COUNT; tree += 1) {
       const seed = seedForWorldCell(cell.cellX, cell.cellZ, 0x7ee00 + tree)
-      const angle = (seed % 1000) / 1000 * Math.PI * 2
-      const radius = 4.5 + ((seed >>> 12) % 55) / 10
       const height = 2.7 + ((seed >>> 19) % 8) * 0.12
       const crown = 2.2 + ((seed >>> 23) % 5) * 0.16
+      // Three independent angles around one small ring used to drop trees on
+      // top of each other, and on the bench sitting at a fixed offset - which
+      // looked like a single tree spawning twice. Walk deterministic
+      // alternatives until one clears both.
+      let spot = { x: centerX, z: centerZ }
+      for (let attempt = 0; attempt < PARK_TREE_PLACEMENT_TRIES; attempt += 1) {
+        const roll = attempt === 0 ? seed : seedForWorldCell(cell.cellX, cell.cellZ, 0x7ee00 + tree + attempt * 0x40)
+        const angle = (roll % 1000) / 1000 * Math.PI * 2
+        const ring = 4.5 + ((roll >>> 12) % 55) / 10
+        spot = { x: centerX + Math.cos(angle) * ring, z: centerZ + Math.sin(angle) * ring }
+        const clearOfBench = Math.hypot(spot.x - centerX, spot.z - benchZ) >= PARK_BENCH_CLEARANCE
+        const clearOfTrees = placed.every((other) => Math.hypot(spot.x - other.x, spot.z - other.z) >= PARK_TREE_SPACING)
+        if (clearOfBench && clearOfTrees) break
+      }
+      placed.push(spot)
       trees.push({
         ...prop({
         id: `tree:park:${cell.cellX}:${cell.cellZ}:${tree}`,
         kind: 'tree',
-        position: { x: centerX + Math.cos(angle) * radius, y: 0, z: centerZ + Math.sin(angle) * radius },
+        position: { x: spot.x, y: 0, z: spot.z },
         rotation: 0,
         // A spawn point owns exactly one silhouette. Previously the static
         // round crown and the lifted proxy were both rendered here, which
@@ -89,6 +110,9 @@ export function parkTreesAround(position: Pick<Vec3, 'x' | 'z'>, radius = LANDMA
   return trees
 }
 
+/** Where the bench sits relative to its park cell centre; trees route around it. */
+export const PARK_BENCH_OFFSET_Z = 3.5
+
 /** One deterministic, beam-capable bench for every generated park cell. */
 export function parkBenchesAround(position: Pick<Vec3, 'x' | 'z'>, radius = LANDMARK_RADIUS_CELLS) {
   const benches: BeamWorldProp[] = []
@@ -101,7 +125,7 @@ export function parkBenchesAround(position: Pick<Vec3, 'x' | 'z'>, radius = LAND
       position: {
         x: (cell.cellX + 0.5) * WORLD_CELL_SIZE,
         y: 0,
-        z: (cell.cellZ + 0.5) * WORLD_CELL_SIZE + 3.5,
+        z: (cell.cellZ + 0.5) * WORLD_CELL_SIZE + PARK_BENCH_OFFSET_Z,
       },
       rotation: (seed % 4) * Math.PI / 2,
       variant: 0,

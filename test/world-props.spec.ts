@@ -4,6 +4,8 @@ import { busStopAnchor } from '../src/core/cityLandmarks'
 import {
   busStopsAround,
   isWorldPropCarried,
+  PARK_BENCH_CLEARANCE,
+  PARK_TREE_SPACING,
   TREE_VARIANT_ROUND,
   TREE_VARIANT_SLENDER,
   WORLD_PROP_MASS,
@@ -67,6 +69,29 @@ describe('beam-capable city dressing', () => {
       const tree = trees.find((candidate) => candidate.variant === variant)
       expect(tree).toBeDefined()
       expect(worldPropMass(tree!)).toBe(3)
+    }
+  })
+
+  it('spaces park trees off each other and off the cell bench', () => {
+    // Three trees rolled independently around one small ring used to land on
+    // the same spot, or on the fixed-offset bench, which read as a prop
+    // spawning twice.
+    const trees = parkTreesAround({ x: 0, z: 0 }, 12)
+    const benches = parkBenchesAround({ x: 0, z: 0 }, 12)
+    expect(trees.length).toBeGreaterThan(20)
+    for (const bench of benches) {
+      for (const tree of trees.filter((candidate) => candidate.id.startsWith(bench.id.replace('park-bench:', 'tree:park:')))) {
+        expect(Math.hypot(tree.position.x - bench.position.x, tree.position.z - bench.position.z))
+          .toBeGreaterThanOrEqual(PARK_BENCH_CLEARANCE)
+      }
+    }
+    for (const tree of trees) {
+      const cellKey = tree.id.slice(0, tree.id.lastIndexOf(':'))
+      for (const other of trees) {
+        if (other === tree || !other.id.startsWith(`${cellKey}:`)) continue
+        expect(Math.hypot(tree.position.x - other.position.x, tree.position.z - other.position.z))
+          .toBeGreaterThanOrEqual(PARK_TREE_SPACING)
+      }
     }
   })
 
