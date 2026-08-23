@@ -19,6 +19,7 @@ class FakeAudio {
   paused = true
   playCount = 0
   private pending: { resolve: () => void; reject: (error: Error) => void }[] = []
+  private listeners = new Map<string, Set<() => void>>()
 
   constructor(src: string) {
     this.src = src
@@ -26,6 +27,16 @@ class FakeAudio {
   }
 
   setAttribute() {}
+
+  addEventListener(type: string, listener: () => void) {
+    const bucket = this.listeners.get(type) ?? new Set()
+    bucket.add(listener)
+    this.listeners.set(type, bucket)
+  }
+
+  removeEventListener(type: string, listener: () => void) {
+    this.listeners.get(type)?.delete(listener)
+  }
 
   load() {
     this.readyState = 1
@@ -39,7 +50,9 @@ class FakeAudio {
   }
 
   pause() {
+    const wasPlaying = !this.paused
     this.paused = true
+    if (wasPlaying) this.emit('pause')
   }
 
   /** The browser grants the outstanding request and starts the track. */
@@ -56,6 +69,10 @@ class FakeAudio {
   /** A pause() interrupted the request before playback began. */
   abort() {
     for (const request of this.pending.splice(0)) request.reject(new Error('AbortError'))
+  }
+
+  private emit(type: string) {
+    for (const listener of [...(this.listeners.get(type) ?? [])]) listener()
   }
 }
 
@@ -124,34 +141,77 @@ describe('background music ownership', () => {
     audio = await loadAudio()
   })
 
-  it('keeps asking for the lobby track until a gesture unblocks it', async () => {
+  /** Open the lobby on a browser that refuses sound but permits muted
+   * playback - phones, and any desktop tab the player has not touched yet. */
+  async function openBlockedLobby() {
     audio.startLobbyMusic()
     const lobby = lobbyElement()
-    expect(lobby.playCount).toBe(1)
-
     lobby.refuse()
     await flush()
+    // The refusal is answered by a silent priming pass, which browsers allow.
+    lobby.grant()
+    await flush()
+    return lobby
+  }
+
+  it('runs a refused lobby track in silence so a gesture only has to unmute it', async () => {
+    const lobby = await openBlockedLobby()
+    expect(lobby.paused).toBe(false)
+    expect(lobby.muted).toBe(true)
+    expect(audio.isLobbyMusicBlocked()).toBe(true)
+
+    // The silent pass has been running for a while; being heard starts the
+    // loop at the top rather than dropping the player into the middle of it.
+    lobby.currentTime = 12
     click()
-    expect(lobby.playCount).toBe(2)
+    expect(lobby.muted).toBe(false)
+    expect(lobby.currentTime).toBe(0)
 
     lobby.grant()
     await flush()
-    // Once it is actually playing there is nothing left to retry.
+    expect(audio.isLobbyMusicBlocked()).toBe(false)
+  })
+
+  it('keeps asking until a gesture is granted, then stops asking', async () => {
+    const lobby = await openBlockedLobby()
+    const primed = lobby.playCount
+
+    // A gesture the browser refuses again leaves the retry armed.
     click()
-    expect(lobby.playCount).toBe(2)
-    expect(lobby.muted).toBe(false)
+    lobby.refuse()
+    await flush()
+    lobby.grant()
+    await flush()
+    expect(lobby.playCount).toBe(primed + 2)
+
+    click()
+    lobby.grant()
+    await flush()
+    const heard = lobby.playCount
+    // Now that it is audible there is nothing left to retry.
+    click()
+    expect(lobby.playCount).toBe(heard)
+  })
+
+  it('accepts a touch on lobby scenery, where mobile browsers withhold the click', async () => {
+    const lobby = await openBlockedLobby()
+    const primed = lobby.playCount
+
+    // A touch on a button is answered by the click that follows it, so only
+    // the scenery touch has to stand in for one.
+    touchControl()
+    expect(lobby.playCount).toBe(primed)
+    touchScenery()
+    expect(lobby.playCount).toBe(primed + 1)
   })
 
   it('does not let a refused lobby request restart itself under the gameplay track', async () => {
-    audio.startLobbyMusic()
-    const lobby = lobbyElement()
-    lobby.refuse()
-    await flush()
+    const lobby = await openBlockedLobby()
 
     // The player's first tap is Start: the lobby retry goes out, and the run
     // begins while the browser is still deciding.
     click()
-    expect(lobby.playCount).toBe(2)
+    const asked = lobby.playCount
     audio.startGameplayMusic()
     // Pausing the lobby aborted its request; the rejection is not a fresh
     // autoplay refusal and must not be retried.
@@ -160,7 +220,8 @@ describe('background music ownership', () => {
 
     expect(audio.activeMusicTrack()).toBe('gameplay')
     expect(lobby.paused).toBe(true)
-    expect(lobby.playCount).toBe(2)
+    expect(lobby.playCount).toBe(asked)
+    expect(audio.isLobbyMusicBlocked()).toBe(false)
 
     gameplayElement().grant()
     await flush()
@@ -182,16 +243,15 @@ describe('background music ownership', () => {
   })
 
   it('ignores lobby gestures once the game owns the mix', async () => {
-    audio.startLobbyMusic()
-    const lobby = lobbyElement()
-    lobby.refuse()
-    await flush()
-
+    const lobby = await openBlockedLobby()
     audio.startGameplayMusic()
     lobby.abort()
     await flush()
+    const stopped = lobby.playCount
+
     click()
-    expect(lobby.playCount).toBe(1)
+    touchScenery()
+    expect(lobby.playCount).toBe(stopped)
     expect(lobby.paused).toBe(true)
   })
 
@@ -205,20 +265,6 @@ describe('background music ownership', () => {
     expect(audio.activeMusicTrack()).toBe('lobby')
     expect(gameplay.paused).toBe(true)
     expect(lobbyElement().playCount).toBe(1)
-  })
-
-  it('accepts a touch on lobby scenery, where mobile browsers withhold the click', async () => {
-    audio.startLobbyMusic()
-    const lobby = lobbyElement()
-    lobby.refuse()
-    await flush()
-
-    // A touch on a button is answered by the click that follows it, so only
-    // the scenery touch has to stand in for one.
-    touchControl()
-    expect(lobby.playCount).toBe(1)
-    touchScenery()
-    expect(lobby.playCount).toBe(2)
   })
 
   it('reports silence once both tracks are stopped', async () => {

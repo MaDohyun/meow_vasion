@@ -117,12 +117,31 @@ export function bgmTempoForWave(wave: number) {
 type MusicTrack = 'lobby' | 'gameplay'
 let activeMusic: MusicTrack | null = null
 let musicGeneration = 0
-let lobbyPlayPending = false
 let lobbyUnlockBound = false
+let lobbyBlocked = false
+const lobbyBlockedListeners = new Set<() => void>()
 
 /** Which background track currently owns the mix, or null in silence. */
 export function activeMusicTrack(): MusicTrack | null {
   return activeMusic
+}
+
+/** True while the lobby track is running but silenced by the browser, waiting
+ * for a gesture. The lobby shows a way to grant it rather than leaving the
+ * player wondering where the music went. */
+export function isLobbyMusicBlocked() {
+  return lobbyBlocked
+}
+
+export function onLobbyMusicBlockedChange(listener: () => void) {
+  lobbyBlockedListeners.add(listener)
+  return () => { lobbyBlockedListeners.delete(listener) }
+}
+
+function setLobbyBlocked(next: boolean) {
+  if (lobbyBlocked === next) return
+  lobbyBlocked = next
+  for (const listener of [...lobbyBlockedListeners]) listener()
 }
 
 function lobbyTrack() {
@@ -137,8 +156,19 @@ function lobbyTrack() {
     lobbyMusic.loop = true
     lobbyMusic.preload = 'auto'
     lobbyMusic.volume = LOBBY_MUSIC_VOLUME * bgmVolume
+    lobbyMusic.addEventListener('pause', handleLobbyPause)
   }
   return lobbyMusic
+}
+
+/** Browsers pause a track that was unmuted without permission, and phones
+ * pause everything when the page goes to the background. While the lobby still
+ * owns the mix, either is a reason to start asking again. `stopLobbyMusic`
+ * gives the mix up before it pauses, so its own pause never lands here. */
+function handleLobbyPause() {
+  if (activeMusic !== 'lobby') return
+  setLobbyBlocked(true)
+  bindLobbyUnlock()
 }
 
 function gameplayTrack() {
@@ -231,9 +261,7 @@ function retryLobbyMusic(event?: Event) {
     releaseLobbyUnlock()
     return
   }
-  // `play()` resolving is not proof of sound; an element the browser silently
-  // re-paused is the case worth retrying, and a playing one is done.
-  if (lobbyMusic && !lobbyMusic.paused) {
+  if (lobbyIsAudible()) {
     releaseLobbyUnlock()
     return
   }
@@ -245,9 +273,29 @@ function retryLobbyMusic(event?: Event) {
   requestLobbyPlayback()
 }
 
+/** Running is not the same as heard: a track primed in silence is playing and
+ * still needs a gesture before anyone can listen to it. */
+function lobbyIsAudible() {
+  return !!lobbyMusic && !lobbyMusic.paused && !lobbyMusic.muted
+}
+
+function ownsMix(generation: number) {
+  return generation === musicGeneration && activeMusic === 'lobby'
+}
+
+function silenceLobby() {
+  if (!lobbyMusic) return
+  lobbyMusic.pause()
+  lobbyMusic.currentTime = 0
+}
+
+/** Ask for the lobby track with sound. */
 function requestLobbyPlayback() {
   const track = lobbyTrack()
-  if (!track || lobbyPlayPending) return
+  if (!track) return
+  // A track primed in silence rewinds the moment it is allowed to be heard,
+  // so the loop is never joined halfway through.
+  if (track.muted) track.currentTime = 0
   track.muted = false
   track.autoplay = true
   track.volume = LOBBY_MUSIC_VOLUME * bgmVolume
@@ -255,23 +303,39 @@ function requestLobbyPlayback() {
   // while nothing has arrived, so a retry never restarts an in-flight fetch.
   if (track.readyState === 0) track.load()
   const generation = musicGeneration
-  lobbyPlayPending = true
   void Promise.resolve(track.play()).then(() => {
-    lobbyPlayPending = false
-    if (generation !== musicGeneration || activeMusic !== 'lobby') {
+    if (!ownsMix(generation)) {
       // The player reached Start while this request was still in flight. The
       // gameplay track owns the mix now, so this one bows out silently.
-      track.pause()
-      track.currentTime = 0
+      silenceLobby()
       return
     }
+    setLobbyBlocked(false)
     releaseLobbyUnlock()
   }).catch(() => {
-    lobbyPlayPending = false
-    // Refused by autoplay policy, or aborted by our own stop. Retrying is only
-    // ever right in the first case, which is exactly when the lobby still owns
-    // the mix under the same generation.
-    if (generation === musicGeneration && activeMusic === 'lobby') bindLobbyUnlock()
+    // Refused by autoplay policy, or aborted by our own stop. Recovering is
+    // only ever right in the first case, which is exactly when the lobby still
+    // owns the mix under the same generation.
+    if (!ownsMix(generation)) return
+    bindLobbyUnlock()
+    primeLobbyPlayback(generation)
+  })
+}
+
+/** Sound was refused, but muted playback is permitted with no gesture at all.
+ * Run the track silently so it is buffered and already rolling: the first
+ * gesture then has nothing to do but unmute it. Unmuting is deliberately left
+ * to that gesture - doing it on our own is what browsers punish, and what used
+ * to leave the lobby track singing underneath the gameplay track. */
+function primeLobbyPlayback(generation: number) {
+  const track = lobbyMusic
+  if (!track) return
+  track.muted = true
+  void Promise.resolve(track.play()).then(() => {
+    if (!ownsMix(generation)) silenceLobby()
+    else setLobbyBlocked(true)
+  }).catch(() => {
+    if (ownsMix(generation)) setLobbyBlocked(true)
   })
 }
 
@@ -296,10 +360,12 @@ export function stopLobbyMusic() {
     musicGeneration += 1
   }
   releaseLobbyUnlock()
+  setLobbyBlocked(false)
   if (!lobbyMusic) return
   // Clearing the hint keeps a late-arriving buffer from starting the track on
   // the browser's own initiative once we have paused it.
   lobbyMusic.autoplay = false
+  lobbyMusic.muted = false
   lobbyMusic.pause()
   lobbyMusic.currentTime = 0
 }

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent as ReactFormEvent, type PointerEvent as ReactPointerEvent } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent as ReactFormEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { NAME_MAX_LENGTH, isNameAcceptable, makeEntry, type RankedEntry } from '../core/leaderboard'
 import { leaderboard, type LeaderboardSource } from '../net/leaderboard'
 import { useGame } from '../GameContext'
@@ -8,7 +8,7 @@ import { UPGRADE_DEFINITIONS, type UpgradeId } from '../core/upgrades'
 import { HowToPlay } from './HowToPlay'
 import { Radar } from './Radar'
 import { pilotFrameStyle } from '../render/pilotArt'
-import { getAudioVolumes, setBgmVolume, setSfxVolume, startLobbyMusic, stopLobbyMusic, unlockAudio } from '../audio'
+import { getAudioVolumes, isLobbyMusicBlocked, onLobbyMusicBlockedChange, setBgmVolume, setSfxVolume, startLobbyMusic, stopLobbyMusic, unlockAudio } from '../audio'
 
 const formatTime = (seconds: number) => {
   const safe = Math.max(0, Math.ceil(seconds))
@@ -196,6 +196,9 @@ function Intro() {
   const { start, t, language } = useGame()
   const [optionsOpen, setOptionsOpen] = useState(false)
   const [howToOpen, setHowToOpen] = useState(false)
+  // The browser will not let the lobby track be heard until it has seen a
+  // gesture. Say so, rather than leaving the silence unexplained.
+  const soundBlocked = useSyncExternalStore(onLobbyMusicBlockedChange, isLobbyMusicBlocked, () => false)
   useEffect(() => {
     // Ask for the lobby track the moment the lobby is on screen. Where the
     // browser refuses unmuted autoplay, audio.ts keeps asking from real lobby
@@ -238,6 +241,11 @@ function Intro() {
           <button className="secondary-button" onClick={() => setHowToOpen(true)}>{t.howTo}</button>
           <button className="secondary-button" onClick={() => setOptionsOpen(true)}>{t.options}</button>
         </div>
+        {soundBlocked && (
+          <button className="lobby-sound-cue" type="button" onClick={() => startLobbyMusic()}>
+            <span aria-hidden="true">🔊</span>{t.soundBlocked}
+          </button>
+        )}
       </section>
     </div>
   )

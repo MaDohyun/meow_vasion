@@ -239,6 +239,10 @@ button { font: inherit; }
 .intro-actions .primary-button { display:flex; align-items:center; gap:20px; min-width:188px; margin-top:0; padding:13px 15px 13px 21px; background:linear-gradient(135deg,#ffe674,#ffc857); border:2px solid var(--cream); box-shadow:4px 4px 0 #031326,0 0 18px rgba(255,224,95,.12); }
 .intro-actions .primary-button b { margin-left:auto; color:var(--coral); font-size:13px; }
 .intro-actions .secondary-button { min-width:110px; padding:13px 18px; color:var(--cream); background:rgba(3,17,37,.78); border:2px solid rgba(100,241,238,.8); box-shadow:4px 4px 0 #031326; }
+/* Shown only while the browser is holding the lobby track back until it sees
+   a gesture. One press is all it wants, and the cue disappears. */
+.lobby-sound-cue { z-index:2; display:flex; align-items:center; gap:8px; margin-top:13px; padding:8px 14px; color:var(--yellow); background:rgba(3,17,37,.72); border:2px solid rgba(255,224,95,.72); box-shadow:3px 3px 0 #031326; font-size:8px; font-weight:1000; letter-spacing:2.2px; cursor:pointer; }
+.lobby-sound-cue:hover { transform:translate(2px,2px); box-shadow:1px 1px 0 #031326; }
 .controls-card { z-index:2; display:flex; gap:13px; padding:9px 12px; color:var(--cream); background:rgba(41,35,63,.93); font-size:8px; }
 .controls-card b { color:var(--yellow); }
 
