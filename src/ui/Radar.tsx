@@ -1,6 +1,5 @@
 import { useEffect, useRef } from 'react'
 import { useGame } from '../GameContext'
-import { isDroneMine } from '../core/enemies'
 import { projectToRadar } from './radarProjection'
 
 /**
@@ -82,7 +81,9 @@ export function Radar() {
       // is easy to miss in the corner of an eye.
       for (const enemy of game.enemies.slots) {
         if (!enemy.active) continue
-        const mine = isDroneMine(enemy)
+        // Every drone is a mine, and a mine is the one contact on the sweep
+        // that is standing still waiting to be flown into.
+        const mine = enemy.kind === 'drone'
         dot(
           enemy.position.x,
           enemy.position.z,

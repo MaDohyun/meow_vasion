@@ -1,37 +1,50 @@
 import type { BeamObject } from './beam'
 import type { Vec3 } from './drone'
-import { seedForWorldCell, WORLD_CELL_SIZE, type ProceduralBuilding } from './world'
+import { seedForWorldCell, type ProceduralBuilding } from './world'
 
-export type EnemyKind = 'drone' | 'helicopter' | 'fighter' | 'anti-air' | 'tank' | 'boss'
-export type EnemyMode = 'roam' | 'chase' | 'ground' | 'strafe' | 'outbound' | 'fixed'
+export type EnemyKind = 'drone' | 'helicopter' | 'fighter' | 'anti-air' | 'boss'
+export type EnemyMode = 'roam' | 'chase' | 'strafe' | 'outbound' | 'fixed'
 export type EnemyProjectileKind = 'rifle' | 'shell' | 'missile' | 'rocket' | 'boss-beam'
 
 /**
  * When each wave lands, in seconds.
  *
- * Spaced across the run rather than fixed: these were once packed into the
- * first 150 seconds of a 180-second round, and stretching the round without
- * stretching these would have meant every enemy in the game had arrived by the
- * halfway mark with nothing new for the rest of it. The last wave lands with
- * fifty seconds still on the clock, which is the boss fight.
+ * One wave per unit, and no filler. There used to be eight stages for six
+ * units, so two of them said nothing new - a second helicopter wave and a
+ * second drone wave that only moved a number. A stage the player cannot name
+ * afterwards is a stage the bulletin announcing it cannot make interesting
+ * either, so each one now introduces exactly one thing and the news band has
+ * exactly one thing to report.
+ *
+ * Spaced across the run rather than packed into its front half: the last wave
+ * lands with two minutes still on the clock, which is the boss fight.
  */
 export const ENEMY_WAVE_STAGES = [
-  { at: 0, tempo: 0, label: 'RECON DRONES', targets: { drone: 2 } },
-  { at: 25, tempo: 1, label: 'DRONE SWARM', targets: { drone: 13 } },
-  { at: 54, tempo: 2, label: 'AIR SUPPORT', targets: { drone: 22, helicopter: 4 } },
-  { at: 83, tempo: 3, label: 'HELICOPTER SURGE', targets: { drone: 33, helicopter: 7 } },
-  { at: 108, tempo: 4, label: 'FIGHTER SCRAMBLE', targets: { drone: 40, helicopter: 9, fighter: 3 } },
-  { at: 133, tempo: 5, label: 'AA NETWORK', targets: { drone: 44, helicopter: 11, fighter: 4, 'anti-air': 5 } },
-  { at: 158, tempo: 6, label: 'ARMORED RESPONSE', targets: { drone: 47, helicopter: 12, fighter: 5, 'anti-air': 6, tank: 7 } },
-  { at: 180, tempo: 7, label: 'SKY DREADNOUGHT', targets: { drone: 52, helicopter: 14, fighter: 6, 'anti-air': 6, tank: 8, boss: 1 } },
+  { at: 0, tempo: 0, label: 'UFO SIGHTED', targets: { drone: 4 } },
+  { at: 30, tempo: 1, label: 'DRONE MINES', targets: { drone: 14 } },
+  { at: 70, tempo: 2, label: 'HELICOPTERS UP', targets: { drone: 20, helicopter: 8 } },
+  { at: 110, tempo: 3, label: 'FIGHTERS SCRAMBLED', targets: { drone: 25, helicopter: 11, fighter: 4 } },
+  { at: 145, tempo: 4, label: 'AA NETWORK', targets: { drone: 30, helicopter: 12, fighter: 5, 'anti-air': 6 } },
+  { at: 180, tempo: 5, label: 'SKY DREADNOUGHT', targets: { drone: 34, helicopter: 14, fighter: 6, 'anti-air': 6, boss: 1 } },
 ] as const
+
+/**
+ * When the anti-air network comes online.
+ *
+ * The emplacements are bolted to buildings rather than handed out by the
+ * spawner, so they need the wave time as a figure of their own - read back off
+ * the table rather than written out again, so moving the wave moves the
+ * network with it.
+ */
+export const ANTI_AIR_WAVE_AT = ENEMY_WAVE_STAGES.find(
+  (stage) => ((stage.targets as Partial<Record<EnemyKind, number>>)['anti-air'] ?? 0) > 0,
+)!.at
 
 export const ENEMY_TIER: Record<EnemyKind, number> = {
   drone: 0,
   helicopter: 2,
   fighter: 4,
   'anti-air': 5,
-  tank: 6,
   boss: 7,
 }
 
@@ -40,7 +53,6 @@ export const ENEMY_MAX_HP: Record<EnemyKind, number> = {
   helicopter: 3,
   fighter: 4,
   'anti-air': 10,
-  tank: 8,
   // Fifty seconds of fighting. An unupgraded laser can just about do it; a
   // maxed laser-power does it with time to spare, which is the whole point of
   // putting a laser-only target in the game.
@@ -48,11 +60,10 @@ export const ENEMY_MAX_HP: Record<EnemyKind, number> = {
 }
 
 export const ENEMY_CAPS: Record<EnemyKind, number> = {
-  drone: 52,
+  drone: 34,
   helicopter: 14,
   fighter: 6,
   'anti-air': 6,
-  tank: 8,
   boss: 1,
 }
 
@@ -94,28 +105,19 @@ export const BATTLESHIP_MAIN_GUN_TELEGRAPH = 1.9
 
 /**
  * Drones are suicide drones: no weapons, no pursuit, they only detonate on
- * contact. Two populations, decided at spawn:
+ * contact. Every one of them hangs motionless in the air as a mine, and is the
+ * reward for reading the sky before flying through it.
  *
- * - `fixed` ones hang motionless in the air. They are mines, and the reward for
- *   reading the sky before flying through it.
- * - `outbound` ones commit to a straight line through a point picked near the
- *   player AT SPAWN and never adjust. The line is fixed, so it can be read and
- *   sidestepped; a homing version would just be a tax on being seen.
+ * There used to be a second population - `outbound` drones that committed to a
+ * straight line past the player at spawn and never adjusted - and it was the
+ * weaker half of the idea. A passer is across the screen in a couple of
+ * seconds, carries none of the red warning shell that makes a mine fair to fly
+ * into, and reads as traffic rather than as a hazard. What is left is the half
+ * that has to be looked at and flown around.
  *
  * Helicopters keep a slow yaw so the sky does not read as parallel tracks.
  */
-const AIR_TRAVEL_SPEED: Record<'drone' | 'helicopter', number> = { drone: 19, helicopter: 15 }
-/**
- * How many of the sky's drones hold station as mines, per wave stage.
- *
- * This used to be a flat share of the drone budget, which made mines scarcest
- * exactly where they are the most interesting: early on, a share of a handful
- * of drones is one or two mines in the air across the whole map, so a player
- * could fly for a minute without meeting one. A quota fills mines first and
- * lets the passing drones take what is left, so the hovering population is
- * flat and readable at every stage.
- */
-export const DRONE_MINE_TARGETS = [0, 8, 14, 19, 22, 25, 27, 30]
+const HELICOPTER_TRAVEL_SPEED = 15
 
 /**
  * How far a mine reaches, and how long it holds before going off.
@@ -172,29 +174,26 @@ const MINE_BOB = 1.4
  * been seen, which is the reason drones never chase in the first place.
  */
 const MINE_CREEP_SPEED = 6
-const AIR_TURN_RATE: Record<'drone' | 'helicopter', number> = { drone: 0.05, helicopter: 0.22 }
+const HELICOPTER_TURN_RATE = 0.22
 const AIR_DESPAWN_DISTANCE = 240
 
-// Each air type owns an altitude band and stays in it. Climbing out of a band
-// has to be a real escape, which it is not if the enemy follows you up.
-export function airBandForSlot(kind: 'drone' | 'helicopter', slot: number) {
-  return kind === 'drone' ? 5 + (slot % 5) * 3.2 : 19 + (slot % 4) * 4.5
+// Helicopters own an altitude band and stay in it. Climbing out of a band has
+// to be a real escape, which it is not if the enemy follows you up. Mines are
+// seeded across the whole range instead: there is no altitude that is clear of
+// them, only altitudes the player has already read.
+export function helicopterBandForSlot(slot: number) {
+  return 19 + (slot % 4) * 4.5
 }
 
-export function isDroneMine(enemy: EnemySlot) {
-  return enemy.kind === 'drone' && enemy.mode === 'fixed'
-}
-
-// Body-contact damage. Drones are the only unit that dies on contact, which is
-// what makes ploughing through a swarm a real choice instead of a death.
+// Body-contact damage. The drone figure is also what its blast does, since a
+// mine going off is the only way a drone ever touches the craft.
 export const ENEMY_CONTACT_DAMAGE: Record<EnemyKind, number> = {
   // Detonating on you is the drone's entire purpose, so it costs more than
-  // brushing a vehicle.
+  // brushing something that was only in the way.
   drone: 5,
   helicopter: 4,
   fighter: 5,
   'anti-air': 4,
-  tank: 5,
   boss: 8,
 }
 
@@ -215,8 +214,6 @@ export type EnemySlot = BeamObject & {
   respawn: number
   sourceId: string | null
   mode: EnemyMode
-  roadAxis: 'x' | 'z'
-  roadDirection: -1 | 1
   attackTimer: number
   telegraph: number
   aiming: boolean
@@ -225,7 +222,7 @@ export type EnemySlot = BeamObject & {
    *
    * The intercept is solved from this point, so firing from anywhere else
    * makes the shot travel a different distance than the solution assumed and
-   * arrive beside the target - a tank that walked a few metres during its own
+   * arrive beside the target - a fighter that flew a few metres during its own
    * telegraph missed by exactly that much, every time. It also makes the aim
    * line honest: the line the player saw is the line the shot takes.
    */
@@ -274,7 +271,7 @@ export type EnemyState = {
   mineExplosion: { position: Vec3; radius: number; damage: number } | null
 }
 
-const ORDER: EnemyKind[] = ['drone', 'helicopter', 'fighter', 'anti-air', 'tank', 'boss']
+const ORDER: EnemyKind[] = ['drone', 'helicopter', 'fighter', 'anti-air', 'boss']
 
 /**
  * Who gets the next free spawn.
@@ -284,14 +281,14 @@ const ORDER: EnemyKind[] = ['drone', 'helicopter', 'fighter', 'anti-air', 'tank'
  * The spawner hands out a few units a second; the heavy end of the list is
  * small and fills immediately, and everything behind it only gets a slot on
  * the ticks when nothing ahead of it needs one. By the fighter wave a player
- * flying one heading met tanks and fighters and no drones at all - the wave
- * table said fifty-two drones and the sky delivered none, because they were
- * last in the queue and something ahead of them was always dying.
+ * flying one heading met fighters and helicopters and no drones at all - the
+ * wave table said dozens of drones and the sky delivered none, because they
+ * were last in the queue and something ahead of them was always dying.
  *
  * The queue is by shortfall now, as a share of each kind's own target, so
- * every population fills at the same rate and stays there. A wave adding tanks
- * no longer starves the drones the earlier waves introduced: it just adds
- * tanks to the mix, which is what the table already said it did.
+ * every population fills at the same rate and stays there. A wave adding
+ * fighters no longer starves the mines the earlier waves introduced: it just
+ * adds fighters to the mix, which is what the table already said it did.
  */
 function neediestKind(state: EnemyState, elapsed: number) {
   let best: EnemyKind | null = null
@@ -320,7 +317,6 @@ export const ENEMY_DIAMETER: Record<EnemyKind, number> = {
   helicopter: 4.6,
   fighter: 4.4,
   'anti-air': 5.2,
-  tank: 4.8,
   boss: 13.6,
 }
 
@@ -329,7 +325,6 @@ const ENEMY_MASS: Record<EnemyKind, number> = {
   helicopter: 4,
   fighter: 4,
   'anti-air': 7,
-  tank: 7,
   boss: 12,
 }
 
@@ -408,10 +403,12 @@ function makeSlot(kind: EnemyKind, slot: number): EnemySlot {
     absorbing: false,
     absorbTimer: 0,
     diameter: ENEMY_DIAMETER[kind],
-    scoreValue: kind === 'boss' ? 1200 : kind === 'tank' ? 260 : kind === 'fighter' ? 140 : kind === 'helicopter' ? 80 : 35,
-    // The battleship is not "too big to eat yet" - it is not food. A craft at
-    // the size cap still cannot take it.
-    beamImmune: kind === 'drone' || kind === 'helicopter' || kind === 'fighter' || kind === 'anti-air' || kind === 'boss',
+    scoreValue: kind === 'boss' ? 1200 : kind === 'fighter' ? 140 : kind === 'helicopter' ? 80 : 35,
+    // No enemy is food any more. The tank was the only one the beam could ever
+    // lift, so with it gone the exception list is the whole roster - the
+    // battleship most of all, which is not "too big to eat yet" but simply not
+    // food, however far the craft has grown.
+    beamImmune: true,
     freePhysics: false,
     target: { x: 0, y: 0, z: 0 },
     phase: slot / Math.max(1, ENEMY_CAPS[kind]) * Math.PI * 2,
@@ -421,8 +418,6 @@ function makeSlot(kind: EnemyKind, slot: number): EnemySlot {
     respawn: 0,
     sourceId: null,
     mode: 'roam',
-    roadAxis: slot % 2 === 0 ? 'x' : 'z',
-    roadDirection: slot % 2 === 0 ? 1 : -1,
     attackTimer: 1,
     telegraph: 0,
     aiming: false,
@@ -447,7 +442,7 @@ export function isAntiAirBuilding(building: Pick<ProceduralBuilding, 'cellX' | '
   return seedForWorldCell(building.cellX, building.cellZ, 0xa17a1) % 5 === 0
 }
 
-function resetSlot(enemy: EnemySlot, player: Vec3, heading: number, state: EnemyState, asMine = false) {
+function resetSlot(enemy: EnemySlot, player: Vec3, heading: number, state: EnemyState) {
   enemy.generation += 1
   enemy.id = `enemy:${enemy.kind}:${enemy.slot}:${enemy.generation}`
   enemy.hp = enemy.maxHp
@@ -471,9 +466,9 @@ function resetSlot(enemy: EnemySlot, player: Vec3, heading: number, state: Enemy
   enemy.angularVelocity.y = 0
   enemy.angularVelocity.z = 0
   enemy.phase = heading + (enemy.slot + 1) * 2.399963
-  enemy.mode = enemy.kind === 'fighter' ? 'strafe' : enemy.kind === 'anti-air' ? 'fixed' : enemy.kind === 'tank' ? 'ground' : enemy.kind === 'boss' ? 'chase' : 'roam'
+  enemy.mode = enemy.kind === 'fighter' ? 'strafe' : enemy.kind === 'anti-air' ? 'fixed' : enemy.kind === 'boss' ? 'chase' : 'roam'
   enemy.radius = enemy.kind === 'fighter' ? 110 : enemy.kind === 'boss' ? BATTLESHIP_ORBIT : enemy.kind === 'helicopter' ? 92 : 82
-  enemy.hitRadius = enemy.kind === 'drone' ? 0.75 : enemy.kind === 'helicopter' ? 2.4 : enemy.kind === 'fighter' ? 2.2 : enemy.kind === 'tank' ? 2.8 : enemy.kind === 'anti-air' ? 2.2 : 9.5
+  enemy.hitRadius = enemy.kind === 'drone' ? DRONE_MINE_HIT_RADIUS : enemy.kind === 'helicopter' ? 2.4 : enemy.kind === 'fighter' ? 2.2 : enemy.kind === 'anti-air' ? 2.2 : 9.5
   enemy.attackTimer = enemy.kind === 'boss' ? 3.2 : 0.7 + (enemy.slot % 5) * 0.22
   enemy.turret = 0
   enemy.burstLeft = 0
@@ -485,52 +480,25 @@ function resetSlot(enemy: EnemySlot, player: Vec3, heading: number, state: Enemy
   enemy.velocity.z = 0
   const angle = heading + (enemy.slot + 1) * 2.399963 + (random(state) - 0.5) * 0.3
   const distance = enemy.kind === 'fighter' ? 118 : enemy.kind === 'boss' ? BATTLESHIP_ORBIT : 78 + (enemy.slot % 3) * 7
-  if (enemy.mode === 'ground') {
-    enemy.roadAxis = enemy.slot % 2 === 0 ? 'x' : 'z'
-    enemy.roadDirection = enemy.slot % 3 === 0 ? -1 : 1
-    const lane = (enemy.slot % 2 === 0 ? -1 : 1) * (3.2 + (enemy.slot % 3) * 0.7)
-    if (enemy.roadAxis === 'x') {
-      enemy.position.x = player.x + Math.cos(angle) * distance
-      enemy.position.z = Math.round(player.z / WORLD_CELL_SIZE) * WORLD_CELL_SIZE + lane
-    } else {
-      enemy.position.x = Math.round(player.x / WORLD_CELL_SIZE) * WORLD_CELL_SIZE + lane
-      enemy.position.z = player.z + Math.sin(angle) * distance
-    }
-    enemy.position.y = enemy.kind === 'tank' ? 1.2 : 0.8
-  } else {
-    enemy.position.x = player.x + Math.sin(angle) * distance
-    enemy.position.z = player.z + Math.cos(angle) * distance
-    enemy.position.y = enemy.kind === 'drone' || enemy.kind === 'helicopter'
-      ? airBandForSlot(enemy.kind, enemy.slot)
-      : enemy.kind === 'boss'
-        ? BATTLESHIP_ALTITUDE
-        : Math.min(118, Math.max(8, player.y + 10))
-  }
+  enemy.position.x = player.x + Math.sin(angle) * distance
+  enemy.position.z = player.z + Math.cos(angle) * distance
+  enemy.position.y = enemy.kind === 'helicopter'
+    ? helicopterBandForSlot(enemy.slot)
+    : enemy.kind === 'boss'
+      ? BATTLESHIP_ALTITUDE
+      : Math.min(118, Math.max(8, player.y + 10))
   if (enemy.kind === 'drone') {
-    // Decided once, here, by the caller's quota. A drone never converts.
-    enemy.mode = asMine ? 'fixed' : 'outbound'
-    if (enemy.mode === 'fixed') {
-      // Spread along a band and weighted forward, rather than dropped on the
-      // shared spawn shell: a player holding one heading keeps meeting them.
-      const forward = random(state) < MINE_FORWARD_SHARE
-      const bearing = heading + (random(state) - 0.5) * (forward ? MINE_FORWARD_ARC : Math.PI * 2)
-      const range = MINE_SPAWN_NEAR + random(state) * (MINE_SPAWN_FAR - MINE_SPAWN_NEAR)
-      enemy.position.x = player.x + Math.sin(bearing) * range
-      enemy.position.z = player.z + Math.cos(bearing) * range
-      // Mines are seeded across the whole altitude range, including right in the
-      // band a player skimming the rooftops would use.
-      enemy.position.y = 4 + random(state) * 26
-      enemy.hitRadius = DRONE_MINE_HIT_RADIUS
-    } else {
-      // The pass line is locked to a point near where the player is NOW. It is
-      // not updated afterwards, so it can be read and stepped out of.
-      const aimX = player.x + (random(state) - 0.5) * 34
-      const aimZ = player.z + (random(state) - 0.5) * 34
-      enemy.phase = Math.atan2(aimX - enemy.position.x, aimZ - enemy.position.z)
-      enemy.target.x = aimX
-      enemy.target.z = aimZ
-      enemy.target.y = enemy.position.y
-    }
+    enemy.mode = 'fixed'
+    // Spread along a band and weighted forward, rather than dropped on the
+    // shared spawn shell: a player holding one heading keeps meeting them.
+    const forward = random(state) < MINE_FORWARD_SHARE
+    const bearing = heading + (random(state) - 0.5) * (forward ? MINE_FORWARD_ARC : Math.PI * 2)
+    const range = MINE_SPAWN_NEAR + random(state) * (MINE_SPAWN_FAR - MINE_SPAWN_NEAR)
+    enemy.position.x = player.x + Math.sin(bearing) * range
+    enemy.position.z = player.z + Math.cos(bearing) * range
+    // Mines are seeded across the whole altitude range, including right in the
+    // band a player skimming the rooftops would use.
+    enemy.position.y = 4 + random(state) * 26
   } else if (enemy.kind === 'helicopter') {
     // Aim the travel heading at a scattered point near the player so the path
     // crosses the play area once and then carries on past it.
@@ -543,24 +511,17 @@ function resetSlot(enemy: EnemySlot, player: Vec3, heading: number, state: Enemy
   enemy.target.z = player.z + (random(state) - 0.5) * 24
 }
 
-function spawnOne(state: EnemyState, kind: EnemyKind, player: Vec3, heading: number, asMine = false) {
+function spawnOne(state: EnemyState, kind: EnemyKind, player: Vec3, heading: number) {
   const slot = state.slots.find((item) => item.kind === kind && !item.active && item.respawn <= 0)
   if (!slot) return false
-  resetSlot(slot, player, heading, state, asMine)
+  resetSlot(slot, player, heading, state)
   return true
 }
 
-/** Hovering mines wanted right now. Clamped to the drone budget, since mines
- *  and passers come out of the same pool of slots. */
+/** How many hovering mines the sky should hold right now. Every drone is a
+ *  mine, so this is simply the drone budget. */
 export function mineTargetForTime(elapsed: number) {
-  const stage = waveStageForTime(elapsed)
-  return Math.min(targetForKind('drone', elapsed), DRONE_MINE_TARGETS[stage] ?? 0)
-}
-
-function activeMineCount(state: EnemyState) {
-  let count = 0
-  for (const enemy of state.slots) if (enemy.active && isDroneMine(enemy)) count += 1
-  return count
+  return targetForKind('drone', elapsed)
 }
 
 /**
@@ -600,11 +561,7 @@ export function syncEnemyTiers(state: EnemyState, elapsed: number, player: Vec3,
   while ((state.spawnTimer <= 0 || (initialBurst && spawned < 2)) && spawned < burstLimit) {
     const kind = neediestKind(state, elapsed)
     if (!kind) break
-    // Mines come out of the drone pool, and they come out of it first: a
-    // passer is gone in seconds, so letting them win the race for free slots
-    // is what used to leave the sky with almost no hovering mines in it.
-    const asMine = kind === 'drone' && activeMineCount(state) < mineTargetForTime(elapsed)
-    if (!spawnOne(state, kind, player, heading, asMine)) break
+    if (!spawnOne(state, kind, player, heading)) break
     spawned += 1
     state.spawnTimer += spawnIntervalForStage(stage)
   }
@@ -617,9 +574,9 @@ export function syncAntiAirEnemies(state: EnemyState, elapsed: number, buildings
     if (enemy.kind !== 'anti-air' || !enemy.active || !enemy.sourceId) continue
     let found = false
     for (const building of buildings) if (building.id === enemy.sourceId) { found = true; break }
-    if (!found || elapsed < 110) enemy.active = false
+    if (!found || elapsed < ANTI_AIR_WAVE_AT) enemy.active = false
   }
-  if (elapsed < 110) return
+  if (elapsed < ANTI_AIR_WAVE_AT) return
   for (const building of buildings) {
     if (activeCount(state, 'anti-air') >= target) break
     if (!isAntiAirBuilding(building) || state.destroyedAntiAir.has(building.id)) continue
@@ -684,10 +641,10 @@ export const PROJECTILE_SPEED: Record<EnemyProjectileKind, number> = {
  * A lower tier still leads the target properly - it just puts the shot down
  * beside the answer. Scaling the lead instead was the first attempt and it was
  * wrong: an eighty-percent lead is a twenty-percent shortfall, which at a
- * hundred metres is a twenty-metre miss every single time, so a tank could
- * never hit anything at all. Aiming at the right place with a bounded error
- * makes a low tier look like a near miss rather than like an enemy that cannot
- * shoot.
+ * hundred metres is a twenty-metre miss every single time, so a helicopter
+ * could never hit anything at all. Aiming at the right place with a bounded
+ * error makes a low tier look like a near miss rather than like an enemy that
+ * cannot shoot.
  */
 export const AIM_ERROR_METRES = 16
 
@@ -695,7 +652,6 @@ export const LEAD_ACCURACY: Record<EnemyKind, number> = {
   drone: 0,
   helicopter: 0.62,
   fighter: 0.82,
-  tank: 0.8,
   'anti-air': 1,
   boss: 1,
 }
@@ -797,49 +753,39 @@ function fireProjectile(state: EnemyState, enemy: EnemySlot, kind: EnemyProjecti
   return true
 }
 
-function stepAirEnemy(enemy: EnemySlot, player: Vec3, d: number) {
-  // No chase mode. On an endless map, letting air units latch onto the player
-  // removes the point of flying anywhere: the same drones stay glued to you and
-  // repositioning stops being a decision.
+/**
+ * A mine holds station until the craft is inside the radius it kills in, and
+ * then creeps. The bob is cosmetic; the hazard is where it is.
+ *
+ * No chase mode, here or anywhere. On an endless map, letting air units latch
+ * onto the player removes the point of flying anywhere: the same drones stay
+ * glued to you and repositioning stops being a decision.
+ */
+function stepDroneMine(enemy: EnemySlot, player: Vec3, d: number) {
   enemy.age += d
-  if (isDroneMine(enemy)) {
-    // Holds station until the craft is inside the radius it kills in, and then
-    // creeps. The bob is cosmetic; the hazard is where it is.
-    const dx = player.x - enemy.position.x
-    const dy = player.y - enemy.target.y
-    const dz = player.z - enemy.position.z
-    const reach = Math.hypot(dx, dy, dz)
-    if (reach <= DRONE_MINE_BLAST_RADIUS && reach > 0.0001) {
-      const step = Math.min(MINE_CREEP_SPEED * d, reach)
-      enemy.position.x += dx / reach * step
-      enemy.position.z += dz / reach * step
-      enemy.target.y += dy / reach * step
-    }
-    enemy.position.y = enemy.target.y + Math.sin(enemy.age * 1.3 + enemy.phase) * MINE_BOB
-    // Mines are only cleared by leaving them far behind, never by waiting.
-    if (!enemy.mineArmed && distanceToPlayer(enemy, player) > AIR_DESPAWN_DISTANCE) enemy.active = false
-    return
+  const dx = player.x - enemy.position.x
+  const dy = player.y - enemy.target.y
+  const dz = player.z - enemy.position.z
+  const reach = Math.hypot(dx, dy, dz)
+  if (reach <= DRONE_MINE_BLAST_RADIUS && reach > 0.0001) {
+    const step = Math.min(MINE_CREEP_SPEED * d, reach)
+    enemy.position.x += dx / reach * step
+    enemy.position.z += dz / reach * step
+    enemy.target.y += dy / reach * step
   }
-  const kind = enemy.kind === 'drone' ? 'drone' : 'helicopter'
-  const speed = AIR_TRAVEL_SPEED[kind]
-  enemy.position.x += Math.sin(enemy.phase) * speed * d
-  enemy.position.z += Math.cos(enemy.phase) * speed * d
-  if (enemy.kind === 'drone') {
-    // Dead straight, and no altitude tracking: the line committed to at spawn is
-    // the line it flies, which is what makes it dodgeable.
-    if (distanceToPlayer(enemy, player) > AIR_DESPAWN_DISTANCE) enemy.active = false
-    return
-  }
-  enemy.phase += d * AIR_TURN_RATE[kind]
-  const band = airBandForSlot(kind, enemy.slot)
-  enemy.position.y += (band - enemy.position.y) * (1 - Math.exp(-1.4 * d))
-  if (distanceToPlayer(enemy, player) > AIR_DESPAWN_DISTANCE) enemy.active = false
+  enemy.position.y = enemy.target.y + Math.sin(enemy.age * 1.3 + enemy.phase) * MINE_BOB
+  // Mines are only cleared by leaving them far behind, never by waiting.
+  if (!enemy.mineArmed && distanceToPlayer(enemy, player) > AIR_DESPAWN_DISTANCE) enemy.active = false
 }
 
-function stepGroundEnemy(enemy: EnemySlot, player: Vec3, d: number) {
-  enemy.position[enemy.roadAxis] += 4.2 * enemy.roadDirection * d
-  enemy.position.y = 1.2
-  if (distanceToPlayer(enemy, player) > 230) enemy.active = false
+function stepHelicopter(enemy: EnemySlot, player: Vec3, d: number) {
+  enemy.age += d
+  enemy.position.x += Math.sin(enemy.phase) * HELICOPTER_TRAVEL_SPEED * d
+  enemy.position.z += Math.cos(enemy.phase) * HELICOPTER_TRAVEL_SPEED * d
+  enemy.phase += d * HELICOPTER_TURN_RATE
+  const band = helicopterBandForSlot(enemy.slot)
+  enemy.position.y += (band - enemy.position.y) * (1 - Math.exp(-1.4 * d))
+  if (distanceToPlayer(enemy, player) > AIR_DESPAWN_DISTANCE) enemy.active = false
 }
 
 /**
@@ -972,8 +918,7 @@ export function stepEnemies(state: EnemyState, player: Vec3, dt: number, playerV
   state.mineExplosion = null
   for (const enemy of state.slots) {
     if (!enemy.active) continue
-    const mine = enemy.kind === 'drone' && isDroneMine(enemy)
-    if (mine) {
+    if (enemy.kind === 'drone') {
       const distance = distanceToPlayer(enemy, player)
       // Hitting the casing sets it off there and then. The fuse is what a
       // player gets for entering the field and having a moment to leave it;
@@ -1005,19 +950,8 @@ export function stepEnemies(state: EnemyState, player: Vec3, dt: number, playerV
       enemy.aiming = player.y >= 28 && distanceToPlayer(enemy, player) <= 145
     } else if (enemy.kind === 'boss') stepBattleship(enemy, player, d)
     else if (enemy.kind === 'fighter') stepFighter(enemy, player, d)
-    else if (enemy.kind === 'drone' || enemy.kind === 'helicopter') stepAirEnemy(enemy, player, d)
-    else if (enemy.kind === 'tank') stepGroundEnemy(enemy, player, d)
-    else {
-      const distance = distanceToPlayer(enemy, player)
-      const desiredX = player.x + Math.sin(enemy.phase) * 66
-      const desiredZ = player.z + Math.cos(enemy.phase) * 66
-      const blend = 1 - Math.exp(-0.48 * d)
-      enemy.position.x += (desiredX - enemy.position.x) * blend
-      enemy.position.z += (desiredZ - enemy.position.z) * blend
-      enemy.position.y += (Math.max(8, player.y + 8) - enemy.position.y) * (1 - Math.exp(-0.6 * d))
-      enemy.phase += d * 0.18
-      if (distance > 170) enemy.position.y += (player.y - enemy.position.y) * d
-    }
+    else if (enemy.kind === 'drone') stepDroneMine(enemy, player, d)
+    else stepHelicopter(enemy, player, d)
 
     enemy.attackTimer -= d
     if (enemy.kind === 'boss') { stepBattleshipGuns(state, enemy, player, playerVelocity, d); continue }
@@ -1025,26 +959,23 @@ export function stepEnemies(state: EnemyState, player: Vec3, dt: number, playerV
       enemy.telegraph = Math.max(0, enemy.telegraph - d)
       if (enemy.telegraph <= 0) {
         if (enemy.kind === 'helicopter') fireProjectile(state, enemy, 'rifle')
-        else if (enemy.kind === 'tank') fireProjectile(state, enemy, 'shell')
         else if (enemy.kind === 'anti-air') fireProjectile(state, enemy, 'missile')
         else if (enemy.kind === 'fighter') fireProjectile(state, enemy, 'rocket')
         enemy.aiming = false
-        enemy.attackTimer = enemy.kind === 'anti-air' ? 3.8 : enemy.kind === 'tank' ? 2.8 : enemy.kind === 'helicopter' ? 1.6 : 2.2
+        enemy.attackTimer = enemy.kind === 'anti-air' ? 3.8 : enemy.kind === 'helicopter' ? 1.6 : 2.2
       }
     } else if (enemy.attackTimer <= 0) {
       const distance = distanceToPlayer(enemy, player)
-      const middle = player.y > 5.5 && player.y < 28
       const high = player.y >= 28
       // Drones are deliberately absent here: they deal contact damage only.
-      // Thirty-six of them firing would bury the screen in projectiles.
+      // Thirty-odd of them firing would bury the screen in projectiles.
       const canAttack = enemy.kind === 'helicopter' ? !high && distance < 78
-        : enemy.kind === 'tank' ? middle && distance < 100
-          : enemy.kind === 'anti-air' ? high && distance < 145
-            : enemy.kind === 'fighter'
+        : enemy.kind === 'anti-air' ? high && distance < 145
+          : enemy.kind === 'fighter'
       if (canAttack) {
-        const kind = enemy.kind === 'helicopter' ? 'rifle' : enemy.kind === 'tank' ? 'shell' : enemy.kind === 'anti-air' ? 'missile' : 'rocket'
+        const kind = enemy.kind === 'helicopter' ? 'rifle' : enemy.kind === 'anti-air' ? 'missile' : 'rocket'
         const speed = PROJECTILE_SPEED[kind]
-        const damage = kind === 'rifle' ? 2 : kind === 'shell' ? (enemy.kind === 'tank' ? 5 : 4) : kind === 'missile' ? 10 : 3
+        const damage = kind === 'rifle' ? 2 : kind === 'missile' ? 10 : 3
         aimProjectile(state, enemy, player, playerVelocity, kind, speed, damage, enemy.kind === 'anti-air' ? 0.8 : enemy.kind === 'helicopter' ? 0.45 : 0.52)
       }
     }

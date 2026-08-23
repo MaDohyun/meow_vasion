@@ -95,12 +95,18 @@ export type GameRuntime = {
   world: ActiveWorld
   worldColliders: Aabb[]
   sessionTime: number
-  /** Same shape as sessionTime but never frozen, including during the
-   *  tutorial - the pilot expression hold timer needs a clock that always
-   *  moves, or a hit taken before the tutorial's first cat holds the
-   *  expression exactly as long as sessionTime stays paused, which is to say
-   *  forever. See updatePilotStatus. */
-  pilotClock: number
+  /**
+   * Seconds since the run started, never frozen - unlike sessionTime, which
+   * holds at zero until the tutorial cat is rescued.
+   *
+   * Two things need a clock that always moves. The pilot expression hold
+   * timer, or a hit taken before the tutorial's first cat holds the
+   * expression exactly as long as sessionTime stays paused, which is to say
+   * forever (see updatePilotStatus). And the opening sighting report, which
+   * is meant to land ten seconds into the game rather than ten seconds after
+   * whenever the player happens to finish the tutorial.
+   */
+  runClock: number
   remainingTime: number
   score: number
   waveStage: number
@@ -496,14 +502,13 @@ function makeWorldPropBeamObject(worldProp: BeamWorldProp): BeamObject {
  * Which blast a downed enemy leaves, if any.
  *
  * Every remaining enemy is a machine, but the scale of its blast still follows
- * its silhouette so a drone pop cannot read like a tank going up.
+ * its silhouette so a mine pop cannot read like the battleship going up.
  */
 const ENEMY_BLAST: Partial<Record<EnemyKind, BlastKind>> = {
   drone: 'aircraft',
   helicopter: 'aircraft',
   fighter: 'aircraft',
   'anti-air': 'vehicle',
-  tank: 'vehicle',
   boss: 'landmark',
 }
 
@@ -544,7 +549,7 @@ function makeRuntime(): GameRuntime {
     world,
     worldColliders: activeWorldColliders(world),
     sessionTime: 0,
-    pilotClock: 0,
+    runClock: 0,
     remainingTime: RUN_SECONDS,
     score: 0,
     waveStage: 0,
@@ -931,14 +936,14 @@ function registerEnemyHit(game: GameRuntime, id: string, damage: number) {
       triggerLaserBurst(game.laserBursts, 'impact', BATTLESHIP_HIT_POINT, station % 2 === 0 ? '#ff8a45' : '#ffe07a')
     }
   }
-  // A drone, helicopter or tank leaves a blast sized to the machine.
+  // A mine, helicopter or fighter leaves a blast sized to the machine.
   if (result.enemy && ENEMY_BLAST[result.kind]) {
     triggerFireball(game.fireballs, ENEMY_BLAST[result.kind]!, result.enemy.position, undefined, blastSeed(game))
   }
   // The ship is worth about two and a half times what it was: it now takes
   // sixty-four laser hits instead of twenty-five, and a reward that did not
   // move with that would make the fight cost more than it pays.
-  const reward = result.kind === 'boss' ? 3200 : result.kind === 'tank' ? 260 : result.kind === 'anti-air' ? 180 : result.kind === 'fighter' ? 140 : result.kind === 'helicopter' ? 80 : 35
+  const reward = result.kind === 'boss' ? 3200 : result.kind === 'anti-air' ? 180 : result.kind === 'fighter' ? 140 : result.kind === 'helicopter' ? 80 : 35
   game.enemiesDown += 1
   game.score += reward
   reportMissionEvent(game, { type: 'destroy-enemy', kind: result.kind })
@@ -1297,7 +1302,7 @@ function snapshotOf(game: GameRuntime): GameSnapshot {
 
 function updatePilotStatus(game: GameRuntime) {
   const next = requestedPilotExpression({
-    elapsed: game.pilotClock,
+    elapsed: game.runClock,
     impact: game.impactFlash > 0,
     threatLevel: game.waveStage,
     threatIncreased: game.waveStage > game.pilotPreviousThreat,
@@ -1308,7 +1313,7 @@ function updatePilotStatus(game: GameRuntime) {
     beam: game.beamActive,
     laser: game.laserActive,
   })
-  const state = updatePilotExpression({ expression: game.pilotExpression, holdUntil: game.pilotHoldUntil }, next, game.pilotClock)
+  const state = updatePilotExpression({ expression: game.pilotExpression, holdUntil: game.pilotHoldUntil }, next, game.runClock)
   game.pilotExpression = state.expression
   game.pilotHoldUntil = state.holdUntil
   game.pilotPreviousCars = game.loadedCars
@@ -1508,7 +1513,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       game.sessionTime += d
       game.remainingTime = Math.max(0, game.remainingTime - d)
     }
-    game.pilotClock += d
+    game.runClock += d
     game.messageTime = Math.max(0, game.messageTime - d)
     game.impactFlash = Math.max(0, game.impactFlash - d * 5)
     stepShake(game.shake, d)
@@ -1533,8 +1538,11 @@ export function GameProvider({ children }: { children: ReactNode }) {
     game.broadcastTime = Math.max(0, game.broadcastTime - d)
     stepHealth(game.health, d)
     stepShield(game.shield, d)
-    // The city reports the sighting once the player has had a moment to fly.
-    if (!tutorialAtStart && !game.openingBroadcastDone && game.sessionTime >= BROADCAST_OPENING_AT) {
+    // The city reports the sighting ten seconds into the run, on the clock
+    // that never freezes. Keyed to sessionTime it waited out the tutorial as
+    // well, so the first thing the game says about the player's arrival could
+    // land a minute after they arrived.
+    if (!game.openingBroadcastDone && game.runClock >= BROADCAST_OPENING_AT) {
       game.openingBroadcastDone = true
       raiseBroadcast(game, 0)
     }

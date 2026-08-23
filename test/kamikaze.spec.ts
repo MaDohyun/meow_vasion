@@ -7,7 +7,6 @@ import {
   ENEMY_CONTACT_DAMAGE,
   ENEMY_WAVE_STAGES,
   createEnemyState,
-  isDroneMine,
   mineTargetForTime,
   resolveEnemyContacts,
   stepEnemies,
@@ -17,7 +16,7 @@ import {
 function droneWave() {
   const state = createEnemyState(0x51de)
   const player = { x: 0, y: 12, z: 0 }
-  // A wave deep enough to have a real drone population, named off the table
+  // A wave deep enough to have a real mine population, named off the table
   // rather than pinned to a second so respacing the run carries it along.
   const at = ENEMY_WAVE_STAGES[3]!.at
   for (let tick = 0; tick < 400; tick += 1) syncEnemyTiers(state, at, player, 0, 0.05)
@@ -25,16 +24,15 @@ function droneWave() {
 }
 
 describe('suicide drones', () => {
-  it('splits into hovering mines and one-way passers', () => {
+  it('spawns every drone as a hovering mine', () => {
+    // There is no passing-drone population any more. A passer crossed the
+    // screen in a couple of seconds and carried none of the warning shell that
+    // makes a mine fair, so the whole budget goes to the half that has to be
+    // looked at and flown around.
     const { drones } = droneWave()
-    const mines = drones.filter(isDroneMine)
-    expect(drones.length).toBeGreaterThan(8)
-    expect(mines.length).toBeGreaterThan(0)
-    expect(mines.length).toBeLessThan(drones.length)
-    // Mines are a quota, not a share of whatever the drone budget happens to
-    // be: the hovering population is the same whether or not the passers are
-    // mid-cycle, which is what keeps them findable early in a run.
-    expect(mines.length).toBe(mineTargetForTime(ENEMY_WAVE_STAGES[3]!.at))
+    expect(drones.length).toBe(mineTargetForTime(ENEMY_WAVE_STAGES[3]!.at))
+    expect(drones.every((drone) => drone.mode === 'fixed')).toBe(true)
+    expect(drones.every((drone) => drone.hitRadius === DRONE_MINE_HIT_RADIUS)).toBe(true)
   })
 
   it('keeps mines in front of a player who holds one heading', () => {
@@ -52,7 +50,7 @@ describe('suicide drones', () => {
       stepEnemies(state, player, 0.05)
       if (tick < 600 || tick % 100 !== 0) continue
       nearby.push(state.slots.filter((enemy) =>
-        enemy.active && isDroneMine(enemy)
+        enemy.active && enemy.kind === 'drone'
         && Math.hypot(enemy.position.x - player.x, enemy.position.z - player.z) < 150).length)
     }
     // Six hundred metres of straight flight later, and at every sample along
@@ -112,17 +110,9 @@ describe('suicide drones', () => {
     expect(mine.active).toBe(false)
   })
 
-  it('makes a hovering mine bigger than a drone that is only passing through', () => {
-    const { state } = droneWave()
-    const mine = state.slots.find((enemy) => enemy.active && isDroneMine(enemy))!
-    const passer = state.slots.find((enemy) => enemy.active && enemy.kind === 'drone' && !isDroneMine(enemy))!
-    expect(mine.hitRadius).toBe(DRONE_MINE_HIT_RADIUS)
-    expect(mine.hitRadius).toBeGreaterThan(passer.hitRadius)
-  })
-
   it('holds a mine on its spot while the player stays out of its radius', () => {
     const { state } = droneWave()
-    const mine = state.slots.find((enemy) => enemy.active && isDroneMine(enemy))!
+    const mine = state.slots.find((enemy) => enemy.active && enemy.kind === 'drone')!
     const startX = mine.position.x
     const startZ = mine.position.z
     // Fly the player around outside the blast radius; a mine must not follow.
@@ -174,28 +164,6 @@ describe('suicide drones', () => {
     for (let tick = 0; tick < 120; tick += 1) { hold(); stepEnemies(state, outside, 1 / 60) }
     expect(mine.active).toBe(true)
     expect(Math.abs(mine.position.z - held)).toBeLessThan(0.001)
-  })
-
-  it('flies a passer dead straight, so its line can be read and dodged', () => {
-    const { state, player } = droneWave()
-    const drone = state.slots.find((enemy) => enemy.active && enemy.kind === 'drone' && !isDroneMine(enemy))!
-    const heading = drone.phase
-    const startY = drone.position.y
-    const from = { x: drone.position.x, z: drone.position.z }
-    for (let tick = 0; tick < 90; tick += 1) stepEnemies(state, player, 1 / 60)
-    // Heading fixed at spawn and never revised - no homing, no altitude chase.
-    expect(drone.phase).toBe(heading)
-    expect(drone.position.y).toBe(startY)
-    const travelled = Math.atan2(drone.position.x - from.x, drone.position.z - from.z)
-    expect(Math.abs(Math.atan2(Math.sin(travelled - heading), Math.cos(travelled - heading)))).toBeLessThan(0.01)
-  })
-
-  it('does not chase the player upward', () => {
-    const { state } = droneWave()
-    const drone = state.slots.find((enemy) => enemy.active && enemy.kind === 'drone' && !isDroneMine(enemy))!
-    const startY = drone.position.y
-    for (let tick = 0; tick < 240; tick += 1) stepEnemies(state, { x: 0, y: 110, z: 0 }, 1 / 60)
-    expect(drone.position.y).toBe(startY)
   })
 
   it('detonates on contact and reports where, and hits harder than a helicopter', () => {

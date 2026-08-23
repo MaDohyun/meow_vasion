@@ -72,22 +72,33 @@ describe('wave bulletins', () => {
   })
 
   it('opens on the sighting itself, not on the response to it', () => {
-    // The first card is a news programme's first item: the event happened.
-    // The drones are explained in the same breath because they are already in
-    // the sky by then and would otherwise arrive unexplained.
+    // The first card is a news programme's first item: the event happened, and
+    // the public is told to be careful. What the government sends is the next
+    // card - one wave introduces one unit, and one bulletin names it.
     const opening = STRINGS.ko.broadcast[0]
-    expect(opening.line).toContain('출현')
-    expect(opening.line).toContain('자폭 드론')
-    expect(STRINGS.ja.broadcast[0].line).toContain('出現')
+    expect(opening.line).toContain('미확인 비행체')
+    expect(opening.line).not.toContain('자폭 드론')
+    expect(STRINGS.ja.broadcast[0].line).toContain('未確認飛行物体')
     expect(STRINGS.en.broadcast[0].line.toLowerCase()).toContain('appeared')
+    // And the drones are the card after it, where their wave is.
+    expect(STRINGS.ko.broadcast[1].line).toContain('자폭 드론')
+    expect(STRINGS.en.broadcast[1].line.toLowerCase()).toContain('drone')
   })
 
-  it('names the fighters when they scramble', () => {
-    // Read off the wave table: the bulletin has to name whatever wave four
-    // actually is, whenever it happens to arrive.
-    const at = ENEMY_WAVE_STAGES[4]!.at
-    expect(bulletinFor(STRINGS.ko, broadcastStageForTime(at)).line).toContain('전투기')
-    expect(bulletinFor(STRINGS.en, broadcastStageForTime(at)).line.toLowerCase()).toContain('fighter')
+  it('names each unit on the wave that brings it', () => {
+    // Read off the wave table rather than pinned to a second: the bulletin has
+    // to name whatever that wave actually is, whenever it happens to arrive.
+    const named: [number, string, string][] = [
+      [2, '헬기', 'helicopter'],
+      [3, '전투기', 'fighter'],
+      [4, '대공', 'air defence'],
+      [5, '공중전함', 'battleship'],
+    ]
+    for (const [stage, korean, english] of named) {
+      const at = ENEMY_WAVE_STAGES[stage]!.at
+      expect(bulletinFor(STRINGS.ko, broadcastStageForTime(at)).line, korean).toContain(korean)
+      expect(bulletinFor(STRINGS.en, broadcastStageForTime(at)).line.toLowerCase(), english).toContain(english)
+    }
   })
 
   it('gets the opening card on and off air before the first wave', () => {

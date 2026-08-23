@@ -111,7 +111,6 @@ export const ENTITY = {
   HELICOPTER_GLOW: '#d9b45b',
   FIGHTER_GLOW: '#d98958',
   ANTI_AIR_GLOW: '#d96070',
-  TANK_GLOW: '#7dbb8d',
   /* The battleship's running lights. Cool and steely rather than the old
      saucer's pink: on a hull this size the emissive is most of what the eye
      gets, and a warm glow turned seventy metres of grey warship into one flat

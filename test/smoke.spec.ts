@@ -16,8 +16,8 @@ test('loads first frame and validates combat and high-altitude flight', async ({
   expect(Date.now() - started).toBeLessThan(8000)
   await expect(page.locator('.tutorial-mission')).toBeVisible()
 
-  // Nothing is broadcast yet: the sighting report waits until the player has
-  // had ten seconds in the air, which is longer than this run stays alive.
+  // Nothing is broadcast yet: the sighting report waits ten seconds from the
+  // start of the run, and this assertion is made in its first moments.
   await expect(page.locator('.breaking-band')).toHaveCount(0)
 
   await page.keyboard.down('q')
