@@ -1058,11 +1058,9 @@ const blastFieldVertex = `
 attribute float aCharge;
 varying vec3 vViewNormal;
 varying vec3 vViewPosition;
-varying vec2 vUv;
 varying float vCharge;
 void main() {
   vCharge = aCharge;
-  vUv = uv;
   vec4 world = instanceMatrix * vec4(position, 1.0);
   vec4 view = modelViewMatrix * world;
   vViewNormal = normalize(normalMatrix * (mat3(instanceMatrix) * normal));
@@ -1074,37 +1072,23 @@ void main() {
 const blastFieldFragment = `
 varying vec3 vViewNormal;
 varying vec3 vViewPosition;
-varying vec2 vUv;
 varying float vCharge;
 
-const vec2 HEX = vec2(1.0, 1.7320508);
-
-float hexEdge(vec2 p) {
-  p = abs(p);
-  return max(dot(p, normalize(vec2(1.0, 1.7320508))), p.x);
-}
-
-/** Distance to the nearest cell wall of a hex lattice, 0 at a wall. */
-float hexWall(vec2 uv) {
-  vec2 a = mod(uv, HEX) - HEX * 0.5;
-  vec2 b = mod(uv - HEX * 0.5, HEX) - HEX * 0.5;
-  vec2 cell = dot(a, a) < dot(b, b) ? a : b;
-  return 0.5 - hexEdge(cell);
-}
-
 void main() {
-  // Sphere UVs pinch at the poles; the aspect fix keeps cells roughly regular
-  // around the equator, where the shell is actually read from.
-  vec2 grid = vec2(vUv.x * 34.0, vUv.y * 17.0);
-  float wall = hexWall(grid);
-  float lattice = 1.0 - smoothstep(0.0, 0.09, wall);
-
-  // Face-on the shell is nearly invisible and the mine inside stays readable;
-  // edge-on it reads as a hard bubble.
+  // A plain red bubble, not a shield.
+  //
+  // This carried a hex lattice, which is the visual language of something that
+  // stops shots - the wrong promise entirely for a line that means "inside
+  // this you die". Without it there is nothing to read but the shape and the
+  // colour, which is all the warning needs to say.
+  //
+  // Face-on it is a thin haze, so the mine inside stays visible; edge-on the
+  // fresnel closes it into a hard sphere, which is what makes the boundary
+  // itself legible from outside.
   float facing = abs(dot(normalize(vViewNormal), normalize(-vViewPosition)));
-  float rim = pow(1.0 - facing, 2.4);
+  float rim = pow(1.0 - facing, 2.2);
 
-  float alpha = (rim * 0.85 + lattice * (0.16 + rim * 0.5) + 0.025) * vCharge;
+  float alpha = (rim * 0.82 + 0.085) * vCharge;
   // Runs white-hot as the fuse closes rather than just brighter red.
   vec3 tint = mix(vec3(1.0, 0.17, 0.24), vec3(1.0, 0.78, 0.6), clamp(vCharge - 1.0, 0.0, 1.0));
   gl_FragColor = vec4(tint * (0.6 + vCharge * 0.9), clamp(alpha, 0.0, 1.0));

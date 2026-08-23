@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { DRONE_DEFAULTS } from '../src/core/drone'
 import {
   DRONE_MINE_BLAST_RADIUS,
   DRONE_MINE_FUSE,
@@ -119,17 +120,60 @@ describe('suicide drones', () => {
     expect(mine.hitRadius).toBeGreaterThan(passer.hitRadius)
   })
 
-  it('holds a mine on its spot no matter where the player goes', () => {
+  it('holds a mine on its spot while the player stays out of its radius', () => {
     const { state } = droneWave()
     const mine = state.slots.find((enemy) => enemy.active && isDroneMine(enemy))!
     const startX = mine.position.x
     const startZ = mine.position.z
-    // Fly the player right past it; a mine must not follow.
+    // Fly the player around outside the blast radius; a mine must not follow.
+    // Chasing across the map would make it a tax on having been seen, which is
+    // the reason no drone in the game chases.
     for (let tick = 0; tick < 300; tick += 1) {
-      stepEnemies(state, { x: tick * 0.4, y: 12, z: tick * 0.2 }, 1 / 60)
+      const angle = tick * 0.05
+      stepEnemies(state, {
+        x: mine.position.x + Math.cos(angle) * (DRONE_MINE_BLAST_RADIUS + 6),
+        y: mine.position.y,
+        z: mine.position.z + Math.sin(angle) * (DRONE_MINE_BLAST_RADIUS + 6),
+      }, 1 / 60)
     }
     expect(Math.abs(mine.position.x - startX)).toBeLessThan(0.001)
     expect(Math.abs(mine.position.z - startZ)).toBeLessThan(0.001)
+  })
+
+  it('creeps at the player once they are inside the radius, and stops when they leave', () => {
+    // The fuse alone let a player who reacted at the shell simply back out
+    // along the way they came. Now the ground they have to give back is moving
+    // too - slowly, and only from inside.
+    const state = createEnemyState()
+    const mine = state.slots.find((enemy) => enemy.kind === 'drone')!
+    mine.active = true
+    mine.mode = 'fixed'
+    mine.hitRadius = DRONE_MINE_HIT_RADIUS
+    mine.position = { x: 0, y: 20, z: 0 }
+    mine.target = { x: 0, y: 20, z: 0 }
+    // Being inside the radius also lights the fuse, and this is about the
+    // movement rule rather than the fuse, so it is held open. The countdown
+    // has its own test above.
+    const hold = () => { mine.mineFuse = DRONE_MINE_FUSE }
+    // Kept short and started at the very edge: creep long enough from inside
+    // and the mine simply reaches the craft, which is the contact case above.
+    const inside = { x: 0, y: 20, z: DRONE_MINE_BLAST_RADIUS - 0.5 }
+    const startZ = mine.position.z
+    const seconds = 0.5
+    for (let tick = 0; tick < seconds * 60; tick += 1) { hold(); stepEnemies(state, inside, 1 / 60) }
+    expect(mine.active).toBe(true)
+    const closed = mine.position.z - startZ
+    expect(closed).toBeGreaterThan(1)
+    // Slow: it takes ground back, it does not run anybody down. A quarter of
+    // cruising speed at the very most.
+    expect(closed / seconds).toBeLessThan(DRONE_DEFAULTS.maxSpeed * 0.25)
+
+    // Step back outside and it stops dead where it is.
+    const held = mine.position.z
+    const outside = { x: 0, y: 20, z: DRONE_MINE_BLAST_RADIUS * 4 }
+    for (let tick = 0; tick < 120; tick += 1) { hold(); stepEnemies(state, outside, 1 / 60) }
+    expect(mine.active).toBe(true)
+    expect(Math.abs(mine.position.z - held)).toBeLessThan(0.001)
   })
 
   it('flies a passer dead straight, so its line can be read and dodged', () => {
