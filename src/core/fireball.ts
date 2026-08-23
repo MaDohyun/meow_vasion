@@ -44,7 +44,9 @@ export const BLAST_PROFILE: Record<BlastKind, { radius: number; duration: number
   // reads as the building collapsing rather than the street going with it.
   ruin: { radius: 8, duration: 1.05, puffs: 13 },
   vehicle: { radius: 4.2, duration: 0.62, puffs: 10 },
-  aircraft: { radius: 3, duration: 0.5, puffs: 8 },
+  // Short on purpose: a drone is a small thing popping, and at the rate they
+  // are shot down a lingering blast turns a swarm into a wall of fire.
+  aircraft: { radius: 3, duration: 0.3, puffs: 8 },
   // A hit that did not kill: a spit of fire off the surface and gone before
   // the next shot lands, so holding the trigger on a tower does not bury it.
   strike: { radius: 1.15, duration: 0.26, puffs: 5 },
