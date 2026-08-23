@@ -59,6 +59,7 @@ describe('craft size as growth, not as health', () => {
     const start = sizeProfile(SIZE_START)
     const big = sizeProfile(SIZE_MAX)
     expect(big.beamScale).toBe(start.beamScale)
+    expect(start.liftCapacity).toBe(2)
     expect(big.beamPower).toBeGreaterThan(start.beamPower)
     expect(big.beamStrength).toBe(7)
     expect(big.liftCapacity).toBe(26)

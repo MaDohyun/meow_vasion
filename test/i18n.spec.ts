@@ -33,7 +33,12 @@ describe('interface languages', () => {
     for (const language of LANGUAGES) {
       for (const key of keys) {
         const value = STRINGS[language][key]
-        const rendered = typeof value === 'function' ? value(42) : value
+        const rendered = typeof value === 'function'
+          ? (() => {
+              const invoke = value as (first: number, second?: number) => string
+              return value.length >= 2 ? invoke(1, 2) : invoke(42)
+            })()
+          : value
         expect(rendered, `${language}.${key}`).toBeTruthy()
         expect(typeof rendered).toBe('string')
       }
@@ -45,5 +50,13 @@ describe('interface languages', () => {
     expect(STRINGS.ja.start).not.toBe(STRINGS.en.start)
     expect(STRINGS.ko.collapsedTitle).not.toBe(STRINGS.en.collapsedTitle)
     expect(STRINGS.ko.msgCarLaunched).not.toBe(STRINGS.en.msgCarLaunched)
+  })
+
+  it('translates mission objectives and tutorial briefing copy', () => {
+    expect(STRINGS.ja.mission).not.toBe(STRINGS.en.mission)
+    expect(STRINGS.ja.missionCopy['pass-mystery-circles']).not.toBe(STRINGS.en.missionCopy['pass-mystery-circles'])
+    expect(STRINGS.ja.tutorialMissionLead).not.toBe(STRINGS.ko.tutorialMissionLead)
+    expect(STRINGS.en.tutorialBriefing[0]?.lines[0]).not.toBe(STRINGS.ko.tutorialBriefing[0]?.lines[0])
+    expect(STRINGS.en.missionStageComplete(1, 2)).not.toBe(STRINGS.ko.missionStageComplete(1, 2))
   })
 })

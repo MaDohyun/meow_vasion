@@ -112,7 +112,9 @@ export const CAMERA_REST_DISTANCE = 12
 
 /** The seven integer strength rungs shared by the HUD and beam simulation. */
 export const BEAM_STRENGTH_MAX = 7
-export const LIFT_CAPACITY_MIN = 1
+// Give the opening craft one extra unit of usable lift so a basic pull does
+// not immediately look overloaded. The maximum remains unchanged.
+export const LIFT_CAPACITY_MIN = 2
 export const LIFT_CAPACITY_MAX = 26
 
 export function beamStrengthForSize(size: number) {

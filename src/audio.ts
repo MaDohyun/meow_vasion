@@ -28,6 +28,11 @@ function lobbyTrack() {
   if (typeof Audio === 'undefined') return null
   if (!lobbyMusic) {
     lobbyMusic = new Audio('/audio/lobby-bgm.mp3')
+    // Ask the browser to begin the lobby track as soon as the intro is
+    // mounted. `play()` is still called explicitly below because some
+    // browsers only honour the autoplay hint after the media is loaded.
+    lobbyMusic.autoplay = true
+    lobbyMusic.setAttribute('playsinline', 'true')
     lobbyMusic.loop = true
     lobbyMusic.preload = 'auto'
     lobbyMusic.volume = 0.28
@@ -78,12 +83,31 @@ function mysteryCircleTrack() {
   return mysteryCircleSound
 }
 
-/** Best effort on initial load; browsers that block autoplay retry on the
- * player's first lobby interaction (wired from the intro screen). */
+/** Start as soon as the lobby is mounted. Browsers that block unmuted
+ * autoplay still get the existing first-input retry from the intro screen. */
 export function startLobbyMusic() {
   const track = lobbyTrack()
   if (!track) return
-  void track.play().catch(() => undefined)
+  track.autoplay = true
+  track.muted = false
+  // A newly-created Audio element may not have started fetching yet. Calling
+  // load here lets the autoplay hint and the immediate play attempt race as
+  // soon as the lobby is visible, without resetting an already-playing track.
+  if (track.readyState === 0) track.load()
+  void track.play().catch(() => {
+    // Some browsers allow a muted autoplay but reject the same call with
+    // sound. Use that permitted path as a best-effort bootstrap, then restore
+    // the lobby mix once playback has actually started. The first-input retry
+    // below remains the authoritative fallback where the browser forbids even
+    // this bootstrap.
+    track.muted = true
+    track.currentTime = 0
+    void track.play().then(() => {
+      const restoreVolume = () => { track.muted = false }
+      if (typeof requestAnimationFrame !== 'undefined') requestAnimationFrame(restoreVolume)
+      else setTimeout(restoreVolume, 0)
+    }).catch(() => { track.muted = false })
+  })
 }
 
 export function stopLobbyMusic() {

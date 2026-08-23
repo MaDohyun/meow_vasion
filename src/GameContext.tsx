@@ -3,6 +3,7 @@ import { collideDrone, createDroneState, DRONE_DEFAULTS, stepDrone, type Aabb, t
 import {
   type BeamField,
   type BeamObject,
+  type BeamWorldProp,
   CAR_MASS,
   absorptionScore,
   beamObjectDiameter,
@@ -65,9 +66,14 @@ import { createMissionState, missionHasQuest, recordMissionEvent, startMissionOn
 import { MYSTERY_BOOST_DURATION, MYSTERY_BOOST_MAX_MULTIPLIER, mysteryBoostMultiplier } from './core/mysteryCircles'
 import { absorbShieldDamage, createShieldState, isShieldRegenerating, setShieldCapacity, shieldRatio, stepShield, type ShieldState } from './core/shield'
 import { shouldCrashFromOverload } from './core/overload'
+import { WORLD_PROP_MASS, worldPropsAround } from './core/worldProps'
 import { playBoosterSound, playLaserSound, playMysteryCircleSound, startBeamSound, startGameplayMusic, stopBeamSound, stopGameplayMusic, stopLobbyMusic, tone, unlockAudio } from './audio'
 
 export type GamePhase = 'intro' | 'playing' | 'upgrade' | 'results'
+
+export type MissionBanner =
+  | { type: 'stage-complete'; previousStage: number; nextStage: number }
+  | { type: 'recon-complete' }
 
 // The clock is the round length, not a resource. Absorbing no longer buys time:
 // size is the only thing the player is managing, so there is one number to read
@@ -153,6 +159,8 @@ export type GameRuntime = {
   /** Buildings the player has eaten. Consulted whenever the city streams, so a
    *  swallowed block does not reappear on the way back. */
   destroyedBuildings: Set<string>
+  /** Static city dressing that has been absorbed by the tractor beam. */
+  destroyedWorldProps: Set<string>
   buildingHealth: Map<string, number>
   ruinedBuildings: Map<string, BuildingRuin>
   destroyedLandmarks: Set<string>
@@ -177,7 +185,7 @@ export type GameRuntime = {
   waterAnchored: boolean
   mission: MissionState
   missionPulse: number
-  missionBanner: string
+  missionBanner: MissionBanner | null
   missionBannerTime: number
   checkpoint: Vec3 | null
   checkpointGeneration: number
@@ -244,7 +252,7 @@ export type GameSnapshot = {
   missionStage: number
   missionQuests: MissionQuest[]
   missionPulse: number
-  missionBanner: string
+  missionBanner: MissionBanner | null
   tutorial: boolean
   tutorialBriefingReady: boolean
   daze: number
@@ -379,6 +387,32 @@ function makeTrafficBeamObject(car: TrafficCar): BeamObject {
   }
 }
 
+function makeWorldPropBeamObject(worldProp: BeamWorldProp): BeamObject {
+  return {
+    id: worldProp.id,
+    kind: worldProp.kind,
+    mass: WORLD_PROP_MASS[worldProp.kind],
+    color: worldProp.kind === 'tree' ? '#6e914b' : worldProp.kind === 'communications' ? '#d7d1c5' : '#aeb5b8',
+    position: { ...worldProp.position },
+    velocity: { x: 0, y: 0, z: 0 },
+    rotation: { x: 0, y: worldProp.rotation, z: 0 },
+    angularVelocity: { x: 0, y: 0.6, z: 0 },
+    scale: { ...worldProp.scale },
+    active: true,
+    inBeam: false,
+    tether: 0,
+    playerTouched: false,
+    destroying: false,
+    destroyTimer: 0,
+    explosionPending: false,
+    absorbing: false,
+    absorbTimer: 0,
+    diameter: worldProp.kind === 'communications' ? 12 : worldProp.kind === 'power-pylon' ? 7.2 : worldProp.kind === 'rooftop-structure' ? 6.2 : worldProp.kind === 'tree' ? 4.4 : 2.8,
+    scoreValue: worldProp.kind === 'communications' ? 520 : worldProp.kind === 'power-pylon' ? 180 : worldProp.kind === 'rooftop-structure' ? 110 : worldProp.kind === 'tree' ? 65 : 45,
+    worldProp,
+  }
+}
+
 function makeRuntime(): GameRuntime {
   const drone = createDroneState()
   // Down in the streets. The opening craft is small, its ceiling is low, and
@@ -451,6 +485,7 @@ function makeRuntime(): GameRuntime {
     traffic,
     destroyedCars: new Set<string>(),
     destroyedBuildings: new Set<string>(),
+    destroyedWorldProps: new Set<string>(),
     buildingHealth: new Map<string, number>(),
     ruinedBuildings: new Map<string, BuildingRuin>(),
     destroyedLandmarks: new Set<string>(),
@@ -475,7 +510,7 @@ function makeRuntime(): GameRuntime {
     waterAnchored: false,
     mission: createMissionState((Math.random() * 0xffffffff) >>> 0),
     missionPulse: 0,
-    missionBanner: '',
+    missionBanner: null,
     missionBannerTime: 0,
     checkpoint: null,
     checkpointGeneration: 0,
@@ -494,6 +529,7 @@ function makeRuntime(): GameRuntime {
     pilotPreviousCars: 0,
     pilotPreviousThreat: 0,
   }
+  syncBeamObjects(runtime)
   return runtime
 }
 
@@ -551,10 +587,14 @@ function presentMissionChange(game: GameRuntime, previousStage: number, previous
     // The tutorial's own hand-off to mission 1 is narrated by the general's
     // briefing instead, so this banner only fires between real missions.
     if (previousStage >= 1 && game.mission.stage >= 1 && game.mission.stage <= 3) {
-      game.missionBanner = `미션 ${previousStage} 완료 · 미션 ${game.mission.stage}, 골라서 해!`
+      game.missionBanner = {
+        type: 'stage-complete',
+        previousStage,
+        nextStage: game.mission.stage,
+      }
       game.missionBannerTime = 4.4
     } else if (game.mission.stage === 4) {
-      game.missionBanner = '지구 정찰 완료 · 장군님 퇴근 준비 끝!'
+      game.missionBanner = { type: 'recon-complete' }
       game.missionBannerTime = 6
     }
   }
@@ -571,6 +611,17 @@ function reportMissionEvent(game: GameRuntime, event: Parameters<typeof recordMi
   const previousRevision = game.mission.revision
   recordMissionEvent(game.mission, event, game.sessionTime)
   presentMissionChange(game, previousStage, previousRevision)
+}
+
+function removeRooftopProp(game: GameRuntime, buildingId: string) {
+  game.destroyedWorldProps.add(`roof:${buildingId}`)
+  for (const object of game.beamObjects) {
+    if (object.worldProp?.buildingId !== buildingId) continue
+    object.active = false
+    object.inBeam = false
+    object.tether = 0
+    object.absorbing = false
+  }
 }
 
 /**
@@ -594,6 +645,7 @@ function grabBuildings(game: GameRuntime, field: BeamField) {
     }
     if (!isInsideBeam(footprint, field)) continue
     game.destroyedBuildings.add(building.id)
+    removeRooftopProp(game, building.id)
     game.beamObjects.unshift({
       id: `building:${building.id}`,
       kind: 'building',
@@ -635,16 +687,25 @@ function syncBeamObjects(game: GameRuntime) {
   const retained = game.beamObjects.filter((object) => object.active && (object.inBeam || object.tether > 0.02 || object.playerTouched) && Math.hypot(object.position.x - game.drone.position.x, object.position.z - game.drone.position.z) <= WORLD_REMOVE_RADIUS)
   const retainedIds = new Set(retained.map((object) => object.id))
   const sourceCars = [...parkingCarsAround(game.drone.position), ...game.world.cars]
+  const sourceProps = worldPropsAround(game.world, game.drone.position)
+    .filter((prop) => !game.destroyedWorldProps.has(prop.id))
+    .filter((prop) => prop.kind !== 'communications' || !game.destroyedLandmarks.has(prop.id))
   // Buildings in flight are not sourced from anywhere - they were torn out of
   // the world - so they are retained on their own rather than rebuilt.
   const lifted = retained.filter((object) => object.kind === 'building')
+  const carriedProps = retained.filter((object) => object.worldProp)
   const nearby = sourceCars.filter((car) => !retainedIds.has(car.id) && !game.destroyedCars.has(car.id)).map((car) => {
     const previous = existing.get(car.id)
     return previous?.active ? previous : makeBeamObject(car)
   })
+  const nearbyProps = sourceProps.filter((prop) => !retainedIds.has(prop.id)).map((prop) => {
+    const previous = existing.get(prop.id)
+    return previous?.active ? previous : makeWorldPropBeamObject(prop)
+  })
   const capturedTraffic = retained.filter((object) => object.id.startsWith('traffic:'))
-  const parked = [...retained.filter((object) => !object.id.startsWith('traffic:') && object.kind !== 'building'), ...nearby].slice(0, WORLD_MAX_CARS)
-  game.beamObjects = [...lifted, ...capturedTraffic.slice(0, TRAFFIC_MAX_CARS), ...parked]
+  const parked = retained.filter((object) => !object.id.startsWith('traffic:') && object.kind !== 'building' && !object.worldProp)
+  const cars = [...parked, ...nearby].slice(0, WORLD_MAX_CARS)
+  game.beamObjects = [...lifted, ...carriedProps, ...capturedTraffic.slice(0, TRAFFIC_MAX_CARS), ...cars, ...nearbyProps]
   const retainedTrafficIds = new Set(capturedTraffic.map((object) => object.id))
   for (const car of game.traffic.cars) if (car.captured && !retainedTrafficIds.has(car.id)) releaseTrafficSlot(game.traffic, car.id)
 }
@@ -689,7 +750,13 @@ function laserSphereTargets(game: GameRuntime) {
     }
     slot = writeLaserSphereTarget(game.laserTargets, slot, enemy.id, enemy.position, enemy.hitRadius)
   }
-  for (const object of game.beamObjects) if (object.active && !object.destroying && !object.absorbing) slot = writeLaserSphereTarget(game.laserTargets, slot, object.id, object.position, 1.7)
+  // Static city dressing is tractor-beam-only. Keep it out of the laser's
+  // generic fighter sphere list so a shot cannot produce a misleading hit FX
+  // without actually damaging the prop.
+  for (const object of game.beamObjects) {
+    if (object.worldProp || !object.active || object.destroying || object.absorbing) continue
+    slot = writeLaserSphereTarget(game.laserTargets, slot, object.id, object.position, 1.7)
+  }
   for (const car of game.traffic.cars) if (car.active) slot = writeLaserSphereTarget(game.laserTargets, slot, car.id, car.position, 1.7)
   for (const landmark of destructibleLandmarksAround(game.drone.position)) {
     if (game.destroyedLandmarks.has(landmark.id)) continue
@@ -713,23 +780,19 @@ function laserSphereTargets(game: GameRuntime) {
 function beamBallast(game: GameRuntime) {
   let mass = 0
   for (const object of game.crowds.objects) {
-    if (!object.active || (!object.inBeam && object.tether <= 0.02)) continue
-    if (object.position.y <= 0.72 && object.tether <= 0.02) continue
+    if (!object.active || object.tether <= 0.02) continue
     mass += object.mass
   }
   for (const object of game.beamObjects) {
-    if (!object.active || (!object.inBeam && object.tether <= 0.02)) continue
-    if (object.position.y <= 0.72 && object.tether <= 0.02) continue
+    if (!object.active || object.tether <= 0.02) continue
     mass += object.mass
   }
   for (const hazard of game.hazards.objects) {
-    if (!hazard.active || (!hazard.inBeam && hazard.tether <= 0.02)) continue
-    if (hazard.position.y <= 1.3 && hazard.tether <= 0.02) continue
+    if (!hazard.active || hazard.tether <= 0.02) continue
     mass += hazard.mass
   }
   for (const enemy of game.enemies.slots) {
-    if (!enemy.active || (!enemy.inBeam && enemy.tether <= 0.02)) continue
-    if (enemy.position.y <= 0.72 && enemy.tether <= 0.02) continue
+    if (!enemy.active || enemy.tether <= 0.02) continue
     mass += enemy.mass
   }
   return mass
@@ -737,10 +800,10 @@ function beamBallast(game: GameRuntime) {
 
 function loadedCarCount(game: GameRuntime) {
   let count = 0
-  for (const object of game.beamObjects) if (object.active && (object.inBeam || object.tether > 0.02)) count += 1
-  for (const object of game.crowds.objects) if (object.active && (object.inBeam || object.tether > 0.02)) count += 1
-  for (const object of game.hazards.objects) if (object.active && (object.inBeam || object.tether > 0.02)) count += 1
-  for (const object of game.enemies.slots) if (object.active && (object.inBeam || object.tether > 0.02)) count += 1
+  for (const object of game.beamObjects) if (object.active && object.tether > 0.02) count += 1
+  for (const object of game.crowds.objects) if (object.active && object.tether > 0.02) count += 1
+  for (const object of game.hazards.objects) if (object.active && object.tether > 0.02) count += 1
+  for (const object of game.enemies.slots) if (object.active && object.tether > 0.02) count += 1
   return count
 }
 
@@ -816,6 +879,7 @@ function registerBuildingLaserHit(game: GameRuntime, id: string) {
   triggerLaserBurst(game.laserBursts, 'impact', building.position, '#ffca63')
   if (!result.destroyed) return true
   game.destroyedBuildings.add(building.id)
+  removeRooftopProp(game, building.id)
   game.ruinedBuildings.set(building.id, createBuildingRuin(building))
   game.score += 420
   reportMissionEvent(game, { type: 'ruin-building' })
@@ -933,6 +997,10 @@ function absorbCrowd(game: GameRuntime, kind: 'cat' | 'pedestrian') {
 function absorbBeamObject(game: GameRuntime, object: BeamObject) {
   const diameter = beamObjectDiameter(object)
   const reward = absorptionScore(object, game.sizeProfile.scoreMultiplier)
+  if (object.worldProp) {
+    game.destroyedWorldProps.add(object.worldProp.id)
+    if (object.worldProp.kind === 'communications') game.destroyedLandmarks.add(object.worldProp.id)
+  }
   // Larger meals grow the craft more, as a fraction of current size like every
   // other gain. Bounded so no single meal - not even a tower - skips a run.
   growBy(game, Math.min(0.2, 0.012 + diameter * 0.012))
@@ -1039,7 +1107,7 @@ function snapshotOf(game: GameRuntime): GameSnapshot {
     missionStage: game.mission.stage,
     missionQuests: game.mission.quests.map((quest) => ({ ...quest })),
     missionPulse: game.missionPulse,
-    missionBanner: game.missionBannerTime > 0 ? game.missionBanner : '',
+    missionBanner: game.missionBannerTime > 0 ? game.missionBanner : null,
     tutorial: game.mission.stage === 0,
     tutorialBriefingReady: game.tutorialBriefingReady,
     daze: game.daze,

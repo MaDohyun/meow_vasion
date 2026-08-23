@@ -18,7 +18,7 @@ import {
 } from './entityMaterials'
 import { setRimNightFactor } from './rimLight'
 import { radialGlowTexture } from './textures'
-import { BEAM_ABSORB_TIME, beamProfile, beamVisualLength } from '../core/beam'
+import { BEAM_ABSORB_TIME, beamLiftScale, beamObjectDiameter, beamProfile, beamVisualLength, type BeamObject } from '../core/beam'
 import { CAT_MAX, CROWD_ABSORB_TIME, PEDESTRIAN_MAX, type CrowdKind } from '../core/crowds'
 import { HAZARD_MAX } from '../core/hazards'
 import { type DaylightKeyframe, type DaylightSample } from '../core/daylight'
@@ -43,6 +43,15 @@ const roundedCarBodyGeometry = new RoundedBoxGeometry(1.8, 0.62, 3.1, 2, 0.15)
 const roundedCarCabinGeometry = new RoundedBoxGeometry(1.55, 0.62, 1.55, 2, 0.18)
 const beamRingGeometry = new THREE.RingGeometry(0.9, 1, 28)
 const BEAM_RING_COUNT = 5
+const BEAM_TARGET_RING_CAPACITY = WORLD_MAX_CARS + TRAFFIC_MAX_CARS + 8 + PEDESTRIAN_MAX + CAT_MAX + HAZARD_MAX + Object.values(ENEMY_CAPS).reduce((sum, count) => sum + count, 0)
+const beamTargetRingMaterial = new THREE.MeshBasicMaterial({
+  color: '#a7fff0',
+  transparent: true,
+  opacity: 0.82,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending,
+  toneMapped: false,
+})
 
 function coloredPart(geometry: THREE.BufferGeometry, color: string) {
   const result = geometry.index ? geometry.toNonIndexed() : geometry
@@ -106,13 +115,21 @@ const CAT_SCALE = 0.52
 
 function catGeometry() {
   return mergeModel([
-    coloredPart(new THREE.BoxGeometry(0.76, 0.5, 1.16), '#d98b45'),
-    coloredPart(new THREE.BoxGeometry(0.64, 0.58, 0.54).translate(0, 0.2, 0.68), '#efb85d'),
-    coloredPart(new THREE.ConeGeometry(0.15, 0.4, 4).rotateZ(-0.18).translate(-0.23, 0.58, 0.7), '#efb85d'),
-    coloredPart(new THREE.ConeGeometry(0.15, 0.4, 4).rotateZ(0.18).translate(0.23, 0.58, 0.7), '#efb85d'),
-    coloredPart(new THREE.CylinderGeometry(0.08, 0.11, 1.08, 6).rotateX(-0.65).translate(0, 0.1, -0.82), '#d98b45'),
+    // The base is pale so the instance tint can produce either a tuxedo
+    // (white with dark patches) or an orange tabby without another mesh pool.
+    coloredPart(new THREE.BoxGeometry(0.76, 0.5, 1.16), '#fff7e7'),
+    coloredPart(new THREE.BoxGeometry(0.64, 0.58, 0.54).translate(0, 0.2, 0.68), '#fff7e7'),
+    coloredPart(new THREE.ConeGeometry(0.15, 0.4, 4).rotateZ(-0.18).translate(-0.23, 0.58, 0.7), '#fff7e7'),
+    coloredPart(new THREE.ConeGeometry(0.15, 0.4, 4).rotateZ(0.18).translate(0.23, 0.58, 0.7), '#fff7e7'),
+    coloredPart(new THREE.CylinderGeometry(0.08, 0.11, 1.08, 6).rotateX(-0.65).translate(0, 0.1, -0.82), '#fff7e7'),
+    // A few broad low-poly patches read as a black-and-white coat at a
+    // distance. On orange instances they become warm brown tabby markings.
+    coloredPart(new THREE.BoxGeometry(0.38, 0.24, 0.035).translate(-0.16, 0.03, 0.594), '#25232c'),
+    coloredPart(new THREE.BoxGeometry(0.24, 0.18, 0.035).translate(0.17, 0.16, 0.594), '#25232c'),
+    coloredPart(new THREE.BoxGeometry(0.19, 0.14, 0.035).translate(-0.17, 0.29, 0.956), '#25232c'),
+    coloredPart(new THREE.BoxGeometry(0.14, 0.09, 0.035).translate(0.19, 0.37, 0.956), '#25232c'),
     ...[-0.25, 0.25].flatMap((x) => [-0.32, 0.32].map((z) =>
-      coloredPart(new THREE.BoxGeometry(0.13, 0.42, 0.14).translate(x, -0.4, z), '#d98b45'),
+      coloredPart(new THREE.BoxGeometry(0.13, 0.42, 0.14).translate(x, -0.4, z), '#fff7e7'),
     )),
     ...eyePair(0.065, 0.14, 0.28, 0.97),
   ]).scale(CAT_SCALE, CAT_SCALE, CAT_SCALE).translate(0, -0.34 * (1 - CAT_SCALE), 0)
@@ -386,6 +403,57 @@ function PullableCars() {
         <meshBasicMaterial color="#a7fff0" transparent opacity={0.9} depthWrite={false} blending={THREE.AdditiveBlending} toneMapped={false} />
       </instancedMesh>
     </group>
+  )
+}
+
+/**
+ * A shared cyan target ring for every object the beam can actually lift.
+ * Cars keep their existing ring in PullableCars; the common pool covers people,
+ * cats, heavy vehicles, buildings and liftable enemies without allocating a
+ * mesh per target. Objects above the current grip band stay unmarked so the
+ * effect never promises a pull the craft cannot perform.
+ */
+function BeamTargetRings() {
+  const { runtime, snapshot } = useGame()
+  const ref = useRef<THREE.InstancedMesh>(null)
+  const matrix = useMemo(() => new THREE.Matrix4(), [])
+  const position = useMemo(() => new THREE.Vector3(), [])
+  const scale = useMemo(() => new THREE.Vector3(), [])
+  const rotation = useMemo(() => new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0)), [])
+
+  useFrame(({ clock }) => {
+    const mesh = ref.current
+    if (!mesh) return
+    let count = 0
+    const draw = (object: BeamObject) => {
+      if (count >= BEAM_TARGET_RING_CAPACITY) return
+      if (!object.active || object.kind === 'car' || object.absorbing || object.beamImmune || !object.inBeam) return
+      if (beamLiftScale(object.mass, snapshot.beamStrength) <= 0) return
+      const pulse = 1 + Math.sin(clock.elapsedTime * 8 + count * 0.7) * 0.1
+      const diameter = beamObjectDiameter(object)
+      const radius = Math.min(4.8, Math.max(0.78, diameter * 0.34)) * pulse
+      const groundY = object.kind === 'building' && object.scale
+        ? Math.max(0.05, object.position.y - object.scale.y / 2 - 0.05)
+        : object.position.y <= 1.5
+          ? 0.05
+          : object.position.y - Math.min(0.2, diameter * 0.1)
+      position.set(object.position.x, groundY, object.position.z)
+      scale.set(radius, radius, radius)
+      matrix.compose(position, rotation, scale)
+      mesh.setMatrixAt(count, matrix)
+      count += 1
+    }
+    for (const object of runtime.current.beamObjects) draw(object)
+    for (const object of runtime.current.crowds.objects) draw(object)
+    for (const object of runtime.current.hazards.objects) draw(object)
+    for (const object of runtime.current.enemies.slots) draw(object)
+    mesh.count = count
+    mesh.instanceMatrix.needsUpdate = true
+    beamTargetRingMaterial.opacity = 0.68 + (Math.sin(clock.elapsedTime * 8) + 1) * 0.1
+  })
+
+  return (
+    <instancedMesh ref={ref} args={[beamRingGeometry, beamTargetRingMaterial, BEAM_TARGET_RING_CAPACITY]} frustumCulled={false} renderOrder={3} />
   )
 }
 
@@ -772,6 +840,10 @@ const crowdGeometry: Record<CrowdKind, THREE.BufferGeometry> = {
 // (commuter, workwear, warm coat, green jacket) without splitting it into four
 // draw calls or changing the low-poly assembled body.
 const pedestrianStyleColors = ['#d45c78', '#5d6c9b', '#e6a43d', '#72b995'] as const
+// Keep the three feline coats in one fixed InstancedMesh. The pale tint leaves
+// the vertex-coloured dark patches black on the tuxedo cat and turns them into
+// warm brown or charcoal tabby stripes on the orange and gray cats.
+const catStyleColors = ['#f2efe8', '#e88d3d', '#9299a3'] as const
 
 function CrowdPool({ kind }: { kind: CrowdKind }) {
   const { runtime, snapshot } = useGame()
@@ -802,7 +874,8 @@ function CrowdPool({ kind }: { kind: CrowdKind }) {
       matrix.compose(position, quaternion, scale)
       ref.current.setMatrixAt(count, matrix)
       if (snapshot.beamTargetId === object.id) color.set('#fff36d')
-      else color.set(kind === 'pedestrian' ? pedestrianStyleColors[style]! : object.color).lerp(pale, 0.72)
+      else if (kind === 'cat') color.set(catStyleColors[object.slot % catStyleColors.length]!)
+      else color.set(pedestrianStyleColors[style]!).lerp(pale, 0.72)
       ref.current.setColorAt(count, color)
       count += 1
     }
@@ -1839,6 +1912,7 @@ export function DroneScene() {
       <City />
       <MissionCheckpoint />
       <PullableCars />
+      <BeamTargetRings />
       <DrivingTraffic />
       <CrowdPools />
       <TutorialCatMarker />

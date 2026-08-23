@@ -14,6 +14,13 @@ import {
   isConvenienceStore,
 } from '../core/cityLandmarks'
 import {
+  isWorldPropHidden,
+  utilityPolesAround,
+  worldPropVisibilityKey,
+  worldPropsAround,
+  STREETLIGHT_RADIUS_CELLS,
+} from '../core/worldProps'
+import {
   BUILDING_SIGN_LABELS,
   BUILDING_SIGN_COLORS,
   ENTRANCE_VARIANTS,
@@ -894,14 +901,25 @@ function EntrancePool() {
 // instead of being pushed back toward the old ochre tone by material
 // multiplication. Urban neutral tints dominate, with only a few warm accents.
 const massingMaterial = new THREE.MeshToonMaterial({ color: '#ffffff', gradientMap: toonGradient })
-const MASSING_TINTS = [
-  '#34495E', '#34495E', '#34495E',
-  '#F5F5F5', '#F5F5F5',
-  '#1F2833', '#1F2833',
-  '#7F8C8D', '#7F8C8D',
-  '#CFD8DC', '#B0BEC5', '#78909C', '#607D8B',
-  '#455A64', '#9E9E9E', '#ECEFF1', '#37474F',
-  '#705b4e', '#ece9e1', '#b58b6b', '#d1b06b',
+
+// Podiums are stone/masonry bases; setbacks are plant/mechanical crowns.
+// Kept as separate palettes so the same building reads correctly top and
+// bottom: warm light stone at street level, zinc-grey plant on the roof.
+// Duplicated entries weight the distribution.
+const PODIUM_TINTS = [
+  '#C6C1B6', '#C6C1B6',
+  '#D8D3C8',
+  '#B4BCC2', '#B4BCC2',
+  '#B5A392',
+  '#9AA4AB',
+] as const
+
+const SETBACK_TINTS = [
+  '#BCC2C6', '#BCC2C6',
+  '#9AA4AB', '#9AA4AB',
+  '#8B939A',
+  '#6B7885',
+  '#CBC6BA',
 ] as const
 
 function MassingPool({ form }: { form: 'podium' | 'setback' }) {
@@ -939,7 +957,8 @@ function MassingPool({ form }: { form: 'podium' | 'setback' }) {
       // Setback/podium caps use their own light architectural palette. Never
       // inherit the facade roof colour here: some facade variants are cyan and
       // would make an entire rooftop read as a chunk of sky.
-      const tint = MASSING_TINTS[seedForWorldCell(building.cellX, building.cellZ, 0x6d455) % MASSING_TINTS.length]!
+      const tints = form === 'podium' ? PODIUM_TINTS : SETBACK_TINTS
+      const tint = tints[seedForWorldCell(building.cellX, building.cellZ, 0x6d455) % tints.length]!
       mesh.setColorAt(slot, color.set(tint))
       slot += 1
     }
@@ -1345,7 +1364,6 @@ function BuildingPool() {
 // Streetlights and roof beacons use emissive geometry rather than individual
 // point lights. Their fixed pools keep the light count stable, while the pole,
 // glowing fixture, and ground falloff still make each lamp read as a source.
-const STREETLIGHT_RADIUS_CELLS = 5
 const STREETLIGHT_CELLS = (STREETLIGHT_RADIUS_CELLS * 2 + 1) ** 2
 const STREETLIGHT_COUNT = STREETLIGHT_CELLS * 2
 
@@ -1405,47 +1423,27 @@ function StreetLightPool() {
   useFrame(() => {
     if (!poles.current || !heads.current || !pools.current) return
     const world = runtime.current.world
-    const key = `${world.cellX}:${world.cellZ}`
+    const key = `${world.cellX}:${world.cellZ}|${worldPropVisibilityKey(runtime.current.destroyedWorldProps, runtime.current.beamObjects)}`
     if (key === lastKey.current) return
     lastKey.current = key
     let slot = 0
-    for (let dz = -STREETLIGHT_RADIUS_CELLS; dz <= STREETLIGHT_RADIUS_CELLS; dz += 1) {
-      for (let dx = -STREETLIGHT_RADIUS_CELLS; dx <= STREETLIGHT_RADIUS_CELLS; dx += 1) {
-        const cellX = world.cellX + dx
-        const cellZ = world.cellZ + dz
-        // Park clearings and lake surfaces deliberately have no road;
-        // placing a lamp pool there was the source of the floating beige patch
-        // beside the opening UFO.
-        if (parkClusterForCell(cellX, cellZ) || lakeClusterForCell(cellX, cellZ)) continue
-        // One lamp on each of the cell's two roads, set back to the kerb. The
-        // angle points its small arm toward the carriageway.
-        const spots: [number, number, number][] = [
-          [cellX * WORLD_CELL_SIZE + 4.6, (cellZ + 0.5) * WORLD_CELL_SIZE, -Math.PI / 2],
-          [(cellX + 0.5) * WORLD_CELL_SIZE, cellZ * WORLD_CELL_SIZE + 4.6, Math.PI],
-        ]
-        for (const [spotIndex, [x, z, yaw]] of spots.entries()) {
-          if (slot >= STREETLIGHT_COUNT) break
-          // Keep one third of the former lamp density. The hash keeps the
-          // thinning stable while avoiding a visibly regular every-third-cell
-          // pattern as the world streams.
-          if (seedForWorldCell(cellX, cellZ, 0x51a9 + spotIndex) % 3 !== 0) continue
-          rotation.setFromAxisAngle(THREE.Object3D.DEFAULT_UP, yaw)
-          position.set(x, 0, z)
-          scale.setScalar(1)
-          matrix.compose(position, rotation, scale)
-          poles.current!.setMatrixAt(slot, matrix)
+    for (const prop of utilityPolesAround(runtime.current.drone.position)) {
+      if (slot >= STREETLIGHT_COUNT) break
+      if (isWorldPropHidden(prop.id, runtime.current.destroyedWorldProps, runtime.current.beamObjects)) continue
+      rotation.setFromAxisAngle(THREE.Object3D.DEFAULT_UP, prop.rotation)
+      position.set(prop.position.x, prop.position.y, prop.position.z)
+      scale.setScalar(1)
+      matrix.compose(position, rotation, scale)
+      poles.current.setMatrixAt(slot, matrix)
 
-          fixturePosition.set(0, 4.78, 1.16).applyQuaternion(rotation).add(position)
-          scale.setScalar(1)
-          matrix.compose(fixturePosition, rotation, scale)
-          heads.current!.setMatrixAt(slot, matrix)
-          position.set(x, 0.045, z)
-          scale.set(9.5, 9.5, 1)
-          matrix.compose(position, planeRotation, scale)
-          pools.current!.setMatrixAt(slot, matrix)
-          slot += 1
-        }
-      }
+      fixturePosition.set(0, 4.78, 1.16).applyQuaternion(rotation).add(position)
+      matrix.compose(fixturePosition, rotation, scale)
+      heads.current.setMatrixAt(slot, matrix)
+      position.set(prop.position.x, 0.045, prop.position.z)
+      scale.set(9.5, 9.5, 1)
+      matrix.compose(position, planeRotation, scale)
+      pools.current.setMatrixAt(slot, matrix)
+      slot += 1
     }
     poles.current.count = slot
     heads.current.count = slot
@@ -1629,11 +1627,129 @@ function roofStructureGeometry(variant: number) {
 
 const roofStructureGeometries = Array.from({ length: ROOF_STRUCTURE_VARIANTS }, (_, index) => roofStructureGeometry(index))
 
+const liftedTreeGeometry = mergeGeometries([
+  // IcosahedronGeometry is non-indexed in Three.js; keep both parts in the
+  // same representation so BufferGeometryUtils can merge the lifted prop.
+  new THREE.CylinderGeometry(0.5, 0.62, 1, 7).toNonIndexed().translate(0, 0.5, 0),
+  new THREE.IcosahedronGeometry(1, 1).translate(0, 1.5, 0),
+], false)!
+const liftedUtilityGeometry = mergeGeometries([
+  streetLightPoleGeometry,
+  new THREE.BoxGeometry(0.52, 0.26, 0.62).translate(0, 4.78, 1.16),
+], false)!
+
+const LIFTED_WORLD_PROP_CAPACITY = WORLD_MAX_BUILDINGS * 3
+
+function LiftedRoofStructurePool({ variant }: { variant: number }) {
+  const { runtime } = useGame()
+  const ref = useRef<THREE.InstancedMesh>(null)
+  const matrix = useMemo(() => new THREE.Matrix4(), [])
+  const position = useMemo(() => new THREE.Vector3(), [])
+  const scale = useMemo(() => new THREE.Vector3(), [])
+  const rotation = useMemo(() => new THREE.Quaternion(), [])
+  const euler = useMemo(() => new THREE.Euler(), [])
+  const color = useMemo(() => new THREE.Color(), [])
+  useFrame(() => {
+    const mesh = ref.current
+    if (!mesh) return
+    let count = 0
+    for (const object of runtime.current.beamObjects) {
+      if (!object.active || object.kind !== 'rooftop-structure' || object.worldProp?.variant !== variant) continue
+      if (count >= LIFTED_WORLD_PROP_CAPACITY) break
+      const swallow = object.absorbing ? Math.max(0.05, object.absorbTimer / BEAM_ABSORB_TIME) : 1
+      position.set(object.position.x, object.position.y, object.position.z)
+      euler.set(object.rotation.x, object.rotation.y, object.rotation.z)
+      rotation.setFromEuler(euler)
+      scale.set(object.scale?.x ?? 1, object.scale?.y ?? 1, object.scale?.z ?? 1).multiplyScalar(swallow)
+      matrix.compose(position, rotation, scale)
+      mesh.setMatrixAt(count, matrix)
+      mesh.setColorAt(count, color.set(object.color))
+      count += 1
+    }
+    mesh.count = count
+    mesh.instanceMatrix.needsUpdate = true
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
+  })
+  return <instancedMesh ref={ref} args={[roofStructureGeometries[variant], undefined, LIFTED_WORLD_PROP_CAPACITY]} frustumCulled={false} renderOrder={2} onUpdate={(mesh) => { mesh.count = 0 }}>
+    <meshToonMaterial color="#ffffff" gradientMap={toonGradient} />
+  </instancedMesh>
+}
+
+function LiftedTreePool() {
+  const { runtime } = useGame()
+  const ref = useRef<THREE.InstancedMesh>(null)
+  const matrix = useMemo(() => new THREE.Matrix4(), [])
+  const position = useMemo(() => new THREE.Vector3(), [])
+  const scale = useMemo(() => new THREE.Vector3(), [])
+  const rotation = useMemo(() => new THREE.Quaternion(), [])
+  const euler = useMemo(() => new THREE.Euler(), [])
+  const color = useMemo(() => new THREE.Color(), [])
+  useFrame(() => {
+    const mesh = ref.current
+    if (!mesh) return
+    let count = 0
+    for (const object of runtime.current.beamObjects) {
+      if (!object.active || object.kind !== 'tree' || !object.worldProp) continue
+      if (count >= LIFTED_WORLD_PROP_CAPACITY) break
+      const swallow = object.absorbing ? Math.max(0.05, object.absorbTimer / BEAM_ABSORB_TIME) : 1
+      position.set(object.position.x, object.position.y, object.position.z)
+      euler.set(object.rotation.x, object.rotation.y, object.rotation.z)
+      rotation.setFromEuler(euler)
+      const height = object.worldProp.height ?? 2.8
+      const crown = object.worldProp.crown ?? 2.2
+      scale.set(crown / 2.2, height, crown / 2.2).multiplyScalar(swallow)
+      matrix.compose(position, rotation, scale)
+      mesh.setMatrixAt(count, matrix)
+      mesh.setColorAt(count, color.set('#6f9452'))
+      count += 1
+    }
+    mesh.count = count
+    mesh.instanceMatrix.needsUpdate = true
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
+  })
+  return <instancedMesh ref={ref} args={[liftedTreeGeometry, undefined, LIFTED_WORLD_PROP_CAPACITY]} frustumCulled={false} renderOrder={2} onUpdate={(mesh) => { mesh.count = 0 }}>
+    <meshToonMaterial color="#ffffff" />
+  </instancedMesh>
+}
+
+function LiftedUtilityPolePool() {
+  const { runtime } = useGame()
+  const ref = useRef<THREE.InstancedMesh>(null)
+  const matrix = useMemo(() => new THREE.Matrix4(), [])
+  const position = useMemo(() => new THREE.Vector3(), [])
+  const scale = useMemo(() => new THREE.Vector3(), [])
+  const rotation = useMemo(() => new THREE.Quaternion(), [])
+  const euler = useMemo(() => new THREE.Euler(), [])
+  const color = useMemo(() => new THREE.Color(), [])
+  useFrame(() => {
+    const mesh = ref.current
+    if (!mesh) return
+    let count = 0
+    for (const object of runtime.current.beamObjects) {
+      if (!object.active || object.kind !== 'utility-pole') continue
+      if (count >= LIFTED_WORLD_PROP_CAPACITY) break
+      const swallow = object.absorbing ? Math.max(0.05, object.absorbTimer / BEAM_ABSORB_TIME) : 1
+      position.set(object.position.x, object.position.y, object.position.z)
+      euler.set(object.rotation.x, object.rotation.y, object.rotation.z)
+      rotation.setFromEuler(euler)
+      scale.set(object.scale?.x ?? 1, object.scale?.y ?? 1, object.scale?.z ?? 1).multiplyScalar(swallow)
+      matrix.compose(position, rotation, scale)
+      mesh.setMatrixAt(count, matrix)
+      mesh.setColorAt(count, color.set('#59616a'))
+      count += 1
+    }
+    mesh.count = count
+    mesh.instanceMatrix.needsUpdate = true
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
+  })
+  return <instancedMesh ref={ref} args={[liftedUtilityGeometry, undefined, LIFTED_WORLD_PROP_CAPACITY]} frustumCulled={false} renderOrder={2} onUpdate={(mesh) => { mesh.count = 0 }}>
+    <meshToonMaterial color="#ffffff" />
+  </instancedMesh>
+}
+
 // Low-rise roofs (including the rare mega-mart/hotel) now carry the same
 // compact prop kit; the extra silhouette detail matters most from the top-down
 // camera and costs no additional pool beyond the four existing variants.
-const ROOF_STRUCTURE_MIN_HEIGHT = 10
-
 function RoofStructurePool({ variant }: { variant: number }) {
   const { runtime } = useGame()
   const ref = useRef<THREE.InstancedMesh>(null)
@@ -1644,39 +1760,40 @@ function RoofStructurePool({ variant }: { variant: number }) {
   const rotation = useMemo(() => new THREE.Quaternion(), [])
   const euler = useMemo(() => new THREE.Euler(), [])
   const color = useMemo(() => new THREE.Color(), [])
+  // Rooftop plant reads as galvanised metal and dull concrete: zinc greys
+  // dominate, with a muted waterproofing green and a dark duct tone as
+  // occasional detail. Duplicated entries weight the distribution. Kept light
+  // enough that the pastel toon ramp never crushes them into black blocks.
   const structureTints = [
-    '#34495E', '#34495E', '#34495E',
-    '#F5F5F5', '#F5F5F5',
-    '#1F2833', '#1F2833',
-    '#7F8C8D', '#7F8C8D',
-    '#CFD8DC', '#B0BEC5', '#78909C', '#607D8B',
-    '#455A64', '#9E9E9E', '#ECEFF1', '#37474F',
-    '#705b4e', '#ece9e1', '#b58b6b', '#d1b06b',
+    '#BCC2C6', '#BCC2C6',
+    '#A3AAAF', '#A3AAAF',
+    '#8B939A',
+    '#CBC6BA',
+    '#6E7880',
+    '#8A9384',
   ] as const
 
   useFrame(() => {
     const mesh = ref.current
     if (!mesh) return
     const world = runtime.current.world
-    if (world.key === lastKey.current) return
-    lastKey.current = world.key
+    const visibility = worldPropVisibilityKey(runtime.current.destroyedWorldProps, runtime.current.beamObjects)
+    const key = `${world.key}|${visibility}`
+    if (key === lastKey.current) return
+    lastKey.current = key
     let slot = 0
-    for (const building of world.buildings) {
-      if (building.size.y < ROOF_STRUCTURE_MIN_HEIGHT) continue
-      const seed = seedForWorldCell(building.cellX, building.cellZ, 0x700f7)
-      if (seed % ROOF_STRUCTURE_VARIANTS !== variant) continue
-      // Sits on the slab, whose thickness now varies per building.
-      position.set(building.position.x, building.size.y + building.roofThickness + 0.32, building.position.z)
-      euler.set(0, (seed >>> 5) % 4 * Math.PI / 2, 0)
+    for (const prop of worldPropsAround(world, runtime.current.drone.position)) {
+      if (prop.kind !== 'rooftop-structure' || prop.variant !== variant) continue
+      if (isWorldPropHidden(prop.id, runtime.current.destroyedWorldProps, runtime.current.beamObjects)) continue
+      position.set(prop.position.x, prop.position.y, prop.position.z)
+      euler.set(0, prop.rotation, 0)
       rotation.setFromEuler(euler)
-      // Keep the clutter inside the roof footprint on narrow buildings.
-      const fit = Math.min(1, Math.min(building.size.x, building.size.z) / 9)
-      scale.setScalar(0.55 + fit * 0.55)
+      scale.set(prop.scale.x, prop.scale.y, prop.scale.z)
       matrix.compose(position, rotation, scale)
       mesh.setMatrixAt(slot, matrix)
       // Roof props get a light metal/stone tint independent of the building's
       // facade palette, so no cyan roof variant can leak into the skyline.
-      mesh.setColorAt(slot, color.set(structureTints[seed % structureTints.length]!))
+      mesh.setColorAt(slot, color.set(structureTints[(slot + variant) % structureTints.length]!))
       slot += 1
     }
     mesh.count = slot
@@ -1780,6 +1897,11 @@ export const City = memo(function City() {
       {Array.from({ length: ROOF_STRUCTURE_VARIANTS }, (_, variant) => (
         <RoofStructurePool key={variant} variant={variant} />
       ))}
+      {Array.from({ length: ROOF_STRUCTURE_VARIANTS }, (_, variant) => (
+        <LiftedRoofStructurePool key={`lifted-${variant}`} variant={variant} />
+      ))}
+      <LiftedTreePool />
+      <LiftedUtilityPolePool />
       <CrosswalkPool />
       <StreetLightPool />
       <RoofBeaconPool />

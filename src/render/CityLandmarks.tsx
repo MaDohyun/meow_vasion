@@ -3,6 +3,7 @@ import { memo, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { useGame } from '../GameContext'
+import { BEAM_ABSORB_TIME } from '../core/beam'
 import { bulletinFor } from '../i18n'
 import { BUILDING, GROUND } from '../constants/palette'
 import {
@@ -10,7 +11,6 @@ import {
   hasBusStop,
   isNewsTower,
   isConvenienceStore,
-  lakeShoreTreesAround,
   landmarkId,
   newsScreenMount,
   NEWS_SCREEN_HEIGHT,
@@ -21,6 +21,16 @@ import {
   WORLD_CELL_SIZE,
   WORLD_MAX_BUILDINGS,
 } from '../core/world'
+import {
+  isWorldPropHidden,
+  parkTreesAround,
+  worldPropVisibilityKey,
+  worldPropsAround,
+  LANDMARK_CELL_COUNT,
+  LANDMARK_RADIUS_CELLS,
+  LAKE_SHORE_TREE_CAPACITY,
+  PARK_TREE_COUNT,
+} from '../core/worldProps'
 
 // The news anchor is the player-supplied portrait (public/broadcast/anchor.png),
 // not code-drawn - see drawAnchor below. Loaded once at module scope since
@@ -35,10 +45,6 @@ anchorImage.src = '/broadcast/anchor.png'
 const ufoSightingImage = new Image()
 ufoSightingImage.src = '/broadcast/ufo-sighting.webp'
 
-const LANDMARK_RADIUS_CELLS = 6
-const LANDMARK_CELL_COUNT = (LANDMARK_RADIUS_CELLS * 2 + 1) ** 2
-const PARK_TREE_COUNT = 3
-const LAKE_SHORE_TREE_CAPACITY = LANDMARK_CELL_COUNT * 2
 const MYSTERY_MARK_WIDTH = 25.5
 const MYSTERY_MARK_DEPTH = 23.3
 const MYSTERY_BEACON_HEIGHT = 68
@@ -546,32 +552,27 @@ function ParkPool() {
   useFrame(() => {
     if (!trunks.current || !crowns.current || !benches.current) return
     const world = runtime.current.world
-    const key = `${world.cellX}:${world.cellZ}`
+    const key = `${world.cellX}:${world.cellZ}|${worldPropVisibilityKey(runtime.current.destroyedWorldProps, runtime.current.beamObjects)}`
     if (key === lastKey.current) return
     lastKey.current = key
     let treeCount = 0
     let parkCount = 0
+    for (const tree of parkTreesAround(runtime.current.drone.position)) {
+      if (isWorldPropHidden(tree.id, runtime.current.destroyedWorldProps, runtime.current.beamObjects)) continue
+      position.set(tree.position.x, tree.height / 2, tree.position.z)
+      scale.set(0.72, tree.height, 0.72)
+      matrix.compose(position, rotation, scale)
+      trunks.current.setMatrixAt(treeCount, matrix)
+      position.set(tree.position.x, tree.height + 1.45, tree.position.z)
+      scale.setScalar(tree.crown)
+      matrix.compose(position, rotation, scale)
+      crowns.current.setMatrixAt(treeCount, matrix)
+      treeCount += 1
+    }
     for (const cell of groundCellsAround(runtime.current.drone.position, LANDMARK_RADIUS_CELLS)) {
       if (groundLandmarkForCell(cell) !== 'park') continue
       const centerX = (cell.cellX + 0.5) * WORLD_CELL_SIZE
       const centerZ = (cell.cellZ + 0.5) * WORLD_CELL_SIZE
-      for (let tree = 0; tree < PARK_TREE_COUNT; tree += 1) {
-        const seed = seedForWorldCell(cell.cellX, cell.cellZ, 0x7ee00 + tree)
-        const angle = (seed % 1000) / 1000 * Math.PI * 2
-        const radius = 4.5 + ((seed >>> 12) % 55) / 10
-        const x = centerX + Math.cos(angle) * radius
-        const z = centerZ + Math.sin(angle) * radius
-        const height = 2.7 + ((seed >>> 19) % 8) * 0.12
-        position.set(x, height / 2, z)
-        scale.set(0.72, height, 0.72)
-        matrix.compose(position, rotation, scale)
-        trunks.current.setMatrixAt(treeCount, matrix)
-        position.set(x, height + 1.45, z)
-        scale.setScalar(2.2 + ((seed >>> 23) % 5) * 0.16)
-        matrix.compose(position, rotation, scale)
-        crowns.current.setMatrixAt(treeCount, matrix)
-        treeCount += 1
-      }
       const benchSeed = seedForWorldCell(cell.cellX, cell.cellZ, 0xbec44)
       position.set(centerX, 0, centerZ + 3.5)
       euler.set(0, (benchSeed % 4) * Math.PI / 2, 0)
@@ -584,14 +585,16 @@ function ParkPool() {
     // The lake is no longer an abrupt sheet of water in a dense city. These
     // small dry-bank trees reuse the same fixed instanced meshes as park trees
     // and stay inset from all road strips.
-    for (const tree of lakeShoreTreesAround(runtime.current.drone.position, LANDMARK_RADIUS_CELLS)) {
+    for (const tree of worldPropsAround(runtime.current.world, runtime.current.drone.position).filter((prop) => prop.kind === 'tree' && prop.id.startsWith('tree:lake:'))) {
       if (treeCount >= LANDMARK_CELL_COUNT * PARK_TREE_COUNT + LAKE_SHORE_TREE_CAPACITY) break
-      position.set(tree.x, tree.height / 2, tree.z)
-      scale.set(0.5, tree.height, 0.5)
+      if (isWorldPropHidden(tree.id, runtime.current.destroyedWorldProps, runtime.current.beamObjects)) continue
+      const height = tree.height ?? 1.8
+      position.set(tree.position.x, height / 2, tree.position.z)
+      scale.set(0.5, height, 0.5)
       matrix.compose(position, rotation, scale)
       trunks.current.setMatrixAt(treeCount, matrix)
-      position.set(tree.x, tree.height + 0.92, tree.z)
-      scale.setScalar(tree.crown)
+      position.set(tree.position.x, height + 0.92, tree.position.z)
+      scale.setScalar(tree.crown ?? 1.45)
       matrix.compose(position, rotation, scale)
       crowns.current.setMatrixAt(treeCount, matrix)
       treeCount += 1
@@ -822,6 +825,71 @@ const communicationsWhiteMaterial = withLandmarkGlow(
   0.18,
 )
 
+function LiftedPowerPylonPool() {
+  const { runtime } = useGame()
+  const ref = useRef<THREE.InstancedMesh>(null)
+  const matrix = useMemo(() => new THREE.Matrix4(), [])
+  const position = useMemo(() => new THREE.Vector3(), [])
+  const scale = useMemo(() => new THREE.Vector3(), [])
+  const rotation = useMemo(() => new THREE.Quaternion(), [])
+  const euler = useMemo(() => new THREE.Euler(), [])
+  const color = useMemo(() => new THREE.Color(), [])
+  useFrame(() => {
+    const mesh = ref.current
+    if (!mesh) return
+    let count = 0
+    for (const object of runtime.current.beamObjects) {
+      if (!object.active || object.kind !== 'power-pylon') continue
+      if (count >= LANDMARK_CELL_COUNT) break
+      const swallow = object.absorbing ? Math.max(0.05, object.absorbTimer / BEAM_ABSORB_TIME) : 1
+      position.set(object.position.x, object.position.y, object.position.z)
+      euler.set(object.rotation.x, object.rotation.y, object.rotation.z)
+      rotation.setFromEuler(euler)
+      scale.set(object.scale?.x ?? 1, object.scale?.y ?? 1, object.scale?.z ?? 1).multiplyScalar(swallow)
+      matrix.compose(position, rotation, scale)
+      mesh.setMatrixAt(count, matrix)
+      mesh.setColorAt(count, color.set('#f2f1e7'))
+      count += 1
+    }
+    mesh.count = count
+    mesh.instanceMatrix.needsUpdate = true
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
+  })
+  return <instancedMesh ref={ref} args={[pylonGeometry, undefined, LANDMARK_CELL_COUNT]} frustumCulled={false} renderOrder={2} onUpdate={(mesh) => { mesh.count = 0 }}>
+    <meshToonMaterial color="#ffffff" />
+  </instancedMesh>
+}
+
+function LiftedCommunicationsPool({ paint }: { paint: 'red' | 'white' }) {
+  const { runtime } = useGame()
+  const ref = useRef<THREE.InstancedMesh>(null)
+  const matrix = useMemo(() => new THREE.Matrix4(), [])
+  const position = useMemo(() => new THREE.Vector3(), [])
+  const scale = useMemo(() => new THREE.Vector3(), [])
+  const rotation = useMemo(() => new THREE.Quaternion(), [])
+  const euler = useMemo(() => new THREE.Euler(), [])
+  useFrame(() => {
+    const mesh = ref.current
+    if (!mesh) return
+    let count = 0
+    for (const object of runtime.current.beamObjects) {
+      if (!object.active || object.kind !== 'communications') continue
+      if (count >= LANDMARK_CELL_COUNT) break
+      const swallow = object.absorbing ? Math.max(0.05, object.absorbTimer / BEAM_ABSORB_TIME) : 1
+      position.set(object.position.x, object.position.y, object.position.z)
+      euler.set(object.rotation.x, object.rotation.y, object.rotation.z)
+      rotation.setFromEuler(euler)
+      scale.set(object.scale?.x ?? 1, object.scale?.y ?? 1, object.scale?.z ?? 1).multiplyScalar(swallow)
+      matrix.compose(position, rotation, scale)
+      mesh.setMatrixAt(count, matrix)
+      count += 1
+    }
+    mesh.count = count
+    mesh.instanceMatrix.needsUpdate = true
+  })
+  return <instancedMesh ref={ref} args={[paint === 'red' ? communicationsRedGeometry : communicationsWhiteGeometry, paint === 'red' ? communicationsRedMaterial : communicationsWhiteMaterial, LANDMARK_CELL_COUNT]} frustumCulled={false} renderOrder={2} onUpdate={(mesh) => { mesh.count = 0 }} />
+}
+
 function TransitUtilityPool() {
   const { runtime } = useGame()
   const subway = useRef<THREE.InstancedMesh>(null)
@@ -845,7 +913,7 @@ function TransitUtilityPool() {
     if (!subway.current || !subwayOpenings.current || !subwaySigns.current || !busStops.current || !busSigns.current || !pylons.current) return
     if (!gasStations.current || !gasBands.current || !communicationsRed.current || !communicationsWhite.current) return
     const world = runtime.current.world
-    const key = `${world.cellX}:${world.cellZ}:${runtime.current.destroyedLandmarks.size}`
+    const key = `${world.cellX}:${world.cellZ}:${runtime.current.destroyedLandmarks.size}|${worldPropVisibilityKey(runtime.current.destroyedWorldProps, runtime.current.beamObjects)}`
     if (key === lastKey.current) return
     lastKey.current = key
     let subwayCount = 0
@@ -887,6 +955,8 @@ function TransitUtilityPool() {
         gasBands.current.setMatrixAt(gasCount, matrix)
         gasCount += 1
       } else if (landmark === 'communications') {
+        const id = landmarkId(landmark, cell.cellX, cell.cellZ)
+        if (isWorldPropHidden(id, runtime.current.destroyedWorldProps, runtime.current.beamObjects)) continue
         position.set(centerX, 0, centerZ)
         scale.setScalar(1)
         matrix.compose(position, rotation, scale)
@@ -894,6 +964,8 @@ function TransitUtilityPool() {
         communicationsWhite.current.setMatrixAt(communicationsCount, matrix)
         communicationsCount += 1
       } else {
+        const id = `power-pylon:${cell.cellX}:${cell.cellZ}`
+        if (isWorldPropHidden(id, runtime.current.destroyedWorldProps, runtime.current.beamObjects)) continue
         position.set(centerX, 0, centerZ)
         scale.setScalar(1)
         matrix.compose(position, rotation, scale)
@@ -955,6 +1027,9 @@ function TransitUtilityPool() {
       <instancedMesh ref={gasBands} args={[gasStationBandGeometry, gasStationCanopyMaterial, LANDMARK_CELL_COUNT]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }} />
       <instancedMesh ref={communicationsRed} args={[communicationsRedGeometry, communicationsRedMaterial, LANDMARK_CELL_COUNT]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }} />
       <instancedMesh ref={communicationsWhite} args={[communicationsWhiteGeometry, communicationsWhiteMaterial, LANDMARK_CELL_COUNT]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }} />
+      <LiftedPowerPylonPool />
+      <LiftedCommunicationsPool paint="red" />
+      <LiftedCommunicationsPool paint="white" />
     </group>
   )
 }

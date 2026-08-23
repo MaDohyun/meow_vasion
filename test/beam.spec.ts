@@ -242,6 +242,7 @@ describe('integer lifting ladder', () => {
     beam.gripStrength = 5
     for (let frame = 0; frame < 120; frame += 1) stepBeamObjects([object], beam, 1 / 60)
     expect(object.position.y).toBeCloseTo(0.65)
+    expect(object.tether).toBe(0)
   })
 
   it('makes each liftable band visibly slower than the previous one', () => {

@@ -3,7 +3,6 @@ import { useGame } from '../GameContext'
 import { LANGUAGES, LANGUAGE_LABELS, bulletinFor, formatMessage } from '../i18n'
 import { broadcastPhase, broadcastProgress } from '../core/broadcast'
 import { UPGRADE_DEFINITIONS, type UpgradeId } from '../core/upgrades'
-import type { MissionQuestId } from '../core/missions'
 import { Radar } from './Radar'
 import { pilotFrameStyle } from '../render/pilotArt'
 import { startLobbyMusic, unlockAudio } from '../audio'
@@ -13,43 +12,25 @@ const formatTime = (seconds: number) => {
   return `${Math.floor(safe / 60)}:${String(safe % 60).padStart(2, '0')}`
 }
 
-const MISSION_COPY: Record<MissionQuestId, string> = {
-  'capture-cats': '동포 고양이 구출! (아직 지구에 남은 동료가 있어)',
-  'capture-people': '지구인 표본 챙기기',
-  'destroy-cars': '승용차를 깡통으로 만들기',
-  'destroy-trucks': '트럭 해체 쇼',
-  'absorb-water': '호수 물 쪽 빨아보기',
-  'ruin-buildings': '건물을 폐허로 리모델링',
-  'destroy-gas-station': '주유소 불꽃놀이',
-  'destroy-comms': '지구 통신 끊어놓기',
-  'destroy-drones': '드론은 Q 연속 레이저로 톡톡',
-  'destroy-fighters': '전투기 격추하기',
-  'pass-mystery-circles': '서로 다른 미스터리 서클 지나가기',
-  'air-checkpoints': '원모양 체크 포인트로 이동하여 대기하세요',
-  'destroy-battleship': '저 큰 전함 치우기',
-  'reach-score': '보고서용 점수 채우기',
-  'survive-final': '퇴근 시간까지 버티기',
-}
-
 function MissionPanel() {
-  const { snapshot } = useGame()
+  const { snapshot, t } = useGame()
   if (snapshot.tutorial) {
     return (
       <section className="mission-panel panel tutorial-mission">
-        <span className="eyebrow">장군의 첫 무전</span>
-        <strong>“대원, 공원에 남은 동포 고양이부터 구출해 봐.”</strong>
-        <p><b>E</b> 트랙터 빔으로 고양이 구출</p>
+        <span className="eyebrow">{t.tutorialMissionEyebrow}</span>
+        <strong>{t.tutorialMissionLead}</strong>
+        <p><b>E</b> {t.tutorialMissionAction}</p>
       </section>
     )
   }
   if (snapshot.missionStage < 1) return null
   return (
     <section className={`mission-panel panel ${snapshot.missionPulse > 0 ? 'mission-pulse' : ''}`}>
-      <span className="eyebrow">미션 {Math.min(3, snapshot.missionStage)}</span>
+      <span className="eyebrow">{t.mission} {Math.min(3, snapshot.missionStage)}</span>
       {snapshot.missionQuests.map((quest) => (
         <div key={quest.id} data-complete={quest.complete}>
           <i>{quest.complete ? '✓' : '·'}</i>
-          <span>{MISSION_COPY[quest.id]}</span>
+          <span>{t.missionCopy[quest.id]}</span>
           <b>{Math.floor(quest.progress)}/{Math.floor(quest.target)}</b>
         </div>
       ))}
@@ -212,59 +193,12 @@ function Intro() {
         <span><b>A/D</b> {t.controlStrafe}</span>
         <span><b>MOUSE</b> {t.controlAim}</span>
         <span><b>E</b> {t.controlBeam}</span>
-        <span><b>Q</b> {t.controlLaser} · HOLD</span>
+        <span><b>Q</b> {t.controlLaser} · {t.hold}</span>
         <span><b>SPACE</b> {t.controlBoost}</span>
       </div>
     </div>
   )
 }
-
-type BriefingStep = {
-  lines: string[]
-  /** Steps without `wait` and without `auto` advance on click. */
-  wait?: 'beam'
-  auto?: number
-}
-
-const BRIEFING_STEPS: BriefingStep[] = [
-  {
-   lines: [
-    '대원, 작전에 들어간다. 대원의 임무는 지구라는 별의 정찰대 임무다.',
-    '지구에서 많은 샘플을 가지고 돌아오도록!',
-  ],
-},
-{
-  lines: [
-    'E 버튼을 누르면 빔 조작을 통해 고양이 동무를 구출하거나 물체를 흡수할 수 있다.',
-    '우리 우주선은 물체를 흡수할수록 몸집이 커지니 가능한 한 많은 물체를 흡수하도록!',
-  ],
-},
-{
-  lines: ['Q 버튼을 누르면 레이저를 쏘아 적을 무찌를 수 있다!', '위급할 때 쓰도록!'],
-},
-{
-  lines: [
-    '스페이스 버튼을 누르면 우주선의 터보를 쓸 수 있다!',
-    '하지만 쓸 수 있는 시간은 정해져 있으니 주의해서 쓰도록!',
-  ],
-},
-{
-  lines: ['대원, 첫 임무다. 저 고양이를 구출해 봐. E 키를 꾹 누르고 있으면 돼.'],
-  wait: 'beam',
-},
-{
-  lines: ['좋아, 합격이다.', '명심해라, 대원. 너무 많은 물건을 흡수하려고 하면 우주선이 추락하고 만다.'],
-  auto: 4.6,
-},
-{
-  lines: [
-    '왼쪽에 대원이 달성해야 할 임무들을 표시해 두었다.',
-    '아 참, 대원을 위해 우리 동지들의 표식을 지구 곳곳에 준비했으니 발견하면 지나가 보도록!',
-    '그럼 행운을 빈다.',
-    ],
-    auto: 5.2,
-  },
-]
 
 /**
  * The general's briefing, run once at the start of a tutorial.
@@ -276,9 +210,10 @@ const BRIEFING_STEPS: BriefingStep[] = [
  * advance on their own so they never block the player's hands.
  */
 function BossBriefing() {
-  const { snapshot, unlockTutorialBeam } = useGame()
+  const { snapshot, unlockTutorialBeam, t } = useGame()
   const [step, setStep] = useState(0)
   const [done, setDone] = useState(false)
+  const steps = t.tutorialBriefing
 
   useEffect(() => {
     // E is inert in the simulation until this fires (see beamUnlocked in
@@ -294,11 +229,11 @@ function BossBriefing() {
 
   useEffect(() => {
     if (done) return
-    const auto = BRIEFING_STEPS[step]?.auto
+    const auto = steps[step]?.auto
     if (!auto) return
     const timer = window.setTimeout(() => {
       setStep((current) => {
-        if (current >= BRIEFING_STEPS.length - 1) {
+        if (current >= steps.length - 1) {
           setDone(true)
           return current
         }
@@ -306,16 +241,16 @@ function BossBriefing() {
       })
     }, auto * 1000)
     return () => window.clearTimeout(timer)
-  }, [step, done])
+  }, [step, done, steps])
 
   if (done) return null
-  const current = BRIEFING_STEPS[step]
+  const current = steps[step]
   if (!current) return null
 
   const clickable = !current.wait && !current.auto
   const advance = () => {
     if (!clickable) return
-    setStep((s) => Math.min(s + 1, BRIEFING_STEPS.length - 1))
+    setStep((s) => Math.min(s + 1, steps.length - 1))
   }
   const skip = (event: { stopPropagation: () => void }) => {
     event.stopPropagation()
@@ -327,14 +262,14 @@ function BossBriefing() {
       <div className="briefing-box">
         <div className="briefing-portrait" aria-hidden="true" />
         <div className="briefing-panel">
-          <span className="eyebrow">장군의 무전</span>
+          <span className="eyebrow">{t.briefingTitle}</span>
           {current.lines.map((line, index) => (
             <p key={index}>{line}</p>
           ))}
-          {clickable && <span className="briefing-hint">화면을 클릭해서 계속</span>}
+          {clickable && <span className="briefing-hint">{t.briefingContinue}</span>}
           {step === 0 && (
             <button type="button" className="briefing-skip" onClick={skip}>
-              건너뛰기
+              {t.briefingSkip}
             </button>
           )}
         </div>
@@ -478,7 +413,7 @@ export function Hud() {
               {Array.from({ length: snapshot.shieldMax }, (_, pip) => (
                 <i key={pip} data-state={snapshot.shield >= pip + 1 ? 'full' : snapshot.shield > pip ? 'part' : 'empty'} />
               ))}
-              <b>쉴드 {snapshot.shield.toFixed(1)}/{snapshot.shieldMax}</b>
+              <b>{t.shield} {snapshot.shield.toFixed(1)}/{snapshot.shieldMax}</b>
             </div>
           )}
           <small>
@@ -510,7 +445,13 @@ export function Hud() {
         )}
 
         <div className="hud-center">
-          {snapshot.missionBanner && <div className="mission-banner">{snapshot.missionBanner}</div>}
+          {snapshot.missionBanner && (
+            <div className="mission-banner">
+              {snapshot.missionBanner.type === 'stage-complete'
+                ? t.missionStageComplete(snapshot.missionBanner.previousStage, snapshot.missionBanner.nextStage)
+                : t.reconComplete}
+            </div>
+          )}
           {(snapshot.messageKey || snapshot.message) && (
             <div className="message">
               {snapshot.messageKey ? formatMessage(t, snapshot.messageKey, snapshot.messageArg) : snapshot.message}

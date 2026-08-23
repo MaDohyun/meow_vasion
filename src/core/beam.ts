@@ -2,8 +2,22 @@ import type { Aabb, Vec3 } from './drone'
 
 export type BeamObjectKind =
   | 'car' | 'truck' | 'pedestrian' | 'cat' | 'explosive' | 'building'
+  | 'rooftop-structure' | 'tree' | 'utility-pole' | 'power-pylon' | 'communications'
   | 'drone' | 'police' | 'police-car' | 'helicopter' | 'soldier'
   | 'fighter' | 'anti-air' | 'tank' | 'boss'
+
+export type BeamWorldProp = {
+  id: string
+  kind: 'rooftop-structure' | 'tree' | 'utility-pole' | 'power-pylon' | 'communications'
+  position: Vec3
+  rotation: number
+  scale: Vec3
+  variant: number
+  /** The building a rooftop structure belongs to, while remaining separate. */
+  buildingId?: string
+  height?: number
+  crown?: number
+}
 
 export const BEAM_ABSORB_TIME = 0.24
 
@@ -51,6 +65,11 @@ const DEFAULT_DIAMETER: Record<BeamObjectKind, number> = {
   tank: 4.8,
   explosive: 5.1,
   'anti-air': 5.2,
+  'rooftop-structure': 6.2,
+  tree: 4.4,
+  'utility-pole': 2.8,
+  'power-pylon': 7.2,
+  communications: 12,
   // The battleship's beam width. Only a fallback - it is excluded by kind
   // below, so this figure never decides anything.
   boss: 16,
@@ -111,6 +130,8 @@ export type BeamObject = {
   beamImmune?: boolean
   /** False for AI actors that should resume their own motion after release. */
   freePhysics?: boolean
+  /** Procedural city prop metadata used by the static and lifted render pools. */
+  worldProp?: BeamWorldProp
 }
 
 export type BeamField = {

@@ -1,4 +1,5 @@
 import type { UpgradeId } from './core/upgrades'
+import type { MissionQuestId } from './core/missions'
 /**
  * UI strings, in one dictionary.
  *
@@ -78,6 +79,19 @@ type Strings = {
   threats: string
   pilotCam: string
   tutorialPressE: string
+  hold: string
+  mission: string
+  missionCopy: Record<MissionQuestId, string>
+  tutorialMissionEyebrow: string
+  tutorialMissionLead: string
+  tutorialMissionAction: string
+  briefingTitle: string
+  briefingContinue: string
+  briefingSkip: string
+  tutorialBriefing: readonly TutorialBriefingStep[]
+  missionStageComplete: (previous: number, next: number) => string
+  reconComplete: string
+  shield: string
   radar: string
   survivedTitle: string
   collapsedTitle: string
@@ -111,6 +125,12 @@ type Strings = {
   upgradeLevel: string
   upgradeMaxed: string
   upgrades: Record<UpgradeId, UpgradeCopy>
+}
+
+export type TutorialBriefingStep = {
+  lines: readonly string[]
+  wait?: 'beam'
+  auto?: number
 }
 
 /** One upgrade card's wording. The card itself is data in core/upgrades. */
@@ -199,6 +219,43 @@ export const STRINGS: Record<Language, Strings> = {
     threats: '위협',
     pilotCam: '파일럿',
     tutorialPressE: '눌러서 구출',
+    hold: '누르고 있기',
+    mission: '미션',
+    missionCopy: {
+      'capture-cats': '동포 고양이 구출! (아직 지구에 남은 동료가 있어)',
+      'capture-people': '지구인 표본 챙기기',
+      'destroy-cars': '승용차를 깡통으로 만들기',
+      'destroy-trucks': '트럭 해체 쇼',
+      'absorb-water': '호수 물 쪽 빨아보기',
+      'ruin-buildings': '건물을 폐허로 리모델링',
+      'destroy-gas-station': '주유소 불꽃놀이',
+      'destroy-comms': '지구 통신 끊어놓기',
+      'destroy-drones': '드론은 Q 연속 레이저로 톡톡',
+      'destroy-fighters': '전투기 격추하기',
+      'pass-mystery-circles': '서로 다른 미스터리 서클 지나가기',
+      'air-checkpoints': '원모양 체크 포인트로 이동하여 대기하세요',
+      'destroy-battleship': '저 큰 전함 치우기',
+      'reach-score': '보고서용 점수 채우기',
+      'survive-final': '퇴근 시간까지 버티기',
+    },
+    tutorialMissionEyebrow: '장군의 첫 무전',
+    tutorialMissionLead: '“대원, 공원에 남은 동포 고양이부터 구출해 봐.”',
+    tutorialMissionAction: '트랙터 빔으로 고양이 구출',
+    briefingTitle: '장군의 무전',
+    briefingContinue: '화면을 클릭해서 계속',
+    briefingSkip: '건너뛰기',
+    tutorialBriefing: [
+      { lines: ['대원, 작전에 들어간다. 대원의 임무는 지구라는 별의 정찰대 임무다.', '지구에서 많은 샘플을 가지고 돌아오도록!'] },
+      { lines: ['E 버튼을 누르면 빔 조작을 통해 고양이 동무를 구출하거나 물체를 흡수할 수 있다.', '우리 우주선은 물체를 흡수할수록 몸집이 커지니 가능한 한 많은 물체를 흡수하도록!'] },
+      { lines: ['Q 버튼을 누르면 레이저를 쏘아 적을 무찌를 수 있다!', '위급할 때 쓰도록!'] },
+      { lines: ['스페이스 버튼을 누르면 우주선의 터보를 쓸 수 있다!', '하지만 쓸 수 있는 시간은 정해져 있으니 주의해서 쓰도록!'] },
+      { lines: ['대원, 첫 임무다. 저 고양이를 구출해 봐. E 키를 꾹 누르고 있으면 돼.'], wait: 'beam' },
+      { lines: ['좋아, 합격이다.', '명심해라, 대원. 너무 많은 물건을 흡수하려고 하면 우주선이 추락하고 만다.'], auto: 4.6 },
+      { lines: ['왼쪽에 대원이 달성해야 할 임무들을 표시해 두었다.', '아 참, 대원을 위해 우리 동지들의 표식을 지구 곳곳에 준비했으니 발견하면 지나가 보도록!', '그럼 행운을 빈다.'], auto: 5.2 },
+    ],
+    missionStageComplete: (previous, next) => `미션 ${previous} 완료 · 미션 ${next}, 골라서 해!`,
+    reconComplete: '지구 정찰 완료 · 장군님 퇴근 준비 끝!',
+    shield: '쉴드',
     radar: '주변 탐지 · 실시간',
     survivedTitle: '지구 정찰 완료',
     collapsedTitle: '지구가 좀 치네?',
@@ -300,6 +357,43 @@ export const STRINGS: Record<Language, Strings> = {
     threats: '脅威',
     pilotCam: 'パイロット',
     tutorialPressE: '押して救出',
+    hold: '長押し',
+    mission: 'ミッション',
+    missionCopy: {
+      'capture-cats': '仲間の猫を救出！ (まだ地球に仲間がいる)',
+      'capture-people': '地球人の標本を集める',
+      'destroy-cars': '乗用車をブリキにする',
+      'destroy-trucks': 'トラック解体ショー',
+      'absorb-water': '湖の水を吸い上げる',
+      'ruin-buildings': '建物を廃墟にリフォーム',
+      'destroy-gas-station': 'ガソリンスタンド花火',
+      'destroy-comms': '地球の通信を断つ',
+      'destroy-drones': 'ドローンをQの連続レーザーで撃つ',
+      'destroy-fighters': '戦闘機を撃墜する',
+      'pass-mystery-circles': '別々のミステリーサークルを通過する',
+      'air-checkpoints': '円形チェックポイントへ移動して待機する',
+      'destroy-battleship': 'あの大きな戦艦を片付ける',
+      'reach-score': '報告用スコアを稼ぐ',
+      'survive-final': '退勤時間まで生き残る',
+    },
+    tutorialMissionEyebrow: '将軍の最初の通信',
+    tutorialMissionLead: '「隊員、公園に残った仲間の猫から救出してみろ。」',
+    tutorialMissionAction: 'トラクタービームで猫を救出',
+    briefingTitle: '将軍の通信',
+    briefingContinue: '画面をクリックして続ける',
+    briefingSkip: 'スキップ',
+    tutorialBriefing: [
+      { lines: ['隊員、作戦を開始する。君の任務は地球という星の偵察だ。', '地球からできるだけ多くのサンプルを持ち帰れ！'] },
+      { lines: ['Eボタンでビームを操作し、仲間の猫を救出したり物体を吸収できる。', '物体を吸収するほど機体は大きくなる。できるだけ多く吸収しろ！'] },
+      { lines: ['Qボタンでレーザーを撃ち、敵を倒せる！', '緊急時に使うんだ！'] },
+      { lines: ['スペースボタンで機体のターボを使える！', '使える時間には限りがある。慎重に使え！'] },
+      { lines: ['隊員、最初の任務だ。あの猫を救出しろ。Eキーを長押しだ。'], wait: 'beam' },
+      { lines: ['よし、合格だ。', 'いいか、物体を吸収しすぎると宇宙船は墜落する。'], auto: 4.6 },
+      { lines: ['左側に達成すべき任務を表示している。', 'そうだ、仲間の印を地球各地に用意した。見つけたら通過してみろ！', '幸運を祈る。'], auto: 5.2 },
+    ],
+    missionStageComplete: (previous, next) => `ミッション${previous}完了 · ミッション${next}、好きなものを選べ！`,
+    reconComplete: '地球偵察完了 · 将軍も帰宅準備完了！',
+    shield: 'シールド',
     radar: '周辺探知・リアルタイム',
     survivedTitle: '地球偵察完了',
     collapsedTitle: '地球、意外とやるな',
@@ -401,6 +495,43 @@ export const STRINGS: Record<Language, Strings> = {
     threats: 'THREATS',
     pilotCam: 'PILOT CAM',
     tutorialPressE: 'HOLD TO RESCUE',
+    hold: 'HOLD',
+    mission: 'MISSION',
+    missionCopy: {
+      'capture-cats': 'RESCUE ALLIED CATS! (YOUR CREW IS STILL DOWN THERE)',
+      'capture-people': 'COLLECT HUMAN SAMPLES',
+      'destroy-cars': 'TURN SEDANS INTO SCRAP',
+      'destroy-trucks': 'PUT ON A TRUCK DISASSEMBLY SHOW',
+      'absorb-water': 'SUCK UP LAKE WATER',
+      'ruin-buildings': 'REMODEL BUILDINGS INTO RUINS',
+      'destroy-gas-station': 'GAS STATION FIREWORKS',
+      'destroy-comms': 'CUT EARTH COMMUNICATIONS',
+      'destroy-drones': 'TAP DRONES WITH Q LASERS',
+      'destroy-fighters': 'SHOOT DOWN FIGHTERS',
+      'pass-mystery-circles': 'PASS THROUGH DIFFERENT MYSTERY CIRCLES',
+      'air-checkpoints': 'MOVE TO THE ROUND CHECKPOINT AND WAIT',
+      'destroy-battleship': 'TAKE OUT THAT BIG BATTLESHIP',
+      'reach-score': 'FILL THE REPORT SCORE',
+      'survive-final': 'SURVIVE UNTIL QUITTING TIME',
+    },
+    tutorialMissionEyebrow: "THE GENERAL'S FIRST TRANSMISSION",
+    tutorialMissionLead: '“Soldier, start by rescuing the allied cat left in the park.”',
+    tutorialMissionAction: 'RESCUE THE CAT WITH THE TRACTOR BEAM',
+    briefingTitle: "THE GENERAL'S TRANSMISSION",
+    briefingContinue: 'CLICK THE SCREEN TO CONTINUE',
+    briefingSkip: 'SKIP',
+    tutorialBriefing: [
+      { lines: ['Soldier, begin the operation. Your mission is to recon the planet called Earth.', 'Bring back as many samples from Earth as you can!'] },
+      { lines: ['Press E to use the beam to rescue allied cats or absorb objects.', 'The craft grows as it absorbs objects, so absorb as many as possible!'] },
+      { lines: ['Press Q to fire the laser and defeat enemies!', 'Save it for emergencies!'] },
+      { lines: ['Press SPACE to use the craft\'s turbo!', 'Turbo time is limited, so use it carefully!'] },
+      { lines: ['Soldier, this is your first mission. Rescue that cat. HOLD E.'], wait: 'beam' },
+      { lines: ['Good, you pass.', 'Remember: absorb too much and the spacecraft will crash.'], auto: 4.6 },
+      { lines: ['Your objectives are displayed on the left.', 'We placed allied marks all over Earth. Pass through them when you find them!', 'Good luck.'], auto: 5.2 },
+    ],
+    missionStageComplete: (previous, next) => `MISSION ${previous} COMPLETE · MISSION ${next}, PICK YOUR OBJECTIVES!`,
+    reconComplete: 'EARTH RECON COMPLETE · THE GENERAL IS READY TO CLOCK OUT!',
+    shield: 'SHIELD',
     radar: 'LOCAL GRID · LIVE',
     survivedTitle: 'EARTH RECON COMPLETE',
     collapsedTitle: 'EARTH HAD NOTES',
