@@ -1590,15 +1590,24 @@ void main() {
     * sin(vLocal.y * 5.3 + vSeed * 1.7)
     * sin(vLocal.z * 6.7 + vSeed * 2.3);
 
-  vec3 core  = vec3(4.2, 3.1, 1.4);
-  vec3 flame = vec3(2.6, 0.80, 0.10);
-  vec3 ember = vec3(0.72, 0.15, 0.03);
+  // Kept in the city's own amber, not pushed to white.
+  //
+  // Bloom in PostFx keys on luminance, so the way to make a core glow is to
+  // put it over the threshold - but raising all three channels to get there
+  // clips to white and the fire loses its colour, which is what turned the
+  // middle of a blast into a flat blown-out disc. Red and green carry it
+  // instead and blue is held well down, so the core saturates to the warm
+  // yellow the streetlights and signs already use and blooms on hue rather
+  // than on white.
+  vec3 core  = vec3(1.72, 1.16, 0.34);
+  vec3 flame = vec3(1.78, 0.70, 0.10);
+  vec3 ember = vec3(0.62, 0.15, 0.035);
   vec3 smoke = vec3(0.16, 0.145, 0.14);
-  vec3 tint = life < 0.26
-    ? mix(core, flame, life / 0.26)
-    : life < 0.58
-      ? mix(flame, ember, (life - 0.26) / 0.32)
-      : mix(ember, smoke, (life - 0.58) / 0.42);
+  vec3 tint = life < 0.18
+    ? mix(core, flame, life / 0.18)
+    : life < 0.56
+      ? mix(flame, ember, (life - 0.18) / 0.38)
+      : mix(ember, smoke, (life - 0.56) / 0.44);
 
   // Lit from above, which is what separates the crowns of the lobes from the
   // shadowed undersides and gives the cluster its depth.
@@ -1607,7 +1616,7 @@ void main() {
 
   // A hot edge while it is young: the fire wrapping around each lobe.
   float facing = abs(dot(normalize(vViewNormal), normalize(-vViewPosition)));
-  tint += flame * pow(1.0 - facing, 3.0) * (1.0 - life) * 0.9;
+  tint += flame * pow(1.0 - facing, 3.0) * (1.0 - life) * 0.45;
 
   float birth = smoothstep(0.0, 0.07, life);
   float death = 1.0 - smoothstep(0.68, 1.0, life);

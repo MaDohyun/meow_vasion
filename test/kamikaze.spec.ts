@@ -92,6 +92,25 @@ describe('suicide drones', () => {
     expect(mine.active).toBe(false)
   })
 
+  it('goes off the instant the hull touches it, with no fuse to run', () => {
+    // The fuse is what a player gets for entering the field and having a
+    // moment to leave it. Flying into the casing is not something to be given
+    // a moment for - a mine ticking under the hull for a third of a second
+    // read as a dud rather than as a hit.
+    const state = createEnemyState()
+    const mine = state.slots.find((enemy) => enemy.kind === 'drone')!
+    mine.active = true
+    mine.mode = 'fixed'
+    mine.hitRadius = DRONE_MINE_HIT_RADIUS
+    mine.position = { x: 0, y: 20, z: 0 }
+    mine.target = { x: 0, y: 20, z: 0 }
+
+    const craftRadius = 1.4
+    stepEnemies(state, { x: 0, y: 20, z: mine.hitRadius + craftRadius - 0.1 }, 1 / 60, undefined, craftRadius)
+    expect(state.mineExplosion?.radius).toBe(DRONE_MINE_BLAST_RADIUS)
+    expect(mine.active).toBe(false)
+  })
+
   it('makes a hovering mine bigger than a drone that is only passing through', () => {
     const { state } = droneWave()
     const mine = state.slots.find((enemy) => enemy.active && isDroneMine(enemy))!

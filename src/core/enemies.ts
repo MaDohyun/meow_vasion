@@ -966,7 +966,7 @@ function stepBattleshipGuns(state: EnemyState, enemy: EnemySlot, player: Vec3, p
   aimProjectile(state, enemy, player, playerVelocity, 'shell', PROJECTILE_SPEED.shell, 4, 0.42, TURRET_POINT)
 }
 
-export function stepEnemies(state: EnemyState, player: Vec3, dt: number, playerVelocity: Vec3 = STILL) {
+export function stepEnemies(state: EnemyState, player: Vec3, dt: number, playerVelocity: Vec3 = STILL, playerRadius = 1.4) {
   const d = Math.min(Math.max(0, dt), 0.05)
   state.mineExplosion = null
   for (const enemy of state.slots) {
@@ -974,10 +974,17 @@ export function stepEnemies(state: EnemyState, player: Vec3, dt: number, playerV
     const mine = enemy.kind === 'drone' && isDroneMine(enemy)
     if (mine) {
       const distance = distanceToPlayer(enemy, player)
-      if (!enemy.mineArmed && distance <= DRONE_MINE_BLAST_RADIUS) {
+      // Hitting the casing sets it off there and then. The fuse is what a
+      // player gets for entering the field and having a moment to leave it;
+      // flying into the thing itself is not something to be given a moment
+      // for, and a mine that sat ticking under the hull for a third of a
+      // second read as a dud rather than as a hit.
+      const struck = distance <= enemy.hitRadius + playerRadius
+      if (!enemy.mineArmed && (struck || distance <= DRONE_MINE_BLAST_RADIUS)) {
         enemy.mineArmed = true
         enemy.mineFuse = DRONE_MINE_FUSE
       }
+      if (struck) enemy.mineFuse = 0
       if (enemy.mineArmed) {
         enemy.mineFuse -= d
         if (enemy.mineFuse <= 0) {
