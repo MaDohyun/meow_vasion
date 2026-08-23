@@ -6,7 +6,7 @@ import { UPGRADE_DEFINITIONS, type UpgradeId } from '../core/upgrades'
 import { HowToPlay } from './HowToPlay'
 import { Radar } from './Radar'
 import { pilotFrameStyle } from '../render/pilotArt'
-import { getAudioVolumes, setBgmVolume, setSfxVolume, startLobbyMusic, unlockAudio } from '../audio'
+import { getAudioVolumes, setBgmVolume, setSfxVolume, startLobbyMusic, stopLobbyMusic, unlockAudio } from '../audio'
 
 const formatTime = (seconds: number) => {
   const safe = Math.max(0, Math.ceil(seconds))
@@ -195,18 +195,22 @@ function Intro() {
   const [optionsOpen, setOptionsOpen] = useState(false)
   const [howToOpen, setHowToOpen] = useState(false)
   useEffect(() => {
-    // Try immediately for browsers that permit it. Otherwise retry from the
-    // first intentional lobby input, which satisfies autoplay policy.
+    // Ask for the lobby track the moment the lobby is on screen. Where the
+    // browser refuses unmuted autoplay, audio.ts keeps asking from real lobby
+    // gestures until it plays - and drops the request the instant the game
+    // takes the mix, so the two tracks can never sound together.
     startLobbyMusic()
-    const enableMusic = () => {
-      unlockAudio()
-      startLobbyMusic()
-    }
-    window.addEventListener('pointerdown', enableMusic, { once: true })
-    window.addEventListener('keydown', enableMusic, { once: true })
+    // The effects graph is separate from the music elements and needs a
+    // gesture of its own before it will make a sound.
+    const unlockEffects = () => { unlockAudio() }
+    window.addEventListener('pointerdown', unlockEffects, { once: true })
+    window.addEventListener('keydown', unlockEffects, { once: true })
     return () => {
-      window.removeEventListener('pointerdown', enableMusic)
-      window.removeEventListener('keydown', enableMusic)
+      window.removeEventListener('pointerdown', unlockEffects)
+      window.removeEventListener('keydown', unlockEffects)
+      // Leaving the lobby by any route silences it; starting a run has already
+      // claimed the mix, so this only ever tidies up the lobby's own track.
+      stopLobbyMusic()
     }
   }, [])
   if (optionsOpen) return <Options onClose={() => setOptionsOpen(false)} />

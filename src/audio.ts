@@ -106,6 +106,25 @@ export function bgmTempoForWave(wave: number) {
   return BGM_BASE_TEMPO + Math.max(0, Math.min(7, Math.round(wave))) * 5
 }
 
+/**
+ * Exactly one background track may own the mix. Playback requests are
+ * asynchronous - a `play()` promise can settle long after the scene that asked
+ * for it is gone, and on mobile that gap is wide enough for a blocked lobby
+ * track to wake up underneath the gameplay track. Every deferred playback path
+ * re-reads this owner (and the generation it was issued under) before it is
+ * allowed to make a sound, so a late arrival stops itself instead of layering.
+ */
+type MusicTrack = 'lobby' | 'gameplay'
+let activeMusic: MusicTrack | null = null
+let musicGeneration = 0
+let lobbyPlayPending = false
+let lobbyUnlockBound = false
+
+/** Which background track currently owns the mix, or null in silence. */
+export function activeMusicTrack(): MusicTrack | null {
+  return activeMusic
+}
+
 function lobbyTrack() {
   if (typeof Audio === 'undefined') return null
   if (!lobbyMusic) {
@@ -176,50 +195,136 @@ function nearbyCatCryTrack() {
   return nearbyCatCrySound
 }
 
-/** Start as soon as the lobby is mounted. Browsers that block unmuted
- * autoplay still get the existing first-input retry from the intro screen. */
-export function startLobbyMusic() {
+/* Autoplay is refused until the browser has seen a real gesture, so the lobby
+ * keeps asking. `click` and `keyup` are deliberate: they arrive *after* the
+ * interface has handled the same interaction, so tapping Start never fires one
+ * more lobby request on the way into the game. `touchend` is the exception
+ * mobile Safari forces - it withholds `click` from plain scenery - so it is
+ * accepted only for touches that landed outside a control. */
+const LOBBY_UNLOCK_EVENTS = ['click', 'keyup', 'touchend'] as const
+const LOBBY_CONTROL_SELECTOR = 'button, a, input, select, [role="button"]'
+
+function touchedAControl(event?: Event) {
+  const target = event?.target as Element | null
+  if (!target || typeof target.closest !== 'function') return false
+  return target.closest(LOBBY_CONTROL_SELECTOR) !== null
+}
+
+function bindLobbyUnlock() {
+  if (typeof window === 'undefined' || lobbyUnlockBound) return
+  lobbyUnlockBound = true
+  for (const type of LOBBY_UNLOCK_EVENTS) window.addEventListener(type, retryLobbyMusic)
+  // Mobile browsers pause media when the page goes to the background and
+  // refuse to resume it while hidden; coming back is another chance to start.
+  if (typeof document !== 'undefined') document.addEventListener('visibilitychange', retryLobbyMusic)
+}
+
+function releaseLobbyUnlock() {
+  if (typeof window === 'undefined' || !lobbyUnlockBound) return
+  lobbyUnlockBound = false
+  for (const type of LOBBY_UNLOCK_EVENTS) window.removeEventListener(type, retryLobbyMusic)
+  if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', retryLobbyMusic)
+}
+
+function retryLobbyMusic(event?: Event) {
+  if (activeMusic !== 'lobby') {
+    releaseLobbyUnlock()
+    return
+  }
+  // `play()` resolving is not proof of sound; an element the browser silently
+  // re-paused is the case worth retrying, and a playing one is done.
+  if (lobbyMusic && !lobbyMusic.paused) {
+    releaseLobbyUnlock()
+    return
+  }
+  // A touch on a control is followed by the click the interface acts on. Let
+  // that click decide, so pressing Start never asks for the lobby track on the
+  // way into a run.
+  if (event?.type === 'touchend' && touchedAControl(event)) return
+  if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
+  requestLobbyPlayback()
+}
+
+function requestLobbyPlayback() {
   const track = lobbyTrack()
-  if (!track) return
-  track.autoplay = true
+  if (!track || lobbyPlayPending) return
   track.muted = false
-  // A newly-created Audio element may not have started fetching yet. Calling
-  // load here lets the autoplay hint and the immediate play attempt race as
-  // soon as the lobby is visible, without resetting an already-playing track.
+  track.autoplay = true
+  track.volume = LOBBY_MUSIC_VOLUME * bgmVolume
+  // A newly-created element may not have started fetching yet. Nudge it only
+  // while nothing has arrived, so a retry never restarts an in-flight fetch.
   if (track.readyState === 0) track.load()
-  void track.play().catch(() => {
-    // Some browsers allow a muted autoplay but reject the same call with
-    // sound. Use that permitted path as a best-effort bootstrap, then restore
-    // the lobby mix once playback has actually started. The first-input retry
-    // below remains the authoritative fallback where the browser forbids even
-    // this bootstrap.
-    track.muted = true
-    track.currentTime = 0
-    void track.play().then(() => {
-      const restoreVolume = () => { track.muted = false }
-      if (typeof requestAnimationFrame !== 'undefined') requestAnimationFrame(restoreVolume)
-      else setTimeout(restoreVolume, 0)
-    }).catch(() => { track.muted = false })
+  const generation = musicGeneration
+  lobbyPlayPending = true
+  void Promise.resolve(track.play()).then(() => {
+    lobbyPlayPending = false
+    if (generation !== musicGeneration || activeMusic !== 'lobby') {
+      // The player reached Start while this request was still in flight. The
+      // gameplay track owns the mix now, so this one bows out silently.
+      track.pause()
+      track.currentTime = 0
+      return
+    }
+    releaseLobbyUnlock()
+  }).catch(() => {
+    lobbyPlayPending = false
+    // Refused by autoplay policy, or aborted by our own stop. Retrying is only
+    // ever right in the first case, which is exactly when the lobby still owns
+    // the mix under the same generation.
+    if (generation === musicGeneration && activeMusic === 'lobby') bindLobbyUnlock()
   })
 }
 
+/** Start as soon as the lobby is mounted, and keep trying from real gestures
+ * for as long as the lobby is the track that should be playing. */
+export function startLobbyMusic() {
+  const track = lobbyTrack()
+  if (!track) return
+  if (activeMusic !== 'lobby') {
+    stopGameplayMusic()
+    activeMusic = 'lobby'
+    musicGeneration += 1
+  }
+  bindLobbyUnlock()
+  requestLobbyPlayback()
+}
+
 export function stopLobbyMusic() {
+  if (activeMusic === 'lobby') {
+    activeMusic = null
+    // Invalidate any request still in flight so it cannot resume behind us.
+    musicGeneration += 1
+  }
+  releaseLobbyUnlock()
   if (!lobbyMusic) return
+  // Clearing the hint keeps a late-arriving buffer from starting the track on
+  // the browser's own initiative once we have paused it.
+  lobbyMusic.autoplay = false
   lobbyMusic.pause()
   lobbyMusic.currentTime = 0
 }
 
 /** Start very quietly, then settle under the effects mix during active play. */
 export function startGameplayMusic() {
+  // Handing the mix over is the same act as taking the lobby track off it.
+  stopLobbyMusic()
   const track = gameplayTrack()
   if (!track) return
   if (gameplayFadeFrame !== null && typeof cancelAnimationFrame !== 'undefined') {
     cancelAnimationFrame(gameplayFadeFrame)
   }
   gameplayFadeFrame = null
+  activeMusic = 'gameplay'
+  musicGeneration += 1
+  const generation = musicGeneration
   gameplayMusicBaseVolume = GAMEPLAY_MUSIC_START_VOLUME
   track.volume = gameplayMusicBaseVolume * bgmVolume
-  void track.play().catch(() => undefined)
+  void Promise.resolve(track.play()).then(() => {
+    if (generation === musicGeneration && activeMusic === 'gameplay') return
+    // The run ended before the browser granted this request.
+    track.pause()
+    track.currentTime = 0
+  }).catch(() => undefined)
 
   if (typeof requestAnimationFrame === 'undefined') {
     gameplayMusicBaseVolume = GAMEPLAY_MUSIC_MAX_VOLUME
@@ -228,6 +333,10 @@ export function startGameplayMusic() {
   }
   const beganAt = performance.now()
   const fade = (now: number) => {
+    if (generation !== musicGeneration) {
+      gameplayFadeFrame = null
+      return
+    }
     const progress = Math.min(1, (now - beganAt) / (GAMEPLAY_MUSIC_FADE_SECONDS * 1000))
     gameplayMusicBaseVolume = GAMEPLAY_MUSIC_START_VOLUME
       + (GAMEPLAY_MUSIC_MAX_VOLUME - GAMEPLAY_MUSIC_START_VOLUME) * progress
@@ -239,6 +348,10 @@ export function startGameplayMusic() {
 }
 
 export function stopGameplayMusic() {
+  if (activeMusic === 'gameplay') {
+    activeMusic = null
+    musicGeneration += 1
+  }
   if (gameplayFadeFrame !== null && typeof cancelAnimationFrame !== 'undefined') {
     cancelAnimationFrame(gameplayFadeFrame)
   }
