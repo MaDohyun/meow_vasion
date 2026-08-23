@@ -31,15 +31,14 @@ function turningPoints(read: (elapsed: number) => number) {
 }
 
 describe('the turning sky', () => {
-  it('opens with the sun already low and closes back on the same evening', () => {
+  it('opens in the dark and closes back on the same night', () => {
     const start = sampleDaylight(0)
-    expect(start.phase).toBe('golden')
-    // Low, but still up: this is six in the evening, not dusk.
-    expect(start.sunAltitude).toBeGreaterThan(0)
-    expect(start.sunAltitude).toBeLessThan(0.4)
-    expect(start.starIntensity).toBe(0)
-    expect(start.sunOpacity).toBe(1)
-    expect(start.moonOpacity).toBe(0)
+    expect(start.phase).toBe('night')
+    // Sun well down, moon and stars up: the run starts after nightfall.
+    expect(start.sunAltitude).toBeLessThan(-0.4)
+    expect(start.starIntensity).toBeGreaterThan(0.9)
+    expect(start.sunOpacity).toBeLessThan(0.1)
+    expect(start.moonOpacity).toBeGreaterThan(0.9)
 
     // The ring closes on the keyframe it opened with, which is what lets the
     // cycle wrap instead of stopping.
@@ -52,10 +51,10 @@ describe('the turning sky', () => {
     expect(last.colors).toEqual(first.colors)
   })
 
-  it('runs the whole way round: evening, night, dawn, morning, noon, afternoon', () => {
-    // Moving the start to evening was about reaching the dark sooner, not
-    // about cutting the day in half. A sky that darkens and then sits still
-    // for the last stretch has stopped telling the time.
+  it('runs the whole way round: night, dawn, morning, noon, afternoon, dusk', () => {
+    // Opening in the dark was about the first and last frames, not about
+    // cutting the day out. A sky that darkens and then sits still for the last
+    // stretch has stopped telling the time.
     const labels = new Set<string>()
     for (let elapsed = 0; elapsed <= DAY_CYCLE_SECONDS; elapsed += 1) {
       labels.add(sampleDaylight(elapsed).label)
@@ -65,17 +64,28 @@ describe('the turning sky', () => {
     }
   })
 
-  it('gives a run two nights instead of one slow half-day', () => {
-    // Shortened so the light is always visibly on the move. Over a five-minute
-    // run the sky goes fully dark twice.
-    const nights: number[] = []
-    let wasDark = false
+  it('spends one day between two dark ends rather than idling in either', () => {
+    // Dark, then a whole day, then dark again - and the light visibly on the
+    // move the entire time in between.
+    let dark = 0
+    let light = 0
     for (let elapsed = 0; elapsed <= RUN_SECONDS; elapsed += 1) {
-      const dark = sampleDaylight(elapsed).nightFactor > 0.9
-      if (dark && !wasDark) nights.push(elapsed)
-      wasDark = dark
+      const night = sampleDaylight(elapsed).nightFactor
+      if (night > 0.9) dark += 1
+      if (night < 0.1) light += 1
     }
-    expect(nights.length).toBe(2)
+    expect(dark).toBeGreaterThan(RUN_SECONDS * 0.3)
+    expect(light).toBeGreaterThan(RUN_SECONDS * 0.05)
+    // Exactly one stretch of daylight, in the middle: the ring is one lap now,
+    // so a second one would mean the sky is turning twice as fast as intended.
+    let spells = 0
+    let wasLight = false
+    for (let elapsed = 0; elapsed <= RUN_SECONDS; elapsed += 1) {
+      const isLight = sampleDaylight(elapsed).nightFactor < 0.1
+      if (isLight && !wasLight) spells += 1
+      wasLight = isLight
+    }
+    expect(spells).toBe(1)
   })
 
   it('spends the longest stretch of a lap getting darker, not sitting dark', () => {
@@ -87,17 +97,20 @@ describe('the turning sky', () => {
       width: keyframe.at - DAYLIGHT_KEYFRAMES[index]!.at,
     }))
     const widest = spans.reduce((best, span) => (span.width > best.width ? span : best))
-    expect(widest.label).toBe('LATE NIGHT')
+    // The closing night: from nightfall to the end of the run, a third of the
+    // lap on its own, and the whole boss fight is inside it.
+    expect(widest.label).toBe('NIGHT')
     expect(widest.width).toBeGreaterThan(0.3)
 
-    const night = DAYLIGHT_KEYFRAMES.find((keyframe) => keyframe.label === 'NIGHT')!
-    const late = DAYLIGHT_KEYFRAMES.find((keyframe) => keyframe.label === 'LATE NIGHT')!
-    expect(late.ambientIntensity).toBeLessThan(night.ambientIntensity * 0.6)
-    expect(late.hemiIntensity).toBeLessThan(night.hemiIntensity * 0.6)
-    expect(late.fogFar).toBeLessThan(night.fogFar)
+    const nightfall = DAYLIGHT_KEYFRAMES.filter((keyframe) => keyframe.label === 'NIGHT')[1]!
+    const seam = DAYLIGHT_KEYFRAMES[DAYLIGHT_KEYFRAMES.length - 1]!
+    expect(seam.ambientIntensity).toBeLessThan(nightfall.ambientIntensity * 0.6)
+    expect(seam.hemiIntensity).toBeLessThan(nightfall.hemiIntensity * 0.6)
+    expect(seam.fogFar).toBeLessThan(nightfall.fogFar)
+    // And it is falling the whole way, not arriving dark and holding.
     let previous = Number.POSITIVE_INFINITY
-    for (let at = night.at; at <= late.at + 1e-9; at += 0.01) {
-      const ambient = sampleDaylight(at * DAY_CYCLE_SECONDS).ambientIntensity
+    for (let at = nightfall.at; at <= 1 + 1e-9; at += 0.01) {
+      const ambient = sampleDaylight(Math.min(at, 1) * DAY_CYCLE_SECONDS).ambientIntensity
       expect(ambient).toBeLessThanOrEqual(previous + 1e-9)
       previous = ambient
     }
@@ -133,37 +146,36 @@ describe('the turning sky', () => {
     // Down through the night, up over the day, and starting down again as the
     // ring closes: two turns for one whole day.
     expect(turningPoints((elapsed) => sampleDaylight(elapsed).sunAltitude)).toBe(2)
-    expect(sampleDaylight(DAY_CYCLE_SECONDS * 0.4).sunAltitude).toBeLessThan(0)
-    expect(sampleDaylight(DAY_CYCLE_SECONDS * 0.8).sunAltitude).toBeGreaterThan(0)
+    expect(sampleDaylight(DAY_CYCLE_SECONDS * 0.35).sunAltitude).toBeGreaterThan(0)
+    expect(sampleDaylight(DAY_CYCLE_SECONDS * 0.8).sunAltitude).toBeLessThan(0)
   })
 
-  it('opens on evening rather than on daylight', () => {
+  it('opens on night rather than on daylight', () => {
     // The first frames must not be a bright blue afternoon; that was the whole
-    // reason for moving the start.
-    expect(sampleDaylight(0).sunIntensity).toBeLessThan(1.4)
-    expect(sampleDaylight(0).phase).toBe('golden')
-    expect(sampleDaylight(DAY_CYCLE_SECONDS * 0.15).nightFactor).toBeGreaterThan(0.2)
+    // reason for moving the start, twice.
+    expect(sampleDaylight(0).sunIntensity).toBeLessThan(0.4)
+    expect(sampleDaylight(0).phase).toBe('night')
+    expect(sampleDaylight(DAY_CYCLE_SECONDS * 0.12).nightFactor).toBeGreaterThan(0.9)
   })
 
-  it('lights some windows from the start and only ever adds more', () => {
-    // A city at six already has lights on. Opening at a flat zero made the
-    // first minute the one stretch of the run with no warmth anywhere in it.
-    expect(sampleDaylight(0).nightFactor).toBeGreaterThan(0)
-    expect(sampleDaylight(0).nightFactor).toBeLessThan(0.2)
+  it('opens with the city already fully lit', () => {
+    // Every window, streetlight and beacon is driven off nightFactor, and the
+    // run opens after dark, so they are all on from the first frame.
+    expect(sampleDaylight(0).nightFactor).toBeGreaterThan(0.9)
   })
 
-  it('runs a city clock from six in the evening round the whole day', () => {
-    expect(DAYLIGHT_START_HOUR).toBe(18)
-    expect(daylightClock(0)).toBe('18:00')
+  it('runs a city clock from nine at night round the whole day', () => {
+    expect(DAYLIGHT_START_HOUR).toBe(21)
+    expect(daylightClock(0)).toBe('21:00')
     // A full lap is a full day, so the clock comes back to where it started.
-    expect(daylightClock(DAY_CYCLE_SECONDS - 0.001)).toBe('17:59')
-    expect(daylightClock(DAY_CYCLE_SECONDS)).toBe('18:00')
+    expect(daylightClock(DAY_CYCLE_SECONDS - 0.001)).toBe('20:59')
+    expect(daylightClock(DAY_CYCLE_SECONDS)).toBe('21:00')
   })
 
   it('reads the clock off the sky rather than off a fixed rate', () => {
-    // The cycle is not evenly paced - night takes a third of the run on its
-    // own - so a clock ticking at a constant rate would put a morning time on
-    // a screen that is plainly still dark.
+    // The cycle is not evenly paced - the closing night takes a third of the
+    // run on its own - so a clock ticking at a constant rate would put a
+    // morning time on a screen that is plainly still dark.
     // The closing keyframe is the opening one seen from the far side of the
     // ring, so its hour reads as zero rather than twenty-four.
     for (const keyframe of DAYLIGHT_KEYFRAMES.slice(0, -1)) {
@@ -185,34 +197,42 @@ describe('the turning sky', () => {
     expect(daylightLap(DAY_CYCLE_SECONDS * 1.5)).toBe(1)
   })
 
-  it('ends the run in the dark, on the second night turning to dawn', () => {
+  it('ends the run on the sky it opened with, in the dark', () => {
     // RUN_SECONDS in GameContext, kept as a literal rather than importing a
-    // React module into a data test. The run is deliberately not a whole
-    // number of laps: two whole ones would put the final frame back on the
-    // opening evening, the brightest sky in the cycle, exactly when the craft
-    // is meant to be slipping away.
+    // React module into a data test. Exactly one lap: the ring's seam sits
+    // inside the night, so the first frame and the last are the same point of
+    // the same night and the wrap between them is invisible.
     expect(RUN_SECONDS).toBe(300)
-    expect(RUN_SECONDS / DAY_CYCLE_SECONDS).toBeCloseTo(1.6, 6)
-    expect(daylightLap(RUN_SECONDS)).toBe(1)
+    expect(RUN_SECONDS).toBe(DAY_CYCLE_SECONDS)
 
+    const opening = sampleDaylight(0)
     const ending = sampleDaylight(RUN_SECONDS)
-    expect(ending.phase).toBe('dawn')
-    // Dawn by name, but the sky is still night: stars up, moon up, sun down.
-    expect(ending.nightFactor).toBeGreaterThan(0.7)
-    expect(ending.starIntensity).toBeGreaterThan(0.4)
-    expect(ending.moonOpacity).toBeGreaterThan(0.5)
-    expect(ending.sunAltitude).toBeLessThan(0)
-    // And it is the darker half of the run: no daylight in the last minute.
-    for (let elapsed = RUN_SECONDS - 60; elapsed <= RUN_SECONDS; elapsed += 1) {
-      expect(sampleDaylight(elapsed).nightFactor, `${elapsed}s`).toBeGreaterThan(0.7)
+    expect(ending.phase).toBe('night')
+    expect(ending.nightFactor).toBeCloseTo(opening.nightFactor, 6)
+    expect(ending.ambientIntensity).toBeCloseTo(opening.ambientIntensity, 6)
+    expect(ending.starIntensity).toBeCloseTo(opening.starIntensity, 6)
+    expect(ending.nightFactor).toBeGreaterThan(0.95)
+
+    // The dreadnought launches at 180 seconds and the fight runs to the end.
+    // All of it is dark, and it keeps getting darker: the climb out of dusk
+    // into full night is the fight, not a backdrop that already settled.
+    const boss = sampleDaylight(180)
+    expect(boss.nightFactor).toBeGreaterThan(0.6)
+    let previous = 0
+    for (let elapsed = 186; elapsed <= RUN_SECONDS; elapsed += 2) {
+      const sample = sampleDaylight(elapsed)
+      expect(sample.phase, `${elapsed}s`).toBe('night')
+      expect(sample.nightFactor, `${elapsed}s`).toBeGreaterThanOrEqual(previous - 1e-9)
+      previous = sample.nightFactor
     }
+    expect(sampleDaylight(186).ambientIntensity).toBeGreaterThan(ending.ambientIntensity)
   })
 
   it('reuses a caller-supplied sample so the frame loop does not allocate', () => {
     const held = createDaylightSample()
     const returned = sampleDaylight(70, held)
     expect(returned).toBe(held)
-    sampleDaylight(DAY_CYCLE_SECONDS * 0.8, held)
+    sampleDaylight(DAY_CYCLE_SECONDS * 0.35, held)
     expect(held.phase).toBe('day')
   })
 
