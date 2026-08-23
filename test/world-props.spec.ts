@@ -3,7 +3,7 @@ import { beamLiftScale } from '../src/core/beam'
 import { busStopAnchor } from '../src/core/cityLandmarks'
 import {
   busStopsAround,
-  isWorldPropCarried,
+  isWorldPropDisplaced,
   PARK_BENCH_CLEARANCE,
   PARK_TREE_SPACING,
   TREE_VARIANT_ROUND,
@@ -111,16 +111,27 @@ describe('beam-capable city dressing', () => {
     expect(props.some((prop) => prop.kind === 'bus-stop')).toBe(true)
   })
 
-  it('hands a world prop from the static pool to the lifted pool only while actually lifted', () => {
-    const object = { active: true, tether: 0, absorbing: false }
-    expect(isWorldPropCarried(object)).toBe(false)
-    // Merely touching the beam is not carrying: a prop too heavy for the
-    // craft's current grip sits still with tether at 0 the whole time it is
-    // inside the cone, and must stay on the (correctly lit) static pool
-    // rather than flip to the lifted pool's unlit copy at the same spot.
-    expect(isWorldPropCarried({ ...object, tether: 0.5 })).toBe(true)
-    expect(isWorldPropCarried({ ...object, absorbing: true })).toBe(true)
-    expect(isWorldPropCarried({ ...object, active: false, absorbing: true })).toBe(false)
+  it('leaves a prop on the static pool until it is off its spot', () => {
+    const worldProp = parkTreesAround({ x: 0, z: 0 })[0]!
+    const home = worldProp.position
+    const resting = { active: true, absorbing: false, position: { ...home }, worldProp }
+
+    // Standing where the world put it - including all the time a beam too weak
+    // to lift it is playing over it, which never moves it a millimetre.
+    expect(isWorldPropDisplaced(resting)).toBe(false)
+    expect(isWorldPropDisplaced({ ...resting, position: { ...home, y: home.y + 0.05 } })).toBe(false)
+
+    // Lifted, and - the bug this replaced tether for - still off its spot after
+    // the beam lets go. Keying on tether handed a tree that was still falling
+    // back to the static pool, which drew it at the spot it was taken from, so
+    // it looked like it teleported home mid-drop.
+    expect(isWorldPropDisplaced({ ...resting, position: { ...home, y: home.y + 9 } })).toBe(true)
+    expect(isWorldPropDisplaced({ ...resting, position: { ...home, x: home.x + 24 } })).toBe(true)
+    expect(isWorldPropDisplaced({ ...resting, absorbing: true })).toBe(true)
+    expect(isWorldPropDisplaced({ ...resting, active: false, absorbing: true })).toBe(false)
+
+    // Cars and crowds ride the same list and have no spot to be off.
+    expect(isWorldPropDisplaced({ active: true, absorbing: false, position: { x: 9, y: 1, z: 9 } })).toBe(false)
   })
 
   it('places sparse kerbside trash bins off the carriageway at weight two', () => {

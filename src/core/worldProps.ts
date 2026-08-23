@@ -324,41 +324,63 @@ export function worldPropsAround(world: ActiveWorld, position: Pick<Vec3, 'x' | 
   return props
 }
 
+/** How far a prop has to be off its spot before the world stops drawing it
+ *  there. Wide enough to swallow float noise, tight enough that any real
+ *  movement counts. */
+export const WORLD_PROP_SETTLE_EPSILON = 0.2
+
 /**
- * Static pools hide a prop while it is carried, and permanently after absorption.
+ * Static pools draw a prop only where the world put it.
  *
- * "Carried" means actually lifted, not merely touched: `inBeam` goes true the
- * instant the beam cone reaches a prop, regardless of whether the craft's grip
- * is strong enough to move it at all (see beamLiftScale in core/beam.ts) - a
- * tree, bench or bus stop is heavier than an early craft can lift for most of
- * a run. Keying the swap off `inBeam` used to hide the (correctly lit) static
- * prop the moment the beam grazed it and show the lifted pool's copy in its
- * place - same spot, unmoving, but a flatter, unlit material - which read as
- * the object darkening or a double spawning every time the player merely flew
- * past. `tether` only rises while the object is actually being dragged along
- * (see stepBeamObjects), so it is the real signal.
+ * The test is displacement, not grip. A prop's beam object carries its own
+ * spawn transform on `worldProp`, and the static instanced pools draw from the
+ * same deterministic list, so the moment the live object is anywhere else the
+ * static copy is a second, wrong copy of it and has to go.
+ *
+ * Two bugs came out of asking a narrower question:
+ *
+ * - `inBeam` goes true the instant the cone touches a prop, whether or not the
+ *   craft can lift it (see beamLiftScale in core/beam.ts) - and a tree or a
+ *   bus stop outweighs an early craft for most of a run. That swapped a
+ *   standing prop onto the lifted pool just for being grazed, which read as it
+ *   darkening or spawning twice every time the player flew past.
+ * - `tether` is the opposite mistake: it decays within about a third of a
+ *   second of releasing the beam. A tree dropped in mid-air handed itself back
+ *   to the static pool while it was still falling, so it appeared to snap home
+ *   to the spot it was picked up from, while the object nobody could see any
+ *   more went on falling. Cars and pedestrians never did this because nothing
+ *   draws them from a fixed list - only city dressing has a home to snap to.
+ *
+ * Displacement covers both, and covers the cases neither did: a prop flung by
+ * a nearby explosion is off its spot without ever having been in the beam.
  */
-export function isWorldPropCarried(
-  object: Pick<BeamObject, 'active' | 'tether' | 'absorbing'>,
+export function isWorldPropDisplaced(
+  object: Pick<BeamObject, 'active' | 'absorbing' | 'position' | 'worldProp'>,
 ) {
-  return object.active && (object.tether > 0.02 || object.absorbing)
+  if (!object.active) return false
+  if (object.absorbing) return true
+  const home = object.worldProp?.position
+  if (!home) return false
+  return Math.abs(object.position.x - home.x) > WORLD_PROP_SETTLE_EPSILON
+    || Math.abs(object.position.y - home.y) > WORLD_PROP_SETTLE_EPSILON
+    || Math.abs(object.position.z - home.z) > WORLD_PROP_SETTLE_EPSILON
 }
 
 export function isWorldPropHidden(
   id: string,
   destroyed: ReadonlySet<string>,
-  objects: ReadonlyArray<Pick<BeamObject, 'id' | 'active' | 'tether' | 'absorbing'>>,
+  objects: ReadonlyArray<Pick<BeamObject, 'id' | 'active' | 'absorbing' | 'position' | 'worldProp'>>,
 ) {
   if (destroyed.has(id)) return true
-  return objects.some((object) => object.id === id && isWorldPropCarried(object))
+  return objects.some((object) => object.id === id && isWorldPropDisplaced(object))
 }
 
 export function worldPropVisibilityKey(
   destroyed: ReadonlySet<string>,
-  objects: ReadonlyArray<Pick<BeamObject, 'id' | 'active' | 'tether' | 'absorbing'>>,
+  objects: ReadonlyArray<Pick<BeamObject, 'id' | 'active' | 'absorbing' | 'position' | 'worldProp'>>,
 ) {
   const hidden = objects
-    .filter(isWorldPropCarried)
+    .filter(isWorldPropDisplaced)
     .map((object) => object.id)
     .sort()
   return `${[...destroyed].sort().join(',')}|${hidden.join(',')}`

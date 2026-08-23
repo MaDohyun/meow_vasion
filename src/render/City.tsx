@@ -15,7 +15,7 @@ import {
   isConvenienceStore,
 } from '../core/cityLandmarks'
 import {
-  isWorldPropCarried,
+  isWorldPropDisplaced,
   isWorldPropHidden,
   trashBinsAround,
   utilityPolesAround,
@@ -1854,24 +1854,48 @@ function roofStructureGeometry(variant: number) {
 
 const roofStructureGeometries = Array.from({ length: ROOF_STRUCTURE_VARIANTS }, (_, index) => roofStructureGeometry(index))
 
+/** Paints one part a flat colour so several can be merged into a single
+ *  instanced mesh and still read as separate materials. */
+function tintedPart(geometry: THREE.BufferGeometry, colorValue: string) {
+  const result = geometry.index ? geometry.toNonIndexed() : geometry
+  if (result !== geometry) geometry.dispose()
+  const tint = new THREE.Color(colorValue)
+  const colors = new Float32Array(result.getAttribute('position').count * 3)
+  for (let index = 0; index < colors.length; index += 3) {
+    colors[index] = tint.r
+    colors[index + 1] = tint.g
+    colors[index + 2] = tint.b
+  }
+  result.setAttribute('color', new THREE.BufferAttribute(colors, 3))
+  return result
+}
+
 const TREE_BASE_HEIGHT = 2.8
 const TREE_BASE_CROWN = 2.2
 
+/**
+ * The tree the lifted pool draws, in the two colours the static pool uses.
+ *
+ * It used to be one flat green for the whole model, which was survivable while
+ * a tree was only ever on this pool for the second or two it spent in the beam.
+ * A dropped tree now stays on this pool where it fell, for the rest of the run,
+ * so it has to look like the trees still standing next to it.
+ */
 function liftedTreeGeometry(variant: number) {
-  const trunk = new THREE.CylinderGeometry(
+  const trunk = tintedPart(new THREE.CylinderGeometry(
     TREE_BASE_CROWN * 0.3,
     TREE_BASE_CROWN * 0.34,
     TREE_BASE_HEIGHT,
     7,
-  ).toNonIndexed().translate(0, TREE_BASE_HEIGHT / 2, 0)
-  const crown = variant === TREE_VARIANT_SLENDER
+  ).translate(0, TREE_BASE_HEIGHT / 2, 0), BUILDING.PARK_TRUNK)
+  const crown = tintedPart(variant === TREE_VARIANT_SLENDER
     ? new THREE.ConeGeometry(
       TREE_BASE_CROWN * 0.72,
       TREE_BASE_CROWN * 2.4,
       8,
-    ).toNonIndexed().translate(0, TREE_BASE_HEIGHT + TREE_BASE_CROWN * 0.95, 0)
+    ).translate(0, TREE_BASE_HEIGHT + TREE_BASE_CROWN * 0.95, 0)
     : new THREE.IcosahedronGeometry(TREE_BASE_CROWN, 1)
-      .translate(0, TREE_BASE_HEIGHT + TREE_BASE_CROWN * 0.65, 0)
+      .translate(0, TREE_BASE_HEIGHT + TREE_BASE_CROWN * 0.65, 0), BUILDING.PARK_LEAF)
   return mergeGeometries([trunk, crown], false)!
 }
 
@@ -1929,13 +1953,12 @@ function LiftedTreePool({ variant }: { variant: number }) {
   const scale = useMemo(() => new THREE.Vector3(), [])
   const rotation = useMemo(() => new THREE.Quaternion(), [])
   const euler = useMemo(() => new THREE.Euler(), [])
-  const color = useMemo(() => new THREE.Color(), [])
   useFrame(() => {
     const mesh = ref.current
     if (!mesh) return
     let count = 0
     for (const object of runtime.current.beamObjects) {
-      if (!isWorldPropCarried(object) || object.kind !== 'tree' || object.worldProp?.variant !== variant) continue
+      if (!isWorldPropDisplaced(object) || object.kind !== 'tree' || object.worldProp?.variant !== variant) continue
       if (count >= LIFTED_WORLD_PROP_CAPACITY) break
       const swallow = object.absorbing ? Math.max(0.05, object.absorbTimer / BEAM_ABSORB_TIME) : 1
       position.set(object.position.x, object.position.y, object.position.z)
@@ -1946,15 +1969,13 @@ function LiftedTreePool({ variant }: { variant: number }) {
       scale.set(crown / TREE_BASE_CROWN, height / TREE_BASE_HEIGHT, crown / TREE_BASE_CROWN).multiplyScalar(swallow)
       matrix.compose(position, rotation, scale)
       mesh.setMatrixAt(count, matrix)
-      mesh.setColorAt(count, color.set('#6f9452'))
       count += 1
     }
     mesh.count = count
     mesh.instanceMatrix.needsUpdate = true
-    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
   })
   return <instancedMesh ref={ref} args={[liftedTreeGeometries[variant], undefined, LIFTED_WORLD_PROP_CAPACITY]} frustumCulled={false} renderOrder={2} onUpdate={(mesh) => { mesh.count = 0 }}>
-    <meshToonMaterial color="#ffffff" />
+    <meshToonMaterial vertexColors />
   </instancedMesh>
 }
 
@@ -1993,37 +2014,21 @@ function LiftedUtilityPolePool() {
   </instancedMesh>
 }
 
-/** Bakes one flat colour into a part so the bin pair renders its warm general
- *  waste and teal recycling bodies from a single instanced mesh. */
-function tintedBinPart(geometry: THREE.BufferGeometry, colorValue: string) {
-  const result = geometry.index ? geometry.toNonIndexed() : geometry
-  if (result !== geometry) geometry.dispose()
-  const tint = new THREE.Color(colorValue)
-  const colors = new Float32Array(result.getAttribute('position').count * 3)
-  for (let index = 0; index < colors.length; index += 3) {
-    colors[index] = tint.r
-    colors[index + 1] = tint.g
-    colors[index + 2] = tint.b
-  }
-  result.setAttribute('color', new THREE.BufferAttribute(colors, 3))
-  return result
-}
-
 // The kerbside sorting station follows the reference bins: warm taupe general
 // waste on the left and bright teal recycling on the right. Front faces +z
 // before the per-spot rotation.
 const trashBinGeometry = mergeGeometries([
-  tintedBinPart(new THREE.BoxGeometry(0.7, 0.06, 0.54).translate(-0.36, 0.03, 0), '#5d554b'),
-  tintedBinPart(new THREE.BoxGeometry(0.7, 0.06, 0.54).translate(0.36, 0.03, 0), '#08776e'),
-  tintedBinPart(new THREE.BoxGeometry(0.66, 1.0, 0.56).translate(-0.36, 0.53, 0), '#756b5e'),
-  tintedBinPart(new THREE.BoxGeometry(0.66, 1.0, 0.56).translate(0.36, 0.53, 0), '#079b8d'),
-  tintedBinPart(new THREE.BoxGeometry(0.7, 0.1, 0.6).translate(-0.36, 1.06, 0), '#918473'),
-  tintedBinPart(new THREE.BoxGeometry(0.7, 0.1, 0.6).translate(0.36, 1.06, 0), '#12b6a3'),
-  tintedBinPart(new THREE.BoxGeometry(0.34, 0.12, 0.04).translate(-0.36, 0.86, 0.28), '#24211e'),
-  tintedBinPart(new THREE.CylinderGeometry(0.09, 0.09, 0.04, 8).rotateX(Math.PI / 2).translate(0.22, 0.87, 0.28), '#063f3b'),
-  tintedBinPart(new THREE.CylinderGeometry(0.09, 0.09, 0.04, 8).rotateX(Math.PI / 2).translate(0.5, 0.87, 0.28), '#063f3b'),
-  tintedBinPart(new THREE.BoxGeometry(0.42, 0.28, 0.03).translate(-0.36, 0.5, 0.285), '#ddd5c8'),
-  tintedBinPart(new THREE.BoxGeometry(0.42, 0.28, 0.03).translate(0.36, 0.5, 0.285), '#d8eee8'),
+  tintedPart(new THREE.BoxGeometry(0.7, 0.06, 0.54).translate(-0.36, 0.03, 0), '#5d554b'),
+  tintedPart(new THREE.BoxGeometry(0.7, 0.06, 0.54).translate(0.36, 0.03, 0), '#08776e'),
+  tintedPart(new THREE.BoxGeometry(0.66, 1.0, 0.56).translate(-0.36, 0.53, 0), '#756b5e'),
+  tintedPart(new THREE.BoxGeometry(0.66, 1.0, 0.56).translate(0.36, 0.53, 0), '#079b8d'),
+  tintedPart(new THREE.BoxGeometry(0.7, 0.1, 0.6).translate(-0.36, 1.06, 0), '#918473'),
+  tintedPart(new THREE.BoxGeometry(0.7, 0.1, 0.6).translate(0.36, 1.06, 0), '#12b6a3'),
+  tintedPart(new THREE.BoxGeometry(0.34, 0.12, 0.04).translate(-0.36, 0.86, 0.28), '#24211e'),
+  tintedPart(new THREE.CylinderGeometry(0.09, 0.09, 0.04, 8).rotateX(Math.PI / 2).translate(0.22, 0.87, 0.28), '#063f3b'),
+  tintedPart(new THREE.CylinderGeometry(0.09, 0.09, 0.04, 8).rotateX(Math.PI / 2).translate(0.5, 0.87, 0.28), '#063f3b'),
+  tintedPart(new THREE.BoxGeometry(0.42, 0.28, 0.03).translate(-0.36, 0.5, 0.285), '#ddd5c8'),
+  tintedPart(new THREE.BoxGeometry(0.42, 0.28, 0.03).translate(0.36, 0.5, 0.285), '#d8eee8'),
 ], false)!
 
 const trashBinMaterial = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: toonGradient })

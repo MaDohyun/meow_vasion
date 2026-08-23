@@ -22,7 +22,7 @@ import {
 } from '../core/world'
 import {
   busStopsAround,
-  isWorldPropCarried,
+  isWorldPropDisplaced,
   isWorldPropHidden,
   parkBenchesAround,
   parkTreesAround,
@@ -554,7 +554,7 @@ function LiftedParkBenchPool() {
     if (!mesh) return
     let count = 0
     for (const object of runtime.current.beamObjects) {
-      if (!isWorldPropCarried(object) || object.kind !== 'park-bench') continue
+      if (!isWorldPropDisplaced(object) || object.kind !== 'park-bench') continue
       if (count >= LANDMARK_CELL_COUNT) break
       const swallow = object.absorbing ? Math.max(0.05, object.absorbTimer / BEAM_ABSORB_TIME) : 1
       position.set(object.position.x, object.position.y, object.position.z)
@@ -798,7 +798,7 @@ function LiftedBusStopPool() {
     if (!mesh) return
     let count = 0
     for (const object of runtime.current.beamObjects) {
-      if (!isWorldPropCarried(object) || object.kind !== 'bus-stop') continue
+      if (!isWorldPropDisplaced(object) || object.kind !== 'bus-stop') continue
       if (count >= WORLD_MAX_BUILDINGS) break
       const swallow = object.absorbing ? Math.max(0.05, object.absorbTimer / BEAM_ABSORB_TIME) : 1
       position.set(object.position.x, object.position.y, object.position.z)

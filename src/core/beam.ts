@@ -388,6 +388,10 @@ export function stepBeamObjects(objects: BeamObject[], field: BeamField, dt: num
 
     if (lifting) {
       object.playerTouched = true
+      // City dressing starts frozen on its spawn transform (see
+      // makeWorldPropBeamObject); once the beam has actually moved it, it
+      // falls, tumbles and lands like anything else.
+      if (object.worldProp) object.freePhysics = true
       const mass = Math.max(0.08, object.mass)
       const drop = Math.max(0, field.position.y - object.position.y)
       const grip = beamGrip(drop, profile.maxDrop) * liftScale * Math.max(0.1, field.gripScale ?? 1)

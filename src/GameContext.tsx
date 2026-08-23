@@ -440,6 +440,13 @@ function makeWorldPropBeamObject(worldProp: BeamWorldProp): BeamObject {
     absorbTimer: 0,
     diameter: WORLD_PROP_DIAMETERS[worldProp.kind],
     scoreValue: WORLD_PROP_SCORES[worldProp.kind],
+    // Scenery until something moves it. Falling props were settling a fraction
+    // of a metre onto the physics floor the moment they streamed in, which is
+    // invisible on its own but means "off its spot" - the test the render layer
+    // uses to decide whether the world or the beam owns a prop - was true for
+    // every prop in the city. stepBeamObjects turns this on the first time the
+    // beam actually lifts it.
+    freePhysics: false,
     worldProp,
   }
 }
