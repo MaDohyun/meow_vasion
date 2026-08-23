@@ -4,6 +4,7 @@ import {
   MISSION_THREE_QUESTS,
   MISSION_TWO_POOL,
   createMissionState,
+  isInsideAirCheckpoint,
   recordMissionEvent,
   startMissionOne,
   syncMissionState,
@@ -38,6 +39,30 @@ function completeQuest(state: ReturnType<typeof createMissionState>, quest: Miss
 }
 
 describe('three-stage reconnaissance missions', () => {
+  it('counts an air checkpoint as soon as the craft passes through its ring', () => {
+    const checkpoint = { x: 10, y: 20, z: 30 }
+    expect(isInsideAirCheckpoint({ x: 10, y: 20, z: 34.99 }, checkpoint)).toBe(true)
+    expect(isInsideAirCheckpoint({ x: 10, y: 20, z: 35.01 }, checkpoint)).toBe(false)
+  })
+
+  it('completes the mission-two checkpoint objective after three fly-throughs', () => {
+    let selectedState: ReturnType<typeof createMissionState> | null = null
+    for (let seed = 1; seed <= 100 && !selectedState; seed += 1) {
+      const state = createMissionState(seed)
+      startMissionOne(state, 0)
+      for (const quest of [...state.quests]) completeQuest(state, quest, 20)
+      if (state.quests.some((quest) => quest.id === 'air-checkpoints')) selectedState = state
+    }
+
+    const quest = selectedState!.quests.find((candidate) => candidate.id === 'air-checkpoints')!
+    expect(quest.target).toBe(3)
+    for (let pass = 1; pass <= 3; pass += 1) {
+      recordMissionEvent(selectedState!, { type: 'pass-checkpoint' }, 20 + pass)
+      expect(quest.progress).toBe(pass)
+    }
+    expect(quest.complete).toBe(true)
+  })
+
   it('waits for the tutorial cat before assigning three distinct quests', () => {
     const state = createMissionState(17)
     expect(state.stage).toBe(0)

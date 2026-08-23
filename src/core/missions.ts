@@ -8,6 +8,18 @@
 
 export const MISSION_RUN_SECONDS = 300
 export const MISSION_SCORE_TARGET = 7200
+export const AIR_CHECKPOINT_RADIUS = 5
+
+type Point3 = { x: number; y: number; z: number }
+
+/** Crossing the ring is enough; checkpoint missions never require hovering. */
+export function isInsideAirCheckpoint(position: Point3, checkpoint: Point3) {
+  return Math.hypot(
+    position.x - checkpoint.x,
+    position.y - checkpoint.y,
+    position.z - checkpoint.z,
+  ) <= AIR_CHECKPOINT_RADIUS
+}
 
 export type MissionQuestId =
   | 'capture-cats'
