@@ -15,6 +15,7 @@ import {
   carShadowMaterial,
   crowdMaterial,
   enemyMaterial,
+  makeBlastFieldMaterial,
 } from './entityMaterials'
 import {
   SHAKE_CAMERA_PITCH,
@@ -1193,49 +1194,9 @@ function TutorialCatMarker() {
  *
  * It breathes rather than sitting on, so a field of mines does not turn the sky
  * into a wall of red. Once armed it stops breathing and goes hard and fast,
- * brightening as the fuse runs down.
+ * brightening as the fuse runs down. The shell itself lives in
+ * entityMaterials, shared with the gas stations' own explosive warning.
  */
-const blastFieldVertex = `
-attribute float aCharge;
-varying vec3 vViewNormal;
-varying vec3 vViewPosition;
-varying float vCharge;
-void main() {
-  vCharge = aCharge;
-  vec4 world = instanceMatrix * vec4(position, 1.0);
-  vec4 view = modelViewMatrix * world;
-  vViewNormal = normalize(normalMatrix * (mat3(instanceMatrix) * normal));
-  vViewPosition = view.xyz;
-  gl_Position = projectionMatrix * view;
-}
-`
-
-const blastFieldFragment = `
-varying vec3 vViewNormal;
-varying vec3 vViewPosition;
-varying float vCharge;
-
-void main() {
-  // A plain red bubble, not a shield.
-  //
-  // This carried a hex lattice, which is the visual language of something that
-  // stops shots - the wrong promise entirely for a line that means "inside
-  // this you die". Without it there is nothing to read but the shape and the
-  // colour, which is all the warning needs to say.
-  //
-  // Face-on it is a thin haze, so the mine inside stays visible; edge-on the
-  // fresnel closes it into a hard sphere, which is what makes the boundary
-  // itself legible from outside.
-  float facing = abs(dot(normalize(vViewNormal), normalize(-vViewPosition)));
-  float rim = pow(1.0 - facing, 2.2);
-
-  float alpha = (rim * 0.82 + 0.085) * vCharge;
-  // Runs white-hot as the fuse closes rather than just brighter red.
-  vec3 tint = mix(vec3(1.0, 0.17, 0.24), vec3(1.0, 0.78, 0.6), clamp(vCharge - 1.0, 0.0, 1.0));
-  gl_FragColor = vec4(tint * (0.6 + vCharge * 0.9), clamp(alpha, 0.0, 1.0));
-}
-`
-
 function MineBlastFieldPool() {
   const { runtime } = useGame()
   const ref = useRef<THREE.InstancedMesh>(null)
@@ -1249,15 +1210,7 @@ function MineBlastFieldPool() {
     sphere.setAttribute('aCharge', charge)
     return sphere
   }, [charge])
-  const material = useMemo(() => new THREE.ShaderMaterial({
-    vertexShader: blastFieldVertex,
-    fragmentShader: blastFieldFragment,
-    transparent: true,
-    depthWrite: false,
-    side: THREE.DoubleSide,
-    blending: THREE.AdditiveBlending,
-    toneMapped: false,
-  }), [])
+  const material = useMemo(() => makeBlastFieldMaterial(), [])
 
   useFrame(({ clock }) => {
     const mesh = ref.current
