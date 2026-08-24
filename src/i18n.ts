@@ -106,6 +106,9 @@ export type Strings = {
   briefingTitle: string
   briefingContinue: string
   briefingSkip: string
+  /** What to press, shown on a hands-on briefing step in place of the
+   *  "click to continue" hint. */
+  briefingWaitHint: Record<TutorialControl, string>
   tutorialBriefing: readonly TutorialBriefingStep[]
   missionStageComplete: (previous: number, next: number) => string
   reconComplete: string
@@ -170,9 +173,19 @@ export type Strings = {
   broadcast: BulletinSet
 }
 
+/**
+ * The controls the opening briefing hands over, one line at a time.
+ *
+ * A step carrying a `wait` is a hands-on step: it unlocks that control, says
+ * so, and does not move on until the player has actually used it. Reading that
+ * the laser exists and firing it once are different amounts of learning, and
+ * the second one is the one that sticks.
+ */
+export type TutorialControl = 'beam' | 'laser' | 'turbo'
+
 export type TutorialBriefingStep = {
   lines: readonly string[]
-  wait?: 'beam'
+  wait?: TutorialControl
   auto?: number
 }
 
@@ -297,12 +310,14 @@ export const STRINGS: Record<Language, Strings> = {
     briefingTitle: '장군의 무전',
     briefingContinue: '화면을 클릭해서 계속',
     briefingSkip: '건너뛰기',
+    briefingWaitHint: { beam: 'E 를 꾹 누르기', laser: 'Q 를 누르기', turbo: '스페이스 를 누르기' },
     tutorialBriefing: [
       { lines: ['대원, 작전에 들어간다. 대원의 임무는 지구라는 별의 정찰대 임무다.', '지구에서 많은 샘플을 가지고 돌아오도록!'] },
       { lines: ['E 버튼을 누르면 빔 조작을 통해 고양이 동무를 구출하거나 물체를 흡수할 수 있다.', '우리 우주선은 물체를 흡수할수록 몸집이 커지니 가능한 한 많은 물체를 흡수하도록!'] },
-      { lines: ['Q 버튼을 누르면 레이저를 쏘아 적을 무찌를 수 있다!', '위급할 때 쓰도록!'] },
-      { lines: ['스페이스 버튼을 누르면 우주선의 터보를 쓸 수 있다!', '하지만 쓸 수 있는 시간은 정해져 있으니 주의해서 쓰도록!'] },
-      { lines: ['대원, 첫 임무다. 저 고양이를 구출해 봐. E 키를 꾹 누르고 있으면 돼.'], wait: 'beam' },
+      { lines: ['Q 버튼을 누르면 레이저를 쏘아 적을 무찌를 수 있다!', '말로만 들어서는 모른다. 지금 Q를 한 번 눌러 봐.'], wait: 'laser' },
+      { lines: ['좋다, 그게 레이저다. 위급할 때 쓰도록!', '다음은 터보다. 스페이스를 누르면 우주선이 훨씬 빨라진다. 지금 눌러 봐.'], wait: 'turbo' },
+      { lines: ['그거다! 터보는 쓸 수 있는 시간이 정해져 있으니 주의해서 쓰도록!', '그리고 터보를 켠 채로 E를 누르면 빔이 더 굵고 멀리, 더 강하게 나간다. 기억해 둬라.'] },
+      { lines: ['대원, 첫 임무다. 저 고양이를 구출해 봐. E 키를 꾹 누르고 있으면 된다.', '터보를 같이 켜면 빔이 커져서 훨씬 수월할 거다.'], wait: 'beam' },
       { lines: ['좋아, 합격이다.', '명심해라, 대원. 너무 많은 물건을 흡수하면 [[무게 때문에 우주선이 추락한다]].', '그리고 비행 중 [[건물에 부딪혀도 선체가 손상된다]]. 건물은 피해서 날아라!'], auto: 6.4 },
       { lines: ['왼쪽에 대원이 달성해야 할 임무들을 표시해 두었다.', '아 참, 대원을 위해 우리 동지들의 표식을 지구 곳곳에 준비했으니 발견하면 지나가 보도록!', '그럼 행운을 빈다.'], auto: 5.2 },
     ],
@@ -458,12 +473,14 @@ export const STRINGS: Record<Language, Strings> = {
     briefingTitle: '将軍の通信',
     briefingContinue: '画面をクリックして続ける',
     briefingSkip: 'スキップ',
+    briefingWaitHint: { beam: 'E を長押し', laser: 'Q を押す', turbo: 'スペース を押す' },
     tutorialBriefing: [
       { lines: ['隊員、作戦を開始する。君の任務は地球という星の偵察だ。', '地球からできるだけ多くのサンプルを持ち帰れ！'] },
       { lines: ['Eボタンでビームを操作し、仲間の猫を救出したり物体を吸収できる。', '物体を吸収するほど機体は大きくなる。できるだけ多く吸収しろ！'] },
-      { lines: ['Qボタンでレーザーを撃ち、敵を倒せる！', '緊急時に使うんだ！'] },
-      { lines: ['スペースボタンで機体のターボを使える！', '使える時間には限りがある。慎重に使え！'] },
-      { lines: ['隊員、最初の任務だ。あの猫を救出しろ。Eキーを長押しだ。'], wait: 'beam' },
+      { lines: ['Qボタンでレーザーを撃ち、敵を倒せる！', '口で言ってもわからん。今すぐQを一度押してみろ。'], wait: 'laser' },
+      { lines: ['よし、それがレーザーだ。緊急時に使え！', '次はターボだ。スペースを押せば機体が一気に速くなる。今、押してみろ。'], wait: 'turbo' },
+      { lines: ['それだ！ ターボは使える時間に限りがある。慎重に使え！', 'そしてターボ中にEを押すと、ビームが太く、遠く、強くなる。覚えておけ。'] },
+      { lines: ['隊員、最初の任務だ。あの猫を救出しろ。Eキーを長押しだ。', 'ターボも一緒に使えばビームが広がって楽になるぞ。'], wait: 'beam' },
       { lines: ['よし、合格だ。', 'いいか、物体を吸収しすぎると[[重量で宇宙船が墜落する]]。', 'それと飛行中に[[建物にぶつかっても船体が損傷する]]。建物は避けて飛べ！'], auto: 6.4 },
       { lines: ['左側に達成すべき任務を表示している。', 'そうだ、仲間の印を地球各地に用意した。見つけたら通過してみろ！', '幸運を祈る。'], auto: 5.2 },
     ],
@@ -619,12 +636,14 @@ export const STRINGS: Record<Language, Strings> = {
     briefingTitle: "THE GENERAL'S TRANSMISSION",
     briefingContinue: 'CLICK THE SCREEN TO CONTINUE',
     briefingSkip: 'SKIP',
+    briefingWaitHint: { beam: 'HOLD E', laser: 'PRESS Q', turbo: 'PRESS SPACE' },
     tutorialBriefing: [
       { lines: ['Pilot, begin the operation. Your mission is to recon the planet called Earth.', 'Bring back as many samples from Earth as you can!'] },
       { lines: ['Press E to use the beam to rescue allied cats or absorb objects.', 'The craft grows as it absorbs objects, so absorb as many as possible!'] },
-      { lines: ['Press Q to fire the laser and defeat enemies!', 'Save it for emergencies!'] },
-      { lines: ['Press SPACE to use the craft\'s turbo!', 'Turbo time is limited, so use it carefully!'] },
-      { lines: ['Pilot, this is your first mission. Rescue that cat. HOLD E.'], wait: 'beam' },
+      { lines: ['Press Q to fire the laser and defeat enemies!', 'Being told is not the same as knowing. Press Q once, right now.'], wait: 'laser' },
+      { lines: ['Good, that is the laser. Save it for emergencies!', 'Turbo is next. SPACE makes the craft far faster. Press it now.'], wait: 'turbo' },
+      { lines: ['That is it! Turbo time is limited, so use it carefully!', 'And holding E while turbo is on makes the beam wider, longer and stronger. Remember that.'] },
+      { lines: ['Pilot, this is your first mission. Rescue that cat. HOLD E.', 'Run turbo at the same time and the wider beam makes it far easier.'], wait: 'beam' },
       { lines: ['Good, you pass.', 'Remember: absorb too much and [[the weight will crash the craft]].', 'And in flight, [[hitting a building damages the hull]]. Fly around them!'], auto: 6.4 },
       { lines: ['Your objectives are displayed on the left.', 'We placed allied marks all over Earth. Pass through them when you find them!', 'Good luck.'], auto: 5.2 },
     ],

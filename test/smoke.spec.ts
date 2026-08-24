@@ -21,22 +21,24 @@ test('loads first frame and validates combat and high-altitude flight', async ({
   // tutorial cat is rescued.
   await expect(page.locator('.breaking-band')).toHaveCount(0)
 
+  // Nothing has started: the run clock, the traffic and every spawner wait on
+  // the one-cat tutorial, and the briefing has handed over no controls yet.
   await page.keyboard.down('q')
-  await page.waitForTimeout(700)
+  await page.waitForTimeout(500)
   await page.keyboard.up('q')
-  await page.waitForTimeout(550)
-  const heldShotMetrics = JSON.parse(await page.locator('canvas[data-render-metrics]').getAttribute('data-render-metrics') ?? '{}')
-  expect(heldShotMetrics.laserShotsFired).toBe(1)
-  expect(heldShotMetrics.activeTraffic).toBe(0)
-  expect(heldShotMetrics.tutorialCats).toBe(1)
-  expect(heldShotMetrics.remainingTime).toBe(300)
+  await page.waitForTimeout(300)
+  const openingMetrics = JSON.parse(await page.locator('canvas[data-render-metrics]').getAttribute('data-render-metrics') ?? '{}')
+  expect(openingMetrics.laserShotsFired).toBe(0)
+  expect(openingMetrics.activeTraffic).toBe(0)
+  expect(openingMetrics.tutorialCats).toBe(1)
+  expect(openingMetrics.remainingTime).toBe(300)
 
-  await page.keyboard.press('q')
-  await page.waitForTimeout(550)
-  const secondShotMetrics = JSON.parse(await page.locator('canvas[data-render-metrics]').getAttribute('data-render-metrics') ?? '{}')
-  expect(secondShotMetrics.laserShotsFired).toBe(2)
+  // The briefing teaches the laser and turbo by hand before it asks for the
+  // cat. SKIP jumps past the talking and lands on the cat, which is the one
+  // step it cannot skip: the run does not start until that cat is aboard.
+  await page.locator('.briefing-skip').click()
+  await expect(page.locator('.tutorial-e-prompt')).toBeVisible()
 
-  // The run clock and normal spawners begin only after the one-cat tutorial.
   await page.keyboard.down('e')
   await page.waitForTimeout(4000)
   await page.keyboard.up('e')
@@ -46,6 +48,19 @@ test('loads first frame and validates combat and high-altitude flight', async ({
   expect(missionMetrics.remainingTime).toBeLessThan(300)
   expect(missionMetrics.activeTraffic).toBeGreaterThan(0)
   await expect(page.locator('.mission-panel')).toContainText('미션 1')
+
+  // With the tutorial cleared every control answers, the laser included.
+  await page.keyboard.down('q')
+  await page.waitForTimeout(700)
+  await page.keyboard.up('q')
+  await page.waitForTimeout(550)
+  const heldShotMetrics = JSON.parse(await page.locator('canvas[data-render-metrics]').getAttribute('data-render-metrics') ?? '{}')
+  expect(heldShotMetrics.laserShotsFired).toBeGreaterThan(0)
+
+  await page.keyboard.press('q')
+  await page.waitForTimeout(550)
+  const secondShotMetrics = JSON.parse(await page.locator('canvas[data-render-metrics]').getAttribute('data-render-metrics') ?? '{}')
+  expect(secondShotMetrics.laserShotsFired).toBeGreaterThan(heldShotMetrics.laserShotsFired)
 
   const viewport = page.viewportSize()!
   await page.mouse.move(viewport.width / 2, 4)

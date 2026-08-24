@@ -305,29 +305,46 @@ function Intro() {
 /**
  * The general's briefing, run once at the start of a tutorial.
  *
- * Steps 1-4 wait for a click. Step 5 is the actual "hold E" instruction, so it
- * can only be cleared by pressing E - a click would let a player skip past the
- * one control the tutorial is teaching. Steps 6-7 fire after the beam has
- * already started the tutorial pickup, so gameplay is already moving; they
- * advance on their own so they never block the player's hands.
+ * Three kinds of step, decided by the step's own data rather than by its
+ * index - the indices moved once already when the hands-on steps went in, and
+ * every hard-coded number in here broke:
+ *
+ * - A plain step waits for a click.
+ * - A `wait` step is hands-on. The control it names is inert in the simulation
+ *   until this step puts it on screen, and the step only clears once the player
+ *   has actually used it. A click cannot get past one: skipping the single
+ *   control the line is teaching is the whole thing it exists to prevent.
+ * - An `auto` step advances on its own. Those come after the cat is caught,
+ *   when the game is already moving and the general is talking over it, so
+ *   they must never block the player's hands.
  */
 function BossBriefing() {
-  const { snapshot, unlockTutorialBeam, t } = useGame()
+  const { snapshot, unlockTutorialControl, t } = useGame()
   const [step, setStep] = useState(0)
   const [done, setDone] = useState(false)
   const steps = t.tutorialBriefing
+  const waiting = steps[step]?.wait
 
   useEffect(() => {
-    // E is inert in the simulation until this fires (see beamUnlocked in
-    // GameContext's advance()) - otherwise a tap on E while an earlier line
-    // is still showing would finish the tutorial in the background and let
-    // the ship take off mid-briefing.
-    if (step === 4) unlockTutorialBeam()
-  }, [step, unlockTutorialBeam])
+    // The control is inert in the simulation until this fires (see the input
+    // gate in GameContext's advance()) - otherwise a tap while an earlier line
+    // is still showing would run ahead of the briefing, and on E it would
+    // finish the tutorial outright and take the ship off mid-sentence.
+    if (waiting) unlockTutorialControl(waiting)
+  }, [waiting, unlockTutorialControl])
+
+  // The deed, not the key: the simulation latches the first shot and the first
+  // boost of the tutorial, so a one-frame event cannot fall between two
+  // snapshots and leave the briefing waiting on something already done.
+  const satisfied = waiting === 'beam'
+    ? snapshot.beamActive
+    : waiting === 'laser'
+      ? snapshot.tutorialLaserFired
+      : waiting === 'turbo' && snapshot.tutorialTurboUsed
 
   useEffect(() => {
-    if (step === 4 && snapshot.beamActive) setStep(5)
-  }, [step, snapshot.beamActive])
+    if (waiting && satisfied) setStep((current) => Math.min(current + 1, steps.length - 1))
+  }, [waiting, satisfied, steps.length])
 
   useEffect(() => {
     if (done) return
@@ -354,9 +371,16 @@ function BossBriefing() {
     if (!clickable) return
     setStep((s) => Math.min(s + 1, steps.length - 1))
   }
+  // Skip drops the player at the cat, which is where the tutorial's own gate
+  // is: the run does not start until that cat is aboard, so there is nothing
+  // before it worth stopping at and nothing about it that can be skipped.
+  // Past that point the briefing is only talking, and skip ends it.
+  const catStep = steps.findIndex((entry) => entry.wait === 'beam')
+  const skippable = step !== catStep
   const skip = (event: { stopPropagation: () => void }) => {
     event.stopPropagation()
-    setStep(4)
+    if (catStep >= 0 && step < catStep) setStep(catStep)
+    else setDone(true)
   }
 
   return (
@@ -368,8 +392,12 @@ function BossBriefing() {
           {current.lines.map((line, index) => (
             <p key={index}><RichText text={line} /></p>
           ))}
-          {clickable && <span className="briefing-hint">{t.briefingContinue}</span>}
-          {step === 0 && (
+          {clickable
+            ? <span className="briefing-hint">{t.briefingContinue}</span>
+            : current.wait
+              ? <span className="briefing-hint briefing-await">{t.briefingWaitHint[current.wait]}</span>
+              : null}
+          {skippable && (
             <button type="button" className="briefing-skip" onClick={skip}>
               {t.briefingSkip}
             </button>

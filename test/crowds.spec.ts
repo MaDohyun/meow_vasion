@@ -139,7 +139,7 @@ describe('pooled city crowds and destructible cars', () => {
 
   it('starts the opening with moving people and one stationary tutorial cat', () => {
     const state = createCrowdState(101)
-    prepareTutorialCrowd(state, { x: 0, z: 8 })
+    prepareTutorialCrowd(state, { x: 0, y: 0.65, z: 8 })
     const view = { position: { x: 0, y: 3, z: 0 }, heading: 0, tutorialCatOnly: true }
     stepCrowds(state, view, 0)
     expect(activeCrowdCount(state, 'pedestrian')).toBeGreaterThanOrEqual(INITIAL_PEDESTRIANS)

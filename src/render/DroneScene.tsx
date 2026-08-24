@@ -62,6 +62,24 @@ const roundedCarBodyGeometry = new RoundedBoxGeometry(1.8, 0.62, 3.1, 2, 0.15)
 const roundedCarCabinGeometry = new RoundedBoxGeometry(1.55, 0.62, 1.55, 2, 0.18)
 const beamRingGeometry = new THREE.RingGeometry(0.9, 1, 28)
 const BEAM_RING_COUNT = 5
+/**
+ * How far above the craft the chase camera's eye sits, before speed, altitude
+ * and size add their own lift.
+ */
+const CHASE_EYE_HEIGHT = 3.6
+
+/**
+ * How far the whole chase rig sits below where it used to.
+ *
+ * Taken off the eye and the look-at point alike, so the camera's angle is
+ * untouched and only the frame slides down: the craft rides a little higher on
+ * screen and more of the street it is reaching into comes into view. Dropping
+ * the eye alone would have tilted the camera up at the sky instead, which is
+ * backwards for a game whose only verb points at the ground - and it would
+ * have changed how flying reads, which this deliberately does not.
+ */
+const CHASE_RIG_DROP = 0.6
+
 const BEAM_TARGET_RING_CAPACITY = WORLD_MAX_CARS + TRAFFIC_MAX_CARS + 8 + PEDESTRIAN_MAX + CAT_MAX + HAZARD_MAX + Object.values(ENEMY_CAPS).reduce((sum, count) => sum + count, 0)
 const beamTargetRingMaterial = new THREE.MeshBasicMaterial({
   color: '#a7fff0',
@@ -829,13 +847,13 @@ function Ufo() {
     const distance = smoothedCameraPull.current + speedRatio * 3.3 + altitudeView
     cameraPosition.set(
       game.drone.position.x - forwardX * distance,
-      Math.max(1, game.drone.position.y + 3.6 + speedRatio * 1.1 + altitudeView + sizeLift - forwardY * distance * 0.72),
+      Math.max(1, game.drone.position.y + CHASE_EYE_HEIGHT - CHASE_RIG_DROP + speedRatio * 1.1 + altitudeView + sizeLift - forwardY * distance * 0.72),
       game.drone.position.z - forwardZ * distance,
     )
     camera.position.lerp(cameraPosition, 1 - Math.exp(-3.2 * dt))
     cameraTarget.set(
       game.drone.position.x + forwardX * (5.5 + speedRatio * 3),
-      game.drone.position.y + forwardY * (5.5 + speedRatio * 3),
+      game.drone.position.y - CHASE_RIG_DROP + forwardY * (5.5 + speedRatio * 3),
       game.drone.position.z + forwardZ * (5.5 + speedRatio * 3),
     )
     camera.lookAt(cameraTarget)

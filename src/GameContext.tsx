@@ -18,7 +18,7 @@ import {
 } from './core/beam'
 import { createCrowdState, finishTutorialCrowd, prepareTutorialCrowd, primeCrowds, stepCrowds, type CrowdState } from './core/crowds'
 import { type CrowdSpawnZone, GAS_STATION_BEAM_MASS, canAbsorbBuilding, crowdSpawnZonesAround, damageLandmark, destructibleLandmarksAround, nearestDestructibleLandmark, parkingCarsAround, type DestructibleLandmark } from './core/cityLandmarks'
-import { STRINGS, readStoredLanguage, storeLanguage, type Language, type MessageKey } from './i18n'
+import { STRINGS, readStoredLanguage, storeLanguage, type Language, type MessageKey, type TutorialControl } from './i18n'
 import { createDaylightSample, daylightClock, sampleDaylight, type DaylightSample } from './core/daylight'
 import {
   createHazardState,
@@ -58,6 +58,7 @@ import {
   createActiveWorld,
   lakeDepthAt,
   mysteryCircleAt,
+  TUTORIAL_CAT,
   TUTORIAL_SPAWN,
   updateActiveWorld,
 } from './core/world'
@@ -164,11 +165,25 @@ export type GameRuntime = {
    *  leaving the tutorial impossible to clear - holding the beam on until
    *  the cat is actually absorbed is the fix. */
   tutorialBeamLatched: boolean
-  /** Flips true once the general's briefing reaches "hold E to rescue the
-   *  cat" (BossBriefing calls unlockTutorialBeam). E does nothing before
-   *  that - see beamUnlocked in advance() - so an early tap can't finish the
-   *  tutorial while the briefing is still on an earlier line. */
+  /**
+   * Which controls the general's briefing has handed over, and what the
+   * player has done with them.
+   *
+   * The tutorial teaches one control at a time, and a control it has not
+   * reached is inert - see the input gate in advance(). A tap on E before the
+   * briefing asks for it used to finish the tutorial in the background and
+   * take the ship off mid-sentence; the same is true of every other key now
+   * that the briefing asks for them one by one.
+   *
+   * The `Fired`/`Used` pair are latches rather than live flags. A shot is one
+   * frame and the snapshot the briefing reads is published at sixteen hertz,
+   * so a live flag is a race; a latch is not.
+   */
   tutorialBriefingReady: boolean
+  tutorialLaserReady: boolean
+  tutorialTurboReady: boolean
+  tutorialLaserFired: boolean
+  tutorialTurboUsed: boolean
   laserActive: boolean
   laserInputHeld: boolean
   boostInputHeld: boolean
@@ -295,6 +310,10 @@ export type GameSnapshot = {
   missionBanner: MissionBanner | null
   tutorial: boolean
   tutorialBriefingReady: boolean
+  /** Latched once the player has actually fired / boosted during the
+   *  tutorial. The hands-on briefing steps clear on these. */
+  tutorialLaserFired: boolean
+  tutorialTurboUsed: boolean
   daze: number
   loadedCars: number
   cargoSlowdown: number
@@ -365,7 +384,7 @@ type GameContextValue = {
   advance: (dt: number) => void
   start: () => void
   restart: () => void
-  unlockTutorialBeam: () => void
+  unlockTutorialControl: (control: TutorialControl) => void
   quality: RenderQuality
   setQuality: (quality: RenderQuality) => void
   language: Language
@@ -551,7 +570,7 @@ function makeRuntime(): GameRuntime {
   const world = createActiveWorld(drone.position)
   const crowdSpawnZones = crowdSpawnZonesAround(drone.position)
   const crowds = createCrowdState((Math.random() * 0xffffffff) >>> 0)
-  prepareTutorialCrowd(crowds, { x: TUTORIAL_SPAWN.x, z: 51 })
+  prepareTutorialCrowd(crowds, TUTORIAL_CAT)
   const traffic = createTrafficState((Math.random() * 0xffffffff) >>> 0)
   const enemies = createEnemyState()
   // Populate the first district while the intro is loading. The tutorial cat
@@ -601,6 +620,10 @@ function makeRuntime(): GameRuntime {
     beamTargetId: null,
     tutorialBeamLatched: false,
     tutorialBriefingReady: false,
+    tutorialLaserReady: false,
+    tutorialTurboReady: false,
+    tutorialLaserFired: false,
+    tutorialTurboUsed: false,
     laserActive: false,
     laserInputHeld: false,
     boostInputHeld: false,
@@ -1353,6 +1376,8 @@ function snapshotOf(game: GameRuntime): GameSnapshot {
     missionBanner: game.missionBannerTime > 0 ? game.missionBanner : null,
     tutorial: game.mission.stage === 0,
     tutorialBriefingReady: game.tutorialBriefingReady,
+    tutorialLaserFired: game.tutorialLaserFired,
+    tutorialTurboUsed: game.tutorialTurboUsed,
     daze: game.daze,
     loadedCars: game.loadedCars,
     cargoSlowdown: slowdown,
@@ -1582,14 +1607,26 @@ export function GameProvider({ children }: { children: ReactNode }) {
     // the stage flips, movement unlocks, and the ship takes off while the
     // briefing is still mid-sentence.
     const beamUnlocked = !tutorialAtStart || game.tutorialBriefingReady
+    const laserUnlocked = !tutorialAtStart || game.tutorialLaserReady
+    const turboUnlocked = !tutorialAtStart || game.tutorialTurboReady
     if (tutorialAtStart && beamUnlocked && rawInput.beam) game.tutorialBeamLatched = true
-    // The tutorial teaches one control at a time: until the beam actually
-    // lands on the cat, flight, laser and turbo are all inert, so the only
-    // thing left to try is the one the prompt names. Once E has been pressed
-    // once, the beam latches on for the rest of the tutorial - see
-    // tutorialBeamLatched - so tapping it does not let the cat go mid-pull.
+    // The tutorial teaches one control at a time: flight stays inert for all
+    // of it, and the laser and turbo answer only once the line that names them
+    // is on screen, so at every moment there is exactly one thing to try and
+    // the prompt is naming it. Once E has been pressed once, the beam latches
+    // on for the rest of the tutorial - see tutorialBeamLatched - so tapping
+    // it does not let the cat go mid-pull.
     const input: PlayerInput = tutorialAtStart
-      ? { ...rawInput, throttle: 0, strafe: 0, vertical: 0, special: false, laser: false, laserContinuous: false, beam: beamUnlocked && (rawInput.beam || game.tutorialBeamLatched) }
+      ? {
+          ...rawInput,
+          throttle: 0,
+          strafe: 0,
+          vertical: 0,
+          special: turboUnlocked && rawInput.special,
+          laser: laserUnlocked && rawInput.laser,
+          laserContinuous: laserUnlocked && Boolean(rawInput.laserContinuous),
+          beam: beamUnlocked && (rawInput.beam || game.tutorialBeamLatched),
+        }
       : rawInput
     game.aimX = pointer.current.x
     game.aimY = pointer.current.y
@@ -1655,6 +1692,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     const boostPressed = input.special && !game.boostInputHeld
     game.boostInputHeld = input.special
     const turboActive = game.turboLockout <= 0 && input.special && game.turbo > 0.02
+    if (tutorialAtStart && turboActive) game.tutorialTurboUsed = true
     if (turboActive) {
       if (boostPressed) playBoosterSound()
       if (game.drone.boostRemaining <= 0) { setMessage(game, 'msgTurbo', 1.2); tone('upgrade') }
@@ -2021,6 +2059,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         if (destroyed) setMessage(game, 'msgCarLaunched', 0.9)
       }
       game.laserShotsFired += 1
+      if (tutorialAtStart) game.tutorialLaserFired = true
       playLaserSound()
     }
     game.laserActive = game.laserFlash > 0
@@ -2087,8 +2126,11 @@ export function GameProvider({ children }: { children: ReactNode }) {
   }, [])
 
 
-  const unlockTutorialBeam = useCallback(() => {
-    runtime.current.tutorialBriefingReady = true
+  const unlockTutorialControl = useCallback((control: TutorialControl) => {
+    const game = runtime.current
+    if (control === 'beam') game.tutorialBriefingReady = true
+    if (control === 'laser') game.tutorialLaserReady = true
+    if (control === 'turbo') game.tutorialTurboReady = true
     publish()
   }, [publish])
 
@@ -2105,7 +2147,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   }, [publish])
 
   const setMobileInput = useCallback((input: Partial<MobileInput>) => { Object.assign(mobile.current, input) }, [])
-  const value = useMemo<GameContextValue>(() => ({ runtime, snapshot, readInput, advance, start, restart, unlockTutorialBeam, setMobileInput, quality, setQuality, language, setLanguage, t: STRINGS[language] }), [advance, quality, readInput, restart, unlockTutorialBeam, setMobileInput, setQuality, snapshot, start, language, setLanguage])
+  const value = useMemo<GameContextValue>(() => ({ runtime, snapshot, readInput, advance, start, restart, unlockTutorialControl, setMobileInput, quality, setQuality, language, setLanguage, t: STRINGS[language] }), [advance, quality, readInput, restart, unlockTutorialControl, setMobileInput, setQuality, snapshot, start, language, setLanguage])
   return <GameContext.Provider value={value}>{children}</GameContext.Provider>
 }
 

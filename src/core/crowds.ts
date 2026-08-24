@@ -310,13 +310,13 @@ export function createCrowdState(seed = 0xc47cafe): CrowdState {
 }
 
 /** Exactly one cat and no other crowd actor in the opening 3x3 park. */
-export function prepareTutorialCrowd(state: CrowdState, position: Pick<Vec3, 'x' | 'z'>) {
+export function prepareTutorialCrowd(state: CrowdState, position: Vec3) {
   for (const object of state.objects) object.active = false
   const cat = state.objects.find((object) => object.kind === 'cat')!
   cat.generation += 1
   cat.id = `tutorial-cat:${cat.generation}`
   cat.position.x = position.x
-  cat.position.y = 0.65
+  cat.position.y = position.y
   cat.position.z = position.z
   cat.velocity.x = 0
   cat.velocity.y = 0

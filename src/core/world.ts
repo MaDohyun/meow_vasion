@@ -14,7 +14,25 @@ export const WORLD_MAX_CARS = 62
 /** Ten percent more parked-car lots without changing the fixed render pool. */
 export const PARKED_CAR_SPAWN_MULTIPLIER = 1.1
 export const WORLD_GROUND_RADIUS_CELLS = 9
-export const TUTORIAL_SPAWN = { x: 0, y: 7, z: 54.5 } as const
+/**
+ * Where the craft and the opening cat stand, and how far apart.
+ *
+ * The gap is the whole point of the pair. The craft used to hover three and a
+ * half metres short of the cat, which put the cat directly under the hull:
+ * from a chase camera sitting behind and above, the thing the tutorial is
+ * asking the player to look at was tucked beneath the saucer and hard against
+ * the bottom of the frame. Backing off puts it out in open ground ahead of the
+ * craft, where the camera can see it.
+ *
+ * The ceiling on that gap is the beam itself, and it is tighter than the cone
+ * at ground level looks. The cone is widest where it meets the cat and narrows
+ * as the cat rises, so the gap has to fit inside the beam's narrowest ring -
+ * its radius right under the hull - not inside the wide mouth at the bottom. A
+ * cat the beam loses halfway up is a tutorial nobody can finish, and flight
+ * stays locked until it is aboard. `test/tutorial.spec.ts` holds the margin.
+ */
+export const TUTORIAL_SPAWN = { x: 0, y: 7, z: 56 } as const
+export const TUTORIAL_CAT = { x: 0, y: 0.65, z: 51 } as const
 export const TUTORIAL_CELL_X = 0
 export const TUTORIAL_CELL_Z = 1
 
