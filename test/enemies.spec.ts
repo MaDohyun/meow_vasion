@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  DRONE_MINE_HIT_RADIUS,
   ENEMY_CAPS,
   ENEMY_MAX_HP,
   ENEMY_WAVE_STAGES,
@@ -14,6 +15,7 @@ import {
   syncEnemyTiers,
   waveStageForTime,
 } from '../src/core/enemies'
+import { isAbsorbable } from '../src/core/beam'
 import { getProceduralCell, type ProceduralBuilding } from '../src/core/world'
 
 function antiAirBuildings(count: number) {
@@ -43,13 +45,33 @@ const AA_WAVE_AT = ENEMY_WAVE_STAGES[4]!.at
 const LAST_WAVE_AT = ENEMY_WAVE_STAGES[ENEMY_WAVE_STAGES.length - 1]!.at
 
 describe('time-based enemy waves', () => {
-  it('makes every airborne enemy completely immune to tractor physics', () => {
+  it('leaves only the drone mine grabbable by tractor physics', () => {
     const state = createEnemyState()
-    for (const kind of ['drone', 'helicopter', 'fighter'] as const) {
+    // The mine can be caught and dragged; a caught bomb is still a bomb, so
+    // the swallow path may never bank it as food.
+    const drone = state.slots.find((candidate) => candidate.kind === 'drone')!
+    expect(drone.beamImmune).toBe(false)
+    expect(isAbsorbable('drone', 1.6, Number.POSITIVE_INFINITY)).toBe(false)
+    for (const kind of ['helicopter', 'fighter'] as const) {
       const enemy = state.slots.find((candidate) => candidate.kind === kind)!
       expect(enemy.beamImmune).toBe(true)
     }
     expect(ENEMY_WAVE_STAGES.at(-1)!.at).toBe(180)
+  })
+
+  it('detonates a beam-held mine that is drawn onto the hull', () => {
+    const state = createEnemyState()
+    const drone = state.slots.find((candidate) => candidate.kind === 'drone')!
+    drone.active = true
+    drone.hitRadius = DRONE_MINE_HIT_RADIUS
+    drone.inBeam = true
+    drone.position.x = 0
+    drone.position.y = 10
+    drone.position.z = 0
+    drone.target.y = 10
+    stepEnemies(state, { x: 0, y: 10.5, z: 0 }, 1 / 60, { x: 0, y: 0, z: 0 }, 1.4)
+    expect(state.mineExplosion).not.toBeNull()
+    expect(drone.active).toBe(false)
   })
   it('starts with an empty sky, and fills it the moment the drone wave lands', () => {
     // The opening stage is the sighting: the city has noticed the craft and

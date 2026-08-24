@@ -78,13 +78,18 @@ const DEFAULT_DIAMETER: Record<BeamObjectKind, number> = {
 
 /** Building-mounted anti-air emplacements and the battleship are the beam
  *  objects treated as architecture. Everything else is eligible once it is no
- *  wider than a third of the current UFO diameter - though no enemy qualifies
- *  in practice any more: every one of them is flagged `beamImmune`. */
+ *  wider than a third of the current UFO diameter - though among enemies only
+ *  the drone mine is even grabbable: the rest are flagged `beamImmune`. */
 export function isAbsorbable(kind: BeamObjectKind, diameter = DEFAULT_DIAMETER[kind], maxDiameter = Number.POSITIVE_INFINITY) {
   // The battleship is excluded by kind rather than by size. Gating it on
   // diameter would make it edible to a craft at the size cap, and it is meant
   // to be the one thing in the sky that is never food.
-  return kind !== 'anti-air' && kind !== 'boss' && diameter <= maxDiameter
+  //
+  // The drone mine is excluded for the opposite reason: the beam can catch
+  // one, but a bomb is never banked as a meal - drawn to the hull it strikes
+  // and detonates through the same rules as flying into it, so the swallow
+  // path must never quietly defuse it first.
+  return kind !== 'anti-air' && kind !== 'boss' && kind !== 'drone' && diameter <= maxDiameter
 }
 
 export type BeamObject = {

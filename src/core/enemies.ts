@@ -496,11 +496,13 @@ function makeSlot(kind: EnemyKind, slot: number): EnemySlot {
     absorbTimer: 0,
     diameter: ENEMY_DIAMETER[kind],
     scoreValue: kind === 'boss' ? 1200 : kind === 'fighter' ? 140 : kind === 'helicopter' ? 80 : 35,
-    // No enemy is food any more. The tank was the only one the beam could ever
-    // lift, so with it gone the exception list is the whole roster - the
-    // battleship most of all, which is not "too big to eat yet" but simply not
-    // food, however far the craft has grown.
-    beamImmune: true,
+    // No enemy is food, but the mine is the one thing the beam may touch: it
+    // can be caught and dragged, and what a dragged bomb does is go off - the
+    // arming and strike rules in stepEnemies fire exactly as if it was flown
+    // into. Everything else stays immune - the battleship most of all, which
+    // is not "too big to eat yet" but simply not food, however far the craft
+    // has grown.
+    beamImmune: kind !== 'drone',
     freePhysics: false,
     target: { x: 0, y: 0, z: 0 },
     phase: slot / Math.max(1, ENEMY_CAPS[kind]) * Math.PI * 2,
