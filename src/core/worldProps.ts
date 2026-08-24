@@ -28,6 +28,9 @@ export const WORLD_PROP_MASS = {
   'trash-bin': 2,
   'park-bench': 3,
   'bus-stop': 5,
+  // A whole station mouth: a rung above the pylon, below the gas-station
+  // demolition, so tearing one out is late-run beam work.
+  subway: 7,
 } as const
 
 export function worldPropMass(worldProp: Pick<BeamWorldProp, 'kind'>) {
@@ -319,6 +322,8 @@ export function worldPropsAround(world: ActiveWorld, position: Pick<Vec3, 'x' | 
       props.push(prop({ id: `power-pylon:${cell.cellX}:${cell.cellZ}`, kind: 'power-pylon', position: center, rotation: (seed % 4) * Math.PI / 2, variant: 0 }))
     } else if (landmark === 'communications') {
       props.push(prop({ id: landmarkId('communications', cell.cellX, cell.cellZ), kind: 'communications', position: center, rotation: (seed % 4) * Math.PI / 2, variant: 0 }))
+    } else if (landmark === 'subway') {
+      props.push(prop({ id: `subway:${cell.cellX}:${cell.cellZ}`, kind: 'subway', position: center, rotation: (seed % 4) * Math.PI / 2, variant: 0 }))
     }
   }
   return props

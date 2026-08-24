@@ -39,10 +39,28 @@ describe('beam-capable city dressing', () => {
     expect(WORLD_PROP_MASS['utility-pole']).toBe(3)
     expect(WORLD_PROP_MASS['power-pylon']).toBe(6)
     expect(WORLD_PROP_MASS.communications).toBe(11)
+    expect(WORLD_PROP_MASS.subway).toBe(7)
     // A medium craft can lift the roof kit while the heavier host building
     // remains in place, which is the intended separate-object behaviour.
     expect(beamLiftScale(WORLD_PROP_MASS['rooftop-structure'], 5)).toBeGreaterThan(0)
     expect(beamLiftScale(8, 5)).toBe(0)
+  })
+
+  it('registers subway entrances as weight-seven beam props', () => {
+    // A subway cell rolls on roughly one empty cell in twenty, so the search
+    // widens until one is in range rather than pinning a magic coordinate.
+    let subways: ReturnType<typeof worldPropsAround> = []
+    for (let step = 0; step < 40 && subways.length === 0; step += 1) {
+      const centre = { x: step * WORLD_CELL_SIZE * 6, z: 0 }
+      subways = worldPropsAround(createActiveWorld(centre), centre)
+        .filter((prop) => prop.kind === 'subway')
+    }
+    expect(subways.length).toBeGreaterThan(0)
+    expect(worldPropMass(subways[0]!)).toBe(7)
+    // On the same ladder as everything else: liftable one strength step under
+    // its weight, out of reach below that.
+    expect(beamLiftScale(WORLD_PROP_MASS.subway, 6)).toBeGreaterThan(0)
+    expect(beamLiftScale(WORLD_PROP_MASS.subway, 5)).toBe(0)
   })
 
   it('reuses deterministic park transforms for the beam and render pools', () => {

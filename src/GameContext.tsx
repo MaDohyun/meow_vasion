@@ -438,6 +438,7 @@ const WORLD_PROP_COLORS: Record<BeamWorldProp['kind'], string> = {
   'trash-bin': '#079b8d',
   'park-bench': '#c58b68',
   'bus-stop': '#78aebc',
+  subway: '#78aebc',
 }
 
 const WORLD_PROP_DIAMETERS: Record<BeamWorldProp['kind'], number> = {
@@ -449,6 +450,7 @@ const WORLD_PROP_DIAMETERS: Record<BeamWorldProp['kind'], number> = {
   'trash-bin': 1.7,
   'park-bench': 3.4,
   'bus-stop': 7.2,
+  subway: 8.6,
 }
 
 const WORLD_PROP_SCORES: Record<BeamWorldProp['kind'], number> = {
@@ -460,6 +462,7 @@ const WORLD_PROP_SCORES: Record<BeamWorldProp['kind'], number> = {
   'trash-bin': 30,
   'park-bench': 35,
   'bus-stop': 140,
+  subway: 220,
 }
 
 function makeWorldPropBeamObject(worldProp: BeamWorldProp): BeamObject {
