@@ -17,13 +17,15 @@ function completeEvent(id: MissionQuestId, target: number) {
   if (id === 'capture-people') return { type: 'capture-person', amount: target } as const
   if (id === 'destroy-cars') return { type: 'destroy-car', amount: target } as const
   if (id === 'destroy-trucks') return { type: 'destroy-truck', amount: target } as const
+  if (id === 'destroy-tankers') return { type: 'destroy-tanker', amount: target } as const
   if (id === 'absorb-water') return { type: 'absorb-water', litres: target } as const
   if (id === 'ruin-buildings') return { type: 'ruin-building', amount: target } as const
-  if (id === 'destroy-gas-station') return { type: 'destroy-gas-station', amount: target } as const
   if (id === 'destroy-comms') return { type: 'destroy-comms', amount: target } as const
   if (id === 'destroy-drones') return { type: 'destroy-enemy', kind: 'drone', amount: target } as const
   if (id === 'destroy-fighters') return { type: 'destroy-enemy', kind: 'fighter', amount: target } as const
   if (id === 'absorb-rooftop-structures') return { type: 'absorb-rooftop-structure', amount: target } as const
+  if (id === 'absorb-trees') return { type: 'absorb-tree', amount: target } as const
+  if (id === 'absorb-streetlights') return { type: 'absorb-streetlight', amount: target } as const
   if (id === 'air-checkpoints') return { type: 'pass-checkpoint', amount: target } as const
   throw new Error(`No stage-one/two event for ${id}`)
 }
@@ -90,7 +92,7 @@ describe('three-stage reconnaissance missions', () => {
     expect(new Set(state.quests.map((quest) => quest.id)).size).toBe(3)
     for (const quest of state.quests) expect(MISSION_TWO_POOL).toContain(quest.id)
     expect(state.quests.some((quest) => quest.id === 'pass-mystery-circles')).toBe(false)
-    expect(state.quests.filter((quest) => quest.id === 'destroy-gas-station' || quest.id === 'destroy-comms').length).toBeLessThanOrEqual(1)
+    expect(MISSION_TWO_POOL).not.toContain('destroy-gas-station')
   })
 
   it('uses the fixed final trio and wins only when the clock and other goals are done', () => {
@@ -143,6 +145,49 @@ describe('three-stage reconnaissance missions', () => {
 
     expect(firstStageSlots.size).toBeGreaterThan(1)
     expect(secondStageSlots.size).toBeGreaterThan(1)
+  })
+
+  it('asks for ten human samples and offers the tanker hunt in mission one', () => {
+    expect(MISSION_ONE_POOL).toContain('destroy-tankers')
+    let peopleState: ReturnType<typeof createMissionState> | null = null
+    let tankerState: ReturnType<typeof createMissionState> | null = null
+    for (let seed = 1; seed <= 200 && (!peopleState || !tankerState); seed += 1) {
+      const state = createMissionState(seed)
+      startMissionOne(state, 0)
+      if (!peopleState && state.quests.some((quest) => quest.id === 'capture-people')) peopleState = state
+      if (!tankerState && state.quests.some((quest) => quest.id === 'destroy-tankers')) tankerState = state
+    }
+    expect(peopleState!.quests.find((quest) => quest.id === 'capture-people')!.target).toBe(10)
+    const tankers = tankerState!.quests.find((quest) => quest.id === 'destroy-tankers')!
+    expect(tankers.target).toBe(3)
+    recordMissionEvent(tankerState!, { type: 'destroy-tanker' }, 30)
+    expect(tankers.progress).toBe(1)
+    recordMissionEvent(tankerState!, { type: 'destroy-tanker', amount: 2 }, 40)
+    expect(tankers.complete).toBe(true)
+  })
+
+  it('offers tree and streetlight absorption in mission two instead of the gas station', () => {
+    expect(MISSION_TWO_POOL).toContain('absorb-trees')
+    expect(MISSION_TWO_POOL).toContain('absorb-streetlights')
+    let selectedState: ReturnType<typeof createMissionState> | null = null
+    for (let seed = 1; seed <= 200 && !selectedState; seed += 1) {
+      const state = createMissionState(seed)
+      startMissionOne(state, 0)
+      for (const quest of [...state.quests]) completeQuest(state, quest, 20)
+      if (
+        state.quests.some((quest) => quest.id === 'absorb-trees')
+        && state.quests.some((quest) => quest.id === 'absorb-streetlights')
+      ) selectedState = state
+    }
+    expect(selectedState).not.toBeNull()
+    const trees = selectedState!.quests.find((quest) => quest.id === 'absorb-trees')!
+    const lights = selectedState!.quests.find((quest) => quest.id === 'absorb-streetlights')!
+    expect(trees.target).toBe(5)
+    expect(lights.target).toBe(4)
+    recordMissionEvent(selectedState!, { type: 'absorb-tree', amount: 5 }, 30)
+    expect(trees.complete).toBe(true)
+    recordMissionEvent(selectedState!, { type: 'absorb-streetlight', amount: 4 }, 31)
+    expect(lights.complete).toBe(true)
   })
 
   it('offers and tracks absorption of five rooftop structures in mission two', () => {

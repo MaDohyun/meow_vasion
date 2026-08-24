@@ -16,11 +16,17 @@ export type EnemyProjectileKind = 'rifle' | 'shell' | 'missile' | 'rocket' | 'bo
  * either, so each one now introduces exactly one thing and the news band has
  * exactly one thing to report.
  *
+ * The opening stage sends nothing, on purpose. It is the sighting: the city
+ * has noticed the craft and has not answered yet, and the bulletin that goes
+ * out during it says exactly that. Drones in the sky before the bulletin that
+ * announces them made the report read as a recap of something the player had
+ * already been dodging for half a minute.
+ *
  * Spaced across the run rather than packed into its front half: the last wave
  * lands with two minutes still on the clock, which is the boss fight.
  */
 export const ENEMY_WAVE_STAGES = [
-  { at: 0, tempo: 0, label: 'UFO SIGHTED', targets: { drone: 4 } },
+  { at: 0, tempo: 0, label: 'UFO SIGHTED', targets: {} },
   { at: 30, tempo: 1, label: 'DRONE MINES', targets: { drone: 14 } },
   { at: 70, tempo: 2, label: 'HELICOPTERS UP', targets: { drone: 20, helicopter: 8 } },
   { at: 110, tempo: 3, label: 'FIGHTERS SCRAMBLED', targets: { drone: 25, helicopter: 11, fighter: 4 } },
@@ -592,9 +598,11 @@ export function syncEnemyTiers(state: EnemyState, elapsed: number, player: Vec3,
   state.waveStage = stage
   state.spawnTimer -= Math.min(Math.max(0, dt), 0.05)
   if (stageChanged) state.spawnTimer = 0
-  // Nothing in the sky yet: get the opening pair out without waiting on the
-  // cadence. Drones are the first wave's only unit, so their count is the
-  // whole test - it does not need to name a kind a later wave might drop.
+  // Nothing in the sky: get the first pair out without waiting on the
+  // cadence, so the drone wave lands with the bulletin that announces it
+  // rather than trickling in behind it. Drones are the first wave's only
+  // unit, so their count is the whole test - it does not need to name a kind
+  // a later wave might drop.
   const initialBurst = state.spawnTimer <= 0 && activeEnemyCount(state, 'drone') === 0
   for (const enemy of state.slots) {
     if (enemy.respawn > 0) enemy.respawn = Math.max(0, enemy.respawn - dt)
@@ -602,8 +610,7 @@ export function syncEnemyTiers(state: EnemyState, elapsed: number, player: Vec3,
     if (target === 0 && enemy.active && enemy.kind !== 'anti-air') enemy.active = false
   }
   let spawned = 0
-  const burstLimit = stage === 0 ? 2 : SPAWN_BURST_LIMIT
-  while ((state.spawnTimer <= 0 || (initialBurst && spawned < 2)) && spawned < burstLimit) {
+  while ((state.spawnTimer <= 0 || (initialBurst && spawned < 2)) && spawned < SPAWN_BURST_LIMIT) {
     const kind = neediestKind(state, elapsed)
     if (!kind) break
     if (!spawnOne(state, kind, player, heading)) break

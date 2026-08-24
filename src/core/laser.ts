@@ -5,11 +5,11 @@ export const LASER_PROJECTILE_LIFETIME = 0.14
 export const LASER_FALLBACK_DISTANCE = 300
 export const LASER_MAX_BURSTS = 12
 
-export type LaserTargetKind = 'fighter' | 'car' | 'landmark' | 'building' | 'ground'
+export type LaserTargetKind = 'fighter' | 'car' | 'person' | 'prop' | 'landmark' | 'building' | 'ground'
 
 export type LaserSphereTarget = {
   id: string
-  kind: Extract<LaserTargetKind, 'fighter' | 'car' | 'landmark'>
+  kind: Extract<LaserTargetKind, 'fighter' | 'car' | 'person' | 'prop' | 'landmark'>
   center: Vec3
   radius: number
 }
