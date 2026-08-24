@@ -6,16 +6,20 @@ import { WORLD_CELL_SIZE } from './world'
 /**
  * Heavy road vehicles - tankers and box trucks.
  *
- * These exist to give the widening beam something to punish. A grown craft
- * sweeps a wider cone, so it snags these more easily, and that is the cost of
- * growing rather than a flat speed tax.
+ * These exist to give the widening beam something heavy to lift. A grown craft
+ * sweeps a wider cone, so it snags these more easily, and the weight it then
+ * has to haul is the cost of growing rather than a flat speed tax.
  *
- * They must never be a gotcha. The game spends the whole run teaching "absorb
- * everything", so a hazard that only reveals itself after it is swallowed reads
- * as unfair. Every one of these is marked from a distance, stays marked while it
- * hangs from the beam, and can be dumped with the release key right up until it
- * reaches the craft. Getting caught by one should be a misread, never a
- * surprise.
+ * Neither of them is a trap any more. The tanker used to detonate once the
+ * beam drew it in - the one thing in the city that punished the verb the game
+ * spends the whole run teaching - and it is now simply the heaviest, most
+ * valuable thing on the road: swallowed like anything else once the craft is
+ * wide enough and strong enough, and worth the haul when it is. The laser is
+ * still the other way to take one, and still blows it up.
+ *
+ * What remains of the old danger is the weight itself. A tanker on the beam is
+ * ballast you fly with, and deciding whether to keep it is the whole of the
+ * decision it asks for.
  */
 
 /**
@@ -36,8 +40,6 @@ export const TRUCK_DIAMETER = 4.2
 /** Tripled with the other inert masses: a tanker is the heaviest thing the
  *  beam can pick up and should be the slowest to come up. */
 export const HAZARD_MASS = 5
-/** Detonates once it is drawn this close to the craft. */
-export const HAZARD_TRIGGER_DISTANCE = 3.4
 /**
  * Laser hits before a heavy vehicle goes up, like a small building.
  *
@@ -59,11 +61,8 @@ export type Hazard = BeamObject & {
   roadAxis: TrafficAxis
   roadDirection: -1 | 1
   speed: number
-  /** Rises as it is pulled in, so the warning gets louder the worse it gets. */
-  alarm: number
   /** Laser damage left to take before the vehicle blows. */
   hp: number
-  detonated: boolean
 }
 
 export type HazardState = {
@@ -130,9 +129,7 @@ function makeHazard(slot: number): Hazard {
     absorbTimer: 0,
     diameter: 5.1,
     scoreValue: 240,
-    alarm: 0,
     hp: HAZARD_HP,
-    detonated: false,
   }
 }
 
@@ -243,9 +240,7 @@ function spawnHazard(state: HazardState, view: HazardView, kind: HeavyVehicleKin
   hazard.explosionPending = false
   hazard.absorbing = false
   hazard.absorbTimer = 0
-  hazard.alarm = 0
   hazard.hp = kind === 'truck' ? TRUCK_HP : HAZARD_HP
-  hazard.detonated = false
   return true
 }
 
@@ -283,13 +278,10 @@ export function stepHazards(state: HazardState, view: HazardView, dt: number) {
   state.spawnTimer -= d
   for (const hazard of state.objects) {
     if (!hazard.active) continue
+    // Held vehicles are the beam's to move; road behaviour resumes when the
+    // beam lets go. There is nothing to telegraph either way now - neither
+    // heavy vehicle does anything to the craft but weigh it down.
     const held = hazard.inBeam || hazard.tether > 0.02
-    // Alarm climbs while held and decays when let go, so releasing visibly
-    // defuses the situation. A truck has nothing to warn about - it is just
-    // heavy - so it never raises one.
-    hazard.alarm = held && hazard.kind === 'explosive'
-      ? Math.min(1, hazard.alarm + d * 1.9)
-      : Math.max(0, hazard.alarm - d * 1.4)
     if (held) continue
     // Clear any slot created by an older build as well as rejecting new road
     // snaps, so hot-reloading this fix removes a tanker already sitting in a
@@ -328,31 +320,6 @@ export function stepHazards(state: HazardState, view: HazardView, dt: number) {
     else state.spawnTimer = 0.6
   }
   return state
-}
-
-/**
- * Returns the hazard that just reached the craft, if any. The caller decides
- * what a detonation costs; this only reports it.
- */
-export function detonateReachedHazard(state: HazardState, craftPosition: { x: number; y: number; z: number }) {
-  for (const hazard of state.objects) {
-    if (hazard.kind !== 'explosive') continue
-    if (!hazard.active || hazard.detonated || hazard.absorbing) continue
-    if (!hazard.inBeam && hazard.tether <= 0.02) continue
-    const distance = Math.hypot(
-      hazard.position.x - craftPosition.x,
-      hazard.position.y - craftPosition.y,
-      hazard.position.z - craftPosition.z,
-    )
-    if (distance > HAZARD_TRIGGER_DISTANCE) continue
-    hazard.detonated = true
-    hazard.active = false
-    hazard.inBeam = false
-    hazard.tether = 0
-    hazard.explosionPending = true
-    return hazard
-  }
-  return null
 }
 
 /**

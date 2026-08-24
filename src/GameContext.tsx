@@ -23,11 +23,10 @@ import { createDaylightSample, daylightClock, sampleDaylight, type DaylightSampl
 import {
   createHazardState,
   damageHazard,
-  detonateReachedHazard,
   stepHazards,
   type HazardState,
 } from './core/hazards'
-import { SIZE_MIN, SIZE_START, type SizeGainKind, type SizeProfile, bonusHeartsForSize, clampSize, growSize, growSizeBy, sizeProfile } from './core/size'
+import { SIZE_MIN, SIZE_START, type SizeGainKind, type SizeProfile, bonusHeartsForSize, clampSize, growSize, growSizeBy, sizeProfile, ufoDiameter } from './core/size'
 import { MAX_HEALTH, createHealthState, damageHealth, healHealth, healthRatio, isDead, isRegenerating, raiseHealthMax, stepHealth, type HealthLossKind, type HealthState } from './core/health'
 import { BATTLESHIP_TURRETS, activeEnemyCount, battleshipTurretPoint, createEnemyState, hitEnemy, resolveEnemyContacts, stepEnemies, stepEnemyProjectiles, syncAntiAirEnemies, syncEnemyTiers, waveLabelForTime, waveStageForTime, type EnemyKind, type EnemyState } from './core/enemies'
 import {
@@ -1945,7 +1944,13 @@ export function GameProvider({ children }: { children: ReactNode }) {
     }
     // No pickup cap: hanging mass is its own limit, and a craft that grabbed
     // too much should feel it rather than be quietly protected from it.
-    if (game.beamActive) {
+    //
+    // The weight ladder does apply, though. Capturing takes a car out of the
+    // road network for good, and a beam that cannot lift it has no business
+    // doing that: the car would be dumped dead in the street, its traffic slot
+    // spent, with nothing the craft could do about it. Under the band the
+    // cone simply plays over the roof and the car drives on.
+    if (game.beamActive && beamLiftScale(CAR_MASS, beamStrength(game)) > 0) {
       for (const car of game.traffic.cars) {
         if (!car.active || !isInsideBeam(car, beamField)) continue
         const captured = captureTrafficCar(game.traffic, car.id)
@@ -1960,10 +1965,31 @@ export function GameProvider({ children }: { children: ReactNode }) {
     stepBeamObjects(game.crowds.objects, beamField, d, false)
     stepBeamObjects(game.hazards.objects, beamField, d)
     stepBeamObjects(game.enemies.slots, beamField, d)
-    const maxAbsorbDiameter = Number.POSITIVE_INFINITY
-    // The same integer the lifting ladder runs on. City dressing the beam
-    // cannot lift is not swallowed either, so flying low over a shelter it
-    // could never shift leaves it standing rather than eating it on contact.
+    // Weight decides what the craft can move; bulk decides what it can eat.
+    //
+    // This was POSITIVE_INFINITY, which switched the size half off entirely -
+    // `isAbsorbable` took a `maxDiameter` and documented a hull rule that was
+    // never actually applied. A hull cannot swallow what will not fit through
+    // it, whatever the beam can drag, so the rule is now handed the number it
+    // always wanted.
+    //
+    // Be honest about what this changes today: nothing. Now that strength
+    // comes from size alone, the weight ladder opens later than the hull for
+    // every object in the game - a car fits the hull at 0.54 and is liftable
+    // at 1.13, a shelter fits at 1.34 and lifts at 3.77 - so weight is what
+    // the player actually feels and this never fires on its own. It is the
+    // invariant, not the balance: the moment a mass or a diameter is retuned,
+    // or anything raises strength without widening the hull, it is what stops
+    // a two-metre saucer swallowing an eight-metre station mouth.
+    //
+    // Above it the beam still lifts and carries - that is the weight ladder's
+    // business and it is untouched - the load simply hangs as ballast instead
+    // of vanishing, and you fly it somewhere or cut the beam.
+    const maxAbsorbDiameter = ufoDiameter(game.sizeProfile.size)
+    // The same integer the lifting ladder runs on, and it gates every object
+    // rather than city dressing alone. Flying low over a shelter - or a car,
+    // or a tanker - the beam could never shift leaves it where it is rather
+    // than eating it on contact.
     const absorbStrength = beamStrength(game)
     const absorbFrom = (objects: BeamObject[]) => {
       let object = beginNearbyBeamObjectAbsorption(objects, game.drone.position, maxAbsorbDiameter, game.sizeProfile.absorbDistance, absorbStrength)
@@ -1978,17 +2004,11 @@ export function GameProvider({ children }: { children: ReactNode }) {
     absorbFrom(game.beamObjects)
     absorbFrom(game.hazards.objects)
     absorbFrom(game.enemies.slots)
-    const detonated = detonateReachedHazard(game.hazards, game.drone.position)
-    if (detonated) {
-      triggerLaserBurst(game.laserBursts, 'impact', detonated.position, '#ff7a3d')
-      triggerFireball(game.fireballs, 'vehicle', detonated.position, undefined, blastSeed(game))
-      // Spectacle without hull damage, by design: the forecourt blast used to
-      // cost 2.5 pips, which turned every gas station into a trap the warning
-      // could not fully disarm. The daze is the whole price now - the craft
-      // wallows through the fireball instead of bleeding for it.
-      if (game.daze <= 0) game.daze = DAZE_TIME
-      tone('warning')
-    }
+    // A tanker used to detonate here the moment the beam drew it within 3.4m,
+    // which made the one heavy vehicle worth the most points the one object in
+    // the city that punished the verb the whole run teaches. It is food now:
+    // it goes up the beam and is swallowed by the same gates as everything
+    // else, and the laser remains the way to blow one up on purpose.
     game.loadedCars = loadedCarCount(game)
     game.ballast = beamBallast(game)
     for (let index = game.beamObjects.length - 1; index >= 0; index -= 1) {
