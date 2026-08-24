@@ -503,11 +503,13 @@ function makeSlot(kind: EnemyKind, slot: number): EnemySlot {
     absorbTimer: 0,
     diameter: ENEMY_DIAMETER[kind],
     scoreValue: kind === 'boss' ? 1200 : kind === 'fighter' ? 140 : kind === 'helicopter' ? 80 : 35,
-    // No enemy is food any more. The tank was the only one the beam could ever
-    // lift, so with it gone the exception list is the whole roster - the
-    // battleship most of all, which is not "too big to eat yet" but simply not
-    // food, however far the craft has grown.
-    beamImmune: true,
+    // No enemy is food, but the mine is the one thing the beam may touch: it
+    // can be caught and dragged, and what a dragged bomb does is go off - the
+    // arming and strike rules in stepEnemies fire exactly as if it was flown
+    // into. Everything else stays immune - the battleship most of all, which
+    // is not "too big to eat yet" but simply not food, however far the craft
+    // has grown.
+    beamImmune: kind !== 'drone',
     freePhysics: false,
     target: { x: 0, y: 0, z: 0 },
     phase: slot / Math.max(1, ENEMY_CAPS[kind]) * Math.PI * 2,
@@ -1180,7 +1182,17 @@ export function stepEnemies(state: EnemyState, player: Vec3, dt: number, playerV
       // for, and a mine that sat ticking under the hull for a third of a
       // second read as a dud rather than as a hit.
       const struck = distance <= enemy.hitRadius + playerRadius
-      if (!enemy.mineArmed && (struck || distance <= DRONE_MINE_BLAST_RADIUS)) {
+      // A mine on the beam rides disarmed. The field-and-fuse arming is for a
+      // craft flying through a minefield; a mine being reeled in crosses the
+      // field the moment the pull starts, so left on it "caught" would mean
+      // "already exploding". Held, it stays quiet until it actually reaches
+      // the hull - the same strike rule as flying into one - and a release
+      // inside the field hands it straight back to the ordinary arming.
+      const held = enemy.inBeam || enemy.tether > 0.02
+      if (held && !struck) {
+        enemy.mineArmed = false
+        enemy.mineFuse = 0
+      } else if (!enemy.mineArmed && (struck || distance <= DRONE_MINE_BLAST_RADIUS)) {
         enemy.mineArmed = true
         enemy.mineFuse = DRONE_MINE_FUSE
       }
