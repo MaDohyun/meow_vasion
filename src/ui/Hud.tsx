@@ -4,6 +4,7 @@ import { leaderboard, type LeaderboardSource } from '../net/leaderboard'
 import { useGame } from '../GameContext'
 import { LANGUAGES, LANGUAGE_LABELS, bulletinFor, formatMessage, type Strings } from '../i18n'
 import { broadcastPhase, broadcastProgress } from '../core/broadcast'
+import { MISSION_RUN_SECONDS } from '../core/missions'
 import type { RunEnding } from '../core/ending'
 import { HowToPlay } from './HowToPlay'
 import { LifeHearts } from './LifeHearts'
@@ -469,6 +470,19 @@ function Intro() {
           <span>{t.titleKicker}</span>
         </div>
         <h1>{t.titleLine1}{t.titleLine2}</h1>
+        {/* The standing order, directly under the title. A run is a five minute
+            recon sortie, and the lobby is the last moment a player can read
+            that without the clock already running. Built as an order slip -
+            tag, line, countdown chip - so it reads as fleet paperwork rather
+            than as a fourth button. */}
+        <div className="lobby-orders">
+          <span className="lobby-orders-tag">
+            <span className="paw-sigil" aria-hidden="true"><i /><i /><i /><i /><b /></span>
+            {t.lobbyOrdersTag}
+          </span>
+          <p>{t.lobbyOrders}</p>
+          <span className="lobby-orders-clock" aria-hidden="true"><i />T-{formatTime(MISSION_RUN_SECONDS)}</span>
+        </div>
         <div className="intro-actions">
           <button className="primary-button" onMouseEnter={playMenuHoverSound} onClick={start}><span>{t.start}</span><b aria-hidden="true">▶</b></button>
           <button className="secondary-button" onMouseEnter={playMenuHoverSound} onClick={() => setHowToOpen(true)}>{t.howTo}</button>
