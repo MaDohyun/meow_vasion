@@ -62,6 +62,22 @@ describe('single-shot pooled hitscan laser beams', () => {
     expect(visible.distance).toBeCloseTo(28)
   })
 
+  it('resolves pedestrians and street furniture as their own target kinds', () => {
+    // A person is a small sphere near the ground; a shot angled down at one
+    // has to land on the person, not on the pavement behind them.
+    const downRay = { origin: { x: 0, y: 6, z: 0 }, direction: { x: 0, y: -0.2, z: 1 } }
+    const person = [{ id: 'crowd:pedestrian:0:1', kind: 'person' as const, center: { x: 0, y: 0.65, z: 24 }, radius: 0.75 }]
+    const personAim = resolveLaserAim(downRay, [], person)
+    expect(personAim.targetKind).toBe('person')
+    expect(personAim.targetId).toBe('crowd:pedestrian:0:1')
+
+    const flatRay = { origin: { x: 0, y: 3, z: 0 }, direction: { x: 0, y: 0, z: 1 } }
+    const lamp = [{ id: 'utility-pole:1:2:0', kind: 'prop' as const, center: { x: 0, y: 2.2, z: 18 }, radius: 2.5 }]
+    const propAim = resolveLaserAim(flatRay, [], lamp)
+    expect(propAim.targetKind).toBe('prop')
+    expect(propAim.targetId).toBe('utility-pole:1:2:0')
+  })
+
   it('draws exactly to the already-resolved hit point', () => {
     const pool = createLaserPool()
     const aim = resolveLaserAim(

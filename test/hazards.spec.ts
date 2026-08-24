@@ -5,11 +5,13 @@ import {
   HAZARD_TRIGGER_DISTANCE,
   activeHazardCount,
   createHazardState,
-  destroyHazard,
+  damageHazard,
   detonateReachedHazard,
   hazardTargetForTime,
   stepHazards,
   truckTargetForTime,
+  HAZARD_HP,
+  TRUCK_HP,
   TRUCK_MASS,
   HAZARD_MASS,
 } from '../src/core/hazards'
@@ -72,7 +74,7 @@ describe('ground explosives', () => {
     expect(moving!.rotation.y).toBeCloseTo(expectedRotation)
   })
 
-  it('gives a truck weight worth feeling but nothing to set off', () => {
+  it('gives a truck weight worth feeling but nothing to set off on the beam', () => {
     // Between a car and a tanker: heavy enough that the ballast meter moves,
     // harmless enough that eating one is the reward rather than the trap.
     expect(TRUCK_MASS).toBeGreaterThan(CAR_MASS)
@@ -84,7 +86,6 @@ describe('ground explosives', () => {
     for (let frame = 0; frame < 60; frame += 1) stepHazards(state, view(10), 1 / 60)
     expect(truck.alarm).toBe(0)
     expect(detonateReachedHazard(state, { ...truck.position })).toBeNull()
-    expect(destroyHazard(state, truck.id)).toBeNull()
     expect(truck.active).toBe(true)
   })
 
@@ -137,12 +138,39 @@ describe('ground explosives', () => {
     expect(detonateReachedHazard(state, { x: 0, y: 6, z: 0 })).not.toBeNull()
   })
 
-  it('can be shot from range instead of swallowed', () => {
+  it('takes three laser hits to blow a tanker and two for a truck', () => {
+    expect(HAZARD_HP).toBe(3)
+    expect(TRUCK_HP).toBe(2)
     const state = createHazardState(9)
-    const hazard = state.objects[0]!
-    hazard.active = true
-    expect(destroyHazard(state, hazard.id)?.id).toBe(hazard.id)
-    expect(hazard.active).toBe(false)
-    expect(destroyHazard(state, hazard.id)).toBeNull()
+    const tanker = state.objects[0]!
+    tanker.active = true
+    // Every hit short of the last reports back so the caller can land a blast
+    // effect on the bodywork; only the final one takes the vehicle out.
+    expect(damageHazard(state, tanker.id)).toEqual({ hazard: tanker, destroyed: false })
+    expect(damageHazard(state, tanker.id)).toEqual({ hazard: tanker, destroyed: false })
+    expect(tanker.active).toBe(true)
+    expect(damageHazard(state, tanker.id)).toEqual({ hazard: tanker, destroyed: true })
+    expect(tanker.active).toBe(false)
+    expect(tanker.explosionPending).toBe(true)
+    // Once it is gone it stops being a target.
+    expect(damageHazard(state, tanker.id)).toBeNull()
+
+    const truck = state.objects[1]!
+    truck.active = true
+    truck.kind = 'truck'
+    truck.hp = TRUCK_HP
+    expect(damageHazard(state, truck.id)).toEqual({ hazard: truck, destroyed: false })
+    expect(damageHazard(state, truck.id)).toEqual({ hazard: truck, destroyed: true })
+    expect(truck.active).toBe(false)
+  })
+
+  it('drops a stronger laser through the hit points faster', () => {
+    const state = createHazardState(13)
+    const tanker = state.objects[0]!
+    tanker.active = true
+    // A levelled-up laser (x1.4 damage) still needs a believable burst, not one
+    // shot: 3 hp / 1.4 = 3 hits, 3 hp / 1.6 = 2 hits.
+    expect(damageHazard(state, tanker.id, 1.6)).toEqual({ hazard: tanker, destroyed: false })
+    expect(damageHazard(state, tanker.id, 1.6)).toEqual({ hazard: tanker, destroyed: true })
   })
 })
