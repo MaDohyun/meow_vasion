@@ -870,6 +870,9 @@ export const ANTI_AIR_BARRAGE_SHOTS = 5
 export const ANTI_AIR_BARRAGE_INTERVAL = 0.13
 /** The reload after the stream, which is where the counterattack lives. */
 export const ANTI_AIR_RELOAD = 3.8
+/** Each round of the stream is big - a shell you watch coming, not a tracer.
+ *  Three seconds of blinking beam promise something heavy on the way. */
+export const ANTI_AIR_SHELL_RADIUS = 1.5
 
 function fireProjectile(state: EnemyState, enemy: EnemySlot, kind: EnemyProjectileKind) {
   const projectile = state.projectiles.find((item) => !item.active)
@@ -889,7 +892,7 @@ function fireProjectile(state: EnemyState, enemy: EnemySlot, kind: EnemyProjecti
   projectile.velocity.z = dz / distance * speed
   projectile.life = kind === 'boss-beam' ? 4 : 5.5
   projectile.damage = enemy.velocity.y
-  projectile.radius = kind === 'missile' || kind === 'shell' ? 0.85 : kind === 'boss-beam' ? 1.1 : 0.45
+  projectile.radius = kind === 'missile' ? ANTI_AIR_SHELL_RADIUS : kind === 'shell' ? 0.85 : kind === 'boss-beam' ? 1.1 : 0.45
   return true
 }
 
