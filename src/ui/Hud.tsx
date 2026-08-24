@@ -179,9 +179,12 @@ function ControlTips() {
               <span>{label}</span>
             </div>
           ))}
-          {/* How to get bigger, said where the rest of the how-to lives rather
-              than parked under the score for the whole run. */}
+          {/* How to get bigger, and the one way the craft kills itself. Both
+              are advice rather than instrumentation, so they live here rather
+              than parked under the score and under the drag gauge for the
+              whole run. */}
           <p className="tip-note">{t.massHint}</p>
+          <p className="tip-note tip-warn"><RichText text={t.overloadHint} /></p>
         </div>
       )}
     </section>
@@ -258,23 +261,23 @@ function FlightBar() {
         <b className={snapshot.sizePulse > 0.01 ? 'mass-pulse' : ''}>{`\u00d7${snapshot.size.toFixed(2)}`}</b>
       </div>
       <div className="flight-gauges">
+        {/* Label, bar, number - one line each. Stacking the label above its own
+            bar cost the card a third of its height for two words. */}
         <div className="system-meter" data-active={snapshot.boostActive}>
-          <span>{t.turbo} <b>{snapshot.boostActive ? t.turboActive : `${Math.round(snapshot.turbo * 100)}%`}</b></span>
+          <span>{t.turbo}</span>
           <div><i style={{ width: `${snapshot.turbo * 100}%` }} /></div>
+          <b>{snapshot.boostActive ? t.turboActive : `${Math.round(snapshot.turbo * 100)}%`}</b>
         </div>
         <div className="ballast-meter" data-warn={snapshot.overloadWarn > 0} data-critical={snapshot.overloadWarn >= 1}>
-          <span>{t.drag} <b>{snapshot.overloadWarn >= 1 ? t.overloaded : `${Math.round(snapshot.cargoSlowdown * 100)}% ${t.slowdown}`}</b></span>
+          <span>{t.drag}</span>
           <div><i style={{ width: `${Math.min(100, (snapshot.ballast / snapshot.ballastLimit) * 100)}%` }} /></div>
-          {/* The gauge shows how loaded you are; only the words say that
-              filling it drops the craft out of the sky. */}
-          <em className="meter-note"><RichText text={t.overloadHint} /></em>
+          <b>{snapshot.overloadWarn >= 1 ? t.overloaded : `${Math.round(snapshot.cargoSlowdown * 100)}%`}</b>
         </div>
       </div>
-      <div className="flight-keys">
-        <span><b>E</b>{t.controlBeam}</span>
-        <span><b>Q</b>{t.controlLaser}</span>
-        <span><b className="keycap-wide">SPACE</b>{t.controlBoost}</span>
-      </div>
+      {/* The one key that belongs on this card rather than in the control
+          panel: it is the gauge above it, named. It hangs off the bottom edge
+          so it costs the card no height at all. */}
+      <b className="flight-space">SPACE</b>
     </section>
   )
 }

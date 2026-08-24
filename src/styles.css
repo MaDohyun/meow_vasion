@@ -142,38 +142,39 @@ button { font: inherit; }
 /* The flight card, bottom centre: mass, turbo, drag and the keys that drive
    them. Sized to sit between the radar on one side and the pilot on the other
    at every desktop width the game is played at. */
-.flight-bar { position: absolute; left: 50%; bottom: 18px; display: flex; flex-wrap: wrap; align-items: flex-start; gap: 16px; width: min(600px, 62vw); padding: 12px 16px 10px; transform: translateX(-50%); }
-.flight-mass { flex: 0 0 auto; display: flex; align-items: flex-start; flex-direction: column; gap: 4px; min-width: 104px; padding-right: 16px; border-right: 1px solid var(--hud-rule); }
+/* Two lines tall and no taller. It used to stack a label over every bar and
+   carry a row of keycaps along the bottom, which made the one card that is
+   never read closely the tallest thing on the screen - and the keys are named
+   in the control panel on the right anyway. */
+.flight-bar { position: absolute; left: 50%; bottom: 30px; display: flex; align-items: center; gap: 16px; width: min(520px, 56vw); padding: 10px 16px; transform: translateX(-50%); }
+.flight-mass { flex: 0 0 auto; display: flex; align-items: flex-start; flex-direction: column; gap: 2px; min-width: 92px; padding-right: 16px; border-right: 1px solid var(--hud-rule); }
 .flight-mass > span { color: var(--green); font-size: 12px; font-weight: 1000; letter-spacing: 2.4px; }
-.flight-mass > b { color: var(--green); font-size: 27px; font-weight: 1000; line-height: 1; letter-spacing: 1px; font-variant-numeric: tabular-nums; }
+.flight-mass > b { color: var(--green); font-size: 26px; font-weight: 1000; line-height: 1.1; letter-spacing: 1px; font-variant-numeric: tabular-nums; }
 .flight-gauges { flex: 1 1 auto; min-width: 0; }
-/* One row of keycaps, welded to the readouts they move rather than stranded
-   in a strip along the bottom edge. */
-.flight-keys { flex: 1 0 100%; display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 18px; margin-top: 9px; padding-top: 9px; border-top: 1px solid var(--hud-rule); color: rgba(255,245,199,.62); font-size: 12px; font-weight: 900; letter-spacing: .5px; }
-.flight-keys span { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
-.flight-keys b { padding: 2px 8px; color: var(--cream); background: rgba(255,255,255,.07); border: 1px solid rgba(255,245,199,.4); border-radius: 5px; font-size: 12px; font-weight: 1000; letter-spacing: 1px; }
-.system-meter { margin-top: 0; }
-.system-meter > span { display: flex; justify-content: space-between; color: var(--pink); font-size: 12px; font-weight: 1000; letter-spacing: 1.6px; }
-.system-meter > span b { color: var(--pink); font-variant-numeric: tabular-nums; }
+/* Straddles the card's bottom edge, so naming the gauge above it costs the
+   card no height. */
+.flight-space { position: absolute; left: 50%; bottom: -13px; padding: 3px 12px; color: var(--cream); background: var(--hud-glass-deep); border: 2px solid var(--hud-edge); border-radius: 7px; font-size: 11px; font-weight: 1000; letter-spacing: 1.6px; transform: translateX(-50%); }
+/* Label, bar, number on one line: a three-column grid rather than a stack. */
+.system-meter, .ballast-meter { display: grid; grid-template-columns: 40px minmax(0,1fr) 58px; align-items: center; gap: 10px; margin: 0; }
+.system-meter > span { color: var(--pink); font-size: 12px; font-weight: 1000; letter-spacing: 1.6px; }
+.system-meter > b { color: var(--pink); font-size: 13px; font-weight: 1000; text-align: right; font-variant-numeric: tabular-nums; }
 .system-meter > div { height: 12px; padding: 2px; background: rgba(6,11,28,.8); border: 1px solid rgba(255,120,189,.7); border-radius: 4px; }
 .system-meter > div i { display: block; height: 100%; border-radius: 2px; background: repeating-linear-gradient(90deg,var(--pink) 0 11px,transparent 11px 14px); transition: width .1s linear; }
-.system-meter[data-active="true"] > span b { color: var(--cyan); animation: beam-blink .22s steps(1) infinite; }
+.system-meter[data-active="true"] > span, .system-meter[data-active="true"] > b { color: var(--cyan); animation: beam-blink .22s steps(1) infinite; }
 .system-meter[data-active="true"] > div { border-color: rgba(100,241,238,.8); }
 .system-meter[data-active="true"] > div i { background: repeating-linear-gradient(90deg,var(--cyan) 0 11px,transparent 11px 14px); }
 /* Same bar language as .system-meter, tuned to a warning colour instead of
    the turbo gauge's cyan/yellow - a fill level reads at a glance, the way a
    raw tonnage figure never did. */
-.ballast-meter { margin-top: 9px; }
-.ballast-meter > span { display: flex; justify-content: space-between; color: #ffb45c; font-size: 12px; font-weight: 1000; letter-spacing: 1.6px; }
-.ballast-meter > span b { color: #ffb45c; font-variant-numeric: tabular-nums; }
+.ballast-meter { margin-top: 7px; }
+.ballast-meter > span { color: #ffb45c; font-size: 12px; font-weight: 1000; letter-spacing: 1.6px; }
+.ballast-meter > b { color: #ffb45c; font-size: 13px; font-weight: 1000; text-align: right; font-variant-numeric: tabular-nums; }
 .ballast-meter > div { height: 12px; padding: 2px; background: rgba(6,11,28,.8); border: 1px solid rgba(255,180,92,.6); border-radius: 4px; }
 .ballast-meter > div i { display: block; height: 100%; border-radius: 2px; background: repeating-linear-gradient(90deg,#ffb45c 0 11px,transparent 11px 14px); transition: width .1s linear; }
-.ballast-meter[data-warn="true"] > span b { color: var(--coral); }
+.ballast-meter[data-warn="true"] > span, .ballast-meter[data-warn="true"] > b { color: var(--coral); }
 .ballast-meter[data-warn="true"] > div { border-color: rgba(255,95,124,.8); }
 .ballast-meter[data-warn="true"] > div i { background: repeating-linear-gradient(90deg,var(--coral) 0 11px,transparent 11px 14px); }
 .ballast-meter[data-critical="true"] { animation: warning-pulse .35s steps(2) infinite; }
-/* The gauge says how loaded you are; this says what filling it costs. */
-.meter-note { display: block; margin-top: 5px; color: rgba(255,245,199,.6); font-size: 11px; font-style: normal; font-weight: 900; letter-spacing: .4px; text-align: right; }
 @keyframes beam-blink { 50% { color: #fff; } }
 
 .time-bonus { position: absolute; top: 96px; left: 50%; padding: 10px 16px; color: var(--ink); background: var(--yellow); border: 2px solid var(--cream); border-radius: 11px; box-shadow: var(--hud-drop); font-size: 18px; font-weight: 1000; letter-spacing: 1px; transform: translateX(-50%); animation: bonus-pop .8s steps(3) both; }
@@ -195,7 +196,9 @@ button { font: inherit; }
 .tip-row + .tip-row { border-top:1px dashed var(--hud-rule); }
 .tip-row .keycap-set { flex-wrap:wrap; gap:3px; }
 .tip-row .keycap { padding:2px 5px; color:var(--cream); background:rgba(255,255,255,.07); border:1px solid rgba(255,245,199,.5); border-radius:5px; box-shadow:none; font-size:10px; letter-spacing:.6px; }
-.tip-note { margin:10px 0 0; padding-top:8px; color:rgba(255,245,199,.66); border-top:1px dashed var(--hud-rule); font-size:11px; font-weight:900; line-height:1.5; word-break:keep-all; }
+.tip-note { margin:9px 0 0; padding-top:8px; color:rgba(255,245,199,.66); border-top:1px dashed var(--hud-rule); font-size:11px; font-weight:900; line-height:1.5; word-break:keep-all; }
+.tip-note + .tip-note { margin-top:6px; padding-top:6px; border-top:0; }
+.tip-warn .hud-warn { color:var(--coral); }
 
 /* The pilot's corner: the face, on screen for the whole run, and a bubble
    above it only while the run has something to say. No label and no caption -
@@ -406,8 +409,8 @@ button { font: inherit; }
    How far up it can go is set by the craft, not by the reticle: the saucer
    sits around y=385..432 (1280x720) and must never be covered - the player
    flies by it. The floor is the flight card at the bottom edge, whose top is
-   about y=580. The card takes the gap. */
-.breaking-band { position:absolute; left:50%; bottom:152px; z-index:6; display:flex; align-items:stretch; width:min(620px,56vw); min-height:116px; overflow:hidden; background:rgba(16,22,52,.94); border:3px solid var(--cream); box-shadow:7px 7px 0 rgba(22,17,40,.6); transform:translateX(-50%); }
+   about y=625. The card takes the gap. */
+.breaking-band { position:absolute; left:50%; bottom:122px; z-index:6; display:flex; align-items:stretch; width:min(620px,56vw); min-height:112px; overflow:hidden; background:var(--hud-glass-deep); border:2px solid var(--hud-edge); border-radius:var(--hud-radius); box-shadow:var(--hud-drop); transform:translateX(-50%); }
 .breaking-band[data-phase="opening"] { animation:breaking-in .45s steps(4) both; }
 .breaking-band[data-phase="closing"] { animation:breaking-out .55s steps(4) both; }
 @keyframes breaking-in { 0% { opacity:0; transform:translate(-50%,64px); } 100% { opacity:1; transform:translate(-50%,0); } }
@@ -419,11 +422,11 @@ button { font: inherit; }
 
 /* The same anchor as the one on the city's news screens, so the words on the
    HUD and the face on the buildings read as one broadcast. */
-.breaking-anchor { flex:0 0 74px; align-self:stretch; background:#1b2450 url(/broadcast/anchor.png) center/cover; border-right:3px solid var(--cream); }
+.breaking-anchor { flex:0 0 74px; align-self:stretch; background:#1b2450 url(/broadcast/anchor.png) center/cover; border-right:1px solid var(--hud-rule); }
 
 .breaking-body { display:flex; flex:1; flex-direction:column; justify-content:center; min-width:0; padding:11px 15px 13px; }
 .breaking-head { display:flex; align-items:center; gap:9px; }
-.breaking-flag { flex:0 0 auto; padding:4px 8px; color:var(--cream); background:#ef5265; font-size:11px; font-weight:1000; letter-spacing:1.6px; animation:warning-pulse .8s steps(2) infinite; }
+.breaking-flag { flex:0 0 auto; padding:4px 9px; color:var(--cream); background:#ef5265; border-radius:5px; font-size:11px; font-weight:1000; letter-spacing:1.6px; animation:warning-pulse .8s steps(2) infinite; }
 .breaking-head strong { overflow:hidden; color:var(--yellow); font-size:15px; font-weight:1000; letter-spacing:.6px; white-space:nowrap; text-overflow:ellipsis; }
 /* pre-line keeps the newline the writer put in the sentence; keep-all stops a
    Korean line that still has to wrap from splitting inside a word. */
@@ -489,10 +492,9 @@ button { font: inherit; }
   .tutorial-mission p { font-size:12px; }
   .tutorial-mission p b { font-size:15px; }
   /* The keys are on screen as buttons here, so the card that names them and
-     the row that repeats them both go. */
+     the keycap under the boost gauge both go. */
   .control-tips { display:none; }
-  .flight-keys { display:none; }
-  .meter-note { display:none; }
+  .flight-space { display:none; }
   /* The gauges do not: turbo and drag decide whether the craft can still fly,
      and a phone used to be shown neither. They take the bottom edge as one
      slim rule - the only strip of screen the thumbs are not already on - and
@@ -502,8 +504,9 @@ button { font: inherit; }
   .flight-mass > span { font-size:9px; letter-spacing:1.2px; }
   .flight-mass > b { font-size:17px; }
   .flight-gauges { display:flex; gap:11px; }
-  .system-meter, .ballast-meter { flex:1 1 0; min-width:0; margin:0; }
-  .system-meter > span, .ballast-meter > span { font-size:9px; }
+  .system-meter, .ballast-meter { flex:1 1 0; min-width:0; margin:0; grid-template-columns:30px minmax(0,1fr) 40px; gap:6px; }
+  .system-meter > span, .ballast-meter > span { font-size:9px; letter-spacing:.8px; }
+  .system-meter > b, .ballast-meter > b { font-size:10px; }
   .joystick { bottom:64px; }
   .mobile-actions { bottom:62px; }
   .mobile-altitude { bottom:147px; }
@@ -520,7 +523,7 @@ button { font: inherit; }
   .upgrade-card { min-height:0; padding:10px 11px; }
   .upgrade-card strong { margin-bottom:5px; font-size:11px; }
   .upgrade-card small { font-size:8px; line-height:1.5; }
-  .breaking-band { left:8px; right:8px; bottom:266px; width:auto; min-height:88px; transform:none; }
+  .breaking-band { left:8px; right:8px; bottom:262px; width:auto; min-height:88px; transform:none; }
   .breaking-band[data-phase="opening"] { animation:breaking-in-flat .45s steps(4) both; }
   .breaking-band[data-phase="closing"] { animation:breaking-out-flat .55s steps(4) both; }
   .breaking-anchor { flex-basis:56px; }
@@ -597,9 +600,10 @@ button { font: inherit; }
   .planet-radar { left:14px; bottom:14px; width:118px; }
   .hud .radar-dial { width:118px; height:118px; }
   .radar-key { width:118px; margin-top:5px; gap:1px 6px; font-size:9px; }
-  .flight-bar { width:min(400px,44vw); bottom:14px; }
-  .flight-mass { min-width:88px; padding-right:11px; }
-  .flight-mass > b { font-size:23px; }
+  .flight-bar { width:min(388px,44vw); bottom:26px; padding:9px 12px; gap:11px; }
+  .flight-mass { min-width:78px; padding-right:11px; }
+  .flight-mass > b { font-size:22px; }
+  .system-meter, .ballast-meter { grid-template-columns:34px minmax(0,1fr) 48px; gap:8px; }
   .pilot-card { right:14px; bottom:14px; }
   .pilot-portrait { width:92px; height:86px; }
   .pilot-line { max-width:190px; padding:8px 11px; font-size:12px; }
