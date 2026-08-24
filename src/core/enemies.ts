@@ -201,6 +201,19 @@ export const BATTLESHIP_ORB_RING_COUNT = 12
 export const BATTLESHIP_ORB_RINGS = 2
 
 /**
+ * The anti-air site's whole act: three seconds of a fixed, blinking red
+ * beam - the searchlight has found you - and then one heavy round down it.
+ *
+ * Three seconds is deliberately long. The shot leads perfectly and travels
+ * faster than cruise, so the beam is not a suggestion: hold your course
+ * through it and the round arrives exactly where you will be. The blink is
+ * the countdown, and changing heading inside it is the entire dodge.
+ */
+export const ANTI_AIR_TELEGRAPH = 3
+/** The round itself is big - a shell you watch coming, not a tracer. */
+export const ANTI_AIR_SHELL_RADIUS = 1.5
+
+/**
  * How far a mine reaches, and how long it holds before going off.
  *
  * One number for the trigger, the blast and the warning field drawn around it:
@@ -859,7 +872,7 @@ function fireProjectile(state: EnemyState, enemy: EnemySlot, kind: EnemyProjecti
   projectile.velocity.z = dz / distance * speed
   projectile.life = kind === 'boss-beam' ? 4 : 5.5
   projectile.damage = enemy.velocity.y
-  projectile.radius = kind === 'missile' || kind === 'shell' ? 0.85 : kind === 'boss-beam' ? 1.1 : 0.45
+  projectile.radius = kind === 'missile' ? ANTI_AIR_SHELL_RADIUS : kind === 'shell' ? 0.85 : kind === 'boss-beam' ? 1.1 : 0.45
   return true
 }
 
@@ -1201,7 +1214,7 @@ export function stepEnemies(state: EnemyState, player: Vec3, dt: number, playerV
       }
     } else if (enemy.attackTimer <= 0) {
       if (enemy.kind === 'anti-air' && player.y >= 28 && distanceToPlayer(enemy, player) < 145) {
-        aimProjectile(state, enemy, player, playerVelocity, 'missile', PROJECTILE_SPEED.missile, 10, 0.8)
+        aimProjectile(state, enemy, player, playerVelocity, 'missile', PROJECTILE_SPEED.missile, 10, ANTI_AIR_TELEGRAPH)
       }
     }
   }

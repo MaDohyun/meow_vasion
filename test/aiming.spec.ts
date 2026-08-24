@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
+  ANTI_AIR_SHELL_RADIUS,
+  ANTI_AIR_TELEGRAPH,
   ENEMY_WAVE_STAGES,
   LEAD_ACCURACY,
   PROJECTILE_SPEED,
@@ -77,6 +79,33 @@ describe('lead aiming', () => {
     const straight = aaRun({ speed: DRONE_DEFAULTS.maxSpeed })
     const jinking = aaRun({ speed: DRONE_DEFAULTS.maxSpeed, jink: true })
     expect(jinking).toBeLessThan(straight)
+  })
+
+  it('locks the anti-air beam for three seconds, then sends one heavy round down it', () => {
+    expect(ANTI_AIR_TELEGRAPH).toBe(3)
+    const state = createEnemyState(0xaa)
+    const site = state.slots.find((enemy) => enemy.kind === 'anti-air')!
+    site.active = true
+    site.mode = 'fixed'
+    site.position = { x: 0, y: 30, z: 0 }
+    site.attackTimer = 0
+    const still = { x: 0, y: 0, z: 0 }
+    stepEnemies(state, { x: 0, y: 40, z: 80 }, 1 / 60, still)
+    expect(site.aiming).toBe(true)
+    expect(site.telegraphLength).toBe(ANTI_AIR_TELEGRAPH)
+    const muzzle = { ...site.muzzle }
+    const target = { ...site.target }
+    // The beam is fixed: the player moving does not drag it around. Flying
+    // off the line is the dodge, and the line has to hold still to be flown
+    // off of.
+    for (let tick = 0; tick < 60; tick += 1) stepEnemies(state, { x: 40, y: 40, z: 40 }, 1 / 60, still)
+    expect(site.muzzle).toEqual(muzzle)
+    expect(site.target).toEqual(target)
+    // Run the rest of the lock out: what leaves is one big shell.
+    for (let tick = 0; tick < 60 * 2.5; tick += 1) stepEnemies(state, { x: 40, y: 40, z: 40 }, 1 / 60, still)
+    const shell = state.projectiles.find((projectile) => projectile.active)
+    expect(shell?.kind).toBe('missile')
+    expect(shell?.radius).toBe(ANTI_AIR_SHELL_RADIUS)
   })
 
   it('gives full lead only to the units that actually aim', () => {
