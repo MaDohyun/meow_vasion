@@ -34,11 +34,12 @@ const BOOSTER_VOLUME = 0.4
 const MYSTERY_CIRCLE_VOLUME = 0.7
 const CAT_CRY_VOLUME = 0.62
 const MENU_HOVER_VOLUME = 0.1
-/** A car or box truck going up. Cut to a third of where it started: at the
- * old level a blast every few seconds was drowning the street it happens on,
- * and a vehicle should sit well under the building collapse rather than beside
- * it. */
-const VEHICLE_EXPLOSION_VOLUME = 0.2
+/** A car or box truck going up. A third as loud as the blast first shipped at,
+ * measured by ear rather than by the number: the sample was swapped at the
+ * same time for one that is about 3dB hotter, so a plain 0.6/3 would have
+ * landed near half. 0.14 is what actually puts it a third of the way down, and
+ * well under the drone and building blasts it has to share a street with. */
+const VEHICLE_EXPLOSION_VOLUME = 0.14
 /** A tanker is a fuel load, not sheet metal. Same sample, played harder so the
  * rarest and highest-scoring kill in the city is the one that is heard. */
 export const TANKER_EXPLOSION_SCALE = 1.55
