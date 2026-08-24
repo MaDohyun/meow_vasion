@@ -13,7 +13,8 @@ import {
   createBoonState,
   isBoonMaxed,
 } from '../src/core/boons'
-import { mysteryCircleForCell, mysteryCirclesAround, worldCellCenter, worldCellCoord } from '../src/core/world'
+import { buildingMaxHealth, damageBuilding } from '../src/core/buildings'
+import { mysteryCircleForCell, mysteryCirclesAround, worldCellCenter, worldCellCoord, type ProceduralBuilding } from '../src/core/world'
 
 /** Levels a state to the cap on the given stats. */
 function maxOut(state = createBoonState(), ids = BOON_IDS) {
@@ -72,6 +73,34 @@ describe('mystery-circle boon pickups', () => {
     expect(boonMultiplier(state, 'laser-power')).toBeCloseTo(1.6)
     expect(boonBonus(state, 'turbo-capacity')).toBeCloseTo(3)
     expect(isBoonMaxed(state, 'laser-power')).toBe(false)
+  })
+
+  it('feeds laser pickups straight into shots-to-destroy', () => {
+    // The exact chain GameContext runs on a hit: claimBoon raises the level,
+    // boonMultiplier turns it into damage, damageBuilding spends it. Max the
+    // other stats first so every circle deals laser, then eat five.
+    const state = maxOut(createBoonState(), ['speed', 'turbo-recharge', 'turbo-capacity'])
+    for (let circle = 0; circle < 5; circle += 1) {
+      const claim = claimBoon(state, `mystery:${circle}:0`)
+      expect(claim).toEqual({ kind: 'stat', id: 'laser-power', level: circle + 1 })
+    }
+    expect(boonMultiplier(state, 'laser-power')).toBeCloseTo(2)
+
+    const tower: ProceduralBuilding = {
+      id: 'building:test', cellX: 0, cellZ: 0,
+      position: { x: 0, y: 35, z: 0 }, size: { x: 20, y: 70, z: 20 },
+      color: '#fff', roof: '#fff', sign: { text: 'SKY', color: '#fff', side: 'z' },
+      facade: 0, floors: 1, entrance: 0, form: 'plain', roofOverhang: 1, roofThickness: 1,
+    }
+    const shotsToDestroy = (damage: number) => {
+      const health = new Map<string, number>()
+      let shots = 0
+      while (!damageBuilding(health, tower, damage).destroyed) shots += 1
+      return shots + 1
+    }
+    // A maxed laser halves the supertall block: seven hits become four.
+    expect(shotsToDestroy(1)).toBe(buildingMaxHealth(tower))
+    expect(shotsToDestroy(boonMultiplier(state, 'laser-power'))).toBe(Math.ceil(buildingMaxHealth(tower) / 2))
   })
 
   it('bobs the item inside its promised band, per-circle out of phase', () => {
