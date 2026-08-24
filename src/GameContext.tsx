@@ -22,8 +22,8 @@ import { STRINGS, readStoredLanguage, storeLanguage, type Language, type Message
 import { createDaylightSample, daylightClock, sampleDaylight, type DaylightSample } from './core/daylight'
 import {
   createHazardState,
+  damageHazard,
   detonateReachedHazard,
-  destroyHazard,
   stepHazards,
   type HazardState,
 } from './core/hazards'
@@ -81,7 +81,7 @@ import { stepLakeAbsorption } from './core/lakes'
 import { createMissionState, isInsideAirCheckpoint, missionHasQuest, recordMissionEvent, startMissionOne, syncMissionState, type MissionQuest, type MissionState } from './core/missions'
 import { MYSTERY_BOOST_DURATION, MYSTERY_BOOST_MAX_MULTIPLIER, mysteryBoostMultiplier } from './core/mysteryCircles'
 import { shouldCrashFromOverload } from './core/overload'
-import { DRONE_BLAST_TRAUMA, addShakeTrauma, createShakeState, stepShake, type ShakeState } from './core/shake'
+import { DRONE_BLAST_TRAUMA, HELICOPTER_RAM_TRAUMA, addShakeTrauma, createShakeState, stepShake, type ShakeState } from './core/shake'
 import { worldPropMass, worldPropsAround } from './core/worldProps'
 import { endingForTimeUp, isVictory, type RunEnding } from './core/ending'
 import { playBoosterSound, playBuildingCollapseSound, playDroneExplosionSound, playLaserSound, playMysteryCircleSound, playNearbyCatCrySound, startBeamSound, startGameplayMusic, stopBeamSound, stopGameplayMusic, stopLobbyMusic, tone, unlockAudio } from './audio'
@@ -140,6 +140,15 @@ export type GameRuntime = {
    *  cost of using it is only ever "wait for the bar." */
   turboLockout: number
   mysteryCircleId: string | null
+  /**
+   * Every circle this run has flown through, for the radar to grey out.
+   *
+   * Separate from the mission's own list, which only records a circle while
+   * the "pass through different circles" quest is live. Read as a visit log
+   * that would be silent for most of a run, and the dial would promise fresh
+   * circles the player had already used.
+   */
+  mysteryCirclesVisited: Set<string>
   mysteryBoostRemaining: number
   mysteryFlash: number
   aimX: number
@@ -452,6 +461,7 @@ const WORLD_PROP_COLORS: Record<BeamWorldProp['kind'], string> = {
   'trash-bin': '#079b8d',
   'park-bench': '#c58b68',
   'bus-stop': '#78aebc',
+  subway: '#78aebc',
 }
 
 const WORLD_PROP_DIAMETERS: Record<BeamWorldProp['kind'], number> = {
@@ -463,6 +473,7 @@ const WORLD_PROP_DIAMETERS: Record<BeamWorldProp['kind'], number> = {
   'trash-bin': 1.7,
   'park-bench': 3.4,
   'bus-stop': 7.2,
+  subway: 8.6,
 }
 
 const WORLD_PROP_SCORES: Record<BeamWorldProp['kind'], number> = {
@@ -474,6 +485,7 @@ const WORLD_PROP_SCORES: Record<BeamWorldProp['kind'], number> = {
   'trash-bin': 30,
   'park-bench': 35,
   'bus-stop': 140,
+  subway: 220,
 }
 
 function makeWorldPropBeamObject(worldProp: BeamWorldProp): BeamObject {
@@ -513,14 +525,13 @@ function makeWorldPropBeamObject(worldProp: BeamWorldProp): BeamObject {
  * Which blast a downed enemy leaves, if any.
  *
  * Every remaining enemy is a machine, but the scale of its blast still follows
- * its silhouette so a drone pop cannot read like a tank going up.
+ * its silhouette so a mine pop cannot read like the battleship going up.
  */
 const ENEMY_BLAST: Partial<Record<EnemyKind, BlastKind>> = {
   drone: 'aircraft',
   helicopter: 'aircraft',
   fighter: 'aircraft',
   'anti-air': 'vehicle',
-  tank: 'vehicle',
   boss: 'landmark',
 }
 
@@ -579,6 +590,7 @@ function makeRuntime(): GameRuntime {
     turbo: 1,
     turboLockout: 0,
     mysteryCircleId: null,
+    mysteryCirclesVisited: new Set<string>(),
     mysteryBoostRemaining: 0,
     mysteryFlash: 0,
     aimX: 0,
@@ -693,10 +705,6 @@ function spawnCheckpoint(game: GameRuntime) {
 
 function updateMissionTarget(game: GameRuntime) {
   const targets = [] as DestructibleLandmark[]
-  if (missionHasQuest(game.mission, 'destroy-gas-station')) {
-    const station = nearestDestructibleLandmark(game.drone.position, 'gas-station', game.destroyedLandmarks)
-    if (station) targets.push(station)
-  }
   if (missionHasQuest(game.mission, 'destroy-comms')) {
     const communications = nearestDestructibleLandmark(game.drone.position, 'communications', game.destroyedLandmarks)
     if (communications) targets.push(communications)
@@ -852,6 +860,22 @@ function writeLaserSphereTarget(targets: LaserSphereTarget[], slot: number, id: 
 
 const BATTLESHIP_HIT_POINT: Vec3 = { x: 0, y: 0, z: 0 }
 
+/**
+ * Street furniture the laser may clear, with the hit sphere lifted to the part
+ * of the silhouette the player actually aims at - a sphere at a lamp's base
+ * would sit under the lamp head and every shot at the light would miss. The
+ * big infrastructure keeps its own rules: rooftop kit hides behind building
+ * colliders, and pylons and comms masts stay beam-and-landmark business.
+ */
+const LASERABLE_PROPS: Partial<Record<BeamWorldProp['kind'], { centerY: number; radius: number }>> = {
+  'utility-pole': { centerY: 2.2, radius: 2.5 },
+  'trash-bin': { centerY: 0.7, radius: 1.1 },
+  'park-bench': { centerY: 0.5, radius: 1.7 },
+  'bus-stop': { centerY: 1.5, radius: 3 },
+  tree: { centerY: 2, radius: 2.3 },
+}
+const PROP_HIT_POINT: Vec3 = { x: 0, y: 0, z: 0 }
+
 function battleshipHealth(game: GameRuntime) {
   for (const enemy of game.enemies.slots) {
     if (enemy.kind !== 'boss' || !enemy.active) continue
@@ -878,16 +902,34 @@ function laserSphereTargets(game: GameRuntime) {
     }
     slot = writeLaserSphereTarget(game.laserTargets, slot, enemy.id, enemy.position, enemy.hitRadius)
   }
-  // Static city dressing is tractor-beam-only, with one exception: a trash
-  // bin answers a laser by going flying. Everything else stays out of the
-  // sphere list so a shot cannot produce a misleading hit FX without actually
-  // damaging the prop.
+  // Street furniture is fair game for the laser now, but only the kinds in
+  // LASERABLE_PROPS - each with a sphere sized and centred to its silhouette,
+  // so a listed prop is a prop the shot genuinely demolishes.
   for (const object of game.beamObjects) {
     if (!object.active || object.destroying || object.absorbing) continue
-    if (object.worldProp && object.worldProp.kind !== 'trash-bin') continue
-    slot = writeLaserSphereTarget(game.laserTargets, slot, object.id, object.position, 1.7, object.worldProp ? 'car' : undefined)
+    if (object.worldProp) {
+      const profile = LASERABLE_PROPS[object.worldProp.kind]
+      if (!profile) continue
+      PROP_HIT_POINT.x = object.position.x
+      PROP_HIT_POINT.y = object.position.y + profile.centerY
+      PROP_HIT_POINT.z = object.position.z
+      slot = writeLaserSphereTarget(game.laserTargets, slot, object.id, PROP_HIT_POINT, profile.radius, 'prop')
+      continue
+    }
+    slot = writeLaserSphereTarget(game.laserTargets, slot, object.id, object.position, 1.7)
+  }
+  // People are targets; cats never are - they are crew to rescue, not prey.
+  for (const person of game.crowds.objects) {
+    if (!person.active || person.absorbing || person.kind === 'cat') continue
+    slot = writeLaserSphereTarget(game.laserTargets, slot, person.id, person.position, 0.75, 'person')
   }
   for (const car of game.traffic.cars) if (car.active) slot = writeLaserSphereTarget(game.laserTargets, slot, car.id, car.position, 1.7)
+  // Heavy vehicles are laser targets like any other road traffic - the sphere
+  // is sized to their bulk so a shot that visibly lands on one counts.
+  for (const hazard of game.hazards.objects) {
+    if (!hazard.active || hazard.absorbing) continue
+    slot = writeLaserSphereTarget(game.laserTargets, slot, hazard.id, hazard.position, beamObjectDiameter(hazard) * 0.45)
+  }
   for (const landmark of destructibleLandmarksAround(game.drone.position)) {
     if (game.destroyedLandmarks.has(landmark.id)) continue
     slot = writeLaserSphereTarget(game.laserTargets, slot, landmark.id, landmark.position, landmark.radius, 'landmark')
@@ -955,14 +997,14 @@ function registerEnemyHit(game: GameRuntime, id: string, damage: number) {
       triggerLaserBurst(game.laserBursts, 'impact', BATTLESHIP_HIT_POINT, station % 2 === 0 ? '#ff8a45' : '#ffe07a')
     }
   }
-  // A drone, helicopter or tank leaves a blast sized to the machine.
+  // A mine, helicopter or fighter leaves a blast sized to the machine.
   if (result.enemy && ENEMY_BLAST[result.kind]) {
     triggerFireball(game.fireballs, ENEMY_BLAST[result.kind]!, result.enemy.position, undefined, blastSeed(game))
   }
   // The ship is worth about two and a half times what it was: it now takes
   // sixty-four laser hits instead of twenty-five, and a reward that did not
   // move with that would make the fight cost more than it pays.
-  const reward = result.kind === 'boss' ? 3200 : result.kind === 'tank' ? 260 : result.kind === 'anti-air' ? 180 : result.kind === 'fighter' ? 140 : result.kind === 'helicopter' ? 80 : 35
+  const reward = result.kind === 'boss' ? 3200 : result.kind === 'anti-air' ? 180 : result.kind === 'fighter' ? 140 : result.kind === 'helicopter' ? 80 : 35
   game.enemiesDown += 1
   game.score += reward
   reportMissionEvent(game, { type: 'destroy-enemy', kind: result.kind })
@@ -989,37 +1031,65 @@ function destroyCar(game: GameRuntime, id: string, direction: Vec3) {
 }
 
 /**
- * A laser hit on a bin: it goes flying, spraying litter as it goes.
- *
- * The litter is the render layer's fleck pool, which follows any launched
- * bin; the burst here is the hit itself. The bin never comes back - its spot
- * joins destroyedWorldProps the moment it is airborne.
+ * A laser hit on a truck or tanker, run like a building hit: every shot lands
+ * with a blast off the bodywork, and the vehicle only goes up once its hit
+ * points are spent. Returns true on the killing hit.
  */
-function destroyTrashBin(game: GameRuntime, id: string, direction: Vec3) {
-  const target = game.beamObjects.find((object) => object.active && object.id === id && object.worldProp?.kind === 'trash-bin')
-  if (!target || !beginTrashBinLaunch(target, direction, game.drone.velocity)) return false
-  game.destroyedWorldProps.add(target.worldProp!.id)
-  game.score += 30
-  triggerLaserBurst(game.laserBursts, 'impact', target.position, '#c9d18a')
+function registerHeavyVehicleLaserHit(game: GameRuntime, id: string) {
+  const result = damageHazard(game.hazards, id, boonMultiplier(game.boons, 'laser-power'))
+  if (!result) return false
+  triggerLaserBurst(game.laserBursts, 'impact', result.hazard.position, '#ff8a45')
+  if (!result.destroyed) {
+    triggerFireball(game.fireballs, 'strike', result.hazard.position, undefined, blastSeed(game))
+    return false
+  }
+  game.score += result.hazard.kind === 'truck' ? 90 : 140
+  reportMissionEvent(game, { type: result.hazard.kind === 'truck' ? 'destroy-truck' : 'destroy-tanker' })
+  triggerFireball(game.fireballs, 'vehicle', result.hazard.position, undefined, blastSeed(game))
   return true
 }
 
-function destroyHeavyVehicle(game: GameRuntime, id: string) {
-  const hazard = game.hazards.objects.find((candidate) => candidate.active && candidate.id === id)
-  if (!hazard) return false
-  if (hazard.kind === 'explosive') {
-    const destroyed = destroyHazard(game.hazards, id)
-    if (!destroyed) return false
-  } else {
-    hazard.active = false
-    hazard.inBeam = false
-    hazard.tether = 0
-    hazard.explosionPending = true
-    reportMissionEvent(game, { type: 'destroy-truck' })
+/**
+ * A pedestrian shot from range simply drops: no sample banked, so no growth
+ * and no capture credit, only a token score. Cats are never listed as laser
+ * spheres; the guard here is the belt to that brace.
+ */
+function registerPersonLaserHit(game: GameRuntime, id: string) {
+  const person = game.crowds.objects.find((candidate) => candidate.active && candidate.id === id)
+  if (!person || person.kind === 'cat' || person.absorbing) return false
+  person.active = false
+  person.inBeam = false
+  person.tether = 0
+  game.score += 15
+  triggerLaserBurst(game.laserBursts, 'impact', person.position, '#fff06d')
+  return true
+}
+
+/**
+ * Street furniture shot from range is demolished, not collected: the prop
+ * leaves the world for good, but earns no absorb credit and feeds no absorb
+ * mission - the beam is still the only way to bank a sample.
+ */
+function registerPropLaserHit(game: GameRuntime, id: string, direction: Vec3) {
+  const object = game.beamObjects.find((candidate) => candidate.active && candidate.id === id)
+  if (!object?.worldProp || object.absorbing) return false
+  // A bin is litter, not ordnance: instead of popping in a fireball it goes
+  // flying along the shot, spraying its contents as it tumbles - the litter
+  // fleck pool follows any launched bin. Its spot never refills either way.
+  if (object.worldProp.kind === 'trash-bin' && beginTrashBinLaunch(object, direction, game.drone.velocity)) {
+    game.destroyedWorldProps.add(object.worldProp.id)
+    game.score += 30
+    triggerLaserBurst(game.laserBursts, 'impact', object.position, '#c9d18a')
+    return true
   }
-  game.score += hazard.kind === 'truck' ? 90 : 140
-  triggerLaserBurst(game.laserBursts, 'impact', hazard.position, '#ff8a45')
-  triggerFireball(game.fireballs, 'vehicle', hazard.position, undefined, blastSeed(game))
+  object.active = false
+  object.inBeam = false
+  object.tether = 0
+  game.destroyedWorldProps.add(object.worldProp.id)
+  game.score += 20
+  const blastPoint = { x: object.position.x, y: object.position.y + 0.9, z: object.position.z }
+  triggerLaserBurst(game.laserBursts, 'impact', blastPoint, '#9be8ff')
+  triggerFireball(game.fireballs, 'vehicle', blastPoint, undefined, blastSeed(game))
   return true
 }
 
@@ -1078,7 +1148,9 @@ function detonateLandmark(game: GameRuntime, landmark: DestructibleLandmark) {
   for (const object of game.crowds.objects) knock(object)
   for (const object of game.hazards.objects) knock(object)
   game.score += 650
-  reportMissionEvent(game, { type: landmark.kind === 'gas-station' ? 'destroy-gas-station' : 'destroy-comms' })
+  // A gas station going up is score and spectacle only - the mission board no
+  // longer asks for one - while a comms mast still counts toward its hunt.
+  if (landmark.kind !== 'gas-station') reportMissionEvent(game, { type: 'destroy-comms' })
   updateMissionTarget(game)
   return true
 }
@@ -1149,7 +1221,12 @@ function absorbBeamObject(game: GameRuntime, object: BeamObject) {
   if (object.kind === 'car') game.destroyedCars.add(object.id)
   if (object.kind === 'car') reportMissionEvent(game, { type: 'destroy-car' })
   if (object.kind === 'truck') reportMissionEvent(game, { type: 'destroy-truck' })
+  // Swallowing a tanker whole removes it as surely as shooting it, so the
+  // hunt counts both - same rule the truck quest already follows.
+  if (object.kind === 'explosive') reportMissionEvent(game, { type: 'destroy-tanker' })
   if (object.kind === 'rooftop-structure') reportMissionEvent(game, { type: 'absorb-rooftop-structure' })
+  if (object.worldProp?.kind === 'tree') reportMissionEvent(game, { type: 'absorb-tree' })
+  if (object.worldProp?.kind === 'utility-pole') reportMissionEvent(game, { type: 'absorb-streetlight' })
   // Carrying a mast off cuts communications exactly as surely as shooting it
   // down, and it is now the only way the beam can take one - so the mission
   // has to count it, and the marker has to move on to the next mast.
@@ -1549,7 +1626,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
     game.laserCooldown = Math.max(0, game.laserCooldown - d)
     game.broadcastTime = Math.max(0, game.broadcastTime - d)
     stepHealth(game.health, d)
-    // The city reports the sighting once the player has had a moment to fly.
+    // Ten seconds of game time, which the tutorial holds at zero: the report
+    // is about a craft loose over the city, and during the tutorial the craft
+    // is parked over a cat with its flight controls inert. Nothing has
+    // happened for the anchor to report yet.
     if (!tutorialAtStart && !game.openingBroadcastDone && game.sessionTime >= BROADCAST_OPENING_AT) {
       game.openingBroadcastDone = true
       raiseBroadcast(game, 0)
@@ -1603,6 +1683,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     if (mysteryCircle) {
       if (game.mysteryCircleId !== mysteryCircle.id) {
         game.mysteryCircleId = mysteryCircle.id
+        game.mysteryCirclesVisited.add(mysteryCircle.id)
         reportMissionEvent(game, { type: 'pass-mystery-circle', id: mysteryCircle.id })
         game.mysteryBoostRemaining = MYSTERY_BOOST_DURATION
         game.mysteryFlash = 0.65
@@ -1914,13 +1995,15 @@ export function GameProvider({ children }: { children: ReactNode }) {
       const direction = directionToLaserAim(game.drone.position, aim)
       const projectile = fireLaserBeam(game.laserProjectiles, game.drone.position, aim.point)
       triggerLaserBurst(game.laserBursts, 'muzzle', projectile.position)
-      if (aim.targetKind) triggerLaserBurst(game.laserBursts, 'impact', aim.point, aim.targetKind === 'car' ? '#ffb24d' : aim.targetKind === 'fighter' ? '#ff557f' : aim.targetKind === 'building' ? '#6deeff' : '#fff0a1')
+      if (aim.targetKind) triggerLaserBurst(game.laserBursts, 'impact', aim.point, aim.targetKind === 'car' ? '#ffb24d' : aim.targetKind === 'fighter' ? '#ff557f' : aim.targetKind === 'building' ? '#6deeff' : aim.targetKind === 'person' ? '#fff06d' : aim.targetKind === 'prop' ? '#9be8ff' : '#fff0a1')
       // Every shot that lands spits a little fire off the surface, right where
       // it hit. It is over inside the 0.27s between shots, so holding the
       // trigger on a tower burns along the wall rather than piling up.
       if (aim.targetKind) triggerFireball(game.fireballs, 'strike', aim.point, undefined, blastSeed(game))
       if (aim.targetKind === 'fighter' && aim.targetId) registerEnemyLaserHit(game, aim.targetId)
       if (aim.targetKind === 'building' && aim.targetId) registerBuildingLaserHit(game, aim.targetId)
+      if (aim.targetKind === 'person' && aim.targetId) registerPersonLaserHit(game, aim.targetId)
+      if (aim.targetKind === 'prop' && aim.targetId) registerPropLaserHit(game, aim.targetId, direction)
       if (aim.targetKind === 'landmark' && aim.targetId) {
         const landmark = destructibleLandmarksAround(game.drone.position).find((candidate) => candidate.id === aim.targetId)
         // Two base hits, scaled by laser power - a maxed laser one-shots. The
@@ -1932,20 +2015,19 @@ export function GameProvider({ children }: { children: ReactNode }) {
         }
       }
       if (aim.targetKind === 'car' && aim.targetId) {
-        // A bin flying off with its litter is its own callout; only the
-        // vehicles get the scoreboard message.
-        if (aim.targetId.startsWith('hazard:')) {
-          if (destroyHeavyVehicle(game, aim.targetId)) setMessage(game, 'msgCarLaunched', 0.9)
-        } else if (!destroyTrashBin(game, aim.targetId, direction)) {
-          if (destroyCar(game, aim.targetId, direction)) setMessage(game, 'msgCarLaunched', 0.9)
-        }
+        const destroyed = aim.targetId.startsWith('hazard:')
+          ? registerHeavyVehicleLaserHit(game, aim.targetId)
+          : destroyCar(game, aim.targetId, direction)
+        if (destroyed) setMessage(game, 'msgCarLaunched', 0.9)
       }
       game.laserShotsFired += 1
       playLaserSound()
     }
     game.laserActive = game.laserFlash > 0
 
-    const projectileDamage = stepEnemyProjectiles(game.enemies, game.drone.position, d, game.sizeProfile.hitRadius)
+    // Buildings (and ruins) are real cover from the orb curtains: the same
+    // collider pool the craft flies against also catches the slow rounds.
+    const projectileDamage = stepEnemyProjectiles(game.enemies, game.drone.position, d, game.sizeProfile.hitRadius, game.worldColliders)
     if (projectileDamage > 0) registerImpact(game, 'ENEMY', game.enemies.lastHitKind ?? 'contact')
     // A bigger craft is a bigger target: the same stream of fire is harder to
     // survive once fat, which is what stops growth from being free.
@@ -1961,9 +2043,11 @@ export function GameProvider({ children }: { children: ReactNode }) {
       // Ploughing through a drone detonates it just as surely as shooting it.
       triggerFireball(game.fireballs, 'aircraft', game.enemies.lastContactPoint, undefined, blastSeed(game))
     }
-    // Contact damage can come from anything solid; only a drone detonation
-    // earns the shake, so the trauma rides on the blast, not on the damage.
-    if (contactDamage > 0) registerImpact(game, 'ENEMY', 'contact', contactBlasts > 0 ? DRONE_BLAST_TRAUMA : 0)
+    // Contact damage can come from anything solid; a drone detonation or a
+    // helicopter ram earns the shake, so the trauma rides on the blow that
+    // deserves it rather than on the damage number.
+    const ramTrauma = game.enemies.helicopterRams > 0 ? HELICOPTER_RAM_TRAUMA : 0
+    if (contactDamage > 0) registerImpact(game, 'ENEMY', 'contact', contactBlasts > 0 ? DRONE_BLAST_TRAUMA : ramTrauma)
     const previousMissionStage = game.mission.stage
     const previousMissionRevision = game.mission.revision
     syncMissionState(game.mission, game.sessionTime, game.score)
@@ -2001,6 +2085,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     setLanguageState(next)
     storeLanguage(next)
   }, [])
+
 
   const unlockTutorialBeam = useCallback(() => {
     runtime.current.tutorialBriefingReady = true

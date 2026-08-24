@@ -26,13 +26,15 @@ export type MissionQuestId =
   | 'capture-people'
   | 'destroy-cars'
   | 'destroy-trucks'
+  | 'destroy-tankers'
   | 'absorb-water'
   | 'ruin-buildings'
-  | 'destroy-gas-station'
   | 'destroy-comms'
   | 'destroy-drones'
   | 'destroy-fighters'
   | 'absorb-rooftop-structures'
+  | 'absorb-trees'
+  | 'absorb-streetlights'
   | 'pass-mystery-circles'
   | 'air-checkpoints'
   | 'destroy-battleship'
@@ -63,12 +65,14 @@ export type MissionEvent =
   | { type: 'capture-person'; amount?: number }
   | { type: 'destroy-car'; amount?: number }
   | { type: 'destroy-truck'; amount?: number }
+  | { type: 'destroy-tanker'; amount?: number }
   | { type: 'absorb-water'; litres: number }
   | { type: 'ruin-building'; amount?: number }
-  | { type: 'destroy-gas-station'; amount?: number }
   | { type: 'destroy-comms'; amount?: number }
   | { type: 'destroy-enemy'; kind: 'drone' | 'fighter' | 'boss' | string; amount?: number }
   | { type: 'absorb-rooftop-structure'; amount?: number }
+  | { type: 'absorb-tree'; amount?: number }
+  | { type: 'absorb-streetlight'; amount?: number }
   | { type: 'pass-mystery-circle'; id: string }
   | { type: 'pass-checkpoint'; amount?: number }
 
@@ -77,23 +81,26 @@ export const MISSION_ONE_POOL: readonly MissionQuestId[] = [
   'capture-people',
   'destroy-cars',
   'destroy-trucks',
+  'destroy-tankers',
   'absorb-water',
   'pass-mystery-circles',
 ]
 
 export const MISSION_TWO_POOL: readonly MissionQuestId[] = [
   'ruin-buildings',
-  'destroy-gas-station',
   'destroy-comms',
   'destroy-drones',
   'destroy-fighters',
   'absorb-rooftop-structures',
+  'absorb-trees',
+  'absorb-streetlights',
   'air-checkpoints',
 ]
 
-/** Only one rare landmark hunt may be drawn into a single mission. */
+/** Only one rare landmark hunt may be drawn into a single mission. The gas
+ *  station hunt left the pool, so comms is the group's lone member - kept as a
+ *  group so the next rare hunt slots in beside it. */
 export const MISSION_QUEST_GROUPS: Partial<Record<MissionQuestId, string>> = {
-  'destroy-gas-station': 'rare-landmark',
   'destroy-comms': 'rare-landmark',
 }
 
@@ -105,16 +112,20 @@ export const MISSION_THREE_QUESTS: readonly MissionQuestId[] = [
 
 export const MISSION_TARGETS: Record<MissionQuestId, number> = {
   'capture-cats': 6,
-  'capture-people': 20,
+  'capture-people': 10,
   'destroy-cars': 8,
   'destroy-trucks': 5,
+  // Tankers are the rare heavy vehicle - they only start rolling at 25s and
+  // cap out at a handful on the map - so the hunt asks for fewer of them.
+  'destroy-tankers': 3,
   'absorb-water': 300,
   'ruin-buildings': 3,
-  'destroy-gas-station': 1,
   'destroy-comms': 1,
   'destroy-drones': 10,
   'destroy-fighters': 5,
   'absorb-rooftop-structures': 5,
+  'absorb-trees': 5,
+  'absorb-streetlights': 4,
   'pass-mystery-circles': 3,
   'air-checkpoints': 3,
   'destroy-battleship': 1,
@@ -235,11 +246,13 @@ export function recordMissionEvent(state: MissionState, event: MissionEvent, ela
   else if (event.type === 'capture-person') changed = addProgress(state, 'capture-people', amount)
   else if (event.type === 'destroy-car') changed = addProgress(state, 'destroy-cars', amount)
   else if (event.type === 'destroy-truck') changed = addProgress(state, 'destroy-trucks', amount)
+  else if (event.type === 'destroy-tanker') changed = addProgress(state, 'destroy-tankers', amount)
   else if (event.type === 'absorb-water') changed = addProgress(state, 'absorb-water', event.litres)
   else if (event.type === 'ruin-building') changed = addProgress(state, 'ruin-buildings', amount)
-  else if (event.type === 'destroy-gas-station') changed = addProgress(state, 'destroy-gas-station', amount)
   else if (event.type === 'destroy-comms') changed = addProgress(state, 'destroy-comms', amount)
   else if (event.type === 'absorb-rooftop-structure') changed = addProgress(state, 'absorb-rooftop-structures', amount)
+  else if (event.type === 'absorb-tree') changed = addProgress(state, 'absorb-trees', amount)
+  else if (event.type === 'absorb-streetlight') changed = addProgress(state, 'absorb-streetlights', amount)
   else if (event.type === 'pass-mystery-circle') {
     const quest = state.quests.find((candidate) => candidate.id === 'pass-mystery-circles')
     if (quest && !quest.complete && !state.mysteryCircleIds.includes(event.id)) {

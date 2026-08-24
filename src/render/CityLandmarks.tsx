@@ -6,6 +6,7 @@ import { useGame } from '../GameContext'
 import { BEAM_ABSORB_TIME } from '../core/beam'
 import { bulletinFor } from '../i18n'
 import { BUILDING, GROUND } from '../constants/palette'
+import { makeBlastFieldMaterial } from './entityMaterials'
 import {
   groundLandmarkForCell,
   isNewsTower,
@@ -887,6 +888,140 @@ function LiftedBusStopPool() {
   </instancedMesh>
 }
 
+/**
+ * The mines' red shell, breathing over every live gas station.
+ *
+ * A forecourt is the one piece of city dressing that answers the beam with a
+ * detonation instead of a lift, and nothing on screen said so - the first
+ * station a player touched was always a surprise. Wearing the same bubble the
+ * mines wear says "explosive" in a language the run has already taught. It
+ * only breathes: a station has no fuse to arm, so it never goes hard the way
+ * a triggered mine does.
+ */
+const GAS_STATION_WARNING_RADIUS = 9
+const GAS_STATION_WARNING_CENTRE = 3
+
+function GasStationWarningPool() {
+  const { runtime } = useGame()
+  const ref = useRef<THREE.InstancedMesh>(null)
+  const stations = useRef<{ x: number; z: number; phase: number }[]>([])
+  const lastKey = useRef('')
+  const matrix = useMemo(() => new THREE.Matrix4(), [])
+  const position = useMemo(() => new THREE.Vector3(), [])
+  const rotation = useMemo(() => new THREE.Quaternion(), [])
+  const scale = useMemo(() => new THREE.Vector3(), [])
+  const charge = useMemo(() => new THREE.InstancedBufferAttribute(new Float32Array(LANDMARK_CELL_COUNT), 1), [])
+  const geometry = useMemo(() => {
+    const sphere = new THREE.SphereGeometry(1, 28, 18)
+    sphere.setAttribute('aCharge', charge)
+    return sphere
+  }, [charge])
+  const material = useMemo(() => makeBlastFieldMaterial(), [])
+
+  useFrame(({ clock }) => {
+    const mesh = ref.current
+    if (!mesh) return
+    const world = runtime.current.world
+    // Positions only move when the district streams or a station is blown;
+    // the per-frame work is just the breathing charge.
+    const key = `${world.cellX}:${world.cellZ}:${runtime.current.destroyedLandmarks.size}`
+    if (key !== lastKey.current) {
+      lastKey.current = key
+      stations.current = []
+      for (const cell of groundCellsAround(runtime.current.drone.position, LANDMARK_RADIUS_CELLS)) {
+        if (groundLandmarkForCell(cell) !== 'gas-station') continue
+        if (runtime.current.destroyedLandmarks.has(landmarkId('gas-station', cell.cellX, cell.cellZ))) continue
+        if (stations.current.length >= LANDMARK_CELL_COUNT) break
+        stations.current.push({
+          x: (cell.cellX + 0.5) * WORLD_CELL_SIZE,
+          z: (cell.cellZ + 0.5) * WORLD_CELL_SIZE,
+          phase: (seedForWorldCell(cell.cellX, cell.cellZ, 0xb1a57) % 628) / 100,
+        })
+      }
+      for (const [index, station] of stations.current.entries()) {
+        position.set(station.x, GAS_STATION_WARNING_CENTRE, station.z)
+        scale.setScalar(GAS_STATION_WARNING_RADIUS)
+        matrix.compose(position, rotation, scale)
+        mesh.setMatrixAt(index, matrix)
+      }
+      mesh.count = stations.current.length
+      mesh.instanceMatrix.needsUpdate = true
+    }
+    // The mines' idle rhythm, each forecourt on its own phase so a district of
+    // stations does not blink in unison.
+    for (const [index, station] of stations.current.entries()) {
+      const breath = 0.5 + 0.5 * Math.sin(clock.elapsedTime * 0.85 + station.phase * 3.1)
+      charge.array[index] = 0.1 + breath * breath * 0.62
+    }
+    charge.needsUpdate = true
+  })
+
+  return <instancedMesh ref={ref} args={[geometry, material, LANDMARK_CELL_COUNT]} frustumCulled={false} renderOrder={4} />
+}
+
+/**
+ * A subway entrance in flight. The static pool's three parts - shell, dark
+ * mouth, metro sign - ride one object matrix here, so the entrance leaves the
+ * ground as a single rigid thing instead of shedding its sign on the way up.
+ */
+function LiftedSubwayPool() {
+  const { runtime } = useGame()
+  const shells = useRef<THREE.InstancedMesh>(null)
+  const mouths = useRef<THREE.InstancedMesh>(null)
+  const signs = useRef<THREE.InstancedMesh>(null)
+  const matrix = useMemo(() => new THREE.Matrix4(), [])
+  const partMatrix = useMemo(() => new THREE.Matrix4(), [])
+  const position = useMemo(() => new THREE.Vector3(), [])
+  const scale = useMemo(() => new THREE.Vector3(), [])
+  const rotation = useMemo(() => new THREE.Quaternion(), [])
+  const identityRotation = useMemo(() => new THREE.Quaternion(), [])
+  const euler = useMemo(() => new THREE.Euler(), [])
+
+  useFrame(() => {
+    if (!shells.current || !mouths.current || !signs.current) return
+    let count = 0
+    for (const object of runtime.current.beamObjects) {
+      if (!isWorldPropDisplaced(object) || object.kind !== 'subway') continue
+      if (count >= LANDMARK_CELL_COUNT) break
+      const swallow = object.absorbing ? Math.max(0.05, object.absorbTimer / BEAM_ABSORB_TIME) : 1
+      position.set(object.position.x, object.position.y, object.position.z)
+      euler.set(object.rotation.x, object.rotation.y, object.rotation.z)
+      rotation.setFromEuler(euler)
+      scale.set(object.scale?.x ?? 1, object.scale?.y ?? 1, object.scale?.z ?? 1).multiplyScalar(swallow)
+      matrix.compose(position, rotation, scale)
+      shells.current.setMatrixAt(count, matrix)
+      position.set(0, 1.7, 2.95)
+      scale.set(6.4, 2.5, 0.3)
+      partMatrix.compose(position, identityRotation, scale).premultiply(matrix)
+      mouths.current.setMatrixAt(count, partMatrix)
+      position.set(0, 4.35, 3.12)
+      scale.set(6.9, 1.6, 0.24)
+      partMatrix.compose(position, identityRotation, scale).premultiply(matrix)
+      signs.current.setMatrixAt(count, partMatrix)
+      count += 1
+    }
+    for (const mesh of [shells.current, mouths.current, signs.current]) {
+      mesh.count = count
+      mesh.instanceMatrix.needsUpdate = true
+    }
+  })
+
+  return (
+    <group>
+      <instancedMesh ref={shells} args={[subwayGeometry, undefined, LANDMARK_CELL_COUNT]} frustumCulled={false} renderOrder={2} onUpdate={(mesh) => { mesh.count = 0 }}>
+        <meshToonMaterial color={BUILDING.TRANSIT} />
+      </instancedMesh>
+      <instancedMesh ref={mouths} args={[undefined, undefined, LANDMARK_CELL_COUNT]} frustumCulled={false} renderOrder={2} onUpdate={(mesh) => { mesh.count = 0 }}>
+        <boxGeometry args={[1, 1, 1]} />
+        <meshToonMaterial color={BUILDING.TRANSIT_DARK} />
+      </instancedMesh>
+      <instancedMesh ref={signs} args={[undefined, metroSignMaterial, LANDMARK_CELL_COUNT]} frustumCulled={false} renderOrder={2} onUpdate={(mesh) => { mesh.count = 0 }}>
+        <boxGeometry args={[1, 1, 1]} />
+      </instancedMesh>
+    </group>
+  )
+}
+
 function cylinderBetween(start: THREE.Vector3, end: THREE.Vector3, radius: number) {
   const direction = end.clone().sub(start)
   const geometry = new THREE.CylinderGeometry(radius, radius, direction.length(), 5)
@@ -1065,9 +1200,11 @@ function TransitUtilityPool() {
   const commSlots = useRef(new Map<string, number>())
   const litLandmarks = useRef(new Set<string>())
   const matrix = useMemo(() => new THREE.Matrix4(), [])
+  const partMatrix = useMemo(() => new THREE.Matrix4(), [])
   const position = useMemo(() => new THREE.Vector3(), [])
   const scale = useMemo(() => new THREE.Vector3(1, 1, 1), [])
   const rotation = useMemo(() => new THREE.Quaternion(), [])
+  const identityRotation = useMemo(() => new THREE.Quaternion(), [])
   const euler = useMemo(() => new THREE.Euler(), [])
   const color = useMemo(() => new THREE.Color(), [])
 
@@ -1128,17 +1265,23 @@ function TransitUtilityPool() {
       scale.set(1, 1, 1)
 
       if (landmark === 'subway') {
+        // Absorbable like the pylon and the mast: once the beam owns it - or
+        // has eaten it - the static copy stands down.
+        if (isWorldPropHidden(`subway:${cell.cellX}:${cell.cellZ}`, runtime.current.destroyedWorldProps, runtime.current.beamObjects)) continue
         position.set(centerX, 0, centerZ)
         matrix.compose(position, rotation, scale)
         subway.current.setMatrixAt(subwayCount, matrix)
-        position.set(centerX, 1.7, centerZ + 2.95)
+        // The mouth and sign compose as local offsets on the shell's matrix,
+        // so a rotated entrance keeps them on the right face and the lifted
+        // pool's rigid handoff matches this pose exactly.
+        position.set(0, 1.7, 2.95)
         scale.set(6.4, 2.5, 0.3)
-        matrix.compose(position, rotation, scale)
-        subwayOpenings.current.setMatrixAt(subwayCount, matrix)
-        position.set(centerX, 4.35, centerZ + 3.12)
+        partMatrix.compose(position, identityRotation, scale).premultiply(matrix)
+        subwayOpenings.current.setMatrixAt(subwayCount, partMatrix)
+        position.set(0, 4.35, 3.12)
         scale.set(6.9, 1.6, 0.24)
-        matrix.compose(position, rotation, scale)
-        subwaySigns.current.setMatrixAt(subwayCount, matrix)
+        partMatrix.compose(position, identityRotation, scale).premultiply(matrix)
+        subwaySigns.current.setMatrixAt(subwayCount, partMatrix)
         subwayCount += 1
       } else if (landmark === 'gas-station') {
         position.set(centerX, 0, centerZ)
@@ -1225,12 +1368,14 @@ function TransitUtilityPool() {
       </instancedMesh>
       <instancedMesh ref={gasStations} args={[gasStationGeometry, gasStationMaterial, LANDMARK_CELL_COUNT]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }} />
       <instancedMesh ref={gasBands} args={[gasStationBandGeometry, gasStationCanopyMaterial, LANDMARK_CELL_COUNT]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }} />
+      <GasStationWarningPool />
       <instancedMesh ref={communicationsRed} args={[communicationsRedGeometry, communicationsRedMaterial, LANDMARK_CELL_COUNT]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }} />
       <instancedMesh ref={communicationsWhite} args={[communicationsWhiteGeometry, communicationsWhiteMaterial, LANDMARK_CELL_COUNT]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }} />
       <LiftedPowerPylonPool />
       <LiftedCommunicationsPool paint="red" />
       <LiftedCommunicationsPool paint="white" />
       <LiftedBusStopPool />
+      <LiftedSubwayPool />
     </group>
   )
 }

@@ -82,7 +82,6 @@ const ENEMY_GLOW: Record<EnemyKind, string> = {
   helicopter: ENTITY.HELICOPTER_GLOW,
   fighter: ENTITY.FIGHTER_GLOW,
   'anti-air': ENTITY.ANTI_AIR_GLOW,
-  tank: ENTITY.TANK_GLOW,
   boss: ENTITY.BOSS_GLOW,
 }
 
@@ -161,4 +160,65 @@ export function applyEntityDaylight(nightFactor: number) {
   }
   carLampMaterial.opacity = 0.2 + nightFactor * 0.72
   carShadowMaterial.opacity = 0.18 - nightFactor * 0.05
+}
+
+/**
+ * The red shell around anything that answers contact with a detonation.
+ *
+ * Written for the mine field and shared with the gas stations, which follow
+ * the same rule: the sphere is the promise of a blast, drawn at the size of
+ * one. Brightness rides a per-instance `aCharge` attribute - a low breathing
+ * idle, a hard climbing value while a fuse runs.
+ */
+export const BLAST_FIELD_VERTEX = `
+attribute float aCharge;
+varying vec3 vViewNormal;
+varying vec3 vViewPosition;
+varying float vCharge;
+void main() {
+  vCharge = aCharge;
+  vec4 world = instanceMatrix * vec4(position, 1.0);
+  vec4 view = modelViewMatrix * world;
+  vViewNormal = normalize(normalMatrix * (mat3(instanceMatrix) * normal));
+  vViewPosition = view.xyz;
+  gl_Position = projectionMatrix * view;
+}
+`
+
+export const BLAST_FIELD_FRAGMENT = `
+varying vec3 vViewNormal;
+varying vec3 vViewPosition;
+varying float vCharge;
+
+void main() {
+  // A plain red bubble, not a shield.
+  //
+  // This carried a hex lattice, which is the visual language of something that
+  // stops shots - the wrong promise entirely for a line that means "inside
+  // this you die". Without it there is nothing to read but the shape and the
+  // colour, which is all the warning needs to say.
+  //
+  // Face-on it is a thin haze, so the thing inside stays visible; edge-on the
+  // fresnel closes it into a hard sphere, which is what makes the boundary
+  // itself legible from outside.
+  float facing = abs(dot(normalize(vViewNormal), normalize(-vViewPosition)));
+  float rim = pow(1.0 - facing, 2.2);
+
+  float alpha = (rim * 0.82 + 0.085) * vCharge;
+  // Runs white-hot as the fuse closes rather than just brighter red.
+  vec3 tint = mix(vec3(1.0, 0.17, 0.24), vec3(1.0, 0.78, 0.6), clamp(vCharge - 1.0, 0.0, 1.0));
+  gl_FragColor = vec4(tint * (0.6 + vCharge * 0.9), clamp(alpha, 0.0, 1.0));
+}
+`
+
+export function makeBlastFieldMaterial() {
+  return new THREE.ShaderMaterial({
+    vertexShader: BLAST_FIELD_VERTEX,
+    fragmentShader: BLAST_FIELD_FRAGMENT,
+    transparent: true,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    blending: THREE.AdditiveBlending,
+    toneMapped: false,
+  })
 }

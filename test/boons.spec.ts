@@ -14,7 +14,7 @@ import {
   isBoonMaxed,
 } from '../src/core/boons'
 import { buildingMaxHealth, damageBuilding } from '../src/core/buildings'
-import { mysteryCircleForCell, mysteryCirclesAround, worldCellCenter, worldCellCoord, type ProceduralBuilding } from '../src/core/world'
+import { mysteryCircleForCell, mysteryCirclesNear, worldCellCenter, worldCellCoord, type MysteryCircleSite, type ProceduralBuilding } from '../src/core/world'
 
 /** Levels a state to the cap on the given stats. */
 function maxOut(state = createBoonState(), ids = BOON_IDS) {
@@ -118,7 +118,7 @@ describe('circles indexed for the radar and the pickup pool', () => {
   it('finds the same circles the ground query reports, inside the radius', () => {
     // Sweep out until some sector actually rolled a circle - placement is
     // deterministic but sparse, so the test walks rather than assumes.
-    const hits = mysteryCirclesAround({ x: 0, z: 0 }, 900)
+    const hits = mysteryCirclesNear({ x: 0, z: 0 }, 900)
     expect(hits.length).toBeGreaterThan(0)
     for (const hit of hits) {
       expect(Math.hypot(hit.x, hit.z)).toBeLessThanOrEqual(900)
@@ -129,9 +129,12 @@ describe('circles indexed for the radar and the pickup pool', () => {
       expect(worldCellCenter(cellX)).toBe(hit.x)
       expect(worldCellCenter(cellZ)).toBe(hit.z)
     }
-    // A tight radius strictly narrows the set.
-    const near = mysteryCirclesAround({ x: 0, z: 0 }, 250)
+    // A tight radius strictly narrows the set, and the reuse buffer refills
+    // in place rather than accumulating.
+    const buffer: MysteryCircleSite[] = []
+    const near = mysteryCirclesNear({ x: 0, z: 0 }, 250, buffer)
+    expect(near).toBe(buffer)
     expect(near.length).toBeLessThanOrEqual(hits.length)
-    for (const hit of near) expect(hits.map((entry) => entry.id)).toContain(hit.id)
+    for (const hit of near) expect(hits.map((entry: MysteryCircleSite) => entry.id)).toContain(hit.id)
   })
 })

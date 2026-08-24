@@ -283,25 +283,67 @@ export function lakeClusterForCell(cellX: number, cellZ: number) {
   return member ? `lake:${sectorX}:${sectorZ}` : null
 }
 
-/** The one cell of a sector that may carry a circle, before the tutorial,
- *  park and lake exclusions have had their say. */
-function mysteryAnchorForSector(sectorX: number, sectorZ: number) {
+export type MysteryCircleSite = { id: string; cellX: number; cellZ: number; x: number; z: number }
+
+/**
+ * The one mystery circle a sector carries, or null where it carries none.
+ *
+ * The anchor maths and the exclusions live here so that the per-cell lookup
+ * the world uses and the per-sector sweep the radar uses can never disagree
+ * about where a circle is.
+ */
+export function mysteryCircleForSector(sectorX: number, sectorZ: number): MysteryCircleSite | null {
   const seed = seedForWorldCell(sectorX, sectorZ, 0x6d797374)
   if (seed % 100 >= 24) return null
-  return {
-    cellX: sectorX * MYSTERY_SECTOR_SIZE + 1 + ((seed >>> 9) % (MYSTERY_SECTOR_SIZE - 2)),
-    cellZ: sectorZ * MYSTERY_SECTOR_SIZE + 1 + ((seed >>> 13) % (MYSTERY_SECTOR_SIZE - 2)),
-  }
+  const cellX = sectorX * MYSTERY_SECTOR_SIZE + 1 + ((seed >>> 9) % (MYSTERY_SECTOR_SIZE - 2))
+  const cellZ = sectorZ * MYSTERY_SECTOR_SIZE + 1 + ((seed >>> 13) % (MYSTERY_SECTOR_SIZE - 2))
+  // A circle is painted on open ground, so it yields to whatever else claimed
+  // the tile. Checked on the anchor rather than on the caller's cell because
+  // only the anchor can ever answer with a circle.
+  if (isTutorialCell(cellX, cellZ)) return null
+  if (parkClusterForCell(cellX, cellZ) || lakeClusterForCell(cellX, cellZ)) return null
+  return { id: `mystery:${sectorX}:${sectorZ}`, cellX, cellZ, x: worldCellCenter(cellX), z: worldCellCenter(cellZ) }
 }
 
 /** Returns the deterministic empty tile carrying a mystery-circle signal. */
 export function mysteryCircleForCell(cellX: number, cellZ: number) {
-  if (isTutorialCell(cellX, cellZ)) return null
-  if (parkClusterForCell(cellX, cellZ) || lakeClusterForCell(cellX, cellZ)) return null
-  const sectorX = Math.floor(cellX / MYSTERY_SECTOR_SIZE)
-  const sectorZ = Math.floor(cellZ / MYSTERY_SECTOR_SIZE)
-  const anchor = mysteryAnchorForSector(sectorX, sectorZ)
-  return anchor && cellX === anchor.cellX && cellZ === anchor.cellZ ? `mystery:${sectorX}:${sectorZ}` : null
+  const site = mysteryCircleForSector(Math.floor(cellX / MYSTERY_SECTOR_SIZE), Math.floor(cellZ / MYSTERY_SECTOR_SIZE))
+  if (!site) return null
+  return site.cellX === cellX && site.cellZ === cellZ ? site.id : null
+}
+
+/** How far apart two mystery-circle sectors are, in metres. */
+const MYSTERY_SECTOR_SPAN = WORLD_CELL_SIZE * MYSTERY_SECTOR_SIZE
+
+/**
+ * Every mystery circle whose centre lies within `range` of a point.
+ *
+ * Stepped by sector rather than by cell: at most one circle exists per 6x6
+ * sector, so a 170m sweep is nine hashes instead of a hundred and twenty-one.
+ * That matters because the radar asks this on every animation frame.
+ *
+ * @param into reused between frames so a per-frame sweep allocates nothing.
+ */
+export function mysteryCirclesNear(
+  position: Pick<Vec3, 'x' | 'z'>,
+  range: number,
+  into: MysteryCircleSite[] = [],
+) {
+  into.length = 0
+  if (range <= 0) return into
+  const fromX = Math.floor((position.x - range) / MYSTERY_SECTOR_SPAN)
+  const toX = Math.floor((position.x + range) / MYSTERY_SECTOR_SPAN)
+  const fromZ = Math.floor((position.z - range) / MYSTERY_SECTOR_SPAN)
+  const toZ = Math.floor((position.z + range) / MYSTERY_SECTOR_SPAN)
+  for (let sectorZ = fromZ; sectorZ <= toZ; sectorZ += 1) {
+    for (let sectorX = fromX; sectorX <= toX; sectorX += 1) {
+      const site = mysteryCircleForSector(sectorX, sectorZ)
+      if (!site) continue
+      if (Math.hypot(site.x - position.x, site.z - position.z) > range) continue
+      into.push(site)
+    }
+  }
+  return into
 }
 
 /** Adjacent cells in one landmark cluster do not need an internal road seam. */
@@ -325,37 +367,6 @@ export function isMysteryCircleAt(position: Pick<Vec3, 'x' | 'z'>) {
 }
 
 export type MysteryCircleHit = { id: string; x: number; z: number }
-
-/**
- * Every circle whose centre lies within `radius` of a position.
- *
- * Sector-indexed rather than cell-scanned: the radar and the pickup renderer
- * ask this every frame, and a sector is thirty-six cells, so the whole sweep
- * is a handful of hash rolls. Each candidate anchor is re-validated through
- * mysteryCircleForCell so the tutorial, park and lake exclusions apply here
- * exactly as they do on the ground.
- */
-export function mysteryCirclesAround(position: Pick<Vec3, 'x' | 'z'>, radius: number): MysteryCircleHit[] {
-  const sectorSpan = MYSTERY_SECTOR_SIZE * WORLD_CELL_SIZE
-  const minSectorX = Math.floor((position.x - radius) / sectorSpan)
-  const maxSectorX = Math.floor((position.x + radius) / sectorSpan)
-  const minSectorZ = Math.floor((position.z - radius) / sectorSpan)
-  const maxSectorZ = Math.floor((position.z + radius) / sectorSpan)
-  const hits: MysteryCircleHit[] = []
-  for (let sectorZ = minSectorZ; sectorZ <= maxSectorZ; sectorZ += 1) {
-    for (let sectorX = minSectorX; sectorX <= maxSectorX; sectorX += 1) {
-      const anchor = mysteryAnchorForSector(sectorX, sectorZ)
-      if (!anchor) continue
-      const id = mysteryCircleForCell(anchor.cellX, anchor.cellZ)
-      if (!id) continue
-      const x = worldCellCenter(anchor.cellX)
-      const z = worldCellCenter(anchor.cellZ)
-      if (Math.hypot(x - position.x, z - position.z) > radius) continue
-      hits.push({ id, x, z })
-    }
-  }
-  return hits
-}
 
 /** Returns the circle under a craft, ignoring its altitude. */
 export function mysteryCircleAt(position: Pick<Vec3, 'x' | 'z'>): MysteryCircleHit | null {

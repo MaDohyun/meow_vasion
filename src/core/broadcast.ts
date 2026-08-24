@@ -8,8 +8,10 @@ import { ENEMY_WAVE_STAGES, waveStageForTime } from './enemies'
  * a scoreboard entry, not an event - the player learns that something changed
  * only by being shot at by something new.
  *
- * So each of the eight wave steps also fires a bulletin: the anchor already on
- * the city's news towers reports what the government just did. The text itself
+ * So each wave step also fires a bulletin: the anchor already on the city's
+ * news towers reports what the government just did. One step per unit means
+ * one bulletin per unit - sighting, drones, helicopters, fighters, the air
+ * defence network, and finally the ship. The text itself
  * lives in `src/i18n.ts`, one pair per stage per language; this module owns
  * only the timing, which the HUD band and the building screen both read so
  * they stay on air together.
@@ -24,6 +26,10 @@ import { ENEMY_WAVE_STAGES, waveStageForTime } from './enemies'
  * and the sighting report lands as the world noticing them rather than as a
  * title card - which is also the right order for a news programme: the event
  * first, the response after.
+ *
+ * Measured in game time, which the opening tutorial holds at zero. Ten
+ * seconds of a craft parked over a cat with its flight controls inert is not
+ * a sighting anybody would report.
  */
 export const BROADCAST_OPENING_AT = 10
 

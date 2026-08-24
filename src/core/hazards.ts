@@ -38,7 +38,16 @@ export const TRUCK_DIAMETER = 4.2
 export const HAZARD_MASS = 5
 /** Detonates once it is drawn this close to the craft. */
 export const HAZARD_TRIGGER_DISTANCE = 3.4
-export const HAZARD_HP = 1
+/**
+ * Laser hits before a heavy vehicle goes up, like a small building.
+ *
+ * One shot used to be enough, which made the tanker hunt trivial and gave the
+ * laser nothing to lean on. A truck is sheet metal over a frame; a tanker is
+ * the same frame wrapped around a pressure cylinder, so it soaks one more hit
+ * before the load goes.
+ */
+export const TRUCK_HP = 2
+export const HAZARD_HP = 3
 
 export type Hazard = BeamObject & {
   kind: HeavyVehicleKind
@@ -52,6 +61,8 @@ export type Hazard = BeamObject & {
   speed: number
   /** Rises as it is pulled in, so the warning gets louder the worse it gets. */
   alarm: number
+  /** Laser damage left to take before the vehicle blows. */
+  hp: number
   detonated: boolean
 }
 
@@ -120,6 +131,7 @@ function makeHazard(slot: number): Hazard {
     diameter: 5.1,
     scoreValue: 240,
     alarm: 0,
+    hp: HAZARD_HP,
     detonated: false,
   }
 }
@@ -232,6 +244,7 @@ function spawnHazard(state: HazardState, view: HazardView, kind: HeavyVehicleKin
   hazard.absorbing = false
   hazard.absorbTimer = 0
   hazard.alarm = 0
+  hazard.hp = kind === 'truck' ? TRUCK_HP : HAZARD_HP
   hazard.detonated = false
   return true
 }
@@ -342,17 +355,24 @@ export function detonateReachedHazard(state: HazardState, craftPosition: { x: nu
   return null
 }
 
-/** Shot from range instead of swallowed - the laser's job. Trucks are not
- *  targets; there is nothing in one to set off. */
-export function destroyHazard(state: HazardState, id: string) {
+/**
+ * Shot from range instead of swallowed - the laser's job.
+ *
+ * Both heavy vehicles take laser fire the way a building does: each hit lands
+ * with a visible blast, and the vehicle only goes up once its hit points are
+ * spent. The caller owns the effects and the reward; this owns the ledger.
+ */
+export function damageHazard(state: HazardState, id: string, damage = 1) {
   for (const hazard of state.objects) {
-    if (hazard.kind !== 'explosive') continue
     if (!hazard.active || hazard.id !== id) continue
+    if (hazard.absorbing) return null
+    hazard.hp = Math.max(0, hazard.hp - Math.max(0, damage))
+    if (hazard.hp > 0) return { hazard, destroyed: false as const }
     hazard.active = false
     hazard.inBeam = false
     hazard.tether = 0
     hazard.explosionPending = true
-    return hazard
+    return { hazard, destroyed: true as const }
   }
   return null
 }

@@ -7,11 +7,10 @@ import {
   ENEMY_MAX_HP,
   ENEMY_WAVE_STAGES,
   activeEnemyCount,
-  airBandForSlot,
   createEnemyState,
+  helicopterBandForSlot,
   hitEnemy,
   isAntiAirBuilding,
-  isDroneMine,
   resolveEnemyContacts,
   stepEnemies,
   syncAntiAirEnemies,
@@ -41,9 +40,9 @@ function fillWave(time: number) {
 // Wave times are data, not literals. They were respaced when the run went to
 // five minutes, and every test that had pinned a number broke; naming them off
 // the table means the next respacing carries the tests with it.
-const MID_WAVE_AT = ENEMY_WAVE_STAGES[3]!.at
-const FIGHTER_WAVE_AT = ENEMY_WAVE_STAGES[4]!.at
-const AA_WAVE_AT = ENEMY_WAVE_STAGES[5]!.at
+const MID_WAVE_AT = ENEMY_WAVE_STAGES[2]!.at
+const FIGHTER_WAVE_AT = ENEMY_WAVE_STAGES[3]!.at
+const AA_WAVE_AT = ENEMY_WAVE_STAGES[4]!.at
 const LAST_WAVE_AT = ENEMY_WAVE_STAGES[ENEMY_WAVE_STAGES.length - 1]!.at
 
 describe('time-based enemy waves', () => {
@@ -55,19 +54,29 @@ describe('time-based enemy waves', () => {
     }
     expect(ENEMY_WAVE_STAGES.at(-1)!.at).toBe(180)
   })
-  it('starts with only a couple of recon drones', () => {
+  it('starts with an empty sky, and fills it the moment the drone wave lands', () => {
+    // The opening stage is the sighting: the city has noticed the craft and
+    // has not answered yet. A drone in the air before the bulletin announcing
+    // drones would make that bulletin a recap.
     const state = createEnemyState()
-    syncEnemyTiers(state, 0, { x: 0, y: 4, z: 0 }, 0, 1 / 60)
-    expect(activeEnemyCount(state, 'drone')).toBe(2)
+    const player = { x: 0, y: 4, z: 0 }
+    for (let tick = 0; tick * (1 / 60) < ENEMY_WAVE_STAGES[1]!.at; tick += 1) {
+      syncEnemyTiers(state, tick * (1 / 60), player, 0, 1 / 60)
+      expect(activeEnemyCount(state)).toBe(0)
+    }
     expect(state.slots.some((enemy) => ['police', 'police-car', 'soldier'].includes(enemy.kind as string))).toBe(false)
     expect(waveStageForTime(ENEMY_WAVE_STAGES[1]!.at)).toBe(1)
+    // The wave boundary raises the bulletin and the spawner on the same tick,
+    // so the first mines are up while the band is still sliding in.
+    syncEnemyTiers(state, ENEMY_WAVE_STAGES[1]!.at, player, 0, 1 / 60)
+    expect(activeEnemyCount(state, 'drone')).toBe(2)
   })
 
   it('escalates to a bounded mixed army and a single boss', () => {
     const { state } = fillWave(LAST_WAVE_AT)
     expect(activeEnemyCount(state, 'drone')).toBe(ENEMY_CAPS.drone)
     expect(activeEnemyCount(state, 'helicopter')).toBe(ENEMY_CAPS.helicopter)
-    expect(activeEnemyCount(state, 'tank')).toBe(ENEMY_CAPS.tank)
+    expect(activeEnemyCount(state, 'fighter')).toBe(ENEMY_CAPS.fighter)
     expect(activeEnemyCount(state, 'boss')).toBe(1)
     expect(state.slots.length).toBeLessThan(160)
   })
@@ -132,13 +141,13 @@ describe('time-based enemy waves', () => {
     const buildings = antiAirBuildings(ENEMY_CAPS['anti-air'] + 2)
     const first = createEnemyState()
     const second = createEnemyState()
-    syncAntiAirEnemies(first, ENEMY_WAVE_STAGES[4]!.at, buildings)
+    syncAntiAirEnemies(first, FIGHTER_WAVE_AT, buildings)
     expect(activeEnemyCount(first, 'anti-air')).toBe(0)
     syncAntiAirEnemies(first, AA_WAVE_AT, buildings)
     syncAntiAirEnemies(second, AA_WAVE_AT, buildings)
     const sources = first.slots.filter((enemy) => enemy.active && enemy.kind === 'anti-air').map((enemy) => enemy.sourceId)
     expect(sources).toEqual(second.slots.filter((enemy) => enemy.active && enemy.kind === 'anti-air').map((enemy) => enemy.sourceId))
-    expect(sources).toHaveLength(Math.min(5, buildings.length))
+    expect(sources).toHaveLength(Math.min(ENEMY_CAPS['anti-air'], buildings.length))
   })
 
   it('uses the fighter pool for repeated strafing runs instead of balloon pursuers', () => {
@@ -152,29 +161,13 @@ describe('time-based enemy waves', () => {
     expect(state.slots.some((enemy) => enemy.kind === ('balloon' as never))).toBe(false)
   })
 
-  it('keeps air units on their own heading instead of chasing the player', () => {
-    const { state } = fillWave(MID_WAVE_AT)
-    const player = { x: 10, y: 14, z: 20 }
-    // Mines are excluded on purpose: they are supposed to sit still. This guards
-    // the passing drones, which must cross and carry on rather than latch on.
-    const drone = state.slots.find((enemy) => enemy.kind === 'drone' && enemy.active && !isDroneMine(enemy))!
-    const startDistance = Math.hypot(drone.position.x - player.x, drone.position.z - player.z)
-    const heading = drone.phase
-    for (let tick = 0; tick < 120; tick += 1) stepEnemies(state, player, 1 / 60)
-    // A chasing unit converges on the player and parks there. A travelling one
-    // crosses the area and keeps going, so its distance must not settle.
-    const endDistance = Math.hypot(drone.position.x - player.x, drone.position.z - player.z)
-    expect(Math.abs(endDistance - startDistance)).toBeGreaterThan(4)
-    expect(Math.abs(drone.phase - heading)).toBeLessThan(0.2)
-  })
-
-  it('holds helicopters in their altitude band so climbing is an escape', () => {
+  it('holds helicopters in their altitude band while nothing has provoked them', () => {
     const { state } = fillWave(MID_WAVE_AT)
     const highPlayer = { x: 10, y: 95, z: 20 }
     for (let tick = 0; tick < 240; tick += 1) stepEnemies(state, highPlayer, 1 / 60)
     for (const enemy of state.slots) {
       if (!enemy.active || enemy.kind !== 'helicopter') continue
-      expect(Math.abs(enemy.position.y - airBandForSlot(enemy.kind, enemy.slot))).toBeLessThan(1.5)
+      expect(Math.abs(enemy.position.y - helicopterBandForSlot(enemy.slot))).toBeLessThan(1.5)
     }
   })
 
@@ -193,17 +186,6 @@ describe('time-based enemy waves', () => {
     }
   })
 
-  it('lets helicopters actually open fire', () => {
-    const state = createEnemyState()
-    const player = { x: 0, y: 12, z: 0 }
-    const helicopter = state.slots.find((enemy) => enemy.kind === 'helicopter')!
-    helicopter.active = true
-    helicopter.position = { x: 0, y: 22, z: 30 }
-    helicopter.attackTimer = 0
-    for (let tick = 0; tick < 90; tick += 1) stepEnemies(state, player, 1 / 60)
-    expect(state.projectiles.some((projectile) => projectile.active)).toBe(true)
-  })
-
   it('destroys a drone the player flies through and never lets contacts stack', () => {
     const state = createEnemyState()
     const player = { x: 0, y: 8, z: 0 }
@@ -213,15 +195,15 @@ describe('time-based enemy waves', () => {
       drone.hitRadius = 0.75
       drone.position = { x: 0, y: 8, z: 0 }
     }
-    const tank = state.slots.find((enemy) => enemy.kind === 'tank')!
-    tank.active = true
-    tank.hitRadius = 2.8
-    tank.position = { x: 0, y: 8, z: 0 }
+    const helicopter = state.slots.find((enemy) => enemy.kind === 'helicopter')!
+    helicopter.active = true
+    helicopter.hitRadius = 2.4
+    helicopter.position = { x: 0, y: 8, z: 0 }
     const damage = resolveEnemyContacts(state, player)
     // Worst single contact, not the sum of four bodies.
     expect(damage).toBe(5)
     expect(state.contactKills).toBe(3)
     expect(drones.every((drone) => !drone.active)).toBe(true)
-    expect(tank.active).toBe(true)
+    expect(helicopter.active).toBe(true)
   })
 })
