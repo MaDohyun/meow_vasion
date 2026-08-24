@@ -1,5 +1,5 @@
 import type { BeamObject } from './beam'
-import type { Vec3 } from './drone'
+import type { Aabb, Vec3 } from './drone'
 import { seedForWorldCell, type ProceduralBuilding } from './world'
 
 export type EnemyKind = 'drone' | 'helicopter' | 'fighter' | 'anti-air' | 'boss'
@@ -1201,7 +1201,30 @@ export function stepEnemies(state: EnemyState, player: Vec3, dt: number, playerV
   return state
 }
 
-export function stepEnemyProjectiles(state: EnemyState, player: Vec3, dt: number, playerRadius = 1.25) {
+/** True once the orb's shell overlaps the box: it dies on the wall face
+ *  rather than sinking half a body into it. */
+function orbBlocked(projectile: EnemyProjectile, colliders: Aabb[]) {
+  const { x, y, z } = projectile.position
+  const reach = projectile.radius
+  for (const box of colliders) {
+    if (
+      x > box.minX - reach && x < box.maxX + reach &&
+      y > box.minY - reach && y < box.maxY + reach &&
+      z > box.minZ - reach && z < box.maxZ + reach
+    ) return true
+  }
+  return false
+}
+
+/**
+ * `colliders` is the caller's building pool. Only orbs die on it: a curtain
+ * round is slow enough that flying it into a wall - or putting a wall between
+ * yourself and the fan - is a decision the player visibly makes, so buildings
+ * are real cover from it. The aimed shots keep passing through: their fairness
+ * is the telegraph, and letting a tower blank the anti-air network would turn
+ * every rooftop into an off switch for the late game.
+ */
+export function stepEnemyProjectiles(state: EnemyState, player: Vec3, dt: number, playerRadius = 1.25, colliders: Aabb[] = []) {
   const d = Math.min(Math.max(0, dt), 0.05)
   let damage = 0
   state.lastHitKind = null
@@ -1211,6 +1234,10 @@ export function stepEnemyProjectiles(state: EnemyState, player: Vec3, dt: number
     projectile.position.y += projectile.velocity.y * d
     projectile.position.z += projectile.velocity.z * d
     projectile.life -= d
+    if (projectile.kind === 'orb' && colliders.length > 0 && orbBlocked(projectile, colliders)) {
+      projectile.active = false
+      continue
+    }
     const distance = Math.hypot(projectile.position.x - player.x, projectile.position.y - player.y, projectile.position.z - player.z)
     if (distance <= projectile.radius + playerRadius) {
       projectile.active = false

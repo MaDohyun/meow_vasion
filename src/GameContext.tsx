@@ -1877,7 +1877,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
     }
     game.laserActive = game.laserFlash > 0
 
-    const projectileDamage = stepEnemyProjectiles(game.enemies, game.drone.position, d, game.sizeProfile.hitRadius)
+    // Buildings (and ruins) are real cover from the orb curtains: the same
+    // collider pool the craft flies against also catches the slow rounds.
+    const projectileDamage = stepEnemyProjectiles(game.enemies, game.drone.position, d, game.sizeProfile.hitRadius, game.worldColliders)
     if (projectileDamage > 0) registerImpact(game, 'ENEMY', game.enemies.lastHitKind ?? 'contact')
     // A bigger craft is a bigger target: the same stream of fire is harder to
     // survive once fat, which is what stops growth from being free.

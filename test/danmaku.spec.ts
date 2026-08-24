@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DRONE_DEFAULTS } from '../src/core/drone'
+import { DRONE_DEFAULTS, type Aabb } from '../src/core/drone'
 import {
   FIGHTER_ORB_FAN,
   FIGHTER_ORB_INTERVAL,
@@ -121,5 +121,24 @@ describe('fighter curtain fire', () => {
     }
     expect(orbHits(1.05)).toBe(0)
     expect(orbHits(3.26)).toBeGreaterThan(0)
+  })
+
+  it('dies on a building, so cover is real cover', () => {
+    // A curtain round is slow enough that putting a wall between yourself and
+    // the fan is a decision the player visibly makes - so the wall honours it.
+    const wall: Aabb = { minX: -12, maxX: 12, minY: 0, maxY: 40, minZ: 20, maxZ: 24 }
+    const hidden = { x: 0, y: 20, z: 30 }
+    const hitsBehindWall = (colliders: Aabb[]) => {
+      const { state } = attackRun({ x: 0, y: 20, z: 0 }, 0)
+      stepEnemies(state, hidden, 1 / 60)
+      let hits = 0
+      for (let tick = 0; tick < 60 * 4; tick += 1) {
+        if (stepEnemyProjectiles(state, hidden, 1 / 60, 1.05, colliders) > 0) hits += 1
+      }
+      return hits
+    }
+    // The same parked spot: open air is hit, cover is not.
+    expect(hitsBehindWall([])).toBeGreaterThan(0)
+    expect(hitsBehindWall([wall])).toBe(0)
   })
 })
