@@ -936,8 +936,16 @@ export function stepCrowds(state: CrowdState, view: CrowdView, dt: number) {
   return state
 }
 
-export function beginNearbyCrowdAbsorption(state: CrowdState, ufoPosition: Vec3, reach = CROWD_ABSORB_DISTANCE) {
-  return beginNearbyBeamObjectAbsorption(state.objects, ufoPosition, Number.POSITIVE_INFINITY, reach) as CrowdObject | null
+/** `gripStrength` is the craft's integer beam strength; a body above the band
+ *  it can lift is not swallowed. Left unbounded by default so callers that only
+ *  care about reach keep the plain proximity test. */
+export function beginNearbyCrowdAbsorption(
+  state: CrowdState,
+  ufoPosition: Vec3,
+  reach = CROWD_ABSORB_DISTANCE,
+  gripStrength = Number.POSITIVE_INFINITY,
+) {
+  return beginNearbyBeamObjectAbsorption(state.objects, ufoPosition, Number.POSITIVE_INFINITY, reach, gripStrength) as CrowdObject | null
 }
 
 export function activeCrowdCount(state: CrowdState, kind?: CrowdKind) {

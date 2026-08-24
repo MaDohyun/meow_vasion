@@ -15,7 +15,8 @@ import {
   isInsideBeam,
   stepBeamObjects,
 } from '../src/core/beam'
-import { SIZE_MAX, SIZE_MIN, sizeProfile } from '../src/core/size'
+import { CAT_MASS, PEDESTRIAN_MASS } from '../src/core/crowds'
+import { SIZE_MAX, SIZE_MIN, SIZE_START, sizeProfile } from '../src/core/size'
 
 const makeCar = (id = 'car-1', x = 0, y = 0.65, z = 0): BeamObject => ({
   id,
@@ -212,7 +213,7 @@ describe('tractor beam physics', () => {
     expect(car.absorbing).toBe(true)
   })
 
-  it('leaves city dressing standing when the beam is too weak to lift it', () => {
+  it('leaves anything the beam is too weak to lift where it stands', () => {
     // The reported bug: a beam that could not shift a bus shelter by a
     // millimetre still made one vanish the moment the craft skimmed past it,
     // because absorption asked only "in the cone, close enough" and never
@@ -265,12 +266,54 @@ describe('tractor beam physics', () => {
     expect(strong.eaten).toBe(strong.object)
     expect(strong.object.absorbing).toBe(true)
 
-    // Loose objects keep the old rule - a car has no spot in the city to be
-    // taken off, so bumping into one with the beam on is still a meal.
-    const car = makeCar('loose', 0, 2.4, 0)
-    car.mass = 5
-    car.inBeam = true
-    expect(beginNearbyBeamObjectAbsorption([car], { x: 0, y: 2.6, z: 0 }, Number.POSITIVE_INFINITY, 3.48, 2)).toBe(car)
+    // Loose objects run on the same ladder. A car has no spot in the city to
+    // be taken off, but a beam two rungs under its weight still cannot raise
+    // it, so skimming one is not a meal either.
+    const loose = () => {
+      const object = makeCar('loose', 0, 2.4, 0)
+      object.mass = 5
+      object.inBeam = true
+      return object
+    }
+    const weakCar = loose()
+    expect(beginNearbyBeamObjectAbsorption([weakCar], { x: 0, y: 2.6, z: 0 }, Number.POSITIVE_INFINITY, 3.48, 2)).toBeNull()
+    expect(weakCar.absorbing).toBe(false)
+    const strongCar = loose()
+    expect(beginNearbyBeamObjectAbsorption([strongCar], { x: 0, y: 2.6, z: 0 }, Number.POSITIVE_INFINITY, 3.48, 5)).toBe(strongCar)
+  })
+
+  it('refuses a car the opening craft cannot budge and takes it once grown', () => {
+    // The player-facing case: the starting saucer pulls with one and a car
+    // weighs three, so the beam cannot raise it off the tarmac - it must not
+    // swallow it whole on contact either. Growth is what unlocks it.
+    const skim = (strength: number) => {
+      const car = makeCar('street-car', 0, 0.65, 0)
+      car.mass = CAR_MASS
+      car.inBeam = true
+      const eaten = beginNearbyBeamObjectAbsorption([car], { x: 0, y: 2.6, z: 0 }, Number.POSITIVE_INFINITY, 3.48, strength)
+      return { car, eaten }
+    }
+
+    const opening = sizeProfile(SIZE_START)
+    expect(opening.beamStrength).toBe(1)
+    expect(beamLiftScale(CAR_MASS, opening.beamStrength)).toBe(0)
+    const refused = skim(opening.beamStrength)
+    expect(refused.eaten).toBeNull()
+    expect(refused.car.absorbing).toBe(false)
+    expect(refused.car.active).toBe(true)
+
+    // One rung of growth puts the car in the marginal band, and marginal is
+    // liftable - so it becomes food.
+    expect(beamLiftScale(CAR_MASS, 2)).toBeGreaterThan(0)
+    const taken = skim(2)
+    expect(taken.eaten).toBe(taken.car)
+    expect(taken.car.absorbing).toBe(true)
+
+    // Crowds are deliberately under the opening band: a cat and a pedestrian
+    // are still meals for the craft the run starts on.
+    for (const [kind, mass] of [['cat', CAT_MASS], ['pedestrian', PEDESTRIAN_MASS]] as const) {
+      expect(beamLiftScale(mass, opening.beamStrength), kind).toBeGreaterThan(0)
+    }
   })
 
   it('awards more base score for a larger absorbed object', () => {

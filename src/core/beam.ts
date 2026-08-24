@@ -244,22 +244,32 @@ export function absorptionScore(object: Pick<BeamObject, 'kind' | 'diameter' | '
 /**
  * Swallows one thing the beam has hold of, if anything is close enough.
  *
- * `gripStrength` is the same integer the lifting ladder uses, and city
- * dressing is measured against it before it can be eaten. Absorption used to
- * ask only whether a thing was in the cone and within reach, which meant a
- * beam far too weak to shift a bus shelter still made it vanish the moment the
- * craft skimmed past it - scenery blinking out of a standing city on contact,
- * with none of the lift the weight ladder promises. A prop that cannot be
- * lifted is now simply not food; a graze plays over it and leaves it standing.
+ * `gripStrength` is the same integer the lifting ladder uses, and every object
+ * is measured against it before it can be eaten. Absorption used to ask only
+ * whether a thing was in the cone and within reach, which meant a beam far too
+ * weak to shift a bus shelter still made it vanish the moment the craft
+ * skimmed past it - scenery blinking out of a standing city on contact, with
+ * none of the lift the weight ladder promises. What cannot be lifted is simply
+ * not food; a graze plays over it and leaves it where it stands.
+ *
+ * The gate is not for city dressing alone. It was, and that exemption was the
+ * larger half of the same bug: a car weighs three and the opening craft pulls
+ * with one, so a beam that could not raise it a hand's width off the tarmac
+ * still swallowed it whole on contact. Trucks and tankers sat in the same
+ * hole. The weight ladder was being charged for a park bench and
+ * waived for everything the player actually flies over, which is the wrong way
+ * round - a bench is scenery, a car is the meal the ladder is supposed to be
+ * about. Loose or rooted, above the band is above the band.
  *
  * It also puts the simulation back in step with what the player is shown: the
  * beam target ring is already withheld from anything above the current band,
- * so an unliftable shelter carried no marker at all and then went off in a
- * flash of sparks as the craft passed over it.
+ * so an unliftable load carried no marker at all and then went off in a flash
+ * of sparks as the craft passed over it.
  *
- * Only props are gated. Cars, crowds and machines are loose objects with no
- * spot in the world to be taken off, so bumping into one with the beam on is
- * still a meal.
+ * Nothing is lost by refusing it, only deferred. Strength climbs with the hull
+ * and never falls, so a car the opening saucer cannot budge is a car it eats a
+ * few dozen pedestrians later - which is the growth loop stating its own
+ * terms rather than the beam quietly ignoring them.
  */
 export function beginNearbyBeamObjectAbsorption(
   objects: BeamObject[],
@@ -272,7 +282,7 @@ export function beginNearbyBeamObjectAbsorption(
     if (!object.active || object.absorbing || !object.inBeam || object.beamImmune) continue
     const diameter = beamObjectDiameter(object)
     if (!isAbsorbable(object.kind, diameter, maxDiameter)) continue
-    if (object.worldProp && beamLiftScale(object.mass, gripStrength) <= 0) continue
+    if (beamLiftScale(object.mass, gripStrength) <= 0) continue
     const distance = Math.hypot(
       object.position.x - ufoPosition.x,
       object.position.y - ufoPosition.y,

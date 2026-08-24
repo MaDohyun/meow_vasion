@@ -1941,7 +1941,13 @@ export function GameProvider({ children }: { children: ReactNode }) {
     }
     // No pickup cap: hanging mass is its own limit, and a craft that grabbed
     // too much should feel it rather than be quietly protected from it.
-    if (game.beamActive) {
+    //
+    // The weight ladder does apply, though. Capturing takes a car out of the
+    // road network for good, and a beam that cannot lift it has no business
+    // doing that: the car would be dumped dead in the street, its traffic slot
+    // spent, with nothing the craft could do about it. Under the band the
+    // cone simply plays over the roof and the car drives on.
+    if (game.beamActive && beamLiftScale(CAR_MASS, beamStrength(game)) > 0) {
       for (const car of game.traffic.cars) {
         if (!car.active || !isInsideBeam(car, beamField)) continue
         const captured = captureTrafficCar(game.traffic, car.id)
@@ -1957,9 +1963,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
     stepBeamObjects(game.hazards.objects, beamField, d)
     stepBeamObjects(game.enemies.slots, beamField, d)
     const maxAbsorbDiameter = Number.POSITIVE_INFINITY
-    // The same integer the lifting ladder runs on. City dressing the beam
-    // cannot lift is not swallowed either, so flying low over a shelter it
-    // could never shift leaves it standing rather than eating it on contact.
+    // The same integer the lifting ladder runs on, and it now gates every
+    // object rather than city dressing alone. Flying low over a shelter - or a
+    // car, or a tanker - the beam could never shift leaves it where it is
+    // rather than eating it on contact.
     const absorbStrength = beamStrength(game)
     const absorbFrom = (objects: BeamObject[]) => {
       let object = beginNearbyBeamObjectAbsorption(objects, game.drone.position, maxAbsorbDiameter, game.sizeProfile.absorbDistance, absorbStrength)
