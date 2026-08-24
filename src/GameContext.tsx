@@ -126,6 +126,15 @@ export type GameRuntime = {
    *  cost of using it is only ever "wait for the bar." */
   turboLockout: number
   mysteryCircleId: string | null
+  /**
+   * Every circle this run has flown through, for the radar to grey out.
+   *
+   * Separate from the mission's own list, which only records a circle while
+   * the "pass through different circles" quest is live. Read as a visit log
+   * that would be silent for most of a run, and the dial would promise fresh
+   * circles the player had already used.
+   */
+  mysteryCirclesVisited: Set<string>
   mysteryBoostRemaining: number
   mysteryFlash: number
   aimX: number
@@ -555,6 +564,7 @@ function makeRuntime(): GameRuntime {
     turbo: 1,
     turboLockout: 0,
     mysteryCircleId: null,
+    mysteryCirclesVisited: new Set<string>(),
     mysteryBoostRemaining: 0,
     mysteryFlash: 0,
     aimX: 0,
@@ -1573,6 +1583,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     if (mysteryCircle) {
       if (game.mysteryCircleId !== mysteryCircle.id) {
         game.mysteryCircleId = mysteryCircle.id
+        game.mysteryCirclesVisited.add(mysteryCircle.id)
         reportMissionEvent(game, { type: 'pass-mystery-circle', id: mysteryCircle.id })
         game.mysteryBoostRemaining = MYSTERY_BOOST_DURATION
         game.mysteryFlash = 0.65

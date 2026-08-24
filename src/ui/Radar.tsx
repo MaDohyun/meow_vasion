@@ -22,7 +22,10 @@ import { projectToRadar } from './radarProjection'
  * arrow that says where the mission is, and without it a checkpoint run has no
  * heading at all. Mystery circles are painted on the ground and cannot be seen
  * from above the rooftops at all, so the dial is the only place a player can
- * learn one is nearby - which is the whole point of flying through them.
+ * learn one is nearby - which is the whole point of flying through them. One
+ * already flown through is greyed rather than dropped: the mission counts
+ * distinct circles, so "I have had this one" is the thing worth showing, and
+ * removing it outright would just make the player fly back to check.
  *
  * Oriented to the craft's heading rather than north. The question being asked
  * is "what is in front of me", and a north-up radar makes the player do the
@@ -44,6 +47,8 @@ const MYSTERY_ICON = typeof Image === 'undefined' ? null : Object.assign(new Ima
  * it is recognisably the thing painted on the ground below.
  */
 const MYSTERY_ICON_SIZE = 16
+/** Opacity for a circle this run has already used up. */
+const MYSTERY_SPENT_ALPHA = 0.3
 
 const COLORS = {
   hostile: '#ff4d6d',
@@ -101,6 +106,8 @@ export function Radar() {
       if (MYSTERY_ICON?.complete && MYSTERY_ICON.naturalWidth > 0) {
         for (const circle of mysteryCirclesNear(player, RADAR_RANGE, circles)) {
           const { px, py } = projectToRadar(circle.x - player.x, circle.z - player.z, heading, center, scale)
+          const spent = game.mysteryCirclesVisited.has(circle.id)
+          context.globalAlpha = spent ? MYSTERY_SPENT_ALPHA : 1
           // The art is pale gold and the dial's middle is a pale green, so the
           // icon gets a dark disc to sit on rather than fading into the sweep.
           context.fillStyle = 'rgba(18,26,44,.58)'
@@ -109,6 +116,8 @@ export function Radar() {
           context.fill()
           context.drawImage(MYSTERY_ICON, px - MYSTERY_ICON_SIZE / 2, py - MYSTERY_ICON_SIZE / 2, MYSTERY_ICON_SIZE, MYSTERY_ICON_SIZE)
         }
+        // Left set, the whole rest of the sweep would inherit it.
+        context.globalAlpha = 1
       }
 
       // Hostiles only. Drones and fighters read a touch larger than they did
