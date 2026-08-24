@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   getProceduralCell,
   isLakeAt,
+  lakeClusterForCell,
   lakeWaterRect,
   LAKE_TILE_MARGIN,
   WORLD_CELL_SIZE,
@@ -177,6 +178,30 @@ describe('news screen mounting', () => {
     const mount = newsScreenMount(tower(NEWS_TOWER_MIN_HEIGHT))
     expect(NEWS_SCREEN_MOUNT_MARGIN).toBeGreaterThan(1)
     expect(mount.height).toBe(NEWS_SCREEN_HEIGHT + NEWS_SCREEN_MOUNT_MARGIN * 2)
+  })
+
+  it('gives a lake shore a stand of trees rather than a single specimen', () => {
+    const trees = lakeShoreTreesAround({ x: 0, z: 0 }, 48)
+    const lakes = new Set<string>()
+    for (let cellZ = -48; cellZ <= 48; cellZ += 1) {
+      for (let cellX = -48; cellX <= 48; cellX += 1) {
+        const cluster = lakeClusterForCell(cellX, cellZ)
+        if (cluster) lakes.add(cluster)
+      }
+    }
+
+    expect(lakes.size).toBeGreaterThan(10)
+    // One tree per edge, after the free-neighbour test and the thinning roll
+    // had both taken their cut, left well under two per lake. A bank wants a
+    // stand; this is the number that says it is still one.
+    expect(trees.length / lakes.size).toBeGreaterThan(3.5)
+    // Several trees to a shore is the point, but they must not pile up: the
+    // dedupe key is a tenth of a metre, so check real separation instead.
+    for (const [index, tree] of trees.entries()) {
+      for (const other of trees.slice(index + 1)) {
+        expect(Math.hypot(tree.x - other.x, tree.z - other.z)).toBeGreaterThan(2)
+      }
+    }
   })
 
   it('breaks the lake outline with reeds and rocks that hug the waterline', () => {
