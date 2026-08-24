@@ -84,7 +84,7 @@ import { shouldCrashFromOverload } from './core/overload'
 import { DRONE_BLAST_TRAUMA, HELICOPTER_RAM_TRAUMA, HIT_TRAUMA, addShakeTrauma, createShakeState, stepShake, type ShakeState } from './core/shake'
 import { worldPropMass, worldPropsAround } from './core/worldProps'
 import { endingForTimeUp, isVictory, type RunEnding } from './core/ending'
-import { playBoosterSound, playBuildingCollapseSound, playDroneExplosionSound, playLaserSound, playMysteryCircleSound, playNearbyCatCrySound, startBeamSound, startGameplayMusic, stopBeamSound, stopGameplayMusic, stopLobbyMusic, tone, unlockAudio } from './audio'
+import { TANKER_EXPLOSION_SCALE, playBoosterSound, playBuildingCollapseSound, playDroneExplosionSound, playLaserSound, playMysteryCircleSound, playNearbyCatCrySound, playVehicleExplosionSound, startBeamSound, startGameplayMusic, stopBeamSound, stopGameplayMusic, stopLobbyMusic, tone, unlockAudio } from './audio'
 
 export type GamePhase = 'intro' | 'playing' | 'results'
 
@@ -1116,6 +1116,9 @@ function registerHeavyVehicleLaserHit(game: GameRuntime, id: string) {
   }
   game.score += result.hazard.kind === 'truck' ? 90 : 140
   reportMissionEvent(game, { type: result.hazard.kind === 'truck' ? 'destroy-truck' : 'destroy-tanker' })
+  // Both heavies share the road-vehicle blast; the tanker is the one carrying
+  // fuel, so it is the one that is heard over the rest of the street.
+  playVehicleExplosionSound(result.hazard.kind === 'truck' ? 1 : TANKER_EXPLOSION_SCALE)
   triggerFireball(game.fireballs, 'vehicle', result.hazard.position, undefined, blastSeed(game))
   return true
 }
@@ -2102,6 +2105,11 @@ export function GameProvider({ children }: { children: ReactNode }) {
       if (object.active) continue
       if (object.explosionPending) {
         object.explosionPending = false
+        // Only a car reaches this queue - `beginCarDestruction` is the one
+        // thing that sets the flag. Its blast is deferred until the wreck has
+        // finished tumbling, so the sound belongs here with it rather than
+        // back at the shot that started the launch.
+        playVehicleExplosionSound()
         triggerLaserBurst(game.laserBursts, 'impact', object.position, '#ff8a45')
         triggerFireball(game.fireballs, 'vehicle', object.position, undefined, blastSeed(game))
       }
