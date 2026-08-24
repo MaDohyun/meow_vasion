@@ -311,7 +311,7 @@ export const STRINGS: Record<Language, Strings> = {
     tutorialMissionAction: '트랙터 빔으로 고양이 구출',
     briefingTitle: '장군의 무전',
     briefingContinue: '화면을 클릭해서 계속',
-    briefingSkip: '건너뛰기',
+    briefingSkip: '튜토리얼 건너뛰기',
     briefingWaitHint: { beam: 'E 를 꾹 누르기', laser: 'Q 를 누르기', turbo: '스페이스 를 누르기' },
     tutorialBriefing: [
       { lines: ['대원, 작전에 들어간다. 대원의 임무는 지구라는 별의 정찰대 임무다.', '지구에서 많은 샘플을 가지고 돌아오도록!'] },
@@ -476,7 +476,7 @@ export const STRINGS: Record<Language, Strings> = {
     tutorialMissionAction: 'トラクタービームで猫を救出',
     briefingTitle: '将軍の通信',
     briefingContinue: '画面をクリックして続ける',
-    briefingSkip: 'スキップ',
+    briefingSkip: 'チュートリアルをスキップ',
     briefingWaitHint: { beam: 'E を長押し', laser: 'Q を押す', turbo: 'スペース を押す' },
     tutorialBriefing: [
       { lines: ['隊員、作戦を開始する。君の任務は地球という星の偵察だ。', '地球からできるだけ多くのサンプルを持ち帰れ！'] },
@@ -641,7 +641,7 @@ export const STRINGS: Record<Language, Strings> = {
     tutorialMissionAction: 'RESCUE THE CAT WITH THE TRACTOR BEAM',
     briefingTitle: "THE GENERAL'S TRANSMISSION",
     briefingContinue: 'CLICK THE SCREEN TO CONTINUE',
-    briefingSkip: 'SKIP',
+    briefingSkip: 'SKIP TUTORIAL',
     briefingWaitHint: { beam: 'HOLD E', laser: 'PRESS Q', turbo: 'PRESS SPACE' },
     tutorialBriefing: [
       { lines: ['Pilot, begin the operation. Your mission is to recon the planet called Earth.', 'Bring back as many samples from Earth as you can!'] },

@@ -384,6 +384,8 @@ type GameContextValue = {
   start: () => void
   restart: () => void
   unlockTutorialControl: (control: TutorialControl) => void
+  /** Ends the tutorial where it stands and starts the run. */
+  skipTutorial: () => void
   quality: RenderQuality
   setQuality: (quality: RenderQuality) => void
   language: Language
@@ -1209,6 +1211,32 @@ function wound(game: GameRuntime, kind: HealthLossKind) {
   if (isDead(game.health)) endRun(game, 'CRAFT DOWN', 'downed')
 }
 
+/**
+ * The one door out of the tutorial, taken either by catching the cat or by
+ * skipping the briefing.
+ *
+ * Mission 1 opens, ordinary city life resumes around the park, and every
+ * control the briefing hands over one line at a time is left unlocked. Those
+ * per-control gates exist only to stop a player running ahead of the general;
+ * once the run has started a still-locked laser or turbo would be a dead key,
+ * so leaving by either door opens all of them. Guarded on the stage so a
+ * second call - a skip pressed on the same frame the cat comes aboard - cannot
+ * re-roll the quests the first one just assigned.
+ */
+function leaveTutorial(game: GameRuntime) {
+  if (game.mission.stage !== 0) return
+  const previousRevision = game.mission.revision
+  startMissionOne(game.mission, 0)
+  finishTutorialCrowd(game.crowds)
+  presentMissionChange(game, 0, previousRevision)
+  game.tutorialBriefingReady = true
+  game.tutorialLaserReady = true
+  game.tutorialTurboReady = true
+  // The latch is read only inside the tutorial branch of advance(), but a run
+  // should not carry a "beam is held" flag it can never clear.
+  game.tutorialBeamLatched = false
+}
+
 function absorbCrowd(game: GameRuntime, kind: 'cat' | 'pedestrian') {
   const tutorialCat = kind === 'cat' && game.mission.stage === 0
   // Score scales with size, so a big craft earns more per body. Growing is
@@ -1219,10 +1247,7 @@ function absorbCrowd(game: GameRuntime, kind: 'cat' | 'pedestrian') {
   game.score += reward
   game.pickupPulse = 1
   if (tutorialCat) {
-    const previousRevision = game.mission.revision
-    startMissionOne(game.mission, 0)
-    finishTutorialCrowd(game.crowds)
-    presentMissionChange(game, 0, previousRevision)
+    leaveTutorial(game)
     // No hud-center flavor text here - the general's briefing (BossBriefing)
     // covers the tutorial hand-off with its own step 6/7 lines.
   } else {
@@ -2172,6 +2197,21 @@ export function GameProvider({ children }: { children: ReactNode }) {
     publish()
   }, [publish])
 
+  /**
+   * The skip button on the general's briefing.
+   *
+   * It ends the tutorial outright rather than fast-forwarding the script: the
+   * craft is released, the clock starts, and mission 1 is on the board from the
+   * frame it is pressed. Skipping used to drop the player at the cat step,
+   * which is not a skip - the cat was the tutorial's gate, so the one thing a
+   * player who already knows the game wanted to get past was the one thing they
+   * were still made to do.
+   */
+  const skipTutorial = useCallback(() => {
+    leaveTutorial(runtime.current)
+    publish()
+  }, [publish])
+
   const restart = useCallback(() => {
     stopBeamSound()
     unlockAudio()
@@ -2185,7 +2225,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   }, [publish])
 
   const setMobileInput = useCallback((input: Partial<MobileInput>) => { Object.assign(mobile.current, input) }, [])
-  const value = useMemo<GameContextValue>(() => ({ runtime, snapshot, readInput, advance, start, restart, unlockTutorialControl, setMobileInput, quality, setQuality, language, setLanguage, t: STRINGS[language] }), [advance, quality, readInput, restart, unlockTutorialControl, setMobileInput, setQuality, snapshot, start, language, setLanguage])
+  const value = useMemo<GameContextValue>(() => ({ runtime, snapshot, readInput, advance, start, restart, unlockTutorialControl, skipTutorial, setMobileInput, quality, setQuality, language, setLanguage, t: STRINGS[language] }), [advance, quality, readInput, restart, unlockTutorialControl, skipTutorial, setMobileInput, setQuality, snapshot, start, language, setLanguage])
   return <GameContext.Provider value={value}>{children}</GameContext.Provider>
 }
 

@@ -86,7 +86,7 @@ describe('time-based enemy waves', () => {
     drone.position.y = 10
     drone.position.z = 0
     drone.target.y = 10
-    // Inside the radius-9 field but off the hull: the ordinary arming applies
+    // Inside the blast field but off the hull: the ordinary arming applies
     // on the beam exactly as off it, and the fuse keeps running while held.
     const player = { x: 0, y: 10, z: 6 }
     stepEnemies(state, player, 1 / 60, { x: 0, y: 0, z: 0 }, 1.4)

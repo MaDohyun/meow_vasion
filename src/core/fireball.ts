@@ -37,7 +37,7 @@ export type BlastKind = 'mine' | 'landmark' | 'ruin' | 'vehicle' | 'aircraft' | 
 
 export const BLAST_PROFILE: Record<BlastKind, { radius: number; duration: number; puffs: number }> = {
   // Sized by its own kill radius at the call site; this is only the fallback.
-  mine: { radius: 9, duration: 1.15, puffs: 16 },
+  mine: { radius: 10, duration: 1.15, puffs: 16 },
   // A fuel depot or a comms mast: the biggest thing in the game going up.
   landmark: { radius: 15, duration: 1.5, puffs: 16 },
   // A tower coming down. Long, but narrower than the landmark blast so it
