@@ -60,19 +60,113 @@ pnpm dev
 4. **배포 → 새 배포 → 유형: 웹 앱**을 선택하고 다음과 같이 설정합니다.
    - 실행 계정: **나**
    - 액세스 권한이 있는 사용자: **모든 사용자**
-5. 배포하면 나오는 `https://script.google.com/macros/s/.../exec` URL을 복사합니다.
+5. **"Google에서 확인하지 않은 앱입니다"라는 경고가 나오면 정상입니다.**
+   아래 "배포할 때 나오는 경고"를 먼저 읽고 진행하세요.
+6. 배포하면 나오는 `https://script.google.com/macros/s/.../exec` URL을 복사합니다.
    `/dev`로 끝나는 주소는 본인만 열 수 있으므로 쓰지 않습니다.
-6. 저장소 루트에 `.env`를 만들고 그 URL을 넣습니다. (`.env.example` 참고)
+7. 저장소 루트에 `.env`를 만들고 그 URL을 넣습니다. (`.env.example` 참고)
 
    ```
    VITE_LEADERBOARD_URL=https://script.google.com/macros/s/.../exec
    ```
 
-7. `pnpm dev`를 다시 시작합니다. Vite는 환경 변수를 빌드 시점에 읽으므로
+8. `pnpm dev`를 다시 시작합니다. Vite는 환경 변수를 빌드 시점에 읽으므로
    개발 서버와 배포 빌드 모두 다시 실행해야 반영됩니다.
+
+### 배포할 때 나오는 경고
+
+배포 과정에서 **"Google에서 확인하지 않은 앱입니다"** 화면이 뜹니다. 이건
+문제가 생긴 것이 아니라, 구글에 심사를 넣지 않은 개인 스크립트에는 항상 뜨는
+안내입니다. 여기서 승인하는 앱은 방금 직접 만들어 붙여넣은 그 스크립트이고,
+승인해 주는 계정도 본인 계정입니다.
+
+**고급 → "<프로젝트 이름>(안전하지 않음)(으)로 이동" → 허용** 순서로 넘어가면
+됩니다.
+
+다만 누르기 전에 권한 화면을 한 번 읽어보세요. 이 스크립트가 쓰는 구글
+서비스는 **스프레드시트 하나뿐**입니다. 그러므로 요구하는 권한도 스프레드시트
+관련 한 줄이어야 합니다. 아래 둘 중 하나로 보이면 정상입니다.
+
+- "이 애플리케이션이 설치된 특정 스프레드시트 보기 및 관리"
+- "Google 스프레드시트의 모든 스프레드시트 보기, 수정, 생성, 삭제"
+
+**Gmail, Drive 전체, 연락처, 캘린더처럼 스프레드시트와 상관없는 권한을 요구
+한다면 멈추세요.** 붙여넣은 코드가 `Code.gs`가 아니거나 다른 코드가 섞인
+것입니다. 참고로 이 스크립트에는 외부로 요청을 보내는 코드(`UrlFetchApp`)가
+아예 없어서, 시트 내용을 바깥으로 보낼 수단 자체가 없습니다.
+
+**이 경고는 시트 주인이 처음 한 번만 봅니다.** 게임을 하는 사람들은 승인 화면을 거치지
+않고 익명으로 주소만 호출하므로 아무것도 보지 않습니다.
 
 `Code.gs`를 고친 뒤에는 **배포 → 배포 관리**에서 기존 배포의 버전을 새로
 올려야 합니다. 새 배포를 만들면 URL이 바뀌어 `.env`도 함께 고쳐야 합니다.
+
+### 게임을 호스팅할 때
+
+`.env`는 저장소에 올라가지 않습니다(`.gitignore`). 내 컴퓨터에서만 쓰는
+설정이라는 뜻이므로, 게임을 어딘가에 올려서 남들이 하게 하려면 그 호스팅의
+빌드 환경변수에 같은 값을 넣어야 합니다. 이름은 똑같이
+`VITE_LEADERBOARD_URL`입니다.
+
+**Vercel**
+
+1. 프로젝트 → **Settings → Environment Variables**
+2. Key에 `VITE_LEADERBOARD_URL`, Value에 `/exec`로 끝나는 주소를 넣습니다.
+3. 적용 환경은 **Production, Preview, Development 셋 다** 켭니다. Production만
+   켜면 미리보기 배포에서는 순위표가 로컬 저장으로 떨어집니다.
+4. **Save**를 누른 뒤 **Deployments → 최신 배포 → ⋯ → Redeploy**를 실행합니다.
+   이미 올라가 있는 배포는 예전 값으로 빌드된 결과물이라, 저장만 해서는
+   바뀌지 않습니다.
+
+터미널을 선호한다면 같은 일을 이렇게 할 수 있습니다.
+
+```bash
+vercel env add VITE_LEADERBOARD_URL production
+vercel env add VITE_LEADERBOARD_URL preview
+vercel env add VITE_LEADERBOARD_URL development
+vercel --prod          # 새 값으로 다시 빌드
+```
+
+빌드 설정은 Framework Preset **Vite**, Build Command `pnpm build`, Output
+Directory `dist`입니다.
+
+**그 외 호스팅**
+
+- **Cloudflare Pages**: 프로젝트 → Settings → Environment variables
+- **Netlify**: Site configuration → Environment variables
+- **GitHub Actions**: 워크플로의 빌드 단계에
+  `env: VITE_LEADERBOARD_URL: ${{ vars.VITE_LEADERBOARD_URL }}`
+
+Vite는 환경변수를 **빌드 시점에** 읽어 결과물에 박아 넣습니다. 값을 넣거나
+바꾼 뒤에는 반드시 다시 빌드해야 합니다. 이미 올라간 빌드는 예전 값을
+그대로 들고 있습니다.
+
+값이 없으면 게임은 오류를 내지 않고 로컬 저장으로 넘어갑니다. 배포한 게임의
+순위표에 "시트가 연결되지 않아 이 브라우저에만 저장했습니다"가 보인다면
+환경변수가 빌드에 들어가지 않은 것입니다.
+
+### 동작 확인
+
+배포한 웹 앱이 살아 있는지는 내 컴퓨터에서 이렇게 확인합니다.
+
+```bash
+URL="여기에 /exec 주소"
+
+# 1) 읽기 - {"ok":true,"entries":[...]} 가 나오면 성공
+curl -sL "$URL?limit=5"
+
+# 2) 쓰기 - 시트에 한 줄이 들어가고 rank 가 돌아옵니다
+curl -sL -X POST "$URL" \
+  -H 'Content-Type: text/plain;charset=utf-8' \
+  -d '{"name":"TEST","score":1,"survivalTime":1,"waveStage":1,"victory":false,"recordedAt":1}'
+```
+
+`-L`이 필요한 이유는 Apps Script가 매번 다른 주소로 넘기기 때문입니다.
+확인이 끝나면 시트에서 `TEST` 줄을 지우면 됩니다.
+
+돌아오는 답이 JSON이 아니라 HTML 로그인 페이지라면, 배포 설정의 **액세스
+권한이 있는 사용자**가 "모든 사용자"가 아니거나 주소가 `/dev`로 끝나는
+경우입니다.
 
 ### 공개할 때 알아둘 것
 
