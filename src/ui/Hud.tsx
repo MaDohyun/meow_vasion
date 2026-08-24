@@ -312,14 +312,16 @@ function Intro() {
  * - A plain step waits for a click.
  * - A `wait` step is hands-on. The control it names is inert in the simulation
  *   until this step puts it on screen, and the step only clears once the player
- *   has actually used it. A click cannot get past one: skipping the single
- *   control the line is teaching is the whole thing it exists to prevent.
+ *   has actually used it. A click cannot get past one: clicking past the single
+ *   control the line is teaching is the whole thing it exists to prevent. The
+ *   skip button still can, because it does not skip the lesson - it ends the
+ *   tutorial and starts the run, with every control unlocked at once.
  * - An `auto` step advances on its own. Those come after the cat is caught,
  *   when the game is already moving and the general is talking over it, so
  *   they must never block the player's hands.
  */
 function BossBriefing() {
-  const { snapshot, unlockTutorialControl, t } = useGame()
+  const { snapshot, unlockTutorialControl, skipTutorial, t } = useGame()
   const [step, setStep] = useState(0)
   const [done, setDone] = useState(false)
   const steps = t.tutorialBriefing
@@ -371,16 +373,17 @@ function BossBriefing() {
     if (!clickable) return
     setStep((s) => Math.min(s + 1, steps.length - 1))
   }
-  // Skip drops the player at the cat, which is where the tutorial's own gate
-  // is: the run does not start until that cat is aboard, so there is nothing
-  // before it worth stopping at and nothing about it that can be skipped.
-  // Past that point the briefing is only talking, and skip ends it.
-  const catStep = steps.findIndex((entry) => entry.wait === 'beam')
-  const skippable = step !== catStep
+  // Skip means the whole tutorial, from any step including the hands-on ones.
+  // It used to jump to the cat step and stop there, because the cat was the
+  // tutorial's own gate into the run - but that made the one thing a player who
+  // already knows the game is trying to get past the one thing skip still made
+  // them do. skipTutorial() opens that gate instead: the craft is released, the
+  // clock starts and mission 1 is on the board, so the briefing has nothing
+  // left to say and ends with it.
   const skip = (event: { stopPropagation: () => void }) => {
     event.stopPropagation()
-    if (catStep >= 0 && step < catStep) setStep(catStep)
-    else setDone(true)
+    skipTutorial()
+    setDone(true)
   }
 
   return (
@@ -397,11 +400,9 @@ function BossBriefing() {
             : current.wait
               ? <span className="briefing-hint briefing-await">{t.briefingWaitHint[current.wait]}</span>
               : null}
-          {skippable && (
-            <button type="button" className="briefing-skip" onClick={skip}>
-              {t.briefingSkip}
-            </button>
-          )}
+          <button type="button" className="briefing-skip" onClick={skip}>
+            {t.briefingSkip}
+          </button>
         </div>
       </div>
     </div>
