@@ -42,6 +42,11 @@ export type Strings = {
   titleLine1: string
   titleLine2: string
   tagline: string
+  /** The lobby's standing order, shown under the title. The run is a timed
+   *  recon sortie rather than an open-ended sandbox, and the lobby is the only
+   *  place a player can read that before the clock is already running. */
+  lobbyOrdersTag: string
+  lobbyOrders: string
   start: string
   options: string
   close: string
@@ -249,6 +254,8 @@ export const STRINGS: Record<Language, Strings> = {
     titleLine1: '침략할',
     titleLine2: '거냥',
     tagline: '5분 안에 지구 정찰을 끝내고 유유히 튀세요',
+    lobbyOrdersTag: '작전 명령',
+    lobbyOrders: '5분 동안 정찰대 임무를 완수하세요!',
     start: '게임 시작',
     options: '옵션',
     close: '닫기',
@@ -422,6 +429,8 @@ export const STRINGS: Record<Language, Strings> = {
     titleLine1: 'しんりゃく',
     titleLine2: 'するにゃん',
     tagline: 'できるだけ長く生き延びて街を破壊しよう',
+    lobbyOrdersTag: '作戦命令',
+    lobbyOrders: '5分間で偵察隊の任務を完遂せよ！',
     start: 'ゲーム開始',
     options: 'オプション',
     close: '閉じる',
@@ -595,6 +604,8 @@ export const STRINGS: Record<Language, Strings> = {
     titleLine1: 'MEOW',
     titleLine2: 'VASION',
     tagline: 'Survive as long as you can and tear the city apart',
+    lobbyOrdersTag: 'STANDING ORDERS',
+    lobbyOrders: 'Complete the recon squad mission within 5 minutes!',
     start: 'START SURVIVAL',
     options: 'OPTIONS',
     close: 'CLOSE',

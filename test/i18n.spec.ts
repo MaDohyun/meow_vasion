@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_LANGUAGE, LANGUAGES, LANGUAGE_LABELS, STRINGS } from '../src/i18n'
+import { MISSION_RUN_SECONDS } from '../src/core/missions'
 
 describe('interface languages', () => {
   it('defaults to Korean', () => {
@@ -50,6 +51,20 @@ describe('interface languages', () => {
     expect(STRINGS.ja.start).not.toBe(STRINGS.en.start)
     expect(STRINGS.ko.collapsedTitle).not.toBe(STRINGS.en.collapsedTitle)
     expect(STRINGS.ko.msgCarLaunched).not.toBe(STRINGS.en.msgCarLaunched)
+  })
+
+  it('states the lobby standing order in every language, and states it truthfully', () => {
+    // The order names a number of minutes. If the run length is ever retuned
+    // the lobby would keep promising the old one, so the copy is checked
+    // against the clock rather than against itself.
+    const minutes = MISSION_RUN_SECONDS / 60
+    expect(Number.isInteger(minutes)).toBe(true)
+    for (const language of LANGUAGES) {
+      expect(STRINGS[language].lobbyOrdersTag).toBeTruthy()
+      expect(STRINGS[language].lobbyOrders).toContain(String(minutes))
+    }
+    expect(STRINGS.ko.lobbyOrders).not.toBe(STRINGS.en.lobbyOrders)
+    expect(STRINGS.ja.lobbyOrders).not.toBe(STRINGS.en.lobbyOrders)
   })
 
   it('translates mission objectives and tutorial briefing copy', () => {
