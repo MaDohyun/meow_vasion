@@ -26,9 +26,9 @@ import {
   stepHazards,
   type HazardState,
 } from './core/hazards'
-import { SIZE_MIN, SIZE_START, type SizeGainKind, type SizeProfile, clampSize, growSize, growSizeBy, sizeProfile, ufoDiameter } from './core/size'
-import { createHealthState, damageHealth, healHealth, healthRatio, isDead, isRegenerating, stepHealth, type HealthLossKind, type HealthState } from './core/health'
-import { BATTLESHIP_TURRETS, activeEnemyCount, battleshipTurretPoint, createEnemyState, hitEnemy, resolveEnemyContacts, stepEnemies, stepEnemyProjectiles, syncAntiAirEnemies, syncEnemyTiers, waveLabelForTime, waveStageForTime, type EnemyKind, type EnemyState } from './core/enemies'
+import { SIZE_MIN, SIZE_START, type SizeGainKind, type SizeProfile, bonusHeartsForSize, clampSize, growSize, growSizeBy, sizeProfile, ufoDiameter } from './core/size'
+import { MAX_HEALTH, createHealthState, damageHealth, healHealth, healthRatio, isDead, isRegenerating, raiseHealthMax, stepHealth, type HealthLossKind, type HealthState } from './core/health'
+import { BATTLESHIP_ALTITUDE, BATTLESHIP_TURRETS, ENEMY_WAVE_STAGES, activeEnemyCount, battleshipTurretPoint, createEnemyState, hitEnemy, resolveEnemyContacts, stepEnemies, stepEnemyProjectiles, syncAntiAirEnemies, syncEnemyTiers, waveLabelForTime, waveStageForTime, type EnemyKind, type EnemyState } from './core/enemies'
 import {
   createLaserPool,
   createLaserBurstPool,
@@ -78,10 +78,10 @@ import {
 } from './core/boons'
 import { createBuildingRuin, damageBuilding, ruinCollider, type BuildingRuin } from './core/buildings'
 import { stepLakeAbsorption } from './core/lakes'
-import { createMissionState, isInsideAirCheckpoint, missionHasQuest, recordMissionEvent, startMissionOne, syncMissionState, type MissionQuest, type MissionState } from './core/missions'
+import { createMissionState, isInsideAirCheckpoint, missionHasQuest, recordMissionEvent, startFinalMission, startMissionOne, syncMissionState, type MissionQuest, type MissionState } from './core/missions'
 import { MYSTERY_BOOST_DURATION, MYSTERY_BOOST_MAX_MULTIPLIER, mysteryBoostMultiplier } from './core/mysteryCircles'
 import { shouldCrashFromOverload } from './core/overload'
-import { DRONE_BLAST_TRAUMA, HELICOPTER_RAM_TRAUMA, addShakeTrauma, createShakeState, stepShake, type ShakeState } from './core/shake'
+import { DRONE_BLAST_TRAUMA, HELICOPTER_RAM_TRAUMA, HIT_TRAUMA, addShakeTrauma, createShakeState, stepShake, type ShakeState } from './core/shake'
 import { worldPropMass, worldPropsAround } from './core/worldProps'
 import { endingForTimeUp, isVictory, type RunEnding } from './core/ending'
 import { playBoosterSound, playBuildingCollapseSound, playDroneExplosionSound, playLaserSound, playMysteryCircleSound, playNearbyCatCrySound, startBeamSound, startGameplayMusic, stopBeamSound, stopGameplayMusic, stopLobbyMusic, tone, unlockAudio } from './audio'
@@ -100,6 +100,19 @@ export type MissionBanner =
 export const RUN_SECONDS = 300
 /** A laser hit lights a building for about a fifth of a second. */
 export const BUILDING_HIT_FLASH_FADE = 5
+
+/**
+ * How fast the craft's own hit flash fades, in units per second.
+ *
+ * It used to be 5 - a fifth of a second, which is one half-cycle of the blink
+ * the hull draws with it, so the answer to a hit was a single red wash that
+ * could pass for a light changing. Slowed to a bit over a third of a second,
+ * the same flash reads as the hull flashing red twice, which is what a player
+ * glancing at their own craft can actually name as having been hit. Still
+ * short enough to be over well inside the damage cooldown, so a fight never
+ * sits under a permanent red tint.
+ */
+export const IMPACT_FLASH_FADE = 2.7
 export const SURVIVAL_TARGET_TIME = RUN_SECONDS
 
 export type GameRuntime = {
@@ -116,6 +129,14 @@ export type GameRuntime = {
   remainingTime: number
   score: number
   waveStage: number
+  /**
+   * True when the run was opened by the developer drill rather than played
+   * from the lobby's start button. The drill skips the tutorial, winds the
+   * clock to the final wave and hands over a grown craft, so what it produces
+   * is not a score - the results screen reads this and does not offer the
+   * leaderboard.
+   */
+  devRun: boolean
   /** Which wave bulletin is on air, and for how much longer. The simulation
    *  holds the stage number only - the words are chosen at render time, in
    *  whatever language the player set. */
@@ -275,6 +296,9 @@ export type GameSnapshot = {
   survivalTarget: number
   score: number
   waveStage: number
+  /** True for a run opened by the developer drill, so the results screen can
+   *  keep it off the leaderboard. */
+  devRun: boolean
   /** The wave bulletin currently on air, or null when nothing is. */
   broadcastStage: number | null
   broadcastRemaining: number
@@ -382,8 +406,11 @@ type GameContextValue = {
   readInput: () => PlayerInput
   advance: (dt: number) => void
   start: () => void
+  startBattleshipDrill: () => void
   restart: () => void
   unlockTutorialControl: (control: TutorialControl) => void
+  /** Ends the tutorial where it stands and starts the run. */
+  skipTutorial: () => void
   quality: RenderQuality
   setQuality: (quality: RenderQuality) => void
   language: Language
@@ -395,7 +422,28 @@ type GameContextValue = {
 const GameContext = createContext<GameContextValue | null>(null)
 const UFO_UPGRADES = { speed: 0, stability: 0, rack: 0, special: 'none' as const }
 
+/**
+ * When the dreadnought's wave lands, read off the wave table rather than
+ * written out again, so moving the wave moves the drill with it.
+ */
+const BATTLESHIP_WAVE_AT = ENEMY_WAVE_STAGES.find(
+  (stage) => ((stage.targets as Partial<Record<EnemyKind, number>>).boss ?? 0) > 0,
+)!.at
+
+/**
+ * The craft the drill hands over.
+ *
+ * Chosen by its ceiling rather than by taste: `maxAltitude` at this size is
+ * just above the ship's own station altitude, which is the smallest craft that
+ * can actually fly up to the thing. Anything smaller turns the drill into a
+ * view of the fight from underneath it.
+ */
+const DRILL_CRAFT_SIZE = 5.2
+
 const HITSTOP_TIME = 0.05
+/** The colour a curtain round bursts in - the same soft red it flew in, so the
+ *  flash on the hull is recognisably the thing that just hit it. */
+const ORB_HIT_COLOR = '#ff6b62'
 const CAT_CRY_HEAR_DISTANCE = 18
 const CAT_CRY_INTERVAL = 4.5
 /** Which callout each pickup raises. The words live in i18n like every other
@@ -594,6 +642,7 @@ function makeRuntime(): GameRuntime {
     remainingTime: RUN_SECONDS,
     score: 0,
     waveStage: 0,
+    devRun: false,
     broadcastStage: 0,
     broadcastTime: 0,
     overloadWarn: 0,
@@ -1182,6 +1231,7 @@ function grow(game: GameRuntime, kind: SizeGainKind) {
   game.size = growSize(game.size, kind)
   game.sizeProfile = sizeProfile(game.size)
   game.sizePulse = 1
+  raiseHealthMax(game.health, MAX_HEALTH + bonusHeartsForSize(game.size))
   return game.size - before
 }
 
@@ -1190,6 +1240,7 @@ function growBy(game: GameRuntime, amount: number) {
   game.size = growSizeBy(game.size, amount)
   game.sizeProfile = sizeProfile(game.size)
   game.sizePulse = 1
+  raiseHealthMax(game.health, MAX_HEALTH + bonusHeartsForSize(game.size))
   return game.size - before
 }
 
@@ -1204,6 +1255,32 @@ function wound(game: GameRuntime, kind: HealthLossKind) {
   if (isDead(game.health)) endRun(game, 'CRAFT DOWN', 'downed')
 }
 
+/**
+ * The one door out of the tutorial, taken either by catching the cat or by
+ * skipping the briefing.
+ *
+ * Mission 1 opens, ordinary city life resumes around the park, and every
+ * control the briefing hands over one line at a time is left unlocked. Those
+ * per-control gates exist only to stop a player running ahead of the general;
+ * once the run has started a still-locked laser or turbo would be a dead key,
+ * so leaving by either door opens all of them. Guarded on the stage so a
+ * second call - a skip pressed on the same frame the cat comes aboard - cannot
+ * re-roll the quests the first one just assigned.
+ */
+function leaveTutorial(game: GameRuntime) {
+  if (game.mission.stage !== 0) return
+  const previousRevision = game.mission.revision
+  startMissionOne(game.mission, 0)
+  finishTutorialCrowd(game.crowds)
+  presentMissionChange(game, 0, previousRevision)
+  game.tutorialBriefingReady = true
+  game.tutorialLaserReady = true
+  game.tutorialTurboReady = true
+  // The latch is read only inside the tutorial branch of advance(), but a run
+  // should not carry a "beam is held" flag it can never clear.
+  game.tutorialBeamLatched = false
+}
+
 function absorbCrowd(game: GameRuntime, kind: 'cat' | 'pedestrian') {
   const tutorialCat = kind === 'cat' && game.mission.stage === 0
   // Score scales with size, so a big craft earns more per body. Growing is
@@ -1214,10 +1291,7 @@ function absorbCrowd(game: GameRuntime, kind: 'cat' | 'pedestrian') {
   game.score += reward
   game.pickupPulse = 1
   if (tutorialCat) {
-    const previousRevision = game.mission.revision
-    startMissionOne(game.mission, 0)
-    finishTutorialCrowd(game.crowds)
-    presentMissionChange(game, 0, previousRevision)
+    leaveTutorial(game)
     // No pilot callout here - the general's briefing (BossBriefing)
     // covers the tutorial hand-off with its own step 6/7 lines.
   } else {
@@ -1314,21 +1388,30 @@ function updateNearbyCatCry(game: GameRuntime, dt: number) {
 }
 
 /**
- * `trauma` is the blast shake, and only explosive hits pass one: a scrape
- * along a tower still reads as the freeze alone. It is spent here rather than
- * at the call site so a hit swallowed by the damage cooldown shakes nothing -
- * that is not a hit the player took.
+ * Every hit answers the same way: the red flash, the freeze, and a kick.
+ *
+ * The shake used to be reserved for explosions, so a helicopter ram and a
+ * drone going off moved the screen while a fighter's orb, an anti-air shell or
+ * the dreadnought's bow gun took health off a craft that sat perfectly still.
+ * A hit the player cannot feel is a hit they have to read off the health bar,
+ * which is the one place they are not looking during a fight. `HIT_TRAUMA`
+ * prices the kick by what landed it, and `trauma` only overrides it where the
+ * same damage kind can arrive two ways - a mine detonating is not a scrape.
+ *
+ * It is all spent here rather than at the call site so a hit swallowed by the
+ * damage cooldown does nothing at all - that is not a hit the player took.
  */
-function registerImpact(game: GameRuntime, source: 'ENEMY' | 'BUILDING', loss?: HealthLossKind, trauma = 0) {
+function registerImpact(game: GameRuntime, source: 'ENEMY' | 'BUILDING', loss?: HealthLossKind, trauma?: number) {
   if (game.damageCooldown > 0 || game.phase !== 'playing') return
   game.damageCooldown = 1.05
   game.impactFlash = 1
   // Replaces the old continuous camera shake: a single short freeze reads as a
-  // hit without leaving the whole late game permanently vibrating. A blast
-  // adds its own decaying kick on top of the freeze - see core/shake.
+  // hit without leaving the whole late game permanently vibrating. The kick
+  // on top of it is a decaying one-shot rather than a state - see core/shake.
   game.hitstop = HITSTOP_TIME
-  if (trauma > 0) addShakeTrauma(game.shake, trauma)
-  wound(game, source === 'BUILDING' ? 'building' : loss ?? 'contact')
+  const kind = source === 'BUILDING' ? 'building' : loss ?? 'contact'
+  addShakeTrauma(game.shake, trauma ?? HIT_TRAUMA[kind])
+  wound(game, kind)
   tone(source === 'BUILDING' ? 'impact' : 'warning')
   if ('vibrate' in navigator) navigator.vibrate?.([35, 20, 35])
 }
@@ -1345,11 +1428,12 @@ function snapshotOf(game: GameRuntime): GameSnapshot {
     survivalTarget: SURVIVAL_TARGET_TIME,
     score: game.score,
     waveStage: game.waveStage,
+    devRun: game.devRun,
     broadcastStage: game.broadcastTime > 0 ? game.broadcastStage : null,
     broadcastRemaining: game.broadcastTime,
     boonLevels: game.boons.levels,
     beamRadiusScale: game.sizeProfile.beamScale,
-    beamReachScale: 1,
+    beamReachScale: game.sizeProfile.beamReach,
     daylightLabel: game.daylight.label,
     daylightClock: daylightClock(game.sessionTime),
     nightFactor: game.daylight.nightFactor,
@@ -1639,7 +1723,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     }
     game.pilotClock += d
     game.messageTime = Math.max(0, game.messageTime - d)
-    game.impactFlash = Math.max(0, game.impactFlash - d * 5)
+    game.impactFlash = Math.max(0, game.impactFlash - d * IMPACT_FLASH_FADE)
     stepShake(game.shake, d)
     // Short enough to be over before the laser can fire again, so holding the
     // trigger on a tower reads as repeated hits rather than a solid red block.
@@ -1810,7 +1894,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     if (overload > 0) {
       flightInput.vertical = Math.min(flightInput.vertical, 0) - Math.min(1, overload / 12)
       if (shouldCrashFromOverload(game.beamActive, game.ballast, capacity, game.drone.position.y)) {
-        endRun(game, 'CRUSHED BY THE LOAD', 'downed')
+        endRun(game, 'CRUSHED BY THE LOAD', 'crushed')
         updatePilotStatus(game)
         publish()
         return
@@ -1909,10 +1993,12 @@ export function GameProvider({ children }: { children: ReactNode }) {
       boosting: turboActive,
       position: game.drone.position,
       velocity: game.drone.velocity,
-      // Radius follows the hull: the aperture multiplier is read off the size
-      // profile, so a bigger craft sweeps a wider cone with no card involved.
+      // Radius, reach and pull all follow the hull: a bigger craft sweeps a
+      // wider cone, reaches the street from its own cruising altitude, and
+      // hauls what it catches visibly faster - no card involved in any of it.
       radiusScale: game.sizeProfile.beamScale,
-      reachScale: 1,
+      reachScale: game.sizeProfile.beamReach,
+      gripScale: game.sizeProfile.beamPull,
       // Natural grip from size, and nothing else - the whole 1..12 ladder is
       // growth now.
       gripStrength: beamStrength(game),
@@ -2092,6 +2178,16 @@ export function GameProvider({ children }: { children: ReactNode }) {
     // Buildings (and ruins) are real cover from the orb curtains: the same
     // collider pool the craft flies against also catches the slow rounds.
     const projectileDamage = stepEnemyProjectiles(game.enemies, game.drone.position, d, game.sizeProfile.hitRadius, game.worldColliders)
+    // A round that touched the hull bursts there, whether or not it cost
+    // anything. The craft has a second of grace after every hit, and inside it
+    // an orb used to simply blink out of existence - which reads as the shot
+    // passing through rather than as armour holding. The burst and the spit of
+    // fire are the answer the hull owes every round that connects; the flash,
+    // the freeze and the health only follow the ones that land for real.
+    if (game.enemies.projectileHit) {
+      triggerLaserBurst(game.laserBursts, 'impact', game.enemies.lastHitPoint, ORB_HIT_COLOR)
+      triggerFireball(game.fireballs, 'strike', game.enemies.lastHitPoint, undefined, blastSeed(game))
+    }
     if (projectileDamage > 0) registerImpact(game, 'ENEMY', game.enemies.lastHitKind ?? 'contact')
     // A bigger craft is a bigger target: the same stream of fire is harder to
     // survive once fat, which is what stops growth from being free.
@@ -2107,10 +2203,12 @@ export function GameProvider({ children }: { children: ReactNode }) {
       // Ploughing through a drone detonates it just as surely as shooting it.
       triggerFireball(game.fireballs, 'aircraft', game.enemies.lastContactPoint, undefined, blastSeed(game))
     }
-    // Contact damage can come from anything solid; a drone detonation or a
-    // helicopter ram earns the shake, so the trauma rides on the blow that
-    // deserves it rather than on the damage number.
-    const ramTrauma = game.enemies.helicopterRams > 0 ? HELICOPTER_RAM_TRAUMA : 0
+    // Contact damage can come from anything solid, and the three ways it
+    // arrives are not the same blow: a mine detonating is the biggest thing
+    // that happens to the hull, a ram is a body blow, and flying into a parked
+    // fighter is neither. Leaving the trauma unset hands the last case to the
+    // HIT_TRAUMA table, which is where every other hit is priced.
+    const ramTrauma = game.enemies.helicopterRams > 0 ? HELICOPTER_RAM_TRAUMA : undefined
     if (contactDamage > 0) registerImpact(game, 'ENEMY', 'contact', contactBlasts > 0 ? DRONE_BLAST_TRAUMA : ramTrauma)
     const previousMissionStage = game.mission.stage
     const previousMissionRevision = game.mission.revision
@@ -2159,6 +2257,21 @@ export function GameProvider({ children }: { children: ReactNode }) {
     publish()
   }, [publish])
 
+  /**
+   * The skip button on the general's briefing.
+   *
+   * It ends the tutorial outright rather than fast-forwarding the script: the
+   * craft is released, the clock starts, and mission 1 is on the board from the
+   * frame it is pressed. Skipping used to drop the player at the cat step,
+   * which is not a skip - the cat was the tutorial's gate, so the one thing a
+   * player who already knows the game wanted to get past was the one thing they
+   * were still made to do.
+   */
+  const skipTutorial = useCallback(() => {
+    leaveTutorial(runtime.current)
+    publish()
+  }, [publish])
+
   const restart = useCallback(() => {
     stopBeamSound()
     unlockAudio()
@@ -2171,8 +2284,72 @@ export function GameProvider({ children }: { children: ReactNode }) {
     publish()
   }, [publish])
 
+  /**
+   * The developer drill: a run that opens on the dreadnought.
+   *
+   * Reaching the last wave the ordinary way is five minutes of play, which is
+   * five minutes per look at the one fight that changes the most often. This
+   * builds an ordinary runtime and then winds it forward to exactly the state
+   * that fight starts in - nothing here is a special mode the simulation has
+   * to know about, and every system carries on believing it is a normal run.
+   *
+   * Four things have to move together, because the boss fight is the
+   * intersection of all four:
+   *
+   * - The clock, to the last wave's own time, so the spawner sends the ship.
+   * - The tutorial, released, because the timed run never starts until the
+   *   first cat is caught and the wave spawner is silent until it does.
+   * - The assignment, to stage three, so the `destroy-battleship` objective is
+   *   live rather than two stages away.
+   * - The craft, grown, because the opening saucer's ceiling is thirty metres
+   *   and the ship holds station at ninety-six. A drill that cannot reach the
+   *   thing it is a drill for is a screenshot.
+   *
+   * The pickups are deliberately not handed out: the laser stays at its
+   * unupgraded damage, which is the harder half of the balance question this
+   * exists to answer.
+   */
+  const startBattleshipDrill = useCallback(() => {
+    stopBeamSound()
+    unlockAudio()
+    stopLobbyMusic()
+    startGameplayMusic()
+    pointer.current = { x: 0, y: 0 }
+    touchAim.current = null
+    const game = makeRuntime()
+    game.devRun = true
+    game.sessionTime = BATTLESHIP_WAVE_AT
+    game.remainingTime = Math.max(1, RUN_SECONDS - BATTLESHIP_WAVE_AT)
+    game.waveStage = waveStageForTime(game.sessionTime)
+    // The bulletins for the waves that were skipped are not news any more.
+    game.broadcastStage = game.waveStage
+    game.broadcastTime = 0
+    game.openingBroadcastDone = true
+    game.pilotPreviousThreat = game.waveStage
+    startFinalMission(game.mission, game.sessionTime)
+    finishTutorialCrowd(game.crowds)
+    game.size = DRILL_CRAFT_SIZE
+    game.sizeProfile = sizeProfile(game.size)
+    // Straight up from the opening spawn rather than somewhere new: the world
+    // cells and the crowd pools are already primed around that ground, and
+    // only the altitude has to change for the ship to be in reach.
+    game.drone.position.y = Math.min(game.sizeProfile.maxAltitude, BATTLESHIP_ALTITUDE) - 8
+    game.drone.pitch = 0
+    // Put the wave on the field here rather than waiting for the first frame,
+    // so the craft can be turned to face the ship the spawner actually placed.
+    // Reading its bearing beats reproducing the spawn formula: the drill keeps
+    // working whatever that formula becomes, and a drill that opens with the
+    // dreadnought behind the player is not one.
+    syncEnemyTiers(game.enemies, game.sessionTime, game.drone.position, game.drone.heading, 1 / 60)
+    const ship = game.enemies.slots.find((enemy) => enemy.kind === 'boss' && enemy.active)
+    if (ship) game.drone.heading = Math.atan2(ship.position.x - game.drone.position.x, ship.position.z - game.drone.position.z)
+    runtime.current = game
+    game.phase = 'playing'
+    publish()
+  }, [publish])
+
   const setMobileInput = useCallback((input: Partial<MobileInput>) => { Object.assign(mobile.current, input) }, [])
-  const value = useMemo<GameContextValue>(() => ({ runtime, snapshot, readInput, advance, start, restart, unlockTutorialControl, setMobileInput, quality, setQuality, language, setLanguage, t: STRINGS[language] }), [advance, quality, readInput, restart, unlockTutorialControl, setMobileInput, setQuality, snapshot, start, language, setLanguage])
+  const value = useMemo<GameContextValue>(() => ({ runtime, snapshot, readInput, advance, start, startBattleshipDrill, restart, unlockTutorialControl, skipTutorial, setMobileInput, quality, setQuality, language, setLanguage, t: STRINGS[language] }), [advance, quality, readInput, restart, startBattleshipDrill, unlockTutorialControl, skipTutorial, setMobileInput, setQuality, snapshot, start, language, setLanguage])
   return <GameContext.Provider value={value}>{children}</GameContext.Provider>
 }
 

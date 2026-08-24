@@ -7,10 +7,16 @@
  * one they got - a run that outlasted the clock and still failed the mission
  * used to be told it had been shot down.
  *
- * Being shot down is the third, and it reads like neither: the run stopped
- * early, so there is no question of the mission at all.
+ * Two more stop the run early, and they are not the same as each other. Being
+ * shot down is the city winning the fight. Going down under the load is the
+ * player's own haul winning one: nothing hit the craft, it simply hung more
+ * weight off the beam than the engines could hold and rode it into the
+ * ground. Filing that as a shoot-down hid the only thing the player could
+ * have done about it - let go.
+ *
+ * Neither early ending has a mission verdict to give.
  */
-export type RunEnding = 'recon' | 'missionFailed' | 'downed'
+export type RunEnding = 'recon' | 'missionFailed' | 'downed' | 'crushed'
 
 /** The clock reached zero with the craft still flying. Whether that is a win
  * is entirely the mission's answer to give. */

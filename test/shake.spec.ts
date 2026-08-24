@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import * as THREE from 'three'
 import {
   DRONE_BLAST_TRAUMA,
+  HELICOPTER_RAM_TRAUMA,
+  HIT_TRAUMA,
   SHAKE_CAMERA_PITCH,
   SHAKE_CAMERA_ROLL,
   SHAKE_CAMERA_YAW,
@@ -49,6 +51,40 @@ describe('blast shake', () => {
     const state = createShakeState()
     for (let hit = 0; hit < 6; hit += 1) addShakeTrauma(state, DRONE_BLAST_TRAUMA)
     expect(state.trauma).toBe(SHAKE_TRAUMA_MAX)
+  })
+
+  it('answers every source of damage, not only the explosions', () => {
+    // The kick used to belong to the drone blast and the helicopter ram alone,
+    // so an orb, a shell or the dreadnought's bow gun took a pip of health off
+    // a craft that never moved. A hit the player cannot feel is one they have
+    // to read off the health bar, which is the one place nobody is looking
+    // during a fight.
+    for (const [kind, trauma] of Object.entries(HIT_TRAUMA)) {
+      const state = createShakeState()
+      addShakeTrauma(state, trauma)
+      stepShake(state, 1 / 60)
+      const sample = sampleShake(state, createShakeSample())
+      for (const axis of Object.values(sample)) expect(Math.abs(axis), kind).toBeGreaterThan(0)
+      // One hit never fills the meter, whatever landed it, so two arriving
+      // together still stack into something bigger.
+      expect(state.trauma, kind).toBeLessThan(SHAKE_TRAUMA_MAX)
+    }
+  })
+
+  it('prices the kick by what landed it', () => {
+    const worst = Math.max(...Object.values(HIT_TRAUMA))
+    const lightest = Math.min(...Object.values(HIT_TRAUMA))
+    // A mine going off on the hull is still the biggest thing that can happen
+    // to the craft, and a scrape along a tower is still the smallest.
+    expect(HIT_TRAUMA.explosive).toBe(DRONE_BLAST_TRAUMA)
+    expect(HIT_TRAUMA.explosive).toBe(worst)
+    expect(HIT_TRAUMA.building).toBe(lightest)
+    // Contact is the helicopter's ram, which is a body blow rather than a blast.
+    expect(HIT_TRAUMA.contact).toBe(HELICOPTER_RAM_TRAUMA)
+    expect(HIT_TRAUMA.contact).toBeLessThan(HIT_TRAUMA.explosive)
+    // The curtain orb is the cheapest hit in the game because it is the most
+    // visible one, and it shakes the least to match.
+    expect(HIT_TRAUMA.orb).toBeLessThan(HIT_TRAUMA['boss-beam'])
   })
 
   it('stacks two drones inside the same second into a bigger kick', () => {

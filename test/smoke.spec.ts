@@ -4,6 +4,8 @@ test('loads first frame and validates combat and high-altitude flight', async ({
   const errors: string[] = []
   page.on('console', (message) => { if (message.type() === 'error') errors.push(message.text()) })
   const started = Date.now()
+  const readMetrics = async () =>
+    JSON.parse(await page.locator('canvas[data-render-metrics]').getAttribute('data-render-metrics') ?? '{}')
   await page.goto('/')
   // Selected by role rather than by label: the start button is translated, so
   // matching its text would tie the smoke run to one language.
@@ -27,23 +29,50 @@ test('loads first frame and validates combat and high-altitude flight', async ({
   await page.waitForTimeout(500)
   await page.keyboard.up('q')
   await page.waitForTimeout(300)
-  const openingMetrics = JSON.parse(await page.locator('canvas[data-render-metrics]').getAttribute('data-render-metrics') ?? '{}')
+  const openingMetrics = await readMetrics()
   expect(openingMetrics.laserShotsFired).toBe(0)
   expect(openingMetrics.activeTraffic).toBe(0)
   expect(openingMetrics.tutorialCats).toBe(1)
   expect(openingMetrics.remainingTime).toBe(300)
 
   // The briefing teaches the laser and turbo by hand before it asks for the
-  // cat. SKIP jumps past the talking and lands on the cat, which is the one
-  // step it cannot skip: the run does not start until that cat is aboard.
-  await page.locator('.briefing-skip').click()
+  // cat, and only a real key press clears a hands-on step - which is the one
+  // part of it a browser has to prove. Steps are told apart by the panel's own
+  // text changing rather than by what it says, so the walk holds in any
+  // language.
+  const panel = page.locator('.briefing-panel')
+  const briefingStep = async () => (await panel.innerText()).trim()
+  const advanceBriefing = async (act: () => Promise<void>) => {
+    const before = await briefingStep()
+    await act()
+    await expect.poll(briefingStep).not.toBe(before)
+  }
+  await advanceBriefing(() => page.locator('.briefing-touch').click())
+  await advanceBriefing(() => page.locator('.briefing-touch').click())
+  // Both hands-on steps hold their key rather than tapping it: the runtime
+  // samples the keyboard once a frame, and a tap can fall between two of them.
+  await advanceBriefing(async () => {
+    await page.keyboard.down('q')
+    await page.waitForTimeout(600)
+    await page.keyboard.up('q')
+  })
+  await advanceBriefing(async () => {
+    await page.keyboard.down('Space')
+    await page.waitForTimeout(600)
+    await page.keyboard.up('Space')
+  })
+  await advanceBriefing(() => page.locator('.briefing-touch').click())
+  // The cat step: the tutorial's own gate, which the run waits behind.
   await expect(page.locator('.tutorial-e-prompt')).toBeVisible()
 
+  // Held, not tapped: the beam latches on the first press and the cat has to
+  // come all the way up the cone before the gate opens. How long that takes is
+  // a matter of frame rate, so this waits on the gate rather than on a clock.
   await page.keyboard.down('e')
-  await page.waitForTimeout(4000)
+  await expect.poll(async () => (await readMetrics()).missionStage, { timeout: 60000 }).toBe(1)
   await page.keyboard.up('e')
   await page.waitForTimeout(900)
-  const missionMetrics = JSON.parse(await page.locator('canvas[data-render-metrics]').getAttribute('data-render-metrics') ?? '{}')
+  const missionMetrics = await readMetrics()
   expect(missionMetrics.missionStage).toBe(1)
   expect(missionMetrics.remainingTime).toBeLessThan(300)
   expect(missionMetrics.activeTraffic).toBeGreaterThan(0)
@@ -54,12 +83,12 @@ test('loads first frame and validates combat and high-altitude flight', async ({
   await page.waitForTimeout(700)
   await page.keyboard.up('q')
   await page.waitForTimeout(550)
-  const heldShotMetrics = JSON.parse(await page.locator('canvas[data-render-metrics]').getAttribute('data-render-metrics') ?? '{}')
+  const heldShotMetrics = await readMetrics()
   expect(heldShotMetrics.laserShotsFired).toBeGreaterThan(0)
 
   await page.keyboard.press('q')
   await page.waitForTimeout(550)
-  const secondShotMetrics = JSON.parse(await page.locator('canvas[data-render-metrics]').getAttribute('data-render-metrics') ?? '{}')
+  const secondShotMetrics = await readMetrics()
   expect(secondShotMetrics.laserShotsFired).toBeGreaterThan(heldShotMetrics.laserShotsFired)
 
   const viewport = page.viewportSize()!
@@ -68,13 +97,62 @@ test('loads first frame and validates combat and high-altitude flight', async ({
   await page.waitForTimeout(7500)
   await page.keyboard.up('w')
   await page.waitForTimeout(550)
-  const altitudeMetrics = JSON.parse(await page.locator('canvas[data-render-metrics]').getAttribute('data-render-metrics') ?? '{}')
+  const altitudeMetrics = await readMetrics()
   expect(altitudeMetrics.height).toBeGreaterThan(125)
   expect(altitudeMetrics.activeBuildings).toBeGreaterThan(20)
   await page.mouse.move(viewport.width / 2, viewport.height - 4)
   await page.waitForTimeout(900)
   await page.screenshot({ path: testInfo.outputPath('high-altitude.png') })
   expect(errors).toEqual([])
+})
+
+/**
+ * SKIP is the whole tutorial, not the next line of it. The briefing's own state
+ * is React and its gates are in the runtime, so only a browser can show that
+ * one press of the button takes a player from the parked opening to a running
+ * game: no briefing, no locked controls, and no cat to catch first.
+ */
+test('SKIP ends the tutorial outright and starts the run', async ({ page }) => {
+  await page.goto('/')
+  const startButton = page.locator('.intro-actions .primary-button')
+  await expect(startButton).toBeVisible({ timeout: 30000 })
+  await startButton.click()
+  await expect(page.locator('.tutorial-mission')).toBeVisible()
+  const readMetrics = async () =>
+    JSON.parse(await page.locator('canvas[data-render-metrics]').getAttribute('data-render-metrics') ?? '{}')
+  expect((await readMetrics()).missionStage).toBe(0)
+
+  // Pressed on the opening line, before a single control has been handed over.
+  await page.locator('.briefing-skip').click()
+
+  // The briefing is gone, and so is everything that only exists while the
+  // tutorial holds the run: its mission card and its "press E" prompt.
+  await expect(page.locator('.briefing-box')).toHaveCount(0)
+  await expect(page.locator('.tutorial-mission')).toHaveCount(0)
+  await expect(page.locator('.tutorial-e-prompt')).toHaveCount(0)
+  await expect(page.locator('.mission-panel')).toContainText('미션 1')
+
+  await page.waitForTimeout(1500)
+  const running = await readMetrics()
+  expect(running.missionStage).toBe(1)
+  // The clock only moves once the tutorial is over.
+  expect(running.remainingTime).toBeLessThan(300)
+
+  // Laser and flight both answer, though the briefing never reached the lines
+  // that hand them over. Keys are held rather than tapped here too: the runtime
+  // samples the keyboard once a frame.
+  await page.keyboard.down('q')
+  await page.waitForTimeout(600)
+  await page.keyboard.up('q')
+  await page.waitForTimeout(500)
+  expect((await readMetrics()).laserShotsFired).toBeGreaterThan(0)
+  const pose = () => page.evaluate(() => window.__BEAM_BANDIT_POSE__!)
+  const parked = await pose()
+  await page.keyboard.down('w')
+  await page.waitForTimeout(4000)
+  await page.keyboard.up('w')
+  const flown = await pose()
+  expect(Math.hypot(flown.x - parked.x, flown.z - parked.z)).toBeGreaterThan(3)
 })
 
 /**

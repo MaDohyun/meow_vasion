@@ -48,8 +48,17 @@ export const UFO_BASE_DIAMETER = 5.4
  * The normal beam's ground radius is 5.8m. Absorption must happen well inside
  * that cone, otherwise a large craft eats a load on the same frame it catches
  * it and the weight animation has no time to read.
+ *
+ * That readability argument is a small-craft argument, though: on a hull
+ * eighty metres wide a 3.5m swallow window meant a catch travelled visibly
+ * INTO the saucer before it counted, which read as a slow beam rather than a
+ * careful one. The cap therefore opens with growth - see
+ * ABSORB_DISTANCE_GROWN_BONUS in sizeProfile - while the opening craft keeps
+ * the tight window that makes its first meals legible.
  */
 export const ABSORB_DISTANCE_MAX = 3.48
+/** Extra metres of swallow window a craft at the ceiling has earned. */
+export const ABSORB_DISTANCE_GROWN_BONUS = 10.5
 export const SIZE_CAMERA_LIFT_MAX = 7.5
 
 /**
@@ -78,6 +87,12 @@ export type SizeProfile = {
   /** Beam cone radius multiplier. Grows with the hull - the cards that used
    *  to own this stat are gone. See beamApertureForSize. */
   beamScale: number
+  /** Beam length multiplier on maxDrop, so a grown craft's cone actually
+   *  reaches the street from its own cruising altitude. See beamReachForSize. */
+  beamReach: number
+  /** Pull-speed multiplier on the haul (BeamField.gripScale): a caught load
+   *  rides a grown craft's beam visibly faster. See beamPullForSize. */
+  beamPull: number
   /**
    * Natural grip on whatever the beam has hold of, before any upgrade.
    *
@@ -141,9 +156,49 @@ export const LIFT_GROWTH_EXPONENT = 0.75
 /** Beam cone multiplier at the ceiling, absorbing the old radius cards'
  *  headroom (x1.75) into growth itself. */
 export const BEAM_APERTURE_MAX = 1.75
+/**
+ * Reach multiplier at the ceiling. The base beam stops 30m down (47 boosted),
+ * which fits a saucer threading the streets and strands a grown one: its own
+ * cruising altitude is higher than its beam is long, so the city it flies
+ * over is out of reach. At full growth the cone runs ~83m (~130 boosted) -
+ * the ceiling-height craft can genuinely fish the streets from the sky.
+ */
+export const BEAM_REACH_MAX = 2.75
+/**
+ * Pull-speed multiplier at the ceiling. Integer strength opens heavier rungs;
+ * this is the other half the player actually feels - how fast a caught load
+ * rides up the beam. A craft the size of a block hauling a car at opening-
+ * saucer speed read as weakness, not care.
+ *
+ * 1.55, not the ~2.4x the haul actually gains: gripScale feeds the beam
+ * spring twice (once in the spring constant, once in the drive), so the felt
+ * speed-up is roughly this number squared.
+ */
+export const BEAM_PULL_MAX = 1.55
 
 function sizeGrowthProgress(size: number) {
   return Math.max(0, Math.min(1, (clampSize(size) - SIZE_START) / (SIZE_MAX - SIZE_START)))
+}
+
+export function beamReachForSize(size: number) {
+  return 1 + sizeGrowthProgress(size) * (BEAM_REACH_MAX - 1)
+}
+
+export function beamPullForSize(size: number) {
+  return 1 + sizeGrowthProgress(size) * (BEAM_PULL_MAX - 1)
+}
+
+/**
+ * Hearts earned by growing: none at the start, one a third of the way up the
+ * size range, two from two-thirds on. Whole hearts at fixed rungs rather than
+ * a sliding fraction, because a heart appearing on the HUD is a moment and a
+ * creeping decimal is not. The base five stay in core/health; this is only
+ * the growth bonus, capped at +2 for a seven-heart ceiling.
+ */
+export const HEALTH_BONUS_HEARTS_MAX = 2
+
+export function bonusHeartsForSize(size: number) {
+  return Math.min(HEALTH_BONUS_HEARTS_MAX, Math.floor(sizeGrowthProgress(size) * (HEALTH_BONUS_HEARTS_MAX + 1)))
 }
 
 export function beamStrengthForSize(size: number) {
@@ -186,10 +241,12 @@ export function sizeProfile(size: number): SizeProfile {
     size: clamped,
     ratio,
     beamScale,
+    beamReach: beamReachForSize(clamped),
+    beamPull: beamPullForSize(clamped),
     beamPower: beamStrength,
     beamStrength,
     liftCapacity: liftCapacityForSize(clamped),
-    absorbDistance: Math.min(2.1 + clamped * 1.5, ABSORB_DISTANCE_MAX),
+    absorbDistance: Math.min(2.1 + clamped * 1.5, ABSORB_DISTANCE_MAX + sizeGrowthProgress(clamped) * ABSORB_DISTANCE_GROWN_BONUS),
     hitRadius: 1.05 * clamped,
     maxAltitude: maxAltitude(clamped),
     viewDistance: viewDistanceScale(clamped),

@@ -141,7 +141,7 @@ function splashTexture(kind: 'light' | 'guided' | 'explosive' | 'impact') {
 }
 
 function splashIndex(kind: HealthLossKind) {
-  return kind === 'rifle' || kind === 'shell' || kind === 'orb' ? 0 : kind === 'missile' || kind === 'rocket' || kind === 'boss-beam' ? 1 : kind === 'explosive' ? 2 : 3
+  return kind === 'orb' ? 0 : kind === 'boss-beam' || kind === 'flak' ? 1 : kind === 'explosive' ? 2 : 3
 }
 
 export function PostFx({ speed, impact, impactKind, quality }: { speed: number; impact: number; impactKind: HealthLossKind; quality: RenderQuality }) {

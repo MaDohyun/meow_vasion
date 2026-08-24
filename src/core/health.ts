@@ -31,16 +31,24 @@ export const MAX_HEALTH = 5
  * skill that answers it.
  */
 export const HEALTH_LOSS = {
-  // The cheapest hit in the game, because it is the most visible one: a slow
-  // curtain orb was on screen for seconds before it arrived.
+  // Half a heart, and the sky's only bullet.
+  //
+  // Every gun outside the boss fires the orb now, so this one figure prices
+  // the whole curtain. It is the cheapest hit in the game because it is the
+  // most visible one: a slow round is on screen for seconds before it
+  // arrives, and a player who is still in front of it chose to be. It is also
+  // small enough that being clipped is a correction rather than a disaster -
+  // four of them cost what one anti-air shell used to, and the shells were
+  // the reason altitude read as a damage table.
   orb: 0.5,
-  rifle: 0.5,
-  rocket: 0.5,
   building: 0.5,
   contact: 1,
-  shell: 1,
+  // The battleship's two aimed weapons, and the only hits that cost more than
+  // a scrape. Both are shown to the player before they leave - the bow gun
+  // behind a long aim line, the flak behind a three-second lock - so both are
+  // allowed to hurt.
   'boss-beam': 1.5,
-  missile: 2,
+  flak: 2,
   explosive: 2.5,
 } as const
 
@@ -83,6 +91,18 @@ export function stepHealth(state: HealthState, dt: number, regenScale = 1) {
 export function healHealth(state: HealthState, pips: number) {
   state.current = Math.min(state.max, state.current + Math.max(0, pips))
   return state.current
+}
+
+/**
+ * Raises the ceiling and grants the new pips already filled - a heart earned
+ * by growing arrives full, the way the old shield pips did. Never lowers:
+ * size never falls, and neither does anything size paid for.
+ */
+export function raiseHealthMax(state: HealthState, max: number) {
+  const next = Math.max(state.max, max)
+  state.current += next - state.max
+  state.max = next
+  return state
 }
 
 export function isDead(state: HealthState) {

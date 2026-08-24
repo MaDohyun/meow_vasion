@@ -11,16 +11,17 @@ import {
   healthRatio,
   isDead,
   isRegenerating,
+  raiseHealthMax,
   stepHealth,
 } from '../src/core/health'
-import { SIZE_GAIN, SIZE_MAX, SIZE_MIN, SIZE_START, clampSize, growSize } from '../src/core/size'
+import { HEALTH_BONUS_HEARTS_MAX, SIZE_GAIN, SIZE_MAX, SIZE_MIN, SIZE_START, bonusHeartsForSize, clampSize, growSize } from '../src/core/size'
 
 describe('health as the survival resource', () => {
   it('starts full and ends the run only at zero', () => {
     const state = createHealthState()
     expect(state.current).toBe(MAX_HEALTH)
     expect(isDead(state)).toBe(false)
-    for (let hit = 0; hit < 40; hit += 1) damageHealth(state, 'missile')
+    for (let hit = 0; hit < 40; hit += 1) damageHealth(state, 'boss-beam')
     expect(state.current).toBe(0)
     expect(isDead(state)).toBe(true)
     expect(healthRatio(state)).toBe(0)
@@ -30,19 +31,22 @@ describe('health as the survival resource', () => {
     // Inherited from the size losses this replaced, and the reason is
     // unchanged: being surprised must never be the expensive mistake, because
     // no skill answers it.
-    expect(HEALTH_LOSS.explosive).toBeGreaterThan(HEALTH_LOSS.missile)
-    expect(HEALTH_LOSS.missile).toBeGreaterThan(HEALTH_LOSS.shell)
-    expect(HEALTH_LOSS.shell).toBeGreaterThanOrEqual(HEALTH_LOSS.contact)
-    expect(HEALTH_LOSS.contact).toBeGreaterThan(HEALTH_LOSS.rifle)
+    expect(HEALTH_LOSS.explosive).toBeGreaterThan(HEALTH_LOSS['boss-beam'])
+    expect(HEALTH_LOSS['boss-beam']).toBeGreaterThan(HEALTH_LOSS.contact)
+    expect(HEALTH_LOSS.contact).toBeGreaterThan(HEALTH_LOSS.orb)
     // Clipping a building is a mistake, not a catastrophe.
-    expect(HEALTH_LOSS.building).toBeLessThan(HEALTH_LOSS.shell)
+    expect(HEALTH_LOSS.building).toBeLessThan(HEALTH_LOSS.contact)
+    // And the curtain, which is now every gun in the sky outside the boss, is
+    // the cheapest of all: half a heart, because it is the hit the player had
+    // seconds to avoid.
+    expect(HEALTH_LOSS.orb).toBe(0.5)
   })
 
   it('waits before healing, and every hit restarts the wait', () => {
     // Disengaging has to be a decision with a cost. If it patched up straight
     // away, backing off would be free and there would be no reason to weigh it.
     const state = createHealthState()
-    damageHealth(state, 'shell')
+    damageHealth(state, 'boss-beam')
     const wounded = state.current
     stepHealth(state, REGEN_DELAY - 0.5)
     expect(state.current).toBe(wounded)
@@ -52,7 +56,7 @@ describe('health as the survival resource', () => {
     expect(state.current).toBeGreaterThan(wounded)
     expect(isRegenerating(state)).toBe(true)
 
-    damageHealth(state, 'rifle')
+    damageHealth(state, 'orb')
     expect(state.sinceHit).toBe(0)
     stepHealth(state, REGEN_DELAY - 0.5)
     expect(isRegenerating(state)).toBe(false)
@@ -90,10 +94,10 @@ describe('health as the survival resource', () => {
   })
 
   it('is survivable long enough to be worth playing around', () => {
-    // Five pips against rifle fire is roughly ten hits; against the heaviest
-    // thing in the game it is two. Both should feel like a budget rather than
-    // a formality.
-    expect(MAX_HEALTH / HEALTH_LOSS.rifle).toBeGreaterThanOrEqual(8)
+    // Five pips against the curtain is ten hits; against the heaviest thing in
+    // the game it is two. Both should feel like a budget rather than a
+    // formality.
+    expect(MAX_HEALTH / HEALTH_LOSS.orb).toBeGreaterThanOrEqual(8)
     expect(MAX_HEALTH / HEALTH_LOSS.explosive).toBeGreaterThanOrEqual(2)
   })
 
@@ -118,5 +122,33 @@ describe('overload', () => {
     const tower: Aabb = { minX: -4, maxX: 4, minY: 0, maxY: 60, minZ: -4, maxZ: 4 }
     expect(surfaceHeightAt(0, 0, [roof, tower])).toBe(tower.maxY)
     expect(surfaceHeightAt(0, 0, [tower, roof])).toBe(tower.maxY)
+  })
+})
+
+describe('hearts earned by growing', () => {
+  it('grants a grown heart already filled and never lowers the ceiling', () => {
+    const state = createHealthState()
+    damageHealth(state, 'boss-beam')
+    expect(state.current).toBe(MAX_HEALTH - HEALTH_LOSS['boss-beam'])
+    // Growth raises the ceiling by whole hearts, and the new heart arrives full.
+    raiseHealthMax(state, MAX_HEALTH + 1)
+    expect(state.max).toBe(MAX_HEALTH + 1)
+    expect(state.current).toBe(MAX_HEALTH - HEALTH_LOSS['boss-beam'] + 1)
+    // Shrinking is not a thing size does, so neither is losing a heart.
+    raiseHealthMax(state, MAX_HEALTH)
+    expect(state.max).toBe(MAX_HEALTH + 1)
+  })
+
+  it('reaches seven hearts at the size ceiling and five at the start', () => {
+    expect(MAX_HEALTH + bonusHeartsForSize(SIZE_START)).toBe(5)
+    expect(MAX_HEALTH + bonusHeartsForSize(SIZE_MAX)).toBe(5 + HEALTH_BONUS_HEARTS_MAX)
+    // Whole hearts only, and never backwards on the way up.
+    let previous = 0
+    for (let size = SIZE_START; size <= SIZE_MAX; size += 0.1) {
+      const bonus = bonusHeartsForSize(size)
+      expect(Number.isInteger(bonus)).toBe(true)
+      expect(bonus).toBeGreaterThanOrEqual(previous)
+      previous = bonus
+    }
   })
 })
