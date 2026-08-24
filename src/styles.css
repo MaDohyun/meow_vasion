@@ -203,8 +203,11 @@ button { font: inherit; }
 /* The pilot's corner: the face, on screen for the whole run, and a bubble
    above it only while the run has something to say. No label and no caption -
    the expression is the readout, and a word under a face is just a word. */
-.pilot-card { position:absolute; right:18px; bottom:18px; display:flex; align-items:flex-end; flex-direction:column; gap:9px; }
-.pilot-portrait { width:118px; height:110px; overflow:hidden; border-color:var(--hud-edge-cool) !important; background-color:#1a2145; background-repeat:no-repeat; image-rendering:pixelated; }
+.pilot-card { position:absolute; right:34px; bottom:26px; display:flex; align-items:flex-end; flex-direction:column; gap:9px; }
+/* Sized to the portrait art's own 620x550 rather than to a round number: the
+   frame fills with `cover`, so any other ratio crops the pilot's ears or
+   shoulders off to fit a box that was never measured against them. */
+.pilot-portrait { width:146px; height:130px; overflow:hidden; border-color:var(--hud-edge-cool) !important; background-color:#1a2145; background-repeat:no-repeat; image-rendering:pixelated; }
 .pilot-line { max-width:290px; margin:0; padding:9px 14px; color:var(--cream); background:var(--hud-glass-deep); border:2px solid var(--hud-edge); border-radius:var(--hud-radius); box-shadow:var(--hud-drop); font-size:13px; font-weight:1000; line-height:1.5; letter-spacing:.4px; text-align:right; word-break:keep-all; animation:message-pop .18s steps(2); }
 .pilot-card[data-expression="surprise"] .pilot-portrait,
 .pilot-card[data-expression="scream"] .pilot-portrait { animation:warning-pulse .3s steps(2) infinite; }
@@ -518,8 +521,8 @@ button { font: inherit; }
   .mobile-altitude { bottom:147px; }
   /* Above the fire buttons and clear of the altitude arrows: the pilot is the
      one panel here that is read rather than pressed. */
-  .pilot-card { left:auto; right:8px; bottom:192px; gap:6px; }
-  .pilot-portrait { width:60px; height:56px; }
+  .pilot-card { left:auto; right:14px; bottom:196px; gap:6px; }
+  .pilot-portrait { width:70px; height:62px; }
   .pilot-line { max-width:min(280px,84vw); padding:7px 10px; font-size:11px; }
   .captive-rack { display:none; }
   .planet-radar { display:none; }
@@ -611,9 +614,9 @@ button { font: inherit; }
   .flight-mass { min-width:78px; padding-right:11px; }
   .flight-mass > b { font-size:22px; }
   .system-meter, .ballast-meter { grid-template-columns:34px minmax(0,1fr) 48px; gap:8px; }
-  .pilot-card { right:14px; bottom:14px; }
-  .pilot-portrait { width:92px; height:86px; }
-  .pilot-line { max-width:190px; padding:8px 11px; font-size:12px; }
+  .pilot-card { right:22px; bottom:20px; }
+  .pilot-portrait { width:108px; height:96px; }
+  .pilot-line { max-width:180px; padding:8px 11px; font-size:12px; }
   .briefing-box { top:92px; }
 }
 
