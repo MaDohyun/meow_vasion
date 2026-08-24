@@ -210,8 +210,15 @@ export const BATTLESHIP_ORB_RINGS = 2
  * the red shell a player sees IS the kill radius, so approaching it is the same
  * event as arming it. Two numbers here would mean the shell lies about one or
  * the other.
+ *
+ * Nudged from 9 to 10. A tenth wider is not a different rule - a mine is still
+ * something read and flown around rather than survived - but the shell is that
+ * much easier to pick out of a busy sky at speed, and the blast covers what the
+ * player was told it would cover with a little less room to clip the edge of it
+ * and walk away. Everything downstream is sized off this one value, so the
+ * field, the fire and the damage all move together.
  */
-export const DRONE_MINE_BLAST_RADIUS = 9
+export const DRONE_MINE_BLAST_RADIUS = 10
 /**
  * Three tenths of a second, which at cruising speed is about the width of the
  * shell itself.
@@ -1186,7 +1193,7 @@ export function stepEnemies(state: EnemyState, player: Vec3, dt: number, playerV
       // second read as a dud rather than as a hit.
       const struck = distance <= enemy.hitRadius + playerRadius
       // One arming rule, on the beam or off it. A mine reeled in by the beam
-      // crosses the radius-9 field like any other approach, arms there, and
+      // crosses the blast field like any other approach, arms there, and
       // the fuse does the rest - catching a bomb does not make it politer.
       if (!enemy.mineArmed && (struck || distance <= DRONE_MINE_BLAST_RADIUS)) {
         enemy.mineArmed = true
