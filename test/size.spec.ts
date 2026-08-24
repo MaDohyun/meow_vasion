@@ -1,13 +1,18 @@
 import { describe, expect, it } from 'vitest'
 import {
+  ABSORB_DISTANCE_GROWN_BONUS,
+  ABSORB_DISTANCE_MAX,
   BEAM_APERTURE_MAX,
+  BEAM_PULL_MAX,
+  BEAM_REACH_MAX,
   BEAM_STRENGTH_MAX,
   CAMERA_GROWTH_PULL_BACK,
   CAMERA_REST_DISTANCE,
+  HEALTH_BONUS_HEARTS_MAX,
   SIZE_MAX,
   SIZE_MIN,
   SIZE_START,
-  ABSORB_DISTANCE_MAX,
+  bonusHeartsForSize,
   clampSize,
   growSize,
   growSizeBy,
@@ -70,8 +75,22 @@ describe('craft size as growth, not as health', () => {
     expect(start.liftCapacity).toBe(1)
     expect(big.liftCapacity).toBe(40)
     expect(big.beamPower).toBeGreaterThan(start.beamPower)
-    expect(big.absorbDistance).toBeGreaterThan(start.absorbDistance)
-    expect(big.absorbDistance).toBe(ABSORB_DISTANCE_MAX)
+    // Reach and pull ride on size too: the opening saucer keeps the stock
+    // 30m street beam, the grown one fishes from its own cruising altitude
+    // and hauls what it catches visibly faster.
+    expect(start.beamReach).toBe(1)
+    expect(big.beamReach).toBeCloseTo(BEAM_REACH_MAX)
+    expect(start.beamPull).toBe(1)
+    expect(big.beamPull).toBeCloseTo(BEAM_PULL_MAX)
+    // The swallow window opens with the hull: tight on the opening craft so
+    // its first meals read, wide on a block-sized one so a catch does not
+    // travel into the saucer before it counts.
+    expect(start.absorbDistance).toBeLessThanOrEqual(ABSORB_DISTANCE_MAX)
+    expect(big.absorbDistance).toBeCloseTo(ABSORB_DISTANCE_MAX + ABSORB_DISTANCE_GROWN_BONUS)
+    // And growing buys hearts: none at the start, the full +2 at the ceiling.
+    expect(bonusHeartsForSize(SIZE_START)).toBe(0)
+    expect(bonusHeartsForSize(SIZE_MAX)).toBe(HEALTH_BONUS_HEARTS_MAX)
+    expect(bonusHeartsForSize(SIZE_START + (SIZE_MAX - SIZE_START) * 0.5)).toBe(1)
     expect(big.scoreMultiplier).toBeGreaterThan(start.scoreMultiplier)
     // ...and pays only by being a bigger target. Speed is deliberately not a
     // cost of growth; that tax belongs to beam ballast instead.
@@ -127,12 +146,12 @@ describe('craft size as growth, not as health', () => {
     expect(sizeCameraLift(SIZE_MAX)).toBeLessThan(8)
   })
 
-  it('keeps the absorption window inside the fixed beam cone at every size', () => {
+  it('keeps the absorption window monotonic and inside its grown ceiling', () => {
     let previous = 0
     for (let size = SIZE_START; size <= SIZE_MAX; size += 0.2) {
       const distance = sizeProfile(size).absorbDistance
       expect(distance).toBeGreaterThan(0)
-      expect(distance).toBeLessThanOrEqual(ABSORB_DISTANCE_MAX)
+      expect(distance).toBeLessThanOrEqual(ABSORB_DISTANCE_MAX + ABSORB_DISTANCE_GROWN_BONUS)
       expect(distance).toBeGreaterThanOrEqual(previous)
       previous = distance
     }

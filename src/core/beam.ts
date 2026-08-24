@@ -466,7 +466,11 @@ export function stepBeamObjects(objects: BeamObject[], field: BeamField, dt: num
         y: Math.max(GROUND_HEIGHT + 0.8, field.position.y - (1.8 + layer * 0.48) * rig),
         z: field.position.z + Math.sin(angle) * orbit,
       }
-      const verticalLimit = profile.maxDrop * 0.34
+      // Clamped to the boost beam's own drop, the largest cone this spring
+      // was ever tuned against. Reach grows with the hull now, and an anchor
+      // offset scaled to an 80m cone slings light loads at teleport speed -
+      // longer reach must mean a longer haul, not a faster catapult.
+      const verticalLimit = Math.min(profile.maxDrop, 47) * 0.34
       const verticalOffset = Math.max(-verticalLimit, Math.min(verticalLimit, anchor.y - object.position.y))
       const desired = {
         x: field.velocity.x + (anchor.x - object.position.x) * spring,

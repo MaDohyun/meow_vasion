@@ -85,6 +85,18 @@ export function healHealth(state: HealthState, pips: number) {
   return state.current
 }
 
+/**
+ * Raises the ceiling and grants the new pips already filled - a heart earned
+ * by growing arrives full, the way the old shield pips did. Never lowers:
+ * size never falls, and neither does anything size paid for.
+ */
+export function raiseHealthMax(state: HealthState, max: number) {
+  const next = Math.max(state.max, max)
+  state.current += next - state.max
+  state.max = next
+  return state
+}
+
 export function isDead(state: HealthState) {
   return state.current <= 0
 }

@@ -27,8 +27,8 @@ import {
   stepHazards,
   type HazardState,
 } from './core/hazards'
-import { SIZE_MIN, SIZE_START, type SizeGainKind, type SizeProfile, clampSize, growSize, growSizeBy, sizeProfile } from './core/size'
-import { createHealthState, damageHealth, healHealth, healthRatio, isDead, isRegenerating, stepHealth, type HealthLossKind, type HealthState } from './core/health'
+import { SIZE_MIN, SIZE_START, type SizeGainKind, type SizeProfile, bonusHeartsForSize, clampSize, growSize, growSizeBy, sizeProfile } from './core/size'
+import { MAX_HEALTH, createHealthState, damageHealth, healHealth, healthRatio, isDead, isRegenerating, raiseHealthMax, stepHealth, type HealthLossKind, type HealthState } from './core/health'
 import { BATTLESHIP_TURRETS, activeEnemyCount, battleshipTurretPoint, createEnemyState, hitEnemy, resolveEnemyContacts, stepEnemies, stepEnemyProjectiles, syncAntiAirEnemies, syncEnemyTiers, waveLabelForTime, waveStageForTime, type EnemyKind, type EnemyState } from './core/enemies'
 import {
   createLaserPool,
@@ -1183,6 +1183,7 @@ function grow(game: GameRuntime, kind: SizeGainKind) {
   game.size = growSize(game.size, kind)
   game.sizeProfile = sizeProfile(game.size)
   game.sizePulse = 1
+  raiseHealthMax(game.health, MAX_HEALTH + bonusHeartsForSize(game.size))
   return game.size - before
 }
 
@@ -1191,6 +1192,7 @@ function growBy(game: GameRuntime, amount: number) {
   game.size = growSizeBy(game.size, amount)
   game.sizeProfile = sizeProfile(game.size)
   game.sizePulse = 1
+  raiseHealthMax(game.health, MAX_HEALTH + bonusHeartsForSize(game.size))
   return game.size - before
 }
 
@@ -1350,7 +1352,7 @@ function snapshotOf(game: GameRuntime): GameSnapshot {
     broadcastRemaining: game.broadcastTime,
     boonLevels: game.boons.levels,
     beamRadiusScale: game.sizeProfile.beamScale,
-    beamReachScale: 1,
+    beamReachScale: game.sizeProfile.beamReach,
     daylightLabel: game.daylight.label,
     daylightClock: daylightClock(game.sessionTime),
     nightFactor: game.daylight.nightFactor,
@@ -1906,10 +1908,12 @@ export function GameProvider({ children }: { children: ReactNode }) {
       boosting: turboActive,
       position: game.drone.position,
       velocity: game.drone.velocity,
-      // Radius follows the hull: the aperture multiplier is read off the size
-      // profile, so a bigger craft sweeps a wider cone with no card involved.
+      // Radius, reach and pull all follow the hull: a bigger craft sweeps a
+      // wider cone, reaches the street from its own cruising altitude, and
+      // hauls what it catches visibly faster - no card involved in any of it.
       radiusScale: game.sizeProfile.beamScale,
-      reachScale: 1,
+      reachScale: game.sizeProfile.beamReach,
+      gripScale: game.sizeProfile.beamPull,
       // Natural grip from size, and nothing else - the whole 1..12 ladder is
       // growth now.
       gripStrength: beamStrength(game),

@@ -526,7 +526,9 @@ function makeBoonBlockTexture() {
   return texture
 }
 const boonBlockTexture = makeBoonBlockTexture()
-export const BOON_BLOCK_SIZE = 4.6
+/** Tripled in volume from the 4.6m original: at 50-80m up, a box has to be
+ *  read from street level across a district, not just from alongside it. */
+export const BOON_BLOCK_SIZE = 6.6
 const boonBlockGeometry = new THREE.BoxGeometry(BOON_BLOCK_SIZE, BOON_BLOCK_SIZE, BOON_BLOCK_SIZE)
 const boonBlockMaterial = withLandmarkGlow(new THREE.MeshToonMaterial({
   map: boonBlockTexture,
@@ -1132,13 +1134,14 @@ function BoonSparklePool() {
       const centerZ = (cell.cellZ + 0.5) * WORLD_CELL_SIZE
       const itemY = boonHoverY(time, id)
       for (let sparkle = 0; sparkle < BOON_SPARKLES_PER_ITEM; sparkle += 1) {
-        // Golden-angle spread, so the swarm never lines up into spokes.
+        // Golden-angle spread, so the swarm never lines up into spokes. The
+        // orbit rides just outside the grown box's own silhouette.
         const phase = sparkle * 2.399963
-        const orbit = 3.6 + (sparkle % 5) * 0.85
+        const orbit = BOON_BLOCK_SIZE * 0.78 + (sparkle % 5) * 1.1
         const angle = phase + time * (0.45 + (sparkle % 3) * 0.3)
         const index = slot * 3
         boonSparklePositions[index] = centerX + Math.cos(angle) * orbit
-        boonSparklePositions[index + 1] = itemY + Math.sin(time * 1.1 + phase) * (2.4 + (sparkle % 4) * 0.6)
+        boonSparklePositions[index + 1] = itemY + Math.sin(time * 1.1 + phase) * (3.2 + (sparkle % 4) * 0.8)
         boonSparklePositions[index + 2] = centerZ + Math.sin(angle) * orbit
         const twinkle = Math.sin(time * 6 + sparkle * 1.7) ** 2
         boonSparkleColors[index] = 0.6 + twinkle * 0.4

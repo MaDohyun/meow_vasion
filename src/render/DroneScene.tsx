@@ -2070,7 +2070,7 @@ function PerformanceProbe() {
       activeEnemyProjectiles: runtime.current.enemies.projectiles.filter((projectile) => projectile.active).length,
       laserShotsFired: runtime.current.laserShotsFired,
       boonLevels: { ...runtime.current.boons.levels },
-      beamReachScale: 1,
+      beamReachScale: runtime.current.sizeProfile.beamReach,
       height: runtime.current.drone.position.y,
       missionStage: runtime.current.mission.stage,
       remainingTime: runtime.current.remainingTime,

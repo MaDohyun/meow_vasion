@@ -11,9 +11,10 @@ import {
   healthRatio,
   isDead,
   isRegenerating,
+  raiseHealthMax,
   stepHealth,
 } from '../src/core/health'
-import { SIZE_GAIN, SIZE_MAX, SIZE_MIN, SIZE_START, clampSize, growSize } from '../src/core/size'
+import { HEALTH_BONUS_HEARTS_MAX, SIZE_GAIN, SIZE_MAX, SIZE_MIN, SIZE_START, bonusHeartsForSize, clampSize, growSize } from '../src/core/size'
 
 describe('health as the survival resource', () => {
   it('starts full and ends the run only at zero', () => {
@@ -118,5 +119,33 @@ describe('overload', () => {
     const tower: Aabb = { minX: -4, maxX: 4, minY: 0, maxY: 60, minZ: -4, maxZ: 4 }
     expect(surfaceHeightAt(0, 0, [roof, tower])).toBe(tower.maxY)
     expect(surfaceHeightAt(0, 0, [tower, roof])).toBe(tower.maxY)
+  })
+})
+
+describe('hearts earned by growing', () => {
+  it('grants a grown heart already filled and never lowers the ceiling', () => {
+    const state = createHealthState()
+    damageHealth(state, 'missile')
+    expect(state.current).toBe(MAX_HEALTH - HEALTH_LOSS.missile)
+    // Growth raises the ceiling by whole hearts, and the new heart arrives full.
+    raiseHealthMax(state, MAX_HEALTH + 1)
+    expect(state.max).toBe(MAX_HEALTH + 1)
+    expect(state.current).toBe(MAX_HEALTH - HEALTH_LOSS.missile + 1)
+    // Shrinking is not a thing size does, so neither is losing a heart.
+    raiseHealthMax(state, MAX_HEALTH)
+    expect(state.max).toBe(MAX_HEALTH + 1)
+  })
+
+  it('reaches seven hearts at the size ceiling and five at the start', () => {
+    expect(MAX_HEALTH + bonusHeartsForSize(SIZE_START)).toBe(5)
+    expect(MAX_HEALTH + bonusHeartsForSize(SIZE_MAX)).toBe(5 + HEALTH_BONUS_HEARTS_MAX)
+    // Whole hearts only, and never backwards on the way up.
+    let previous = 0
+    for (let size = SIZE_START; size <= SIZE_MAX; size += 0.1) {
+      const bonus = bonusHeartsForSize(size)
+      expect(Number.isInteger(bonus)).toBe(true)
+      expect(bonus).toBeGreaterThanOrEqual(previous)
+      previous = bonus
+    }
   })
 })
