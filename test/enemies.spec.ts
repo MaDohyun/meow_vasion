@@ -51,12 +51,22 @@ describe('time-based enemy waves', () => {
     }
     expect(ENEMY_WAVE_STAGES.at(-1)!.at).toBe(180)
   })
-  it('starts with only a couple of recon drones', () => {
+  it('starts with an empty sky, and fills it the moment the drone wave lands', () => {
+    // The opening stage is the sighting: the city has noticed the craft and
+    // has not answered yet. A drone in the air before the bulletin announcing
+    // drones would make that bulletin a recap.
     const state = createEnemyState()
-    syncEnemyTiers(state, 0, { x: 0, y: 4, z: 0 }, 0, 1 / 60)
-    expect(activeEnemyCount(state, 'drone')).toBe(2)
+    const player = { x: 0, y: 4, z: 0 }
+    for (let tick = 0; tick * (1 / 60) < ENEMY_WAVE_STAGES[1]!.at; tick += 1) {
+      syncEnemyTiers(state, tick * (1 / 60), player, 0, 1 / 60)
+      expect(activeEnemyCount(state)).toBe(0)
+    }
     expect(state.slots.some((enemy) => ['police', 'police-car', 'soldier'].includes(enemy.kind as string))).toBe(false)
     expect(waveStageForTime(ENEMY_WAVE_STAGES[1]!.at)).toBe(1)
+    // The wave boundary raises the bulletin and the spawner on the same tick,
+    // so the first mines are up while the band is still sliding in.
+    syncEnemyTiers(state, ENEMY_WAVE_STAGES[1]!.at, player, 0, 1 / 60)
+    expect(activeEnemyCount(state, 'drone')).toBe(2)
   })
 
   it('escalates to a bounded mixed army and a single boss', () => {
