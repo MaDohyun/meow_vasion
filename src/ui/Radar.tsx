@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useGame } from '../GameContext'
 import { WORLD_CELL_SIZE, lakeCellsNear, mysteryCirclesNear, type LakeCell, type MysteryCircleSite } from '../core/world'
-import { projectToRadar } from './radarProjection'
+import { clampToRadarRim, projectToRadar } from './radarProjection'
 
 /**
  * Threat radar.
@@ -20,6 +20,11 @@ import { projectToRadar } from './radarProjection'
  * What is on it, and why each thing earns its pixels:
  *
  * - Hostiles, because they are the only contacts that end a run.
+ * - The dreadnought, marked apart from them. It is the one hostile a player
+ *   routes around rather than through, it is the size of a city block, and it
+ *   orbits further out than the sweep reaches - so as a 5px square in the same
+ *   red as a helicopter it was both easy to miss and, half the time, simply
+ *   absent. It gets its own shape, its own colour and a place on the rim.
  * - Lakes, because water is a mission objective and a trap in the same tile.
  *   From above the rooftops a lake reads as one more dark block, so the dial
  *   is the only place a player can route to one on purpose - and the only
@@ -63,7 +68,14 @@ const COLORS = {
   mission: '#fff06d',
   checkpoint: '#b7ff63',
   water: '#2ad0e0',
+  // The warm end of the boss bar's own gradient, so the mark on the dial and
+  // the health bar overhead are recognisably the same ship. Far enough from
+  // both the hostile red and the objective yellow to be told apart at 7px.
+  battleship: '#ff8f3d',
 }
+
+/** Half-width of the dreadnought diamond, on the dial and out at the rim. */
+const BATTLESHIP_MARK = 6
 
 export function Radar() {
   const { runtime, t } = useGame()
@@ -161,7 +173,7 @@ export function Radar() {
       // now that nothing crowds them, because a lone 2px dot on an empty dial
       // is easy to miss in the corner of an eye.
       for (const enemy of game.enemies.slots) {
-        if (!enemy.active) continue
+        if (!enemy.active || enemy.kind === 'boss') continue
         // Every drone is a mine, and a mine is the one contact on the sweep
         // that is standing still waiting to be flown into.
         const mine = enemy.kind === 'drone'
@@ -169,9 +181,48 @@ export function Radar() {
           enemy.position.x,
           enemy.position.z,
           mine ? COLORS.mine : COLORS.hostile,
-          enemy.kind === 'boss' ? 5 : enemy.kind === 'drone' ? 2.5 : 3,
+          enemy.kind === 'drone' ? 2.5 : 3,
           mine,
         )
+      }
+
+      // The dreadnought, over the top of the rest of the sweep. A diamond in
+      // a ring: the only rotated mark on a dial of squares, and the ring gives
+      // it a size no 3px contact can be confused with. Hollow once it is past
+      // the sweep's edge, so "out there, that way" never reads as "here".
+      for (const enemy of game.enemies.slots) {
+        if (!enemy.active || enemy.kind !== 'boss') continue
+        const projected = projectToRadar(
+          enemy.position.x - player.x,
+          enemy.position.z - player.z,
+          heading,
+          center,
+          scale,
+        )
+        const { px, py, clamped } = clampToRadarRim(projected.px, projected.py, center, center - 11)
+        context.fillStyle = COLORS.battleship
+        context.strokeStyle = COLORS.battleship
+        context.lineWidth = 1.6
+        context.beginPath()
+        context.moveTo(px, py - BATTLESHIP_MARK)
+        context.lineTo(px + BATTLESHIP_MARK, py)
+        context.lineTo(px, py + BATTLESHIP_MARK)
+        context.lineTo(px - BATTLESHIP_MARK, py)
+        context.closePath()
+        if (clamped) context.stroke()
+        else {
+          context.fill()
+          context.strokeStyle = '#fff2d8'
+          context.lineWidth = 1
+          context.stroke()
+        }
+        context.strokeStyle = COLORS.battleship
+        context.lineWidth = 1.2
+        context.globalAlpha = clamped ? 0.55 : 0.9
+        context.beginPath()
+        context.arc(px, py, BATTLESHIP_MARK + 3.4, 0, Math.PI * 2)
+        context.stroke()
+        context.globalAlpha = 1
       }
 
       const missionMarker = game.checkpoint ?? game.missionTarget
@@ -179,20 +230,13 @@ export function Radar() {
         const dx = missionMarker.x - player.x
         const dz = missionMarker.z - player.z
         const projected = projectToRadar(dx, dz, heading, center, scale)
-        const edge = center - 8
-        const offsetX = projected.px - center
-        const offsetY = projected.py - center
-        const length = Math.hypot(offsetX, offsetY)
-        const factor = length > edge ? edge / length : 1
-        const px = center + offsetX * factor
-        const py = center + offsetY * factor
+        const { px, py, angle, clamped } = clampToRadarRim(projected.px, projected.py, center, center - 8)
         const color = game.checkpoint ? COLORS.checkpoint : COLORS.mission
         context.fillStyle = color
         context.strokeStyle = '#fff5c7'
         context.lineWidth = 1
         context.beginPath()
-        if (length > edge) {
-          const angle = Math.atan2(offsetY, offsetX)
+        if (clamped) {
           context.moveTo(px + Math.cos(angle) * 5, py + Math.sin(angle) * 5)
           context.lineTo(px + Math.cos(angle + 2.45) * 4, py + Math.sin(angle + 2.45) * 4)
           context.lineTo(px + Math.cos(angle - 2.45) * 4, py + Math.sin(angle - 2.45) * 4)
@@ -238,13 +282,14 @@ export function Radar() {
         <div className="radar-orbit" />
         <canvas ref={canvas} width={148} height={148} className="radar-canvas" />
       </div>
-      {/* Three things on the dial, three swatches: what to avoid, what to
-          drink, and what to go and fly through. Each one is named rather than
-          left as a coloured square to decode, and the key sits under the dial
-          rather than over it - the strip it used to cover is what is directly
-          behind the craft. */}
+      {/* Four things on the dial, four swatches: what to avoid, the one thing
+          to avoid hardest, what to drink, and what to go and fly through. Each
+          one is named rather than left as a coloured square to decode, and the
+          key sits under the dial rather than over it - the strip it used to
+          cover is what is directly behind the craft. */}
       <div className="radar-key">
         <span><i style={{ background: COLORS.hostile }} />{t.radarKeyHostile}</span>
+        <span><i className="radar-key-boss" style={{ background: COLORS.battleship }} />{t.radarKeyBoss}</span>
         <span><i style={{ background: COLORS.water }} />{t.radarKeyWater}</span>
         <span><i className="radar-key-mystery" />{t.radarKeyCircle}</span>
       </div>

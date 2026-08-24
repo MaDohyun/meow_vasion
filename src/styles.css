@@ -641,6 +641,9 @@ button { font: inherit; }
 .radar-key span { display:inline-flex; align-items:center; gap:4px; white-space:nowrap; }
 .radar-key i { flex:0 0 auto; width:7px; height:7px; border-radius:2px; box-shadow:0 0 0 1px rgba(20,16,34,.7); }
 .radar-key-mystery { width:8px; height:8px; background:url(/landmarks/mystery-circle.png) center/contain no-repeat; box-shadow:none; }
+/* A diamond, because that is what the dial draws: the dreadnought is told
+   apart from the other hostiles by shape first and colour second. */
+.radar-key-boss { width:6px; height:6px; border-radius:1px; transform:rotate(45deg); }
 
 .secondary-button { padding:14px 26px; color:var(--cream); background:rgba(31,25,49,.86); border:4px solid var(--cream); box-shadow:7px 7px 0 var(--ink); font-weight:1000; letter-spacing:2px; cursor:pointer; }
 .secondary-button:hover { transform:translate(2px,2px); box-shadow:5px 5px 0 var(--ink); }
