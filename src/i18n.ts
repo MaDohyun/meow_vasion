@@ -128,6 +128,7 @@ export type Strings = {
   /** The dial's legend. Named rather than left as coloured squares: three
    *  swatches is exactly where a key stops being self-evident. */
   radarKeyHostile: string
+  radarKeyBoss: string
   radarKeyWater: string
   radarKeyCircle: string
   survivedTitle: string
@@ -348,6 +349,7 @@ export const STRINGS: Record<Language, Strings> = {
     reconComplete: '지구 정찰 완료 · 장군님 퇴근 준비 끝!',
     radar: '주변 탐지 · 실시간',
     radarKeyHostile: '적',
+    radarKeyBoss: '공중전함',
     radarKeyWater: '호수',
     radarKeyCircle: '서클',
     survivedTitle: '지구 정찰 완료',
@@ -520,6 +522,7 @@ export const STRINGS: Record<Language, Strings> = {
     reconComplete: '地球偵察完了 · 将軍も帰宅準備完了！',
     radar: '周辺探知・リアルタイム',
     radarKeyHostile: '敵',
+    radarKeyBoss: '空中戦艦',
     radarKeyWater: '湖',
     radarKeyCircle: 'サークル',
     survivedTitle: '地球偵察完了',
@@ -692,6 +695,7 @@ export const STRINGS: Record<Language, Strings> = {
     reconComplete: 'EARTH RECON COMPLETE · THE GENERAL IS READY TO CLOCK OUT!',
     radar: 'LOCAL GRID · LIVE',
     radarKeyHostile: 'Hostile',
+    radarKeyBoss: 'Dreadnought',
     radarKeyWater: 'Lake',
     radarKeyCircle: 'Circle',
     survivedTitle: 'EARTH RECON COMPLETE',

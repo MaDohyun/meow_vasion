@@ -1,58 +1,65 @@
 import * as THREE from 'three'
 
 /**
- * How a body stays findable after dark without being repainted by the dark.
+ * Two small shader additions for lit materials: a night lift, and an alert.
  *
- * The old answer was a family-coloured emissive that climbed with the night: a
- * helicopter carried a gold glow, a fighter an orange one, and the ramp ran to
- * 0.74 at full night. Emissive is added flat across the whole surface, and at
- * that end of the ramp it was several times the lit body underneath - so every
- * helicopter became one flat gold shape and every fighter an orange one. The
- * models' own colours, which are the only thing separating a cockpit from a
- * rotor from a tail boom, were gone exactly when the player needed them.
+ * Neither is decoration. Both exist because something would otherwise be
+ * unreadable, and both are written so they cannot change what colour a surface
+ * is - only how much of its own light it gives back.
  *
- * The night lift here re-emits the surface's *own* colour instead of a shared
- * one. `diffuseColor` already carries the baked vertex colour and the instance
- * tint at this point in the shader, so hue is preserved exactly and only value
- * moves: a body gets brighter as the city goes dark rather than changing
- * colour.
- *
- * The family read moves to two places that cannot swamp a body:
- *
- * - a fresnel rim, which only lands at grazing angles, and
- * - lamps - small parts tagged with `aLamp` in the geometry that burn far
- *   above the rest of the model, so each craft carries its own running lights.
- *   They keep their baked colour too, which is what lets one model carry a red
- *   port light, a green starboard one and an amber beacon. Being far brighter
- *   than the body is also what pushes them past the post pass's bright-pass
- *   threshold, so a two-pixel lamp blooms into something readable at distance.
- *   That bloom is the "light source" part: no new scene light is involved, and
- *   the light count every material's program is keyed on never changes.
- *
- * All three ride the same day/night pair through `setNightVisibility`, so
- * "darker sky, more of its own light" is one rule applied three times instead
- * of three ramps to keep in step by hand.
+ * This file used to carry a third job: a family-coloured glow on every enemy,
+ * with running lights baked into the models and a halo drawn around each craft.
+ * It is gone. Enemies are lit by the scene like everything else in the city,
+ * which is what makes them look like objects in it rather than like markers
+ * over it.
  */
 
 /** A day value and a night value for one term. */
 export type NightRamp = readonly [day: number, night: number]
 
 export type NightVisibilityOptions = {
-  /** Fresnel rim colour. The family read, kept at the edge. */
-  rimColor: string
+  /**
+   * Share of the surface's own colour re-emitted back out, so a body does not
+   * disappear into an unlit street. `diffuseColor` already carries the baked
+   * vertex colour and the instance tint at this point in the shader, which is
+   * what makes this hue-preserving: only value moves.
+   */
+  lift?: NightRamp
+  /** Fresnel rim, for picking a silhouette out of a dark background. */
+  rimColor?: string
   rim?: NightRamp
   rimPower?: number
-  /** Share of the surface's own colour re-emitted back out. */
-  lift?: NightRamp
-  /** Brightness multiplier for parts tagged `aLamp`. Omit for a model with no
-   *  lamps: the attribute is only declared when this is asked for. */
-  lamp?: NightRamp
+  /** Turns on the per-instance `aAlert` channel. See ALERT below. */
+  alert?: boolean
 }
 
-const DEFAULT_RIM: NightRamp = [0.1, 0.34]
-const DEFAULT_LIFT: NightRamp = [0.04, 0.6]
+/**
+ * What an enemy about to fire looks like.
+ *
+ * It used to be `instanceColor = #ff6573`, which multiplies through every baked
+ * vertex colour: the whole model came out one flat red. On a helicopter that is
+ * not a flash but a state - `aiming` is true for the entire chase - so a
+ * helicopter that had seen the player was simply a red helicopter from then on.
+ *
+ * So the warning is lit rather than painted: the edge burns and a thin wash
+ * reaches the body, enough that the silhouette reads hostile and far too little
+ * to repaint it. Constants rather than day/night ramps, because a warning has
+ * to read at noon as well as at midnight.
+ */
+const ALERT = {
+  color: '#ff5a6e',
+  /** Flat wash over the whole body. Deliberately small. */
+  body: 0.1,
+  /**
+   * Fresnel edge. The exponent matters more than the strength: most of a
+   * helicopter is a capsule, so a soft falloff grazes almost all of it and the
+   * "edge" quietly becomes the whole body again. Kept tight so it outlines.
+   */
+  rim: 1.05,
+  rimPower: 2.7,
+} as const
 
-/** Live uniforms, so the cycle can move all of this without a recompile. */
+/** Live uniforms, so the cycle can move these without a recompile. */
 type RampedUniform = { uniform: { value: number }; ramp: NightRamp }
 
 const rampedUniforms: RampedUniform[] = []
@@ -81,33 +88,39 @@ export function setNightVisibility(nightFactor: number) {
 }
 
 export function applyNightVisibility<T extends THREE.Material>(material: T, options: NightVisibilityOptions) {
-  const rimRamp = options.rim ?? DEFAULT_RIM
-  const liftRamp = options.lift ?? DEFAULT_LIFT
-  const lampRamp = options.lamp
-  const rimColor = new THREE.Color(options.rimColor)
+  const liftRamp = options.lift
+  const rimRamp = options.rim && options.rimColor ? options.rim : undefined
+  const rimColor = new THREE.Color(options.rimColor ?? '#ffffff')
   const rimPower = options.rimPower ?? 2.6
+  const useAlert = options.alert === true
+  const alertColor = new THREE.Color(ALERT.color)
   const previousCompile = material.onBeforeCompile
   const previousCacheKey = material.customProgramCacheKey.bind(material)
 
   material.onBeforeCompile = (shader, renderer) => {
     previousCompile.call(material, shader, renderer)
-    const rim = { value: nightRamp(rimRamp, currentNightFactor) }
-    const lift = { value: nightRamp(liftRamp, currentNightFactor) }
-    const lamp = { value: lampRamp ? nightRamp(lampRamp, currentNightFactor) : 0 }
-    shader.uniforms.uRimColor = { value: rimColor }
-    shader.uniforms.uRimStrength = rim
-    shader.uniforms.uRimPower = { value: rimPower }
-    shader.uniforms.uNightLift = lift
-    rampedUniforms.push({ uniform: rim, ramp: rimRamp }, { uniform: lift, ramp: liftRamp })
-    if (lampRamp) {
-      shader.uniforms.uLampStrength = lamp
-      rampedUniforms.push({ uniform: lamp, ramp: lampRamp })
+    if (liftRamp) {
+      const lift = { value: nightRamp(liftRamp, currentNightFactor) }
+      shader.uniforms.uNightLift = lift
+      rampedUniforms.push({ uniform: lift, ramp: liftRamp })
+    }
+    if (rimRamp) {
+      const rim = { value: nightRamp(rimRamp, currentNightFactor) }
+      shader.uniforms.uRimColor = { value: rimColor }
+      shader.uniforms.uRimStrength = rim
+      shader.uniforms.uRimPower = { value: rimPower }
+      rampedUniforms.push({ uniform: rim, ramp: rimRamp })
+    }
+    if (useAlert) {
+      shader.uniforms.uAlertColor = { value: alertColor }
+      // Per instance, not per vertex: which enemy is aiming changes every
+      // frame, and the model is shared by the whole pool.
       shader.vertexShader = shader.vertexShader
         .replace('#include <common>', `#include <common>
-          attribute float aLamp;
-          varying float vLamp;`)
+          attribute float aAlert;
+          varying float vAlert;`)
         .replace('#include <begin_vertex>', `#include <begin_vertex>
-          vLamp = aLamp;`)
+          vAlert = aAlert;`)
     }
 
     // Patched into `emissivemap_fragment` because `totalEmissiveRadiance` and
@@ -115,31 +128,32 @@ export function applyNightVisibility<T extends THREE.Material>(material: T, opti
     // so all of this behaves like the rest of the scene's emissive surfaces.
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', `#include <common>
-        uniform vec3 uRimColor;
-        uniform float uRimStrength;
-        uniform float uRimPower;
-        uniform float uNightLift;
-        ${lampRamp ? 'uniform float uLampStrength;\n        varying float vLamp;' : ''}`)
+        ${liftRamp ? 'uniform float uNightLift;' : ''}
+        ${rimRamp ? 'uniform vec3 uRimColor;\n        uniform float uRimStrength;\n        uniform float uRimPower;' : ''}
+        ${useAlert ? 'uniform vec3 uAlertColor;\n        varying float vAlert;' : ''}`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
         {
-          // The surface re-emitting itself. Hue is whatever the model already
-          // is, so nothing gets recoloured on the way into the night.
-          //
-          // Rolled off against the surface's own brightness, because the lift
-          // exists to rescue what the dark swallows. A near-black tail boom
-          // needs all of it; a cream nose cone is already the brightest thing
-          // on the model, and giving it the same lift only blows the shading
-          // off it and turns the whole nose into one white blob.
-          float ownLuma = dot(diffuseColor.rgb, vec3(0.2126, 0.7152, 0.0722));
-          totalEmissiveRadiance += diffuseColor.rgb * uNightLift * (1.0 - 0.55 * ownLuma);
-          ${lampRamp ? 'totalEmissiveRadiance += diffuseColor.rgb * vLamp * uLampStrength;' : ''}
           float facing = abs(dot(normalize(vNormal), normalize(vViewPosition)));
-          totalEmissiveRadiance += uRimColor * pow(1.0 - facing, uRimPower) * uRimStrength;
+          ${liftRamp ? `
+          // The surface re-emitting itself. Hue is whatever the model already
+          // is, so nothing gets recoloured on the way into the night. Rolled
+          // off against the surface's own brightness, because the lift exists
+          // to rescue what the dark swallows: a near-black panel needs all of
+          // it, an already-pale one only loses its shading to it.
+          float ownLuma = dot(diffuseColor.rgb, vec3(0.2126, 0.7152, 0.0722));
+          totalEmissiveRadiance += diffuseColor.rgb * uNightLift * (1.0 - 0.55 * ownLuma);` : ''}
+          ${rimRamp ? 'totalEmissiveRadiance += uRimColor * pow(1.0 - facing, uRimPower) * uRimStrength;' : ''}
+          ${useAlert ? `
+          // About to fire: lit, not repainted. See ALERT above.
+          totalEmissiveRadiance += uAlertColor * vAlert * (
+            ${ALERT.body.toFixed(3)}
+            + pow(1.0 - facing, ${ALERT.rimPower.toFixed(2)}) * ${ALERT.rim.toFixed(3)}
+          );` : ''}
         }`)
   }
   // Keeps this variant from sharing a compiled program with an unpatched
   // material of the same type, or with a differently tuned sibling.
   material.customProgramCacheKey = () =>
-    `${previousCacheKey()}-night-${options.rimColor}-${rimRamp.join(':')}-${liftRamp.join(':')}-${lampRamp?.join(':') ?? 'nolamp'}-${rimPower}`
+    `${previousCacheKey()}-night-${liftRamp?.join(':') ?? 'nolift'}-${rimRamp ? `${options.rimColor}:${rimRamp.join(':')}:${rimPower}` : 'norim'}-${useAlert ? 'alert' : 'noalert'}`
   return material
 }

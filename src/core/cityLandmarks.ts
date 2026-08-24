@@ -193,16 +193,30 @@ export function crowdSpawnZonesAround(position: Pick<Vec3, 'x' | 'z'>, radius = 
 }
 
 /**
- * Small trees on the dry edge of a lake.
+ * A small stand of trees on the dry edge of a lake.
  *
  * Every candidate is inset well inside an empty neighbouring cell: the road
- * strip remains clear, water remains clear, and the result is deterministic
- * wherever the city streams back in.
+ * that rings the lake stays clear, water stays clear, and the result is
+ * deterministic wherever the city streams back in.
+ *
+ * A shore used to get one tree per edge, which - once the free-neighbour test
+ * and the thinning roll had both had their say - left the average lake with
+ * fewer than two trees on it and some with none at all. Two trees do not read
+ * as a wooded bank; they read as two trees that happen to be near water. Each
+ * edge now offers three staggered spots at three different depths, so a shore
+ * that clears the tests gets a stand rather than a specimen.
  */
+const SHORE_TREES_PER_EDGE = 3
+/** Depth into the neighbouring cell per slot. All three clear the 4.5-wide
+ *  road strip, and staggering them keeps the stand off a straight line. */
+const SHORE_TREE_INSETS = [8.7, 12.6, 10.4] as const
+/** Along-shore offset per slot from the middle of the edge. Bounded so the
+ *  outermost tree still clears the neighbour's perpendicular road strips. */
+const SHORE_TREE_SPREAD = 8.4
+
 export function lakeShoreTreesAround(position: Pick<Vec3, 'x' | 'z'>, radius = 6): LakeShoreTree[] {
   const trees: LakeShoreTree[] = []
   const occupied = new Set<string>()
-  const inset = 9.5
   const edges = [
     { x: -1, z: 0, side: 'west' },
     { x: 1, z: 0, side: 'east' },
@@ -219,30 +233,36 @@ export function lakeShoreTreesAround(position: Pick<Vec3, 'x' | 'z'>, radius = 6
       // Keep the shore vegetation on genuinely open ground. Landmark lots and
       // buildings already have their own authored dressing.
       if (neighbour.building || neighbour.car || groundLandmarkForCell(neighbour)) continue
-      const seed = seedForWorldCell(cell.cellX, cell.cellZ, 0x1a6e700 + edgeIndex)
-      if (seed % 100 >= 82) continue
-      const centreX = (cell.cellX + 0.5) * WORLD_CELL_SIZE
-      const centreZ = (cell.cellZ + 0.5) * WORLD_CELL_SIZE
-      const jitter = ((seed >>> 11) % 101) / 100 * 10 - 5
-      const x = edge.side === 'west'
-        ? cell.cellX * WORLD_CELL_SIZE - inset
-        : edge.side === 'east'
-          ? (cell.cellX + 1) * WORLD_CELL_SIZE + inset
-          : centreX + jitter
-      const z = edge.side === 'south'
-        ? cell.cellZ * WORLD_CELL_SIZE - inset
-        : edge.side === 'north'
-          ? (cell.cellZ + 1) * WORLD_CELL_SIZE + inset
-          : centreZ + jitter
-      const key = `${Math.round(x * 10)}:${Math.round(z * 10)}`
-      if (occupied.has(key)) continue
-      occupied.add(key)
-      trees.push({
-        x,
-        z,
-        height: 1.8 + ((seed >>> 19) % 8) * 0.11,
-        crown: 1.45 + ((seed >>> 23) % 6) * 0.1,
-      })
+      for (let slot = 0; slot < SHORE_TREES_PER_EDGE; slot += 1) {
+        const seed = seedForWorldCell(cell.cellX, cell.cellZ, 0x1a6e700 + edgeIndex * 8 + slot)
+        // The middle tree is the one a shore is least likely to go without;
+        // the pair flanking it thin out harder, so no two banks match.
+        if (seed % 100 >= (slot === 0 ? 92 : 74)) continue
+        const inset = SHORE_TREE_INSETS[slot]! + (((seed >>> 5) % 5) - 2) * 0.35
+        const along = (slot === 0 ? 0 : slot === 1 ? -SHORE_TREE_SPREAD : SHORE_TREE_SPREAD)
+          + (((seed >>> 11) % 101) / 100) * 4.6 - 2.3
+        const centreX = (cell.cellX + 0.5) * WORLD_CELL_SIZE
+        const centreZ = (cell.cellZ + 0.5) * WORLD_CELL_SIZE
+        const x = edge.side === 'west'
+          ? cell.cellX * WORLD_CELL_SIZE - inset
+          : edge.side === 'east'
+            ? (cell.cellX + 1) * WORLD_CELL_SIZE + inset
+            : centreX + along
+        const z = edge.side === 'south'
+          ? cell.cellZ * WORLD_CELL_SIZE - inset
+          : edge.side === 'north'
+            ? (cell.cellZ + 1) * WORLD_CELL_SIZE + inset
+            : centreZ + along
+        const key = `${Math.round(x * 10)}:${Math.round(z * 10)}`
+        if (occupied.has(key)) continue
+        occupied.add(key)
+        trees.push({
+          x,
+          z,
+          height: 1.8 + ((seed >>> 19) % 8) * 0.11,
+          crown: 1.45 + ((seed >>> 23) % 6) * 0.1,
+        })
+      }
     }
   }
   return trees

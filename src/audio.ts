@@ -11,6 +11,10 @@ let buildingCollapseBuffer: AudioBuffer | null = null
 let buildingCollapseLoad: Promise<AudioBuffer | null> | null = null
 let buildingCollapsePlaybackQueued = false
 let buildingCollapseLoadFailed = false
+let vehicleExplosionBuffer: AudioBuffer | null = null
+let vehicleExplosionLoad: Promise<AudioBuffer | null> | null = null
+let vehicleExplosionPlaybackQueued = false
+let vehicleExplosionLoadFailed = false
 let lobbyMusic: HTMLAudioElement | null = null
 let gameplayMusic: HTMLAudioElement | null = null
 let beamSound: HTMLAudioElement | null = null
@@ -30,6 +34,15 @@ const BOOSTER_VOLUME = 0.4
 const MYSTERY_CIRCLE_VOLUME = 0.7
 const CAT_CRY_VOLUME = 0.62
 const MENU_HOVER_VOLUME = 0.1
+/** A car or box truck going up. A third as loud as the blast first shipped at,
+ * measured by ear rather than by the number: the sample was swapped at the
+ * same time for one that is about 3dB hotter, so a plain 0.6/3 would have
+ * landed near half. 0.14 is what actually puts it a third of the way down, and
+ * well under the drone and building blasts it has to share a street with. */
+const VEHICLE_EXPLOSION_VOLUME = 0.14
+/** A tanker is a fuel load, not sheet metal. Same sample, played harder so the
+ * rarest and highest-scoring kill in the city is the one that is heard. */
+export const TANKER_EXPLOSION_SCALE = 1.55
 const BGM_VOLUME_STORAGE_KEY = 'beam-bandit-bgm-volume'
 const SFX_VOLUME_STORAGE_KEY = 'beam-bandit-sfx-volume'
 
@@ -499,6 +512,7 @@ export function unlockAudio() {
   void loadLaserSound()
   void loadDroneExplosionSound()
   void loadBuildingCollapseSound()
+  void loadVehicleExplosionSound()
 }
 
 /** Load the supplied laser sample once, then fan out short overlapping buffer
@@ -619,6 +633,56 @@ export function playBuildingCollapseSound() {
   const gain = context.createGain()
   source.buffer = buildingCollapseBuffer
   gain.gain.setValueAtTime(0.66, context.currentTime)
+  source.connect(gain)
+  gain.connect(effectsDestination() ?? context.destination)
+  source.start()
+}
+
+/** Decode the supplied road-vehicle blast once. Every car, box truck and
+ * tanker that goes up shares this one sample; only the level changes. */
+function loadVehicleExplosionSound() {
+  if (!context || vehicleExplosionBuffer || vehicleExplosionLoadFailed) return Promise.resolve(vehicleExplosionBuffer)
+  if (vehicleExplosionLoad) return vehicleExplosionLoad
+  vehicleExplosionLoad = fetch('/audio/vehicle-explosion.wav')
+    .then((response) => response.arrayBuffer())
+    .then((data) => context ? context.decodeAudioData(data) : null)
+    .then((buffer) => {
+      vehicleExplosionBuffer = buffer
+      return buffer
+    })
+    .catch(() => {
+      vehicleExplosionLoadFailed = true
+      return null
+    })
+  return vehicleExplosionLoad
+}
+
+/**
+ * Play for every road vehicle that detonates: a car launched by the laser, a
+ * box truck shot out, or a tanker. `volumeScale` is what tells the three
+ * apart - a tanker passes TANKER_EXPLOSION_SCALE so the heavy kill lands
+ * harder than the sedan next to it. A fresh buffer source per event lets a
+ * chain of kills overlap instead of cutting one another off.
+ */
+export function playVehicleExplosionSound(volumeScale = 1) {
+  if (!context || context.state !== 'running' || vehicleExplosionLoadFailed) return
+  if (!vehicleExplosionBuffer) {
+    if (vehicleExplosionPlaybackQueued) return
+    vehicleExplosionPlaybackQueued = true
+    void loadVehicleExplosionSound().then(() => {
+      vehicleExplosionPlaybackQueued = false
+      playVehicleExplosionSound(volumeScale)
+    })
+    return
+  }
+  const source = context.createBufferSource()
+  const gain = context.createGain()
+  source.buffer = vehicleExplosionBuffer
+  // The ceiling is a guard, not a working limit - at the current level even a
+  // tanker lands nowhere near it. It is here so that raising either number
+  // later cannot push the blast into clipping the effects bus on its way out.
+  const level = Math.min(0.98, VEHICLE_EXPLOSION_VOLUME * Math.max(0, volumeScale))
+  gain.gain.setValueAtTime(level, context.currentTime)
   source.connect(gain)
   gain.connect(effectsDestination() ?? context.destination)
   source.start()

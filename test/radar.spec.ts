@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { projectToRadar } from '../src/ui/radarProjection'
+import { clampToRadarRim, projectToRadar } from '../src/ui/radarProjection'
 
 const CENTER = 50
 const SCALE = 1
@@ -43,6 +43,51 @@ describe('radar projection', () => {
       expect(ahead.py, `heading ${heading.toFixed(2)}`).toBeLessThan(CENTER - 11)
       const behind = projectToRadar(-Math.sin(heading) * 12, -Math.cos(heading) * 12, heading, CENTER, SCALE)
       expect(behind.py, `heading ${heading.toFixed(2)}`).toBeGreaterThan(CENTER + 11)
+    }
+  })
+})
+
+/**
+ * The objective and the dreadnought both ride the rim rather than dropping off
+ * the sweep. The dreadnought is the reason this is shared code: it orbits at
+ * 118 and pursues to 177, past the 170 the dial covers, so it spends part of
+ * every boss wave outside it.
+ */
+describe('radar rim clamp', () => {
+  const EDGE = 40
+
+  it('leaves a contact inside the rim exactly where it was', () => {
+    const inside = clampToRadarRim(CENTER + 10, CENTER - 5, CENTER, EDGE)
+    expect(inside.clamped).toBe(false)
+    expect(inside.px).toBe(CENTER + 10)
+    expect(inside.py).toBe(CENTER - 5)
+  })
+
+  it('pulls a contact past the rim back onto it, keeping its bearing', () => {
+    const far = clampToRadarRim(CENTER + 300, CENTER + 400, CENTER, EDGE)
+    expect(far.clamped).toBe(true)
+    expect(Math.hypot(far.px - CENTER, far.py - CENTER)).toBeCloseTo(EDGE, 6)
+    // 3-4-5: the bearing has to survive the clamp or the arrow points wrong.
+    expect(far.px).toBeCloseTo(CENTER + EDGE * 0.6, 6)
+    expect(far.py).toBeCloseTo(CENTER + EDGE * 0.8, 6)
+    expect(far.angle).toBeCloseTo(Math.atan2(4, 3), 6)
+  })
+
+  it('holds the bearing of a battleship at pursuit range for every heading', () => {
+    // Radar range 170, dial half-width 74, so 177 metres out is off the sweep.
+    const scale = 74 / 170
+    for (let step = 0; step < 16; step += 1) {
+      const bearing = (step / 16) * Math.PI * 2
+      const dx = Math.sin(bearing) * 177
+      const dz = Math.cos(bearing) * 177
+      const heading = bearing - 0.7
+      const projected = projectToRadar(dx, dz, heading, 74, scale)
+      const rim = clampToRadarRim(projected.px, projected.py, 74, 74 - 11)
+      expect(rim.clamped, `bearing ${bearing.toFixed(2)}`).toBe(true)
+      // The ship sits 0.7rad to starboard of the nose, so its mark stays
+      // right of centre on a heading-up dial whichever way the craft points.
+      expect(rim.px, `bearing ${bearing.toFixed(2)}`).toBeGreaterThan(74)
+      expect(Math.hypot(rim.px - 74, rim.py - 74)).toBeCloseTo(74 - 11, 6)
     }
   })
 })
