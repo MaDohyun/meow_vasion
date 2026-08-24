@@ -2175,7 +2175,8 @@ function TrashScatterPool() {
     const time = clock.elapsedTime
     for (const object of runtime.current.beamObjects) {
       if (!object.active || object.kind !== 'trash-bin') continue
-      if (!(object.inBeam || object.tether > 0.02)) continue
+      // Carried by the beam, or launched by a laser: both spray litter.
+      if (!(object.inBeam || object.tether > 0.02 || object.destroying)) continue
       if (count + TRASH_SCATTER_PER_BIN > TRASH_SCATTER_CAPACITY) break
       for (let fleck = 0; fleck < TRASH_SCATTER_PER_BIN; fleck += 1) {
         const phase = (fleck * 0.618) % 1

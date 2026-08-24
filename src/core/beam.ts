@@ -331,6 +331,34 @@ export function beamLiftScale(weight: number, strength: number) {
   return band === 'fast' ? 1.55 : band === 'strained' ? 0.58 : band === 'marginal' ? 0.12 : 0
 }
 
+/**
+ * A laser hit sends a bin flying rather than blowing it up.
+ *
+ * Same launch machinery as a car, minus the explosion: a bin is litter, not
+ * ordnance, so it tumbles off spraying its contents (the render layer's
+ * litter flecks follow any launched bin) and simply stops existing where it
+ * lands. One hit at any laser level - there is nothing durable about a bin.
+ */
+export function beginTrashBinLaunch(object: BeamObject, direction: Vec3, inheritedVelocity: Vec3) {
+  if (!object.active || object.kind !== 'trash-bin' || object.destroying) return false
+  object.destroying = true
+  object.destroyTimer = 0.9
+  object.explosionPending = false
+  object.inBeam = false
+  object.tether = 0
+  object.hold = 0
+  object.playerTouched = true
+  object.freePhysics = true
+  object.velocity.x = direction.x * 24 + inheritedVelocity.x * 0.22
+  object.velocity.y = direction.y * 24 + inheritedVelocity.y * 0.08 + 12
+  object.velocity.z = direction.z * 24 + inheritedVelocity.z * 0.22
+  const spin = object.id.length % 2 === 0 ? 1 : -1
+  object.angularVelocity.x = spin * 12
+  object.angularVelocity.y = spin * 16
+  object.angularVelocity.z = -spin * 10
+  return true
+}
+
 export function beginCarDestruction(object: BeamObject, direction: Vec3, inheritedVelocity: Vec3) {
   if (!object.active || object.kind !== 'car' || object.destroying) return false
   object.destroying = true

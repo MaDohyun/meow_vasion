@@ -39,7 +39,10 @@ export const ENEMY_MAX_HP: Record<EnemyKind, number> = {
   drone: 1,
   helicopter: 3,
   fighter: 4,
-  'anti-air': 10,
+  // Down from 10. A static emplacement that soaked ten hits read as
+  // invincible and got ignored; four makes clearing a rooftop before the
+  // next lock lands an actual play.
+  'anti-air': 4,
   tank: 8,
   // Fifty seconds of fighting. An unupgraded laser can just about do it; a
   // maxed laser-power does it with time to spare, which is the whole point of
@@ -104,7 +107,10 @@ export const BATTLESHIP_MAIN_GUN_TELEGRAPH = 1.9
  *
  * Helicopters keep a slow yaw so the sky does not read as parallel tracks.
  */
-const AIR_TRAVEL_SPEED: Record<'drone' | 'helicopter', number> = { drone: 19, helicopter: 15 }
+// Helicopter halved from 15: at rifle range it crossed the screen faster
+// than its own tracer, so the gunship read as another drone. Half speed
+// makes it the loitering threat its silhouette promises.
+const AIR_TRAVEL_SPEED: Record<'drone' | 'helicopter', number> = { drone: 19, helicopter: 7.5 }
 /**
  * How many of the sky's drones hold station as mines, per wave stage.
  *

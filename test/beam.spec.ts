@@ -11,6 +11,7 @@ import {
   beamProfile,
   beamVisualLength,
   beginNearbyBeamObjectAbsorption,
+  beginTrashBinLaunch,
   isInsideBeam,
   stepBeamObjects,
 } from '../src/core/beam'
@@ -348,5 +349,39 @@ describe('integer lifting ladder', () => {
         if (Number.isFinite(absorbSeconds)) expect(absorbSeconds).toBeGreaterThan(0.05)
       }
     }
+  })
+})
+
+describe('trash bins answer the laser', () => {
+  const makeBin = (id = 'trash-bin:0:0:0'): BeamObject => ({
+    ...makeCar(id),
+    kind: 'trash-bin',
+    mass: 2,
+  })
+
+  it('launches a hit bin flying and tumbling, with no explosion queued', () => {
+    const bin = makeBin()
+    expect(beginTrashBinLaunch(bin, { x: 1, y: 0, z: 0 }, { x: 0, y: 0, z: 0 })).toBe(true)
+    expect(bin.destroying).toBe(true)
+    // Litter, not ordnance: the launch must never queue a fireball.
+    expect(bin.explosionPending).toBe(false)
+    expect(bin.velocity.x).toBeGreaterThan(0)
+    expect(bin.velocity.y).toBeGreaterThan(0)
+    expect(Math.hypot(bin.angularVelocity.x, bin.angularVelocity.y, bin.angularVelocity.z)).toBeGreaterThan(5)
+    // A bin already in flight cannot be launched twice.
+    expect(beginTrashBinLaunch(bin, { x: 1, y: 0, z: 0 }, { x: 0, y: 0, z: 0 })).toBe(false)
+  })
+
+  it('refuses everything that is not a bin', () => {
+    expect(beginTrashBinLaunch(makeCar('car-1'), { x: 1, y: 0, z: 0 }, { x: 0, y: 0, z: 0 })).toBe(false)
+  })
+
+  it('flies, falls and expires on the destruction path without exploding', () => {
+    const bin = makeBin()
+    beginTrashBinLaunch(bin, { x: 1, y: 0, z: 0 }, { x: 0, y: 0, z: 0 })
+    const idle: BeamField = { active: false, boosting: false, position: { x: 0, y: 6, z: 0 }, velocity: { x: 0, y: 0, z: 0 } }
+    for (let frame = 0; frame < 70; frame += 1) stepBeamObjects([bin], idle, 1 / 60)
+    expect(bin.active).toBe(false)
+    expect(bin.explosionPending).toBe(false)
   })
 })

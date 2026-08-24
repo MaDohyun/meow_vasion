@@ -93,6 +93,8 @@ describe('time-based enemy waves', () => {
     stepEnemies(state, player, 1 / 60)
     expect(emplacement.aiming).toBe(true)
     expect(emplacement.telegraph).toBeCloseTo(ANTI_AIR_TELEGRAPH, 1)
+    // And the gun itself is worth shooting back at: four hits, not ten.
+    expect(ENEMY_MAX_HP['anti-air']).toBe(4)
     expect(state.projectiles.some((projectile) => projectile.active)).toBe(false)
     // Nothing leaves the gun until the lock runs out...
     for (let tick = 0; tick < Math.ceil(ANTI_AIR_TELEGRAPH * 60) + 2; tick += 1) stepEnemies(state, player, 1 / 60)

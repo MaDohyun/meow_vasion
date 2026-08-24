@@ -11,6 +11,7 @@ import {
   beamObjectDiameter,
   beamProfile,
   beginCarDestruction,
+  beginTrashBinLaunch,
   beginNearbyBeamObjectAbsorption,
   isInsideBeam,
   stepBeamObjects,
@@ -877,12 +878,14 @@ function laserSphereTargets(game: GameRuntime) {
     }
     slot = writeLaserSphereTarget(game.laserTargets, slot, enemy.id, enemy.position, enemy.hitRadius)
   }
-  // Static city dressing is tractor-beam-only. Keep it out of the laser's
-  // generic fighter sphere list so a shot cannot produce a misleading hit FX
-  // without actually damaging the prop.
+  // Static city dressing is tractor-beam-only, with one exception: a trash
+  // bin answers a laser by going flying. Everything else stays out of the
+  // sphere list so a shot cannot produce a misleading hit FX without actually
+  // damaging the prop.
   for (const object of game.beamObjects) {
-    if (object.worldProp || !object.active || object.destroying || object.absorbing) continue
-    slot = writeLaserSphereTarget(game.laserTargets, slot, object.id, object.position, 1.7)
+    if (!object.active || object.destroying || object.absorbing) continue
+    if (object.worldProp && object.worldProp.kind !== 'trash-bin') continue
+    slot = writeLaserSphereTarget(game.laserTargets, slot, object.id, object.position, 1.7, object.worldProp ? 'car' : undefined)
   }
   for (const car of game.traffic.cars) if (car.active) slot = writeLaserSphereTarget(game.laserTargets, slot, car.id, car.position, 1.7)
   for (const landmark of destructibleLandmarksAround(game.drone.position)) {
@@ -982,6 +985,22 @@ function destroyCar(game: GameRuntime, id: string, direction: Vec3) {
   game.destroyedCars.add(id)
   game.score += 50
   reportMissionEvent(game, { type: 'destroy-car' })
+  return true
+}
+
+/**
+ * A laser hit on a bin: it goes flying, spraying litter as it goes.
+ *
+ * The litter is the render layer's fleck pool, which follows any launched
+ * bin; the burst here is the hit itself. The bin never comes back - its spot
+ * joins destroyedWorldProps the moment it is airborne.
+ */
+function destroyTrashBin(game: GameRuntime, id: string, direction: Vec3) {
+  const target = game.beamObjects.find((object) => object.active && object.id === id && object.worldProp?.kind === 'trash-bin')
+  if (!target || !beginTrashBinLaunch(target, direction, game.drone.velocity)) return false
+  game.destroyedWorldProps.add(target.worldProp!.id)
+  game.score += 30
+  triggerLaserBurst(game.laserBursts, 'impact', target.position, '#c9d18a')
   return true
 }
 
@@ -1913,10 +1932,13 @@ export function GameProvider({ children }: { children: ReactNode }) {
         }
       }
       if (aim.targetKind === 'car' && aim.targetId) {
-        const destroyed = aim.targetId.startsWith('hazard:')
-          ? destroyHeavyVehicle(game, aim.targetId)
-          : destroyCar(game, aim.targetId, direction)
-        if (destroyed) setMessage(game, 'msgCarLaunched', 0.9)
+        // A bin flying off with its litter is its own callout; only the
+        // vehicles get the scoreboard message.
+        if (aim.targetId.startsWith('hazard:')) {
+          if (destroyHeavyVehicle(game, aim.targetId)) setMessage(game, 'msgCarLaunched', 0.9)
+        } else if (!destroyTrashBin(game, aim.targetId, direction)) {
+          if (destroyCar(game, aim.targetId, direction)) setMessage(game, 'msgCarLaunched', 0.9)
+        }
       }
       game.laserShotsFired += 1
       playLaserSound()
