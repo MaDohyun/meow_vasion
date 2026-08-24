@@ -1808,7 +1808,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     if (overload > 0) {
       flightInput.vertical = Math.min(flightInput.vertical, 0) - Math.min(1, overload / 12)
       if (shouldCrashFromOverload(game.beamActive, game.ballast, capacity, game.drone.position.y)) {
-        endRun(game, 'CRUSHED BY THE LOAD', 'downed')
+        endRun(game, 'CRUSHED BY THE LOAD', 'crushed')
         updatePilotStatus(game)
         publish()
         return

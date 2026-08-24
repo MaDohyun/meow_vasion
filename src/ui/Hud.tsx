@@ -556,15 +556,19 @@ function RankingPanel({ onClose }: { onClose: () => void }) {
 /**
  * What the run is told it was.
  *
- * Three endings, not two: outlasting the clock with the mission unfinished is
+ * Four endings, not two: outlasting the clock with the mission unfinished is
  * its own result, and reporting it as a shoot-down told the player they had
  * died when they had in fact flown the whole window and simply not finished
- * the job. A run that ends early has no mission verdict to give, so it keeps
- * the screen it always had.
+ * the job. Going down under the load is its own result for the same reason -
+ * the city never touched the craft, the haul on the beam did, and the player
+ * is owed that distinction because letting go was the answer.
+ *
+ * Being shot down keeps the screen it always had, and stays the fallback.
  */
 function resultCopy(t: Strings, ending: RunEnding | null) {
   if (ending === 'recon') return { title: t.survivedTitle, lead: t.survivedLead }
   if (ending === 'missionFailed') return { title: t.missionFailedTitle, lead: t.missionFailedLead }
+  if (ending === 'crushed') return { title: t.crushedTitle, lead: t.crushedLead }
   return { title: t.collapsedTitle, lead: t.collapsedLead }
 }
 

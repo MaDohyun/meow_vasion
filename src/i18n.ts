@@ -119,6 +119,8 @@ export type Strings = {
   survivedLead: string
   missionFailedLead: string
   collapsedLead: string
+  crushedTitle: string
+  crushedLead: string
   finalScore: string
   statSurvived: string
   statMass: string
@@ -330,6 +332,8 @@ export const STRINGS: Record<Language, Strings> = {
     survivedLead: '지구 정찰에 성공했습니다 냐앗호!',
     missionFailedLead: '시간내에 미션을 완수하지 못해서 지구 정찰 임무에 실패했습니다.',
     collapsedLead: '정찰은 망했지만 고양이 얘기는 건졌습니다',
+    crushedTitle: '무게에 눌려 추락',
+    crushedLead: '빔에 매단 짐이 출력을 이겼습니다. 끝내 무게를 감당하지 못한 접시는 짐과 함께 지면에 처박혔습니다.',
     finalScore: '최종 점수',
     statSurvived: '생존 시간',
     statMass: '최종 질량',
@@ -493,6 +497,8 @@ export const STRINGS: Record<Language, Strings> = {
     survivedLead: '地球偵察に成功しました、ニャッホー！',
     missionFailedLead: '時間内にミッションを達成できず、地球偵察任務は失敗しました。',
     collapsedLead: '偵察は失敗。でも猫の話は持ち帰れます',
+    crushedTitle: '重量に負けて墜落',
+    crushedLead: 'ビームに吊るした荷が出力を上回りました。重さに耐えきれず、機体は荷ごと地面に突っ込みました。',
     finalScore: '最終スコア',
     statSurvived: '生存時間',
     statMass: '最終質量',
@@ -656,6 +662,8 @@ export const STRINGS: Record<Language, Strings> = {
     survivedLead: 'Earth recon successful. Meow-hoo!',
     missionFailedLead: 'The clock ran out with the mission unfinished. Earth recon failed.',
     collapsedLead: 'Recon failed, but at least you brought back the cat story',
+    crushedTitle: 'CRUSHED BY THE LOAD',
+    crushedLead: 'What hung off the beam outweighed the engines. The craft could not carry it, and rode the load into the ground.',
     finalScore: 'FINAL SCORE',
     statSurvived: 'SURVIVED',
     statMass: 'FINAL MASS',
