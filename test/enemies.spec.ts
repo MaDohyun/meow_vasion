@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
+  ANTI_AIR_BARRAGE_SHOTS,
+  ANTI_AIR_TELEGRAPH,
   ENEMY_CAPS,
   ENEMY_MAX_HP,
   ENEMY_WAVE_STAGES,
@@ -76,6 +78,29 @@ describe('time-based enemy waves', () => {
     for (let hit = 0; hit < ENEMY_MAX_HP.boss - 1; hit += 1) expect(hitEnemy(state, boss.id).destroyed).toBe(false)
     expect(boss.hp).toBe(1)
     expect(hitEnemy(state, boss.id).destroyed).toBe(true)
+  })
+
+  it('locks anti-air on for three seconds, then fires a spread curtain', () => {
+    const state = createEnemyState()
+    const emplacement = state.slots.find((enemy) => enemy.kind === 'anti-air')!
+    emplacement.active = true
+    emplacement.position = { x: 0, y: 20, z: 0 }
+    emplacement.attackTimer = 0
+    // A craft in the high band, inside range, holding still.
+    const player = { x: 30, y: 40, z: 0 }
+    stepEnemies(state, player, 1 / 60)
+    expect(emplacement.aiming).toBe(true)
+    expect(emplacement.telegraph).toBeCloseTo(ANTI_AIR_TELEGRAPH, 1)
+    expect(state.projectiles.some((projectile) => projectile.active)).toBe(false)
+    // Nothing leaves the gun until the lock runs out...
+    for (let tick = 0; tick < Math.ceil(ANTI_AIR_TELEGRAPH * 60) + 3; tick += 1) stepEnemies(state, player, 1 / 60)
+    const shots = state.projectiles.filter((projectile) => projectile.active)
+    // ...and then the whole curtain leaves at once, every shot on its own
+    // heading around the locked aim rather than seven stacked missiles.
+    expect(shots.length).toBe(ANTI_AIR_BARRAGE_SHOTS)
+    for (const shot of shots) expect(shot.kind).toBe('missile')
+    const headings = new Set(shots.map((shot) => `${shot.velocity.x.toFixed(2)}:${shot.velocity.y.toFixed(2)}:${shot.velocity.z.toFixed(2)}`))
+    expect(headings.size).toBe(ANTI_AIR_BARRAGE_SHOTS)
   })
 
   it('flashes a survivor on every laser hit, fading in a fifth of a second', () => {

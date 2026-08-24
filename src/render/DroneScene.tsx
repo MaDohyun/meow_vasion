@@ -32,6 +32,7 @@ import { CAT_MAX, CROWD_ABSORB_TIME, PEDESTRIAN_MAX, pedestrianOutfitForSlot, ty
 import { HAZARD_MAX } from '../core/hazards'
 import { type DaylightKeyframe, type DaylightSample } from '../core/daylight'
 import {
+  ANTI_AIR_BARRAGE_SPREAD,
   BATTLESHIP_BEAM_WIDTH,
   BATTLESHIP_LENGTH,
   BATTLESHIP_TURRETS,
@@ -1466,13 +1467,17 @@ function EnemyWarnings() {
       // Everyone else gets a ring on the ground beneath them. The battleship
       // gets one around the turret that is charging: a mark on the street
       // ninety metres below the ship points at nothing the player can act on.
+      // The anti-air network gets an orange aim point at the locked target
+      // instead - its curtain bursts up in the sky, so the warning has to be
+      // where the danger is, drawn at the curtain's own radius.
       if (enemy.kind === 'boss') position.set(enemy.muzzle.x, enemy.muzzle.y, enemy.muzzle.z)
+      else if (enemy.kind === 'anti-air') position.set(enemy.target.x, enemy.target.y, enemy.target.z)
       else position.set(enemy.position.x, Math.max(0.08, enemy.position.y - 0.6), enemy.position.z)
       const pulse = 1 + Math.sin(clock.elapsedTime * 18) * 0.12
-      scale.setScalar((enemy.kind === 'boss' ? 3.4 : enemy.kind === 'anti-air' ? 2.2 : 1.25) * pulse)
+      scale.setScalar((enemy.kind === 'boss' ? 3.4 : enemy.kind === 'anti-air' ? ANTI_AIR_BARRAGE_SPREAD : 1.25) * pulse)
       matrix.compose(position, quaternion, scale)
       mesh.setMatrixAt(count, matrix)
-      color.set(enemy.kind === 'anti-air' ? '#ffdf5c' : enemy.kind === 'boss' ? '#ff5f7c' : '#fff3a3')
+      color.set(enemy.kind === 'anti-air' ? '#ff9a3d' : enemy.kind === 'boss' ? '#ff5f7c' : '#fff3a3')
       mesh.setColorAt(count, color)
       count += 1
     }
@@ -1546,7 +1551,9 @@ function EnemyAimLines() {
       scale.set(0.09 + charge * 0.16, length, 0.09 + charge * 0.16)
       matrix.compose(position, quaternion, scale)
       mesh.setMatrixAt(count, matrix)
-      color.set(enemy.kind === 'anti-air' ? '#ffdf5c' : enemy.kind === 'boss' ? '#ff5f7c' : enemy.kind === 'tank' ? '#ff9c54' : enemy.kind === 'fighter' ? '#ff78bd' : '#fff3a3')
+      // The anti-air line matches its orange aim point, so lock and landing
+      // zone read as one warning.
+      color.set(enemy.kind === 'anti-air' ? '#ff9a3d' : enemy.kind === 'boss' ? '#ff5f7c' : enemy.kind === 'tank' ? '#ff9c54' : enemy.kind === 'fighter' ? '#ff78bd' : '#fff3a3')
       mesh.setColorAt(count, color)
       count += 1
     }
