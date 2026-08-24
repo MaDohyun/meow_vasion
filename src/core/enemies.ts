@@ -1182,17 +1182,10 @@ export function stepEnemies(state: EnemyState, player: Vec3, dt: number, playerV
       // for, and a mine that sat ticking under the hull for a third of a
       // second read as a dud rather than as a hit.
       const struck = distance <= enemy.hitRadius + playerRadius
-      // A mine on the beam rides disarmed. The field-and-fuse arming is for a
-      // craft flying through a minefield; a mine being reeled in crosses the
-      // field the moment the pull starts, so left on it "caught" would mean
-      // "already exploding". Held, it stays quiet until it actually reaches
-      // the hull - the same strike rule as flying into one - and a release
-      // inside the field hands it straight back to the ordinary arming.
-      const held = enemy.inBeam || enemy.tether > 0.02
-      if (held && !struck) {
-        enemy.mineArmed = false
-        enemy.mineFuse = 0
-      } else if (!enemy.mineArmed && (struck || distance <= DRONE_MINE_BLAST_RADIUS)) {
+      // One arming rule, on the beam or off it. A mine reeled in by the beam
+      // crosses the radius-9 field like any other approach, arms there, and
+      // the fuse does the rest - catching a bomb does not make it politer.
+      if (!enemy.mineArmed && (struck || distance <= DRONE_MINE_BLAST_RADIUS)) {
         enemy.mineArmed = true
         enemy.mineFuse = DRONE_MINE_FUSE
       }

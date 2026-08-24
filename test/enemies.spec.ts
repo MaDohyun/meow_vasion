@@ -77,7 +77,7 @@ describe('time-based enemy waves', () => {
     expect(drone.active).toBe(false)
   })
 
-  it('keeps a beam-held mine quiet inside the arming field until release', () => {
+  it('field-arms a beam-held mine the moment the pull drags it inside the radius', () => {
     const state = createEnemyState()
     const drone = state.slots.find((candidate) => candidate.kind === 'drone')!
     drone.active = true
@@ -87,15 +87,11 @@ describe('time-based enemy waves', () => {
     drone.position.y = 10
     drone.position.z = 0
     drone.target.y = 10
-    // Inside the radius-9 field but well off the hull: a held mine must ride
-    // along disarmed instead of tripping the fuse the moment the pull starts.
+    // Inside the radius-9 field but off the hull: the ordinary arming applies
+    // on the beam exactly as off it, and the fuse keeps running while held.
     const player = { x: 0, y: 10, z: 6 }
-    for (let tick = 0; tick < 60; tick += 1) stepEnemies(state, player, 1 / 60, { x: 0, y: 0, z: 0 }, 1.4)
-    expect(drone.mineArmed).toBe(false)
-    expect(drone.active).toBe(true)
-    // Dropped inside the field, the ordinary arming takes back over.
-    drone.inBeam = false
-    drone.tether = 0
+    stepEnemies(state, player, 1 / 60, { x: 0, y: 0, z: 0 }, 1.4)
+    expect(drone.mineArmed).toBe(true)
     for (let tick = 0; tick < 60 && drone.active; tick += 1) stepEnemies(state, player, 1 / 60, { x: 0, y: 0, z: 0 }, 1.4)
     expect(drone.active).toBe(false)
   })
