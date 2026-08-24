@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  ANTI_AIR_BARRAGE_INTERVAL,
   ANTI_AIR_BARRAGE_SHOTS,
   ANTI_AIR_TELEGRAPH,
   ENEMY_CAPS,
@@ -80,27 +81,35 @@ describe('time-based enemy waves', () => {
     expect(hitEnemy(state, boss.id).destroyed).toBe(true)
   })
 
-  it('locks anti-air on for three seconds, then fires a spread curtain', () => {
+  it('locks anti-air on for three seconds, then streams five rounds at the point', () => {
     const state = createEnemyState()
     const emplacement = state.slots.find((enemy) => enemy.kind === 'anti-air')!
     emplacement.active = true
     emplacement.position = { x: 0, y: 20, z: 0 }
     emplacement.attackTimer = 0
-    // A craft in the high band, inside range, holding still.
-    const player = { x: 30, y: 40, z: 0 }
+    // A craft in the high band, inside range, holding still - far enough
+    // that no round of the stream reaches it inside this test's window.
+    const player = { x: 60, y: 40, z: 0 }
     stepEnemies(state, player, 1 / 60)
     expect(emplacement.aiming).toBe(true)
     expect(emplacement.telegraph).toBeCloseTo(ANTI_AIR_TELEGRAPH, 1)
     expect(state.projectiles.some((projectile) => projectile.active)).toBe(false)
     // Nothing leaves the gun until the lock runs out...
-    for (let tick = 0; tick < Math.ceil(ANTI_AIR_TELEGRAPH * 60) + 3; tick += 1) stepEnemies(state, player, 1 / 60)
+    for (let tick = 0; tick < Math.ceil(ANTI_AIR_TELEGRAPH * 60) + 2; tick += 1) stepEnemies(state, player, 1 / 60)
+    const opening = state.projectiles.filter((projectile) => projectile.active)
+    // ...then the first round leaves alone - a stream, not a volley...
+    expect(opening.length).toBe(1)
+    for (let tick = 0; tick < Math.ceil(ANTI_AIR_BARRAGE_INTERVAL * (ANTI_AIR_BARRAGE_SHOTS - 1) * 60) + 4; tick += 1) stepEnemies(state, player, 1 / 60)
     const shots = state.projectiles.filter((projectile) => projectile.active)
-    // ...and then the whole curtain leaves at once, every shot on its own
-    // heading around the locked aim rather than seven stacked missiles.
     expect(shots.length).toBe(ANTI_AIR_BARRAGE_SHOTS)
     for (const shot of shots) expect(shot.kind).toBe('missile')
+    // ...and every round rides the same heading into the locked aim point:
+    // dodge the point and the whole string misses together.
     const headings = new Set(shots.map((shot) => `${shot.velocity.x.toFixed(2)}:${shot.velocity.y.toFixed(2)}:${shot.velocity.z.toFixed(2)}`))
-    expect(headings.size).toBe(ANTI_AIR_BARRAGE_SHOTS)
+    expect(headings.size).toBe(1)
+    // The stream over, the gun settles into its reload.
+    expect(emplacement.burstLeft).toBe(0)
+    expect(emplacement.attackTimer).toBeGreaterThan(1)
   })
 
   it('flashes a survivor on every laser hit, fading in a fifth of a second', () => {

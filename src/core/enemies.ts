@@ -782,58 +782,23 @@ function aimProjectile(state: EnemyState, enemy: EnemySlot, player: Vec3, player
 }
 
 /**
- * The anti-air judgement: a three-second orange lock, then a curtain.
+ * The anti-air judgement: a three-second orange lock, then a stream.
  *
  * One missile after a 0.8s wink was over before it could be read - at high
  * altitude the network was a damage table, not a mechanic. Three seconds of
- * lock puts the whole exchange in the player's hands: the aim point marks
- * where the curtain will burst, holding course flies into it, and any turn
- * inside the window escapes it. The curtain is what makes escaping matter -
- * a single shot leaves a miss costless, seven in a ring make the near-miss
- * grazing pass the network is meant to sell.
+ * lock puts the whole exchange in the player's hands: the orange aim point
+ * marks the one spot the gun is committed to, and when the lock expires five
+ * rounds rattle into exactly that spot in quick succession. Leave the point
+ * inside the window and the whole string sails past; sit on it and the
+ * stream keeps arriving. A stream rather than a scatter, so the punishment
+ * for ignoring the mark reads as one sustained answer, not bad luck.
  */
 export const ANTI_AIR_TELEGRAPH = 3
-export const ANTI_AIR_BARRAGE_SHOTS = 7
-/** Ring radius of the curtain around the locked aim, in metres. The warning
- *  ring is drawn at this radius, so the danger zone is exactly what it says. */
-export const ANTI_AIR_BARRAGE_SPREAD = 7.5
-
-/** One shot dead on the locked aim, six more in a ring around it. */
-function fireAntiAirBarrage(state: EnemyState, enemy: EnemySlot) {
-  const dx = enemy.target.x - enemy.muzzle.x
-  const dy = enemy.target.y - enemy.muzzle.y
-  const dz = enemy.target.z - enemy.muzzle.z
-  const distance = Math.max(0.001, Math.hypot(dx, dy, dz))
-  const direction = { x: dx / distance, y: dy / distance, z: dz / distance }
-  // The ring lies in the plane perpendicular to the shot. An emplacement fires
-  // near vertically at a craft overhead, so the up-vector fallback matters:
-  // crossing with world-up alone would collapse the basis exactly then.
-  const axis = Math.abs(direction.y) > 0.9 ? { x: 1, y: 0, z: 0 } : { x: 0, y: 1, z: 0 }
-  const rightX = direction.y * axis.z - direction.z * axis.y
-  const rightY = direction.z * axis.x - direction.x * axis.z
-  const rightZ = direction.x * axis.y - direction.y * axis.x
-  const rightLength = Math.max(0.001, Math.hypot(rightX, rightY, rightZ))
-  const right = { x: rightX / rightLength, y: rightY / rightLength, z: rightZ / rightLength }
-  const lateral = {
-    x: direction.y * right.z - direction.z * right.y,
-    y: direction.z * right.x - direction.x * right.z,
-    z: direction.x * right.y - direction.y * right.x,
-  }
-  const locked = { x: enemy.target.x, y: enemy.target.y, z: enemy.target.z }
-  fireProjectile(state, enemy, 'missile')
-  for (let shot = 0; shot < ANTI_AIR_BARRAGE_SHOTS - 1; shot += 1) {
-    const angle = shot / (ANTI_AIR_BARRAGE_SHOTS - 1) * Math.PI * 2
-    const cos = Math.cos(angle)
-    const sin = Math.sin(angle)
-    enemy.target.x = locked.x + (right.x * cos + lateral.x * sin) * ANTI_AIR_BARRAGE_SPREAD
-    enemy.target.y = locked.y + (right.y * cos + lateral.y * sin) * ANTI_AIR_BARRAGE_SPREAD
-    enemy.target.z = locked.z + (right.z * cos + lateral.z * sin) * ANTI_AIR_BARRAGE_SPREAD
-    fireProjectile(state, enemy, 'missile')
-  }
-  enemy.target.x = locked.x
-  enemy.target.y = locked.y
-  enemy.target.z = locked.z
-}
+export const ANTI_AIR_BARRAGE_SHOTS = 5
+/** Seconds between rounds of the stream - five shots in about half a second. */
+export const ANTI_AIR_BARRAGE_INTERVAL = 0.13
+/** The reload after the stream, which is where the counterattack lives. */
+export const ANTI_AIR_RELOAD = 3.8
 
 function fireProjectile(state: EnemyState, enemy: EnemySlot, kind: EnemyProjectileKind) {
   const projectile = state.projectiles.find((item) => !item.active)
@@ -1088,10 +1053,21 @@ export function stepEnemies(state: EnemyState, player: Vec3, dt: number, playerV
       if (enemy.telegraph <= 0) {
         if (enemy.kind === 'helicopter') fireProjectile(state, enemy, 'rifle')
         else if (enemy.kind === 'tank') fireProjectile(state, enemy, 'shell')
-        else if (enemy.kind === 'anti-air') fireAntiAirBarrage(state, enemy)
+        else if (enemy.kind === 'anti-air') {
+          // First round leaves the moment the lock expires; the rest of the
+          // stream follows on the burst timer below, all at the locked point.
+          fireProjectile(state, enemy, 'missile')
+          enemy.burstLeft = ANTI_AIR_BARRAGE_SHOTS - 1
+        }
         else if (enemy.kind === 'fighter') fireProjectile(state, enemy, 'rocket')
         enemy.aiming = false
-        enemy.attackTimer = enemy.kind === 'anti-air' ? 3.8 : enemy.kind === 'tank' ? 2.8 : enemy.kind === 'helicopter' ? 1.6 : 2.2
+        enemy.attackTimer = enemy.kind === 'anti-air' ? ANTI_AIR_BARRAGE_INTERVAL : enemy.kind === 'tank' ? 2.8 : enemy.kind === 'helicopter' ? 1.6 : 2.2
+      }
+    } else if (enemy.kind === 'anti-air' && enemy.burstLeft > 0) {
+      if (enemy.attackTimer <= 0) {
+        fireProjectile(state, enemy, 'missile')
+        enemy.burstLeft -= 1
+        enemy.attackTimer = enemy.burstLeft > 0 ? ANTI_AIR_BARRAGE_INTERVAL : ANTI_AIR_RELOAD
       }
     } else if (enemy.attackTimer <= 0) {
       const distance = distanceToPlayer(enemy, player)
