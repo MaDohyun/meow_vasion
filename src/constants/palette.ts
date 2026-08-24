@@ -64,6 +64,12 @@ export const GROUND = {
   plaza: '#dfd0c6',
   pond: '#a8d6d5',
   vacant: '#cdd19f',
+  /** Lake shore dressing. The reeds sit a shade cooler and darker than park
+   *  grass so a waterline reads as its own edge rather than as lawn running
+   *  into the water; the tips catch the same warm light the lawns do. */
+  SHORE_REED: '#7fbe7d',
+  SHORE_REED_TIP: '#bcd684',
+  SHORE_ROCK: '#b4b1ac',
 } as const
 
 export const BUILDING = {

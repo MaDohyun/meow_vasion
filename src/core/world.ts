@@ -446,6 +446,49 @@ export function sameLandmarkCluster(aX: number, aZ: number, bX: number, bZ: numb
   return left !== null && left === lakeClusterForCell(bX, bZ)
 }
 
+/**
+ * Metres a lake tile holds back from its cell edge wherever that edge faces
+ * open ground. The water mesh and the shore dressing both read it from here,
+ * so the pebbles and reeds can never drift off the waterline they decorate.
+ */
+export const LAKE_TILE_MARGIN = 4.25
+
+export type LakeWaterRect = {
+  minX: number
+  maxX: number
+  minZ: number
+  maxZ: number
+  westOpen: boolean
+  eastOpen: boolean
+  southOpen: boolean
+  northOpen: boolean
+}
+
+/**
+ * The water surface one lake cell contributes, or null off the lake.
+ *
+ * Each side keeps the usual margin where it faces open ground and drops to
+ * zero where it faces another cell of the same lake, so neighbouring tiles
+ * butt up with no seam and only the cluster's outer sides get a shoreline.
+ */
+export function lakeWaterRect(cellX: number, cellZ: number): LakeWaterRect | null {
+  if (!lakeClusterForCell(cellX, cellZ)) return null
+  const westOpen = !sameLandmarkCluster(cellX, cellZ, cellX - 1, cellZ)
+  const eastOpen = !sameLandmarkCluster(cellX, cellZ, cellX + 1, cellZ)
+  const southOpen = !sameLandmarkCluster(cellX, cellZ, cellX, cellZ - 1)
+  const northOpen = !sameLandmarkCluster(cellX, cellZ, cellX, cellZ + 1)
+  return {
+    minX: cellX * WORLD_CELL_SIZE + (westOpen ? LAKE_TILE_MARGIN : 0),
+    maxX: (cellX + 1) * WORLD_CELL_SIZE - (eastOpen ? LAKE_TILE_MARGIN : 0),
+    minZ: cellZ * WORLD_CELL_SIZE + (southOpen ? LAKE_TILE_MARGIN : 0),
+    maxZ: (cellZ + 1) * WORLD_CELL_SIZE - (northOpen ? LAKE_TILE_MARGIN : 0),
+    westOpen,
+    eastOpen,
+    southOpen,
+    northOpen,
+  }
+}
+
 export function isLakeAt(position: Pick<Vec3, 'x' | 'z'>) {
   return lakeClusterForCell(worldCellCoord(position.x), worldCellCoord(position.z)) !== null
 }
@@ -492,18 +535,15 @@ export function mysteryCircleAt(position: Pick<Vec3, 'x' | 'z'>): MysteryCircleH
 export function lakeDepthAt(position: Pick<Vec3, 'x' | 'z'>) {
   const cellX = worldCellCoord(position.x)
   const cellZ = worldCellCoord(position.z)
-  if (!lakeClusterForCell(cellX, cellZ)) return 0
+  const rect = lakeWaterRect(cellX, cellZ)
+  if (!rect) return 0
   const localX = position.x - cellX * WORLD_CELL_SIZE
   const localZ = position.z - cellZ * WORLD_CELL_SIZE
-  const westOpen = !sameLandmarkCluster(cellX, cellZ, cellX - 1, cellZ)
-  const eastOpen = !sameLandmarkCluster(cellX, cellZ, cellX + 1, cellZ)
-  const southOpen = !sameLandmarkCluster(cellX, cellZ, cellX, cellZ - 1)
-  const northOpen = !sameLandmarkCluster(cellX, cellZ, cellX, cellZ + 1)
   let depth = Infinity
-  if (westOpen) depth = Math.min(depth, localX)
-  if (eastOpen) depth = Math.min(depth, WORLD_CELL_SIZE - localX)
-  if (southOpen) depth = Math.min(depth, localZ)
-  if (northOpen) depth = Math.min(depth, WORLD_CELL_SIZE - localZ)
+  if (rect.westOpen) depth = Math.min(depth, localX)
+  if (rect.eastOpen) depth = Math.min(depth, WORLD_CELL_SIZE - localX)
+  if (rect.southOpen) depth = Math.min(depth, localZ)
+  if (rect.northOpen) depth = Math.min(depth, WORLD_CELL_SIZE - localZ)
   // An interior cell of a multi-cell lake has no shore edge of its own -
   // every neighbour is more water, so treat it as fully deep.
   return Number.isFinite(depth) ? Math.max(0, depth) : WORLD_CELL_SIZE / 2
