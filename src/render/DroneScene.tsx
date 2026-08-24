@@ -1362,6 +1362,10 @@ function EnemyPool({ kind }: { kind: PooledEnemyKind }) {
       // bow-on and hide the whole broadside.
       if (kind === 'boss') rotation.set(0, enemy.rotation.y, enemy.rotation.z)
       else if (enemy.inBeam || enemy.tether > 0.02 || enemy.absorbing) rotation.set(enemy.rotation.x, enemy.rotation.y, enemy.rotation.z)
+      // A helicopter faces where it is flying: on patrol that is its weave
+      // around the anchor, and the moment the nose snaps onto the player is
+      // the lock-on being legible. Its `phase` is its travel heading.
+      else if (kind === 'helicopter') rotation.set(0, enemy.phase, 0)
       else rotation.set(0, yaw, kind === 'fighter' ? Math.sin(enemy.phase) * 0.22 : 0)
       quaternion.setFromEuler(rotation)
       // The battleship's geometry is authored at true scale, so it is the one

@@ -114,10 +114,44 @@ export const BATTLESHIP_MAIN_GUN_TELEGRAPH = 1.9
  * seconds, carries none of the red warning shell that makes a mine fair to fly
  * into, and reads as traffic rather than as a hazard. What is left is the half
  * that has to be looked at and flown around.
- *
- * Helicopters keep a slow yaw so the sky does not read as parallel tracks.
  */
-const HELICOPTER_TRAVEL_SPEED = 15
+
+/**
+ * Helicopters are ambush chasers.
+ *
+ * Each one owns the patch of sky it spawned in: it drifts slowly around that
+ * anchor, holding its altitude band, until the player crosses its detection
+ * range. Then it commits - full speed, straight at the craft, altitude
+ * included - and rams. Its guns are gone: the collision is the attack, so the
+ * threat it makes is spatial, like the mines, rather than another stream of
+ * projectiles on top of the fighters and the anti-air network.
+ *
+ * A ram that connects peels off rather than grinding: the helicopter breaks
+ * back out past its own detection range and settles into a patrol there, so
+ * one collision is one hit, not a lawnmower parked on the hull.
+ */
+export const HELICOPTER_ROAM_SPEED = 7
+export const HELICOPTER_ROAM_RADIUS = 26
+/**
+ * Above cruise (30), below turbo (54): a helicopter runs down a player who
+ * will not spend boost, and never one who will. The gap has to stay real in
+ * both directions - close it from above and turbo stops being an escape,
+ * close it from below and the chase is just an escort.
+ */
+export const HELICOPTER_CHASE_SPEED = 42
+export const HELICOPTER_DETECT_RANGE = 52
+/**
+ * Past this the chase breaks and the helicopter settles where it lost you,
+ * owning that patch of sky instead of commuting home. From the moment a chase
+ * starts at the detect range, one tank of boost opens this gap.
+ */
+export const HELICOPTER_GIVE_UP_RANGE = 78
+/**
+ * How far a connected ram carries the helicopter back out before it patrols
+ * again. Past the detect range, so a ram is never immediately followed by a
+ * second lock-on the player had no room to refuse.
+ */
+export const HELICOPTER_PEEL_RANGE = 58
 
 /**
  * How far a mine reaches, and how long it holds before going off.
@@ -174,13 +208,14 @@ const MINE_BOB = 1.4
  * been seen, which is the reason drones never chase in the first place.
  */
 const MINE_CREEP_SPEED = 6
-const HELICOPTER_TURN_RATE = 0.22
 const AIR_DESPAWN_DISTANCE = 240
 
-// Helicopters own an altitude band and stay in it. Climbing out of a band has
-// to be a real escape, which it is not if the enemy follows you up. Mines are
-// seeded across the whole range instead: there is no altitude that is clear of
-// them, only altitudes the player has already read.
+// Helicopters own an altitude band and patrol in it, so an unprovoked sky
+// still reads as layers rather than as a swarm. Only a locked-on chase leaves
+// the band - it has to, or a ram could never land - and losing the chase puts
+// the helicopter back on its shelf. Mines are seeded across the whole range
+// instead: there is no altitude that is clear of them, only altitudes the
+// player has already read.
 export function helicopterBandForSlot(slot: number) {
   return 19 + (slot % 4) * 4.5
 }
@@ -241,6 +276,13 @@ export type EnemySlot = BeamObject & {
   /** Drone mines arm on proximity and cannot be disarmed once the fuse starts. */
   mineArmed: boolean
   mineFuse: number
+  /**
+   * Helicopters patrol around this home point rather than travelling. It is
+   * wherever the slot spawned, re-anchored wherever a chase ends, so a
+   * helicopter that followed you and lost you owns the new patch of sky
+   * instead of commuting back across the map.
+   */
+  anchor: Vec3
 }
 
 export type EnemyProjectile = {
@@ -262,6 +304,9 @@ export type EnemyState = {
   spawnTimer: number
   randomState: number
   contactKills: number
+  /** How many helicopters rammed the hull this tick, so the caller can put
+   *  the blast shake on a ram without mistaking a scrape for one. */
+  helicopterRams: number
   /** Kind of the last projectile that connected, so the caller can price the
    *  hit by weapon rather than by a raw damage number. */
   lastHitKind: EnemyProjectileKind | null
@@ -428,6 +473,7 @@ function makeSlot(kind: EnemyKind, slot: number): EnemySlot {
     volley: 0,
     mineArmed: false,
     mineFuse: 0,
+    anchor: { x: 0, y: 0, z: 0 },
   }
 }
 
@@ -435,7 +481,7 @@ export function createEnemyState(seed = 0x91eab7): EnemyState {
   const slots: EnemySlot[] = []
   for (const kind of ORDER) for (let slot = 0; slot < ENEMY_CAPS[kind]; slot += 1) slots.push(makeSlot(kind, slot))
   const projectiles = Array.from({ length: ENEMY_MAX_PROJECTILES }, (_, slot) => makeProjectile(slot))
-  return { slots, projectiles, destroyedAntiAir: new Set<string>(), waveStage: 0, spawnTimer: 0, randomState: seed >>> 0 || 1, contactKills: 0, lastHitKind: null, lastContactPoint: { x: 0, y: 0, z: 0 }, mineExplosion: null } satisfies EnemyState
+  return { slots, projectiles, destroyedAntiAir: new Set<string>(), waveStage: 0, spawnTimer: 0, randomState: seed >>> 0 || 1, contactKills: 0, helicopterRams: 0, lastHitKind: null, lastContactPoint: { x: 0, y: 0, z: 0 }, mineExplosion: null } satisfies EnemyState
 }
 
 export function isAntiAirBuilding(building: Pick<ProceduralBuilding, 'cellX' | 'cellZ'>) {
@@ -499,13 +545,12 @@ function resetSlot(enemy: EnemySlot, player: Vec3, heading: number, state: Enemy
     // Mines are seeded across the whole altitude range, including right in the
     // band a player skimming the rooftops would use.
     enemy.position.y = 4 + random(state) * 26
-  } else if (enemy.kind === 'helicopter') {
-    // Aim the travel heading at a scattered point near the player so the path
-    // crosses the play area once and then carries on past it.
-    const aimX = player.x + (random(state) - 0.5) * 46
-    const aimZ = player.z + (random(state) - 0.5) * 46
-    enemy.phase = Math.atan2(aimX - enemy.position.x, aimZ - enemy.position.z)
   }
+  // Where the slot spawned is the patch of sky it patrols. Only helicopters
+  // read it, but it costs nothing to keep honest for everyone.
+  enemy.anchor.x = enemy.position.x
+  enemy.anchor.y = enemy.position.y
+  enemy.anchor.z = enemy.position.z
   enemy.target.x = player.x + (random(state) - 0.5) * 24
   enemy.target.y = enemy.position.y
   enemy.target.z = player.z + (random(state) - 0.5) * 24
@@ -634,7 +679,7 @@ export const PROJECTILE_SPEED: Record<EnemyProjectileKind, number> = {
  * (shoots exactly where you will be).
  *
  * Tiered rather than uniform, because the wave ladder is the difficulty curve:
- * helicopters miss often enough that the early game teaches the rule without
+ * fighters miss often enough that the mid game teaches the rule without
  * punishing it, and by the time the anti-air network is up, flying straight is
  * fatal.
  *
@@ -650,7 +695,9 @@ export const AIM_ERROR_METRES = 16
 
 export const LEAD_ACCURACY: Record<EnemyKind, number> = {
   drone: 0,
-  helicopter: 0.62,
+  // Zero because it never shoots: the helicopter's attack is the ram. The
+  // entry exists only because the table is keyed by every kind.
+  helicopter: 0,
   fighter: 0.82,
   'anti-air': 1,
   boss: 1,
@@ -778,14 +825,81 @@ function stepDroneMine(enemy: EnemySlot, player: Vec3, d: number) {
   if (!enemy.mineArmed && distanceToPlayer(enemy, player) > AIR_DESPAWN_DISTANCE) enemy.active = false
 }
 
+/**
+ * Roam, chase, peel off. `phase` doubles as the travel heading in every mode,
+ * which is also what the renderer faces the fuselage along - a patrolling
+ * helicopter looks where it is going, not at the player it has not seen.
+ */
 function stepHelicopter(enemy: EnemySlot, player: Vec3, d: number) {
   enemy.age += d
-  enemy.position.x += Math.sin(enemy.phase) * HELICOPTER_TRAVEL_SPEED * d
-  enemy.position.z += Math.cos(enemy.phase) * HELICOPTER_TRAVEL_SPEED * d
-  enemy.phase += d * HELICOPTER_TURN_RATE
-  const band = helicopterBandForSlot(enemy.slot)
-  enemy.position.y += (band - enemy.position.y) * (1 - Math.exp(-1.4 * d))
-  if (distanceToPlayer(enemy, player) > AIR_DESPAWN_DISTANCE) enemy.active = false
+  const distance = distanceToPlayer(enemy, player)
+  if (enemy.mode === 'chase') {
+    if (distance > HELICOPTER_GIVE_UP_RANGE) {
+      enemy.mode = 'roam'
+      enemy.anchor.x = enemy.position.x
+      enemy.anchor.z = enemy.position.z
+    } else if (distance > 0.001) {
+      // Straight at the craft, altitude included: a ram that respected the
+      // altitude band could never land. Losing the chase is what puts the
+      // helicopter back on its shelf.
+      const step = Math.min(HELICOPTER_CHASE_SPEED * d, distance)
+      enemy.position.x += (player.x - enemy.position.x) / distance * step
+      enemy.position.y += (player.y - enemy.position.y) / distance * step
+      enemy.position.z += (player.z - enemy.position.z) / distance * step
+      enemy.position.y = Math.max(2.2, enemy.position.y)
+      enemy.phase = Math.atan2(player.x - enemy.position.x, player.z - enemy.position.z)
+    }
+  } else if (enemy.mode === 'outbound') {
+    // The break-away after a connected ram: straight out and back up to the
+    // band, until the gap is too wide for an immediate second lock-on.
+    let awayX = enemy.position.x - player.x
+    let awayZ = enemy.position.z - player.z
+    const away = Math.hypot(awayX, awayZ)
+    if (away < 0.5) {
+      // Directly underneath or on top of the craft there is no outward
+      // bearing to read, so it keeps flying the way it was already facing.
+      awayX = Math.sin(enemy.phase)
+      awayZ = Math.cos(enemy.phase)
+    } else {
+      awayX /= away
+      awayZ /= away
+    }
+    enemy.position.x += awayX * HELICOPTER_CHASE_SPEED * 0.85 * d
+    enemy.position.z += awayZ * HELICOPTER_CHASE_SPEED * 0.85 * d
+    enemy.phase = Math.atan2(awayX, awayZ)
+    const band = helicopterBandForSlot(enemy.slot)
+    enemy.position.y += (band - enemy.position.y) * (1 - Math.exp(-1.4 * d))
+    if (distanceToPlayer(enemy, player) >= HELICOPTER_PEEL_RANGE) {
+      enemy.mode = 'roam'
+      enemy.anchor.x = enemy.position.x
+      enemy.anchor.z = enemy.position.z
+    }
+  } else if (distance <= HELICOPTER_DETECT_RANGE) {
+    enemy.mode = 'chase'
+  } else {
+    // Patrol: a lazy weave around the anchor, held in the altitude band.
+    const toAnchorX = enemy.anchor.x - enemy.position.x
+    const toAnchorZ = enemy.anchor.z - enemy.position.z
+    if (Math.hypot(toAnchorX, toAnchorZ) > HELICOPTER_ROAM_RADIUS) {
+      // Shortest-way turn back toward home, so the patrol orbits the anchor
+      // instead of wandering off with the weave.
+      const home = Math.atan2(toAnchorX, toAnchorZ)
+      const delta = Math.atan2(Math.sin(home - enemy.phase), Math.cos(home - enemy.phase))
+      enemy.phase += delta * Math.min(1, 2.4 * d)
+    } else {
+      enemy.phase += Math.sin(enemy.age * 0.6 + enemy.slot * 1.7) * 0.7 * d
+    }
+    enemy.position.x += Math.sin(enemy.phase) * HELICOPTER_ROAM_SPEED * d
+    enemy.position.z += Math.cos(enemy.phase) * HELICOPTER_ROAM_SPEED * d
+    const band = helicopterBandForSlot(enemy.slot)
+    enemy.position.y += (band - enemy.position.y) * (1 - Math.exp(-1.4 * d))
+  }
+  // The lock-on borrows the aiming tint: the same red an enemy shows when a
+  // shot is coming is shown when a ram is.
+  enemy.aiming = enemy.mode === 'chase'
+  // A chase can never reach this range - only a patrol left far behind can,
+  // and an abandoned patrol is exactly what despawning is for.
+  if (enemy.mode !== 'chase' && distance > AIR_DESPAWN_DISTANCE) enemy.active = false
 }
 
 /**
@@ -958,25 +1072,24 @@ export function stepEnemies(state: EnemyState, player: Vec3, dt: number, playerV
     if (enemy.telegraph > 0) {
       enemy.telegraph = Math.max(0, enemy.telegraph - d)
       if (enemy.telegraph <= 0) {
-        if (enemy.kind === 'helicopter') fireProjectile(state, enemy, 'rifle')
-        else if (enemy.kind === 'anti-air') fireProjectile(state, enemy, 'missile')
+        if (enemy.kind === 'anti-air') fireProjectile(state, enemy, 'missile')
         else if (enemy.kind === 'fighter') fireProjectile(state, enemy, 'rocket')
         enemy.aiming = false
-        enemy.attackTimer = enemy.kind === 'anti-air' ? 3.8 : enemy.kind === 'helicopter' ? 1.6 : 2.2
+        enemy.attackTimer = enemy.kind === 'anti-air' ? 3.8 : 2.2
       }
     } else if (enemy.attackTimer <= 0) {
       const distance = distanceToPlayer(enemy, player)
       const high = player.y >= 28
-      // Drones are deliberately absent here: they deal contact damage only.
-      // Thirty-odd of them firing would bury the screen in projectiles.
-      const canAttack = enemy.kind === 'helicopter' ? !high && distance < 78
-        : enemy.kind === 'anti-air' ? high && distance < 145
-          : enemy.kind === 'fighter'
+      // Drones and helicopters are deliberately absent here: both deal contact
+      // damage only. Drones because thirty-odd of them firing would bury the
+      // screen in projectiles; helicopters because the ram is the whole
+      // attack, and a rammer that also shot would be two threats in one slot.
+      const canAttack = enemy.kind === 'anti-air' ? high && distance < 145 : enemy.kind === 'fighter'
       if (canAttack) {
-        const kind = enemy.kind === 'helicopter' ? 'rifle' : enemy.kind === 'anti-air' ? 'missile' : 'rocket'
+        const kind = enemy.kind === 'anti-air' ? 'missile' : 'rocket'
         const speed = PROJECTILE_SPEED[kind]
-        const damage = kind === 'rifle' ? 2 : kind === 'missile' ? 10 : 3
-        aimProjectile(state, enemy, player, playerVelocity, kind, speed, damage, enemy.kind === 'anti-air' ? 0.8 : enemy.kind === 'helicopter' ? 0.45 : 0.52)
+        const damage = kind === 'missile' ? 10 : 3
+        aimProjectile(state, enemy, player, playerVelocity, kind, speed, damage, enemy.kind === 'anti-air' ? 0.8 : 0.52)
       }
     }
   }
@@ -1028,7 +1141,7 @@ export function nearbyEnemyThreats(state: EnemyState, player: Vec3) {
   let count = 0
   for (const enemy of state.slots) {
     if (!enemy.active || enemy.absorbing || enemy.inBeam || enemy.tether > 0.02) continue
-    const range = enemy.kind === 'anti-air' ? 145 : enemy.kind === 'drone' ? 32 : enemy.kind === 'helicopter' ? 42 : enemy.hitRadius + 2.4
+    const range = enemy.kind === 'anti-air' ? 145 : enemy.kind === 'drone' ? 32 : enemy.kind === 'helicopter' ? HELICOPTER_DETECT_RANGE : enemy.hitRadius + 2.4
     if (distanceToPlayer(enemy, player) <= range) count += 1
   }
   return count
@@ -1040,11 +1153,20 @@ export function nearbyEnemyThreats(state: EnemyState, player: Vec3) {
 export function resolveEnemyContacts(state: EnemyState, player: Vec3, playerRadius = 1.4) {
   let damage = 0
   state.contactKills = 0
+  state.helicopterRams = 0
   for (const enemy of state.slots) {
     if (!enemy.active || enemy.absorbing || enemy.inBeam || enemy.tether > 0.02) continue
     if (distanceToPlayer(enemy, player) > enemy.hitRadius + playerRadius) continue
     const contact = ENEMY_CONTACT_DAMAGE[enemy.kind]
     if (contact > damage) damage = contact
+    if (enemy.kind === 'helicopter') {
+      // A ram is one hit: connect, break away, patrol, re-engage. Left in
+      // chase mode it would sit inside the hull re-hitting on every damage
+      // window, which is a grind rather than an attack that can be dodged.
+      state.helicopterRams += 1
+      enemy.mode = 'outbound'
+      continue
+    }
     if (enemy.kind !== 'drone') continue
     state.lastContactPoint.x = enemy.position.x
     state.lastContactPoint.y = enemy.position.y

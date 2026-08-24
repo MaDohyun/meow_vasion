@@ -68,7 +68,7 @@ import { stepLakeAbsorption } from './core/lakes'
 import { createMissionState, isInsideAirCheckpoint, missionHasQuest, recordMissionEvent, startMissionOne, syncMissionState, type MissionQuest, type MissionState } from './core/missions'
 import { MYSTERY_BOOST_DURATION, MYSTERY_BOOST_MAX_MULTIPLIER, mysteryBoostMultiplier } from './core/mysteryCircles'
 import { shouldCrashFromOverload } from './core/overload'
-import { DRONE_BLAST_TRAUMA, addShakeTrauma, createShakeState, stepShake, type ShakeState } from './core/shake'
+import { DRONE_BLAST_TRAUMA, HELICOPTER_RAM_TRAUMA, addShakeTrauma, createShakeState, stepShake, type ShakeState } from './core/shake'
 import { worldPropMass, worldPropsAround } from './core/worldProps'
 import { endingForTimeUp, isVictory, type RunEnding } from './core/ending'
 import { playBoosterSound, playBuildingCollapseSound, playDroneExplosionSound, playLaserSound, playMysteryCircleSound, playNearbyCatCrySound, startBeamSound, startGameplayMusic, stopBeamSound, stopGameplayMusic, stopLobbyMusic, tone, unlockAudio } from './audio'
@@ -1893,9 +1893,11 @@ export function GameProvider({ children }: { children: ReactNode }) {
       // Ploughing through a drone detonates it just as surely as shooting it.
       triggerFireball(game.fireballs, 'aircraft', game.enemies.lastContactPoint, undefined, blastSeed(game))
     }
-    // Contact damage can come from anything solid; only a drone detonation
-    // earns the shake, so the trauma rides on the blast, not on the damage.
-    if (contactDamage > 0) registerImpact(game, 'ENEMY', 'contact', contactBlasts > 0 ? DRONE_BLAST_TRAUMA : 0)
+    // Contact damage can come from anything solid; a drone detonation or a
+    // helicopter ram earns the shake, so the trauma rides on the blow that
+    // deserves it rather than on the damage number.
+    const ramTrauma = game.enemies.helicopterRams > 0 ? HELICOPTER_RAM_TRAUMA : 0
+    if (contactDamage > 0) registerImpact(game, 'ENEMY', 'contact', contactBlasts > 0 ? DRONE_BLAST_TRAUMA : ramTrauma)
     const previousMissionStage = game.mission.stage
     const previousMissionRevision = game.mission.revision
     syncMissionState(game.mission, game.sessionTime, game.score)

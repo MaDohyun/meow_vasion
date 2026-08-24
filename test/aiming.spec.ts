@@ -12,9 +12,10 @@ import {
 } from '../src/core/enemies'
 import { DRONE_DEFAULTS } from '../src/core/drone'
 
-/** Each enemy only shoots in its own altitude band. */
+/** Each enemy only shoots in its own altitude band. Helicopters are absent:
+ *  they ram instead of shooting, so the fighter is the low-band shooter. */
 const BAND: Partial<Record<EnemyKind, number>> = {
-  helicopter: 12, fighter: 12, 'anti-air': 40,
+  fighter: 12, 'anti-air': 40,
 }
 
 /**
@@ -116,23 +117,23 @@ describe('lead aiming', () => {
 
   it('hits a craft that holds its heading', () => {
     // The point of the whole change. Flying in a straight line at full speed
-    // used to be perfect safety.
-    expect(run({ kind: 'helicopter', speed: DRONE_DEFAULTS.maxSpeed })).toBeGreaterThan(0)
+    // used to be perfect safety. The fighter carries these runs now that the
+    // helicopter rams instead of shooting.
     expect(run({ kind: 'fighter', speed: DRONE_DEFAULTS.maxSpeed })).toBeGreaterThan(0)
   })
 
   it('misses a craft that breaks its heading', () => {
     // And the other half: the telegraph is a real window, not decoration.
-    const straight = run({ kind: 'helicopter', speed: DRONE_DEFAULTS.maxSpeed })
-    const jinking = run({ kind: 'helicopter', speed: DRONE_DEFAULTS.maxSpeed, jink: true })
+    const straight = run({ kind: 'fighter', speed: DRONE_DEFAULTS.maxSpeed })
+    const jinking = run({ kind: 'fighter', speed: DRONE_DEFAULTS.maxSpeed, jink: true })
     expect(jinking).toBeLessThan(straight)
   })
 
   it('hits a big craft far more often than a small one', () => {
     // Size is the cost of growing, and it only became a real cost once shots
     // could arrive at all. Judged purely on geometry: same aim, bigger target.
-    const small = run({ kind: 'helicopter', speed: DRONE_DEFAULTS.maxSpeed, hitRadius: 1.05 })
-    const large = run({ kind: 'helicopter', speed: DRONE_DEFAULTS.maxSpeed, hitRadius: 3.26 })
+    const small = run({ kind: 'fighter', speed: DRONE_DEFAULTS.maxSpeed, hitRadius: 1.05 })
+    const large = run({ kind: 'fighter', speed: DRONE_DEFAULTS.maxSpeed, hitRadius: 3.26 })
     expect(large).toBeGreaterThan(small)
   })
 
@@ -141,12 +142,14 @@ describe('lead aiming', () => {
     // type. Before leading, a straight run at cruise took zero hits at every
     // altitude - the real rule was "stand still and die, move and be
     // immortal". Wide bounds: this guards the ordering, not the tuning.
+    // Hovering used to be judged here too, against helicopter rifle fire.
+    // The rifles are gone: a helicopter punishes a parked craft by ramming
+    // it, which projectile counting cannot see, so that half of the rule
+    // lives in test/helicopter.spec.ts ('locks on ... and runs them down').
     const straight = mixedWave({ speed: DRONE_DEFAULTS.maxSpeed })
     const jinking = mixedWave({ speed: DRONE_DEFAULTS.maxSpeed, jink: true })
-    const hovering = mixedWave({ speed: 0 })
     expect(straight).toBeGreaterThan(3)
     expect(jinking).toBeLessThan(straight / 3)
-    expect(hovering).toBeGreaterThan(straight)
   })
 
   it('charges a grown craft heavily for holding a heading', () => {
@@ -161,9 +164,10 @@ describe('lead aiming', () => {
   })
 
   it('leads worse the lower the enemy tier', () => {
-    // The wave ladder is the difficulty curve: the first minute teaches the
-    // rule, the anti-air network enforces it.
-    expect(LEAD_ACCURACY.helicopter).toBeLessThan(LEAD_ACCURACY.fighter)
+    // The wave ladder is the difficulty curve: fighters teach the rule, the
+    // anti-air network enforces it. Helicopters and drones do not shoot at
+    // all - one rams, the other detonates - so neither holds a lead figure
+    // worth ordering.
     expect(LEAD_ACCURACY.fighter).toBeLessThan(LEAD_ACCURACY['anti-air'])
     expect(LEAD_ACCURACY['anti-air']).toBe(1)
     expect(LEAD_ACCURACY.drone).toBe(0)

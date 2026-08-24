@@ -17,6 +17,11 @@ export const SHAKE_DECAY = 3.4
  *  so two drones inside the same second still stack into something bigger. */
 export const DRONE_BLAST_TRAUMA = 0.85
 
+/** A helicopter ramming the hull. Smaller than a detonation - it is a body
+ *  blow, not a blast - but still a kick, because four tonnes of airframe
+ *  arriving at speed should not read as a scrape along a wall. */
+export const HELICOPTER_RAM_TRAUMA = 0.6
+
 export const SHAKE_TRAUMA_MAX = 1
 
 /**
