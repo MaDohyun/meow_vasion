@@ -269,7 +269,7 @@ function FlightBar() {
           <b>{snapshot.boostActive ? t.turboActive : `${Math.round(snapshot.turbo * 100)}%`}</b>
         </div>
         <div className="ballast-meter" data-warn={snapshot.overloadWarn > 0} data-critical={snapshot.overloadWarn >= 1}>
-          <span>{t.drag}</span>
+          <span>{t.weight}</span>
           <div><i style={{ width: `${Math.min(100, (snapshot.ballast / snapshot.ballastLimit) * 100)}%` }} /></div>
           <b>{snapshot.overloadWarn >= 1 ? t.overloaded : `${Math.round(snapshot.cargoSlowdown * 100)}%`}</b>
         </div>

@@ -97,8 +97,10 @@ export type Strings = {
   beamLocked: string
   beamPulling: string
   beamAmplified: string
-  drag: string
-  slowdown: string
+  /** The ballast gauge. It reads as weight rather than as drag because that
+   *  is what fills it and what the overload warning names - the slowdown is
+   *  the symptom, not the thing on the bar. */
+  weight: string
   turbo: string
   turboActive: string
   live: string
@@ -294,8 +296,7 @@ export const STRINGS: Record<Language, Strings> = {
     beamLocked: '포착',
     beamPulling: '견인',
     beamAmplified: '증폭',
-    drag: '항력',
-    slowdown: '감속',
+    weight: '무게',
     turbo: '터보',
     turboActive: '작동',
     live: '활성',
@@ -467,8 +468,7 @@ export const STRINGS: Record<Language, Strings> = {
     beamLocked: '捕捉',
     beamPulling: '牽引',
     beamAmplified: '増幅',
-    drag: '抗力',
-    slowdown: '減速',
+    weight: '重さ',
     turbo: 'ターボ',
     turboActive: '作動',
     live: '稼働',
@@ -640,8 +640,7 @@ export const STRINGS: Record<Language, Strings> = {
     beamLocked: 'LOCKED',
     beamPulling: 'PULLING',
     beamAmplified: 'AMPLIFIED',
-    drag: 'DRAG',
-    slowdown: 'SLOWDOWN',
+    weight: 'WEIGHT',
     turbo: 'TURBO',
     turboActive: 'ACTIVE',
     live: 'LIVE',
