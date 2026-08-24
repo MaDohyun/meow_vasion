@@ -73,6 +73,29 @@ describe('time-based enemy waves', () => {
     expect(state.mineExplosion).not.toBeNull()
     expect(drone.active).toBe(false)
   })
+
+  it('keeps a beam-held mine quiet inside the arming field until release', () => {
+    const state = createEnemyState()
+    const drone = state.slots.find((candidate) => candidate.kind === 'drone')!
+    drone.active = true
+    drone.hitRadius = DRONE_MINE_HIT_RADIUS
+    drone.inBeam = true
+    drone.position.x = 0
+    drone.position.y = 10
+    drone.position.z = 0
+    drone.target.y = 10
+    // Inside the radius-9 field but well off the hull: a held mine must ride
+    // along disarmed instead of tripping the fuse the moment the pull starts.
+    const player = { x: 0, y: 10, z: 6 }
+    for (let tick = 0; tick < 60; tick += 1) stepEnemies(state, player, 1 / 60, { x: 0, y: 0, z: 0 }, 1.4)
+    expect(drone.mineArmed).toBe(false)
+    expect(drone.active).toBe(true)
+    // Dropped inside the field, the ordinary arming takes back over.
+    drone.inBeam = false
+    drone.tether = 0
+    for (let tick = 0; tick < 60 && drone.active; tick += 1) stepEnemies(state, player, 1 / 60, { x: 0, y: 0, z: 0 }, 1.4)
+    expect(drone.active).toBe(false)
+  })
   it('starts with an empty sky, and fills it the moment the drone wave lands', () => {
     // The opening stage is the sighting: the city has noticed the craft and
     // has not answered yet. A drone in the air before the bulletin announcing
