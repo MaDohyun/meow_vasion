@@ -53,9 +53,25 @@ ufoSightingImage.src = '/broadcast/ufo-sighting.webp'
 
 const MYSTERY_MARK_WIDTH = 25.5
 const MYSTERY_MARK_DEPTH = 23.3
-const MYSTERY_BEACON_HEIGHT = 68
-const MYSTERY_PARTICLES_PER_CIRCLE = 106
-const MYSTERY_PARTICLE_CAPACITY = LANDMARK_CELL_COUNT * MYSTERY_PARTICLES_PER_CIRCLE
+
+// The beacon is the tractor beam stood on its head: a frustum that leaves the
+// crop mark narrow and opens toward the sky. The foot is kept a little inside
+// the mark so the light reads as rising out of the drawing rather than sitting
+// on top of it, and the mouth is wide enough that a player flying over the
+// district sees a ring of gold rather than a needle.
+const MYSTERY_BEACON_HEIGHT = 82
+const MYSTERY_BEACON_FOOT_RADIUS = 10.2
+const MYSTERY_BEACON_MOUTH_RADIUS = 18.6
+/** The outer haze shell, drawn around the core one at this much of its width. */
+const MYSTERY_BEACON_HAZE_SPREAD = 1.16
+const MYSTERY_HALO_RADIUS = 17.5
+/** Height of the ground pool of light. Just clear of the mark's own plane. */
+const MYSTERY_HALO_LIFT = 0.1
+/** What a circle whose pickup has been eaten burns at. Dimmed rather than put
+ *  out: the mark is still a landmark and still counts for the mission that
+ *  asks you to cross three of them, so it has to stay findable - it just stops
+ *  advertising that there is something here to eat. */
+const MYSTERY_BEACON_SPENT = 0.55
 
 function canvasTexture(
   draw: (context: CanvasRenderingContext2D, width: number, height: number) => void,
@@ -319,16 +335,162 @@ const mysteryCircleMaterial = withLandmarkGlow(new THREE.MeshToonMaterial({
   side: THREE.DoubleSide,
 }), 0.04, 1.3)
 
-const mysteryParticlePositions = new Float32Array(MYSTERY_PARTICLE_CAPACITY * 3)
-const mysteryParticleColors = new Float32Array(MYSTERY_PARTICLE_CAPACITY * 3)
-const mysteryParticleGeometry = new THREE.BufferGeometry()
-const mysteryParticlePositionAttribute = new THREE.BufferAttribute(mysteryParticlePositions, 3)
-const mysteryParticleColorAttribute = new THREE.BufferAttribute(mysteryParticleColors, 3)
-mysteryParticlePositionAttribute.setUsage(THREE.DynamicDrawUsage)
-mysteryParticleColorAttribute.setUsage(THREE.DynamicDrawUsage)
-mysteryParticleGeometry.setAttribute('position', mysteryParticlePositionAttribute)
-mysteryParticleGeometry.setAttribute('color', mysteryParticleColorAttribute)
-mysteryParticleGeometry.setDrawRange(0, 0)
+/**
+ * The wall of the mystery beacon.
+ *
+ * The tractor beam's cone is a flat additive shell, which is all it needs: it
+ * hangs off the ship, it is close to the camera and it is only ever on for a
+ * second. A column standing in the city has to hold up under a long look from
+ * any distance, so this one is lit the way volumetric light actually reads -
+ * hardest along the silhouette, thinnest face-on, so the cone stays hollow and
+ * the buildings behind it stay visible through the middle.
+ *
+ * Two sines drifting up the wall do the rest. They are deliberately broad and
+ * out of step with each other: sharp bands would be flow rings, and flow rings
+ * are the beam's way of saying it is pulling something in. This column takes
+ * nothing, so it only wavers.
+ */
+const MYSTERY_BEACON_VERTEX = `
+attribute float aPhase;
+attribute float aStrength;
+uniform float uTime;
+uniform float uHeight;
+uniform float uSway;
+varying float vRise;
+varying float vAngle;
+varying float vPhase;
+varying float vStrength;
+varying vec3 vViewNormal;
+varying vec3 vViewPosition;
+
+void main() {
+  vRise = clamp(position.y / uHeight, 0.0, 1.0);
+  // Whole multiples of this are the only thing the shimmer uses, so the seam
+  // where the cylinder closes carries no discontinuity.
+  vAngle = atan(position.z, position.x);
+  vPhase = aPhase;
+  vStrength = aStrength;
+
+  // The lean is scaled by height squared: the foot stays pinned to the mark it
+  // is standing on, and only the open end drifts.
+  vec3 swayed = position;
+  float lean = vRise * vRise * uSway;
+  swayed.x += sin(uTime * 0.71 + aPhase + vRise * 2.3) * lean;
+  swayed.z += cos(uTime * 0.58 + aPhase * 1.7 + vRise * 2.9) * lean;
+  swayed.xz *= 1.0 + sin(uTime * 1.03 + aPhase * 2.3 - vRise * 3.4) * 0.04;
+
+  vec4 world = instanceMatrix * vec4(swayed, 1.0);
+  vec4 view = modelViewMatrix * world;
+  vViewNormal = normalize(normalMatrix * (mat3(instanceMatrix) * normal));
+  vViewPosition = view.xyz;
+  gl_Position = projectionMatrix * view;
+}
+`
+
+const MYSTERY_BEACON_FRAGMENT = `
+uniform float uTime;
+uniform float uNight;
+uniform float uGain;
+uniform vec3 uCore;
+uniform vec3 uEdge;
+varying float vRise;
+varying float vAngle;
+varying float vPhase;
+varying float vStrength;
+varying vec3 vViewNormal;
+varying vec3 vViewPosition;
+
+void main() {
+  float facing = abs(dot(normalize(vViewNormal), normalize(-vViewPosition)));
+  float rim = pow(1.0 - facing, 1.5);
+  // Dense where it leaves the ground, thinning as it climbs, and gone before
+  // the geometry ends so the mouth never cuts off in a hard ring.
+  float column = pow(1.0 - vRise, 1.2);
+  float mouth = smoothstep(1.0, 0.62, vRise);
+  float shimmer = 0.74
+    + 0.16 * sin(uTime * 1.12 - vRise * 4.5 + vAngle * 2.0 + vPhase)
+    + 0.10 * sin(uTime * 0.57 + vRise * 8.0 - vAngle * 3.0 + vPhase * 1.9);
+
+  float alpha = (0.085 + rim * 0.66) * (0.2 + column * 0.9) * mouth * shimmer * vStrength * uGain;
+  // Never off in daylight - the circle is a landmark at noon too - but the
+  // night is where it has to carry the district, so most of the range is there.
+  alpha *= 0.55 + uNight * 0.45;
+  // Gold at the ground, amber by the mouth. Held down as it climbs on purpose:
+  // an evenly bright column runs straight through the bloom pass and comes
+  // back white, which is a searchlight. The colour is the whole point.
+  //
+  // Daylight gets the amber end of the ramp for the same reason: light added
+  // to an already bright sky can only wash it out, and a pale column at noon
+  // is a smudge on the lens. Saturated, it still reads as gold.
+  vec3 core = mix(uEdge, uCore, 0.34 + uNight * 0.66);
+  vec3 tint = mix(uEdge, core, clamp(rim * 0.4 + column * 0.5, 0.0, 1.0));
+  gl_FragColor = vec4(tint * (0.6 + column * 0.46) * (0.92 + uNight * 0.4), clamp(alpha, 0.0, 1.0));
+}
+`
+
+function makeMysteryBeaconMaterial(gain: number, sway: number) {
+  return new THREE.ShaderMaterial({
+    vertexShader: MYSTERY_BEACON_VERTEX,
+    fragmentShader: MYSTERY_BEACON_FRAGMENT,
+    uniforms: {
+      uTime: { value: 0 },
+      uNight: { value: 0 },
+      uGain: { value: gain },
+      uSway: { value: sway },
+      uHeight: { value: MYSTERY_BEACON_HEIGHT },
+      uCore: { value: new THREE.Color('#ffeeb0') },
+      uEdge: { value: new THREE.Color('#ffa32e') },
+    },
+    transparent: true,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    blending: THREE.AdditiveBlending,
+    toneMapped: false,
+  })
+}
+
+// The haze leans further than the core it wraps, so the two silhouettes never
+// travel together and the column keeps a soft, unsettled edge.
+const mysteryBeaconCoreMaterial = makeMysteryBeaconMaterial(1, 1.6)
+const mysteryBeaconHazeMaterial = makeMysteryBeaconMaterial(0.42, 2.4)
+const mysteryBeaconMaterials = [mysteryBeaconCoreMaterial, mysteryBeaconHazeMaterial]
+
+/**
+ * The pool of light the beacon stands in.
+ *
+ * A column alone disappears the moment the player is directly above it, which
+ * is exactly where they are when they come to eat the pickup. The disc is what
+ * they see from up there, and at ground level it is what stops the beam from
+ * looking like it is hovering a metre over its own mark.
+ */
+const mysteryHaloTexture = canvasTexture((context, width, height) => {
+  const centre = width / 2
+  const radius = width / 2
+  const glow = context.createRadialGradient(centre, centre, 0, centre, centre, radius)
+  glow.addColorStop(0, 'rgba(255,246,214,0.95)')
+  glow.addColorStop(0.32, 'rgba(255,216,132,0.52)')
+  glow.addColorStop(0.66, 'rgba(255,186,84,0.22)')
+  glow.addColorStop(1, 'rgba(255,170,60,0)')
+  context.fillStyle = glow
+  context.fillRect(0, 0, width, height)
+  // Where the wall of the beam meets the ground. Without it the disc is a
+  // smudge; with it the frustum has a footprint.
+  context.strokeStyle = 'rgba(255,236,176,0.5)'
+  context.lineWidth = width * 0.016
+  context.beginPath()
+  context.arc(centre, centre, radius * 0.61, 0, Math.PI * 2)
+  context.stroke()
+}, 256, 256)
+
+const mysteryHaloMaterial = new THREE.MeshBasicMaterial({
+  color: '#ffdd94',
+  map: mysteryHaloTexture,
+  transparent: true,
+  opacity: 0.4,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending,
+  toneMapped: false,
+})
 
 /**
  * The pickup saucer hovering over an unclaimed circle: a flattened hull with
@@ -350,17 +512,6 @@ const boonSaucerMaterial = new THREE.MeshToonMaterial({
  *  colours multiply the material, so white is "untouched". */
 const landmarkHitTint = new THREE.Color(BUILDING.LASER_HIT)
 const landmarkBaseTint = new THREE.Color('#ffffff')
-
-const mysteryParticleMaterial = new THREE.PointsMaterial({
-  color: '#ffe7a2',
-  size: 0.28,
-  vertexColors: true,
-  transparent: true,
-  opacity: 0.14,
-  blending: THREE.AdditiveBlending,
-  depthWrite: false,
-  sizeAttenuation: true,
-})
 
 const storeBandMaterial = withLandmarkGlow(new THREE.MeshToonMaterial({
   color: BUILDING.STORE_BAND,
@@ -741,49 +892,128 @@ function MysteryCirclePool() {
   )
 }
 
-function MysterySignalPool() {
+/**
+ * The beacon standing on every crop mark: the tractor beam turned upside down.
+ *
+ * This was a cloud of drifting motes, and a hundred additive points spread over
+ * eighty metres of night air is nothing to look at - each one is a pixel, and
+ * the signal only really existed once you were already parked on top of it. A
+ * circle is a destination, so it has to read as one from across the district,
+ * and the run has already taught what a beam of light standing in the city
+ * means.
+ *
+ * So the beam is inverted and recoloured gold: a frustum rooted in the mark,
+ * narrow at the ground and open at the sky. Nothing flows inside it. The
+ * tractor beam's rings are how it says it is pulling something in; this column
+ * takes nothing, it only leans and breathes, which is the part that makes it
+ * strange rather than municipal.
+ *
+ * Three draws for the whole district: a bright core shell, a wider and dimmer
+ * haze around it, and one pool of light on the ground. All additive, so the
+ * bloom pass carries them the moment the sun is down.
+ */
+function MysteryBeaconPool() {
   const { runtime } = useGame()
+  const core = useRef<THREE.InstancedMesh>(null)
+  const haze = useRef<THREE.InstancedMesh>(null)
+  const halo = useRef<THREE.InstancedMesh>(null)
+  const sites = useRef<{ id: string | null; x: number; z: number; phase: number }[]>([])
+  const lastKey = useRef('')
+  const matrix = useMemo(() => new THREE.Matrix4(), [])
+  const position = useMemo(() => new THREE.Vector3(), [])
+  const upright = useMemo(() => new THREE.Quaternion(), [])
+  const flat = useMemo(() => new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0)), [])
+  const coreScale = useMemo(() => new THREE.Vector3(1, 1, 1), [])
+  const hazeScale = useMemo(() => new THREE.Vector3(MYSTERY_BEACON_HAZE_SPREAD, 1.05, MYSTERY_BEACON_HAZE_SPREAD), [])
+  const haloScale = useMemo(() => new THREE.Vector3(MYSTERY_HALO_RADIUS * 2, MYSTERY_HALO_RADIUS * 2, 1), [])
+  const color = useMemo(() => new THREE.Color(), [])
+  const phase = useMemo(() => new THREE.InstancedBufferAttribute(new Float32Array(LANDMARK_CELL_COUNT), 1), [])
+  const strength = useMemo(() => new THREE.InstancedBufferAttribute(new Float32Array(LANDMARK_CELL_COUNT), 1), [])
+  // One geometry for both shells - the haze is the same cone worn a size
+  // larger, which the instance matrix already says.
+  const geometry = useMemo(() => {
+    const cone = new THREE.CylinderGeometry(
+      MYSTERY_BEACON_MOUTH_RADIUS,
+      MYSTERY_BEACON_FOOT_RADIUS,
+      MYSTERY_BEACON_HEIGHT,
+      26,
+      14,
+      true,
+    )
+    cone.translate(0, MYSTERY_BEACON_HEIGHT / 2, 0)
+    cone.setAttribute('aPhase', phase)
+    cone.setAttribute('aStrength', strength)
+    return cone
+  }, [phase, strength])
 
   useFrame(({ clock }) => {
+    if (!core.current || !haze.current || !halo.current) return
     const game = runtime.current
-    const night = game.daylight.nightFactor
-    mysteryParticleMaterial.opacity = 0.12 + night * 0.88
-    mysteryParticleMaterial.size = 0.2 + night * 0.32
-
-    let count = 0
-    for (const cell of groundCellsAround(game.drone.position, LANDMARK_RADIUS_CELLS)) {
-      if (groundLandmarkForCell(cell) !== 'mystery-circle') continue
-      const centerX = (cell.cellX + 0.5) * WORLD_CELL_SIZE
-      const centerZ = (cell.cellZ + 0.5) * WORLD_CELL_SIZE
-      const seed = seedForWorldCell(cell.cellX, cell.cellZ, 0x6d797374)
-      const seedPhase = (seed % 997) * 0.013
-      for (let particle = 0; particle < MYSTERY_PARTICLES_PER_CIRCLE; particle += 1) {
-        // Bias the distribution upward so the signal grows denser toward the
-        // high-rise end of the inverted frustum instead of looking hollow at
-        // the top.
-        const rawT = (particle + 0.5) / MYSTERY_PARTICLES_PER_CIRCLE
-        const t = Math.pow(rawT, 0.72)
-        const height = 0.8 + t * MYSTERY_BEACON_HEIGHT
-        const pulse = 0.82 + Math.sin(clock.elapsedTime * 1.8 + seedPhase + particle * 0.63) * 0.18
-        const radius = (1.8 + t * 10.8) * pulse
-        const angle = seedPhase + particle * 2.399963 + clock.elapsedTime * (0.08 + (1 - t) * 0.08)
-        const slot = count * 3
-        mysteryParticlePositions[slot] = centerX + Math.cos(angle) * radius
-        mysteryParticlePositions[slot + 1] = height
-        mysteryParticlePositions[slot + 2] = centerZ + Math.sin(angle) * radius
-        const shimmer = 0.62 + 0.38 * (0.5 + 0.5 * Math.sin(clock.elapsedTime * 3.2 + seedPhase + particle))
-        mysteryParticleColors[slot] = shimmer
-        mysteryParticleColors[slot + 1] = shimmer * 0.72
-        mysteryParticleColors[slot + 2] = shimmer * 0.32
-        count += 1
+    const world = game.world
+    // Circles do not move, so the matrices are only rewritten when the district
+    // streams. Everything after this block is the per-frame shimmer.
+    const key = `${world.cellX}:${world.cellZ}`
+    if (key !== lastKey.current) {
+      lastKey.current = key
+      sites.current = []
+      for (const cell of groundCellsAround(game.drone.position, LANDMARK_RADIUS_CELLS)) {
+        if (groundLandmarkForCell(cell) !== 'mystery-circle') continue
+        if (sites.current.length >= LANDMARK_CELL_COUNT) break
+        sites.current.push({
+          id: mysteryCircleForCell(cell.cellX, cell.cellZ),
+          x: (cell.cellX + 0.5) * WORLD_CELL_SIZE,
+          z: (cell.cellZ + 0.5) * WORLD_CELL_SIZE,
+          // Its own phase, so a district holding two circles never has them
+          // waver in lockstep.
+          phase: (seedForWorldCell(cell.cellX, cell.cellZ, 0x6d797374) % 628) / 100,
+        })
       }
+      for (const [index, site] of sites.current.entries()) {
+        position.set(site.x, 0, site.z)
+        matrix.compose(position, upright, coreScale)
+        core.current.setMatrixAt(index, matrix)
+        matrix.compose(position, upright, hazeScale)
+        haze.current.setMatrixAt(index, matrix)
+        position.set(site.x, MYSTERY_HALO_LIFT, site.z)
+        matrix.compose(position, flat, haloScale)
+        halo.current.setMatrixAt(index, matrix)
+        phase.array[index] = site.phase
+      }
+      phase.needsUpdate = true
+      setPoolCount(core.current, sites.current.length)
+      setPoolCount(haze.current, sites.current.length)
+      setPoolCount(halo.current, sites.current.length)
     }
-    mysteryParticleGeometry.setDrawRange(0, count)
-    mysteryParticlePositionAttribute.needsUpdate = true
-    mysteryParticleColorAttribute.needsUpdate = true
+
+    const night = game.daylight.nightFactor
+    for (const material of mysteryBeaconMaterials) {
+      material.uniforms.uTime.value = clock.elapsedTime
+      material.uniforms.uNight.value = night
+    }
+    mysteryHaloMaterial.opacity = 0.36 + night * 0.58
+    for (const [index, site] of sites.current.entries()) {
+      // Dimmed once the pickup is eaten, not merely flown over - the same rule
+      // the radar icon follows, so the two agree about what is still worth a
+      // detour.
+      const lit = site.id && game.boons.claimed.has(site.id) ? MYSTERY_BEACON_SPENT : 1
+      strength.array[index] = lit
+      // The disc breathes with the column instead of holding one flat value,
+      // which is what keeps the beacon from reading as a decal from above.
+      halo.current.setColorAt(index, color.setScalar(lit * (0.82 + 0.18 * Math.sin(clock.elapsedTime * 1.12 + site.phase * 2.2))))
+    }
+    strength.needsUpdate = true
+    if (halo.current.instanceColor) halo.current.instanceColor.needsUpdate = true
   })
 
-  return <points geometry={mysteryParticleGeometry} material={mysteryParticleMaterial} frustumCulled={false} renderOrder={4} />
+  return (
+    <group>
+      <instancedMesh ref={halo} args={[undefined, mysteryHaloMaterial, LANDMARK_CELL_COUNT]} frustumCulled={false} renderOrder={4} onUpdate={(mesh) => { mesh.count = 0 }}>
+        <planeGeometry args={[1, 1]} />
+      </instancedMesh>
+      <instancedMesh ref={haze} args={[geometry, mysteryBeaconHazeMaterial, LANDMARK_CELL_COUNT]} frustumCulled={false} renderOrder={5} onUpdate={(mesh) => { mesh.count = 0 }} />
+      <instancedMesh ref={core} args={[geometry, mysteryBeaconCoreMaterial, LANDMARK_CELL_COUNT]} frustumCulled={false} renderOrder={6} onUpdate={(mesh) => { mesh.count = 0 }} />
+    </group>
+  )
 }
 
 /**
@@ -1431,7 +1661,7 @@ export const CityLandmarks = memo(function CityLandmarks() {
       <BuildingFeaturePool />
       <ParkPool />
       <MysteryCirclePool />
-      <MysterySignalPool />
+      <MysteryBeaconPool />
       <BoonPickupPool />
       <TransitUtilityPool />
       <ParkingLotPool />
