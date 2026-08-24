@@ -994,6 +994,10 @@ const pedestrianDetailColors = [
 // the vertex-coloured dark patches black on the tuxedo cat and turns them into
 // warm brown or charcoal tabby stripes on the orange and gray cats.
 const catStyleColors = ['#fffaf2', '#f29c4c', '#a8afb8'] as const
+// The opening cat is the one thing the tutorial points at, so it always wears
+// the orange coat. The gray coat its pooled slot happened to land on read as
+// park scenery, and a player who cannot pick the cat out cannot start.
+const TUTORIAL_CAT_COAT = 1
 const beamReflectionColor = new THREE.Color('#8fffe1')
 
 function CrowdPool({ kind }: { kind: CrowdKind }) {
@@ -1046,7 +1050,9 @@ function CrowdPool({ kind }: { kind: CrowdKind }) {
         // Rotate coats when a pooled slot is reused, then retain that coat
         // under the beam. A restrained mint reflection communicates capture
         // without replacing every cat with the old flat yellow highlight.
-        const coat = (object.slot + object.generation * 2) % catStyleColors.length
+        const coat = object.id.startsWith('tutorial-cat')
+          ? TUTORIAL_CAT_COAT
+          : (object.slot + object.generation * 2) % catStyleColors.length
         color.set(catStyleColors[coat]!)
         if (snapshot.beamTargetId === object.id) color.lerp(beamReflectionColor, 0.15)
         ref.current.setColorAt(count, color)
