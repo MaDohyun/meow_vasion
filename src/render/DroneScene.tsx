@@ -1366,7 +1366,10 @@ function EnemyPool({ kind }: { kind: PooledEnemyKind }) {
       // around the anchor, and the moment the nose snaps onto the player is
       // the lock-on being legible. Its `phase` is its travel heading.
       else if (kind === 'helicopter') rotation.set(0, enemy.phase, 0)
-      else rotation.set(0, yaw, kind === 'fighter' ? Math.sin(enemy.phase) * 0.22 : 0)
+      // A fighter holds one straight pass, so it faces its own course - the
+      // whole point of its view-cone fan is that where it points is readable.
+      else if (kind === 'fighter') rotation.set(0, enemy.rotation.y, Math.sin(enemy.phase) * 0.22)
+      else rotation.set(0, yaw, 0)
       quaternion.setFromEuler(rotation)
       // The battleship's geometry is authored at true scale, so it is the one
       // pool that must not be scaled - the turret positions the guns fire from
@@ -1545,13 +1548,15 @@ function EnemyProjectiles() {
     for (const projectile of runtime.current.enemies.projectiles) {
       if (!projectile.active) continue
       position.set(projectile.position.x, projectile.position.y, projectile.position.z)
-      const size = projectile.kind === 'boss-beam' ? 1.35 : projectile.kind === 'missile' ? 0.95 : projectile.kind === 'shell' ? 0.8 : 0.48
+      const size = projectile.kind === 'boss-beam' ? 1.35 : projectile.kind === 'missile' ? 0.95 : projectile.kind === 'orb' ? 0.9 : projectile.kind === 'shell' ? 0.8 : 0.48
       // Stretched along travel rather than a round dot: at these speeds a
       // sphere gives no sense of which way a shot is going, and which way it
       // is going is the only thing the player can act on once it is out.
+      // Except the orb: it is slow enough to track by eye, and a curtain of
+      // round embers is the look the pattern is meant to have.
       travel.set(projectile.velocity.x, projectile.velocity.y, projectile.velocity.z)
       const speed = travel.length()
-      if (speed > 0.001) {
+      if (speed > 0.001 && projectile.kind !== 'orb') {
         travel.divideScalar(speed)
         quaternion.setFromUnitVectors(shotAxis, travel)
         scale.set(size, size * (1 + speed * 0.05), size)
@@ -1561,7 +1566,7 @@ function EnemyProjectiles() {
       }
       matrix.compose(position, quaternion, scale)
       mesh.setMatrixAt(count, matrix)
-      color.set(projectile.kind === 'boss-beam' ? '#ff5f7c' : projectile.kind === 'missile' ? '#ffe05f' : projectile.kind === 'shell' ? '#ff9c54' : projectile.kind === 'rocket' ? '#ff78bd' : '#fff5c7')
+      color.set(projectile.kind === 'boss-beam' ? '#ff5f7c' : projectile.kind === 'missile' ? '#ffe05f' : projectile.kind === 'orb' ? '#ffc75a' : projectile.kind === 'shell' ? '#ff9c54' : projectile.kind === 'rocket' ? '#ff78bd' : '#fff5c7')
       mesh.setColorAt(count, color)
       count += 1
     }
