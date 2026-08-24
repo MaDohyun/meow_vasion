@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { isAbsorbable } from '../src/core/beam'
 import { DRONE_DEFAULTS } from '../src/core/drone'
+import { maxAltitude } from '../src/core/size'
 import {
   ANTI_AIR_TELEGRAPH,
   BATTLESHIP_ALTITUDE,
@@ -264,6 +265,23 @@ describe("earth's last resort", () => {
     const spots = BATTLESHIP_TURRETS.map((_, index) => ({ ...battleshipTurretPoint(ship, index, point) }))
     const span = Math.max(...spots.map((spot) => spot.z)) - Math.min(...spots.map((spot) => spot.z))
     expect(span).toBeGreaterThan(BATTLESHIP_LENGTH * 0.6)
+  })
+
+  it('is in reach of the craft the developer drill hands over, at once', () => {
+    // Mirrors DRILL_CRAFT_SIZE in GameContext, kept as a literal here rather
+    // than importing a React module into a core test - the same thing
+    // daylight.spec does with the run length. What the drill promises is a
+    // craft that can fly up to the ship; the opening saucer's ceiling is
+    // thirty metres and the ship holds station at ninety-six, so a drill on a
+    // starting craft would be a screenshot of the fight, not the fight.
+    const drillCraftSize = 5.2
+    expect(maxAltitude(drillCraftSize)).toBeGreaterThan(BATTLESHIP_ALTITUDE)
+    // And the ship is up as soon as the drill's clock is, rather than a wave
+    // interval later: the spawner puts the boss first whenever one is owed.
+    const state = createEnemyState(19)
+    const player = { x: 0, y: 60, z: 0 }
+    syncEnemyTiers(state, LAST_WAVE_AT, player, 0, 1 / 60)
+    expect(state.slots.filter((enemy) => enemy.kind === 'boss' && enemy.active)).toHaveLength(1)
   })
 
   it('takes a real laser investment to bring down', () => {

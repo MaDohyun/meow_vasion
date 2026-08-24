@@ -215,6 +215,21 @@ export function startMissionOne(state: MissionState, elapsed = 0) {
   return assignStage(state, 1, elapsed)
 }
 
+/**
+ * Jump straight to the final assignment, for the developer drill that opens on
+ * the dreadnought.
+ *
+ * Ordinary play can only reach stage three by finishing the two before it, and
+ * that is not a rule worth loosening for a debug entry point - the drill wants
+ * the same stage three a real run arrives at, quests and all, because the
+ * `destroy-battleship` objective is part of what it is there to exercise. So
+ * this is the same `assignStage` the run itself uses, reached by a door marked
+ * as one.
+ */
+export function startFinalMission(state: MissionState, elapsed = 0) {
+  return assignStage(state, 3, elapsed)
+}
+
 function finishCompletedStage(state: MissionState, elapsed: number) {
   if (state.quests.length !== 3 || !state.quests.every((quest) => quest.complete)) return false
   if (state.stage === 1) assignStage(state, 2, elapsed)

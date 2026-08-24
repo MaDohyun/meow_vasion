@@ -46,6 +46,11 @@ export type Strings = {
   options: string
   close: string
   howTo: string
+  /** The developer drill, which only appears where the dev entrances are on.
+   *  Translated like everything else: whoever is testing the game reads the
+   *  lobby in their own language too. */
+  devDrill: string
+  devRunNote: string
   howToTitle: string
   howToMove: string
   howToAim: string
@@ -235,6 +240,8 @@ export const STRINGS: Record<Language, Strings> = {
     options: '옵션',
     close: '닫기',
     howTo: '하는 방법',
+    devDrill: '개발자 모드 · 전함으로',
+    devRunNote: '개발자 모드로 시작한 판은 랭킹에 올리지 않습니다.',
     howToTitle: 'UFO CONTROLS',
     howToMove: '이동',
     howToAim: '마우스 조준',
@@ -400,6 +407,8 @@ export const STRINGS: Record<Language, Strings> = {
     options: 'オプション',
     close: '閉じる',
     howTo: '遊び方',
+    devDrill: '開発者モード · 戦艦へ',
+    devRunNote: '開発者モードで始めたプレイはランキングに登録されません。',
     howToTitle: 'UFO CONTROLS',
     howToMove: '移動',
     howToAim: 'マウス照準',
@@ -565,6 +574,8 @@ export const STRINGS: Record<Language, Strings> = {
     options: 'OPTIONS',
     close: 'CLOSE',
     howTo: 'HOW TO PLAY',
+    devDrill: 'DEV · JUMP TO BATTLESHIP',
+    devRunNote: 'A developer drill run is not ranked.',
     howToTitle: 'UFO CONTROLS',
     howToMove: 'MOVE',
     howToAim: 'MOUSE AIM',
