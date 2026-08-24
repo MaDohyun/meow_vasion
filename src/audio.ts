@@ -34,9 +34,11 @@ const BOOSTER_VOLUME = 0.4
 const MYSTERY_CIRCLE_VOLUME = 0.7
 const CAT_CRY_VOLUME = 0.62
 const MENU_HOVER_VOLUME = 0.1
-/** A car or box truck going up. Sits just under the building collapse: a
- * vehicle is loud, but it is not a tower failing. */
-const VEHICLE_EXPLOSION_VOLUME = 0.6
+/** A car or box truck going up. Cut to a third of where it started: at the
+ * old level a blast every few seconds was drowning the street it happens on,
+ * and a vehicle should sit well under the building collapse rather than beside
+ * it. */
+const VEHICLE_EXPLOSION_VOLUME = 0.2
 /** A tanker is a fuel load, not sheet metal. Same sample, played harder so the
  * rarest and highest-scoring kill in the city is the one that is heard. */
 export const TANKER_EXPLOSION_SCALE = 1.55
@@ -675,9 +677,9 @@ export function playVehicleExplosionSound(volumeScale = 1) {
   const source = context.createBufferSource()
   const gain = context.createGain()
   source.buffer = vehicleExplosionBuffer
-  // Capped short of unity: the shared effects gain still has the lobby's
-  // sound-effect slider to apply after this, and a tanker at full scale must
-  // not clip the bus on its way through.
+  // The ceiling is a guard, not a working limit - at the current level even a
+  // tanker lands nowhere near it. It is here so that raising either number
+  // later cannot push the blast into clipping the effects bus on its way out.
   const level = Math.min(0.98, VEHICLE_EXPLOSION_VOLUME * Math.max(0, volumeScale))
   gain.gain.setValueAtTime(level, context.currentTime)
   source.connect(gain)

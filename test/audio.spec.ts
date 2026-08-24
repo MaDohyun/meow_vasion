@@ -136,10 +136,17 @@ describe('road-vehicle explosion playback', () => {
     expect(played[0]?.buffer).toBe(played[1]?.buffer)
   })
 
-  it('gives the tanker a louder level than a car or box truck, short of clipping', () => {
+  it('gives the tanker a louder level than a car or box truck', () => {
     const [vehicle, tanker] = played
     expect(vehicle!.level).toBeGreaterThan(0)
     expect(tanker!.level).toBeGreaterThan(vehicle!.level)
-    expect(tanker!.level).toBeLessThanOrEqual(0.98)
+  })
+
+  it('keeps even the tanker well under the drone and building blasts', () => {
+    // The whole point of the cut: a road vehicle happens constantly, so it has
+    // to sit under the two rarer blasts (0.58 and 0.66) rather than beside
+    // them. Anything that creeps back up towards those is the old problem.
+    const [, tanker] = played
+    expect(tanker!.level).toBeLessThan(0.4)
   })
 })
