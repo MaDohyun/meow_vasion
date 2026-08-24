@@ -1218,7 +1218,7 @@ function absorbCrowd(game: GameRuntime, kind: 'cat' | 'pedestrian') {
     startMissionOne(game.mission, 0)
     finishTutorialCrowd(game.crowds)
     presentMissionChange(game, 0, previousRevision)
-    // No hud-center flavor text here - the general's briefing (BossBriefing)
+    // No pilot callout here - the general's briefing (BossBriefing)
     // covers the tutorial hand-off with its own step 6/7 lines.
   } else {
     reportMissionEvent(game, { type: kind === 'cat' ? 'capture-cat' : 'capture-person' })
@@ -1459,9 +1459,13 @@ function endRun(game: GameRuntime, title: string, ending: RunEnding) {
   // The run is over; a bulletin about the next wave would be reporting on a
   // city that is no longer under attack.
   game.broadcastTime = 0
-  game.message = title
+  // Callouts belong to the pilot, and the pilot's channel is a speech bubble
+  // over their face. The internal result title is an untranslated English
+  // constant - not a line anyone should be shown reading. The results screen
+  // says what happened, in the player's own language.
+  game.message = ''
   game.messageKey = null
-  game.messageTime = 10
+  game.messageTime = 0
 }
 
 export function GameProvider({ children }: { children: ReactNode }) {

@@ -282,6 +282,31 @@ export function parkClusterForCell(cellX: number, cellZ: number) {
   return member ? `park:${sectorX}:${sectorZ}` : null
 }
 
+type LakeFootprint = {
+  id: string
+  anchorX: number
+  anchorZ: number
+  shape: (typeof LAKE_SHAPES)[number]
+}
+
+/**
+ * The one lake a sector carries, or null where it carries none.
+ *
+ * Split out of the per-cell lookup for the same reason the mystery circles'
+ * sector helper is: the cell test the world builds from and the sector sweep
+ * the radar paints from now read the same anchor and the same shape, so the
+ * dial cannot disagree with the water the player is flying over.
+ */
+function lakeFootprintForSector(sectorX: number, sectorZ: number): LakeFootprint | null {
+  const seed = seedForWorldCell(sectorX, sectorZ, 0x1a6e)
+  if (seed % 100 >= 24) return null
+  const anchorX = sectorX * LAKE_SECTOR_SIZE + 1 + ((seed >>> 9) % 2)
+  const anchorZ = sectorZ * LAKE_SECTOR_SIZE + 1 + ((seed >>> 13) % 2)
+  const shape = LAKE_SHAPES[(seed >>> 17) % LAKE_SHAPES.length]!
+  if (shape.some(([dx, dz]) => isTutorialCell(anchorX + dx, anchorZ + dz))) return null
+  return { id: `lake:${sectorX}:${sectorZ}`, anchorX, anchorZ, shape }
+}
+
 /**
  * Returns a stable cluster id for the two-to-four joined cells of a lake.
  * Clusters stay inside a six-cell sector, so checking membership is constant
@@ -289,16 +314,65 @@ export function parkClusterForCell(cellX: number, cellZ: number) {
  */
 export function lakeClusterForCell(cellX: number, cellZ: number) {
   if (isTutorialCell(cellX, cellZ)) return null
-  const sectorX = Math.floor(cellX / LAKE_SECTOR_SIZE)
-  const sectorZ = Math.floor(cellZ / LAKE_SECTOR_SIZE)
-  const seed = seedForWorldCell(sectorX, sectorZ, 0x1a6e)
-  if (seed % 100 >= 24) return null
-  const anchorX = sectorX * LAKE_SECTOR_SIZE + 1 + ((seed >>> 9) % 2)
-  const anchorZ = sectorZ * LAKE_SECTOR_SIZE + 1 + ((seed >>> 13) % 2)
-  const shape = LAKE_SHAPES[(seed >>> 17) % LAKE_SHAPES.length]!
-  if (shape.some(([dx, dz]) => isTutorialCell(anchorX + dx, anchorZ + dz))) return null
-  const member = shape.some(([dx, dz]) => cellX === anchorX + dx && cellZ === anchorZ + dz)
-  return member ? `lake:${sectorX}:${sectorZ}` : null
+  const footprint = lakeFootprintForSector(
+    Math.floor(cellX / LAKE_SECTOR_SIZE),
+    Math.floor(cellZ / LAKE_SECTOR_SIZE),
+  )
+  if (!footprint) return null
+  const member = footprint.shape.some(([dx, dz]) => cellX === footprint.anchorX + dx && cellZ === footprint.anchorZ + dz)
+  return member ? footprint.id : null
+}
+
+export type LakeCell = { id: string; cellX: number; cellZ: number; x: number; z: number }
+
+/** How far apart two lake sectors are, in metres. */
+const LAKE_SECTOR_SPAN = WORLD_CELL_SIZE * LAKE_SECTOR_SIZE
+
+/**
+ * Every lake cell whose tile reaches within `range` of a point.
+ *
+ * Water is a destination, not scenery: one mission asks for litres of it, the
+ * beam only draws from it, and it is the one surface that will not let go of
+ * the craft while it drinks. From above the rooftops a lake looks like any
+ * other dark block, so the dial is where a player can actually route to one.
+ *
+ * Stepped by sector, like the mystery-circle sweep, because a lake never
+ * leaves the sector that owns it - a shape reaches at most three cells past an
+ * anchor that sits one or two cells in, so the far edge lands on cell five of
+ * six. A 170m sweep is therefore nine hashes rather than a hundred cell tests.
+ *
+ * @param into reused between frames so a per-frame sweep allocates nothing.
+ */
+export function lakeCellsNear(
+  position: Pick<Vec3, 'x' | 'z'>,
+  range: number,
+  into: LakeCell[] = [],
+) {
+  into.length = 0
+  if (range <= 0) return into
+  // Measured to the tile's corner rather than to its centre: a shoreline that
+  // only appeared once its centre was in range would draw the lake a cell
+  // smaller than it is, right at the edge the player is aiming for.
+  const reach = range + WORLD_CELL_SIZE * Math.SQRT1_2
+  const fromX = Math.floor((position.x - reach) / LAKE_SECTOR_SPAN)
+  const toX = Math.floor((position.x + reach) / LAKE_SECTOR_SPAN)
+  const fromZ = Math.floor((position.z - reach) / LAKE_SECTOR_SPAN)
+  const toZ = Math.floor((position.z + reach) / LAKE_SECTOR_SPAN)
+  for (let sectorZ = fromZ; sectorZ <= toZ; sectorZ += 1) {
+    for (let sectorX = fromX; sectorX <= toX; sectorX += 1) {
+      const footprint = lakeFootprintForSector(sectorX, sectorZ)
+      if (!footprint) continue
+      for (const [dx, dz] of footprint.shape) {
+        const cellX = footprint.anchorX + dx
+        const cellZ = footprint.anchorZ + dz
+        const x = worldCellCenter(cellX)
+        const z = worldCellCenter(cellZ)
+        if (Math.hypot(x - position.x, z - position.z) > reach) continue
+        into.push({ id: footprint.id, cellX, cellZ, x, z })
+      }
+    }
+  }
+  return into
 }
 
 export type MysteryCircleSite = { id: string; cellX: number; cellZ: number; x: number; z: number }

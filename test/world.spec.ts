@@ -18,6 +18,7 @@ import {
   WORLD_REMOVE_RADIUS,
   WORLD_SPAWN_RADIUS,
   isTutorialCell,
+  lakeCellsNear,
   lakeClusterForCell,
   mysteryCircleForCell,
   PARKED_CAR_SPAWN_MULTIPLIER,
@@ -339,6 +340,75 @@ describe('building variety', () => {
       expect(second?.entrance).toBe(first?.entrance)
       expect(second?.form).toBe(first?.form)
       expect(second?.roofOverhang).toBe(first?.roofOverhang)
+    }
+  })
+})
+
+
+/**
+ * The radar plots water, so the sweep it plots from has to agree with the
+ * cell test the city itself is built from - a lake drawn where there is none,
+ * or missing where there is one, is worse than no lake on the dial at all.
+ */
+describe('lake sweep for the radar', () => {
+  const RANGE = 170
+
+  it('returns only cells the world itself calls lake', () => {
+    for (const origin of [{ x: 0, z: 0 }, { x: 1420, z: -880 }, { x: -3100, z: 2400 }]) {
+      for (const cell of lakeCellsNear(origin, RANGE)) {
+        expect(lakeClusterForCell(cell.cellX, cell.cellZ), `${cell.cellX}:${cell.cellZ}`).toBe(cell.id)
+        expect(cell.x).toBeCloseTo((cell.cellX + 0.5) * WORLD_CELL_SIZE, 6)
+        expect(cell.z).toBeCloseTo((cell.cellZ + 0.5) * WORLD_CELL_SIZE, 6)
+      }
+    }
+  })
+
+  it('misses no lake cell inside the dial', () => {
+    // The sweep steps sectors; this walks every cell in the box the dial
+    // covers and insists the two answers match. Water is a one-in-four sector
+    // roll and the dial is barely two sectors across, so most spots on the map
+    // see none at all - hence a run of origins rather than one lucky point.
+    const reach = Math.ceil(RANGE / WORLD_CELL_SIZE) + 1
+    let checked = 0
+    for (let step = 0; step < 60; step += 1) {
+      const origin = { x: step * 137 - 2000, z: step * -83 + 900 }
+      const found = new Set(lakeCellsNear(origin, RANGE).map((cell) => `${cell.cellX}:${cell.cellZ}`))
+      const centerX = Math.floor(origin.x / WORLD_CELL_SIZE)
+      const centerZ = Math.floor(origin.z / WORLD_CELL_SIZE)
+      for (let dz = -reach; dz <= reach; dz += 1) {
+        for (let dx = -reach; dx <= reach; dx += 1) {
+          const cellX = centerX + dx
+          const cellZ = centerZ + dz
+          if (!lakeClusterForCell(cellX, cellZ)) continue
+          const x = (cellX + 0.5) * WORLD_CELL_SIZE
+          const z = (cellZ + 0.5) * WORLD_CELL_SIZE
+          // Only the cells the sweep promises: a centre inside the range, with
+          // the corner tolerance left out so the assertion has no slack in it.
+          if (Math.hypot(x - origin.x, z - origin.z) > RANGE) continue
+          checked += 1
+          expect(found.has(`${cellX}:${cellZ}`), `${cellX}:${cellZ} from ${origin.x},${origin.z}`).toBe(true)
+        }
+      }
+    }
+    // A sweep that found nothing would pass the loop above by doing nothing.
+    expect(checked).toBeGreaterThan(10)
+  })
+
+  it('reuses the array it is handed rather than allocating per frame', () => {
+    const into = lakeCellsNear({ x: 900, z: 900 }, RANGE)
+    const same = lakeCellsNear({ x: 940, z: 880 }, RANGE, into)
+    expect(same).toBe(into)
+  })
+
+  it('reports nothing for a range of zero', () => {
+    expect(lakeCellsNear({ x: 0, z: 0 }, 0)).toEqual([])
+  })
+
+  it('keeps the tutorial park dry', () => {
+    // The opening cat is caught over the tutorial cells, and a lake drawn
+    // under them would be a lake the player can fly into and never find.
+    for (const cell of lakeCellsNear({ x: 0, z: 0 }, 400)) {
+      expect(isTutorialCell(cell.cellX, cell.cellZ)).toBe(false)
     }
   })
 })

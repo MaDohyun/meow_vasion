@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useGame } from '../GameContext'
-import { mysteryCirclesNear, type MysteryCircleSite } from '../core/world'
+import { WORLD_CELL_SIZE, lakeCellsNear, mysteryCirclesNear, type LakeCell, type MysteryCircleSite } from '../core/world'
 import { projectToRadar } from './radarProjection'
 
 /**
@@ -11,29 +11,32 @@ import { projectToRadar } from './radarProjection'
  * speed costs far more than painting them.
  *
  * It used to plot every contact in the city - crowds, traffic, loose beam
- * cargo, tankers - in four colours. On a 112px dial over a populated block
+ * cargo, tankers - in four colours. On a small dial over a populated block
  * that is several hundred dots, and the handful that could actually kill you
  * were buried in them: the radar answered "what is around me" when the only
  * question worth a glance mid-flight is "what is shooting at me". So it plots
- * hostiles, and one exception: mystery circles still holding their pickup.
- * The pickups are the run's only stat upgrades and they live at fixed spots,
- * so without a blip finding them is luck rather than routing - which is the
- * whole skill they are meant to ask for. A claimed circle drops off the dial.
- * Everything else the radar dropped is still visible out of the window, in
- * far more detail than a dot could give.
+ * hostiles, and the two destinations a player cannot find any other way.
  *
- * Two things that are not contacts also stay. The objective marker is the
- * arrow that says where the mission is, and without it a checkpoint run has no
- * heading at all. Mystery circles are painted on the ground and cannot be seen
- * from above the rooftops at all, so the dial is the only place a player can
- * learn one is nearby - which is the whole point of flying through them. One
- * already flown through is greyed rather than dropped: the mission counts
- * distinct circles, so "I have had this one" is the thing worth showing, and
- * removing it outright would just make the player fly back to check.
+ * What is on it, and why each thing earns its pixels:
  *
- * Oriented to the craft's heading rather than north. The question being asked
- * is "what is in front of me", and a north-up radar makes the player do the
- * rotation in their head while flying.
+ * - Hostiles, because they are the only contacts that end a run.
+ * - Lakes, because water is a mission objective and a trap in the same tile.
+ *   From above the rooftops a lake reads as one more dark block, so the dial
+ *   is the only place a player can route to one on purpose - and the only
+ *   warning that the surface which drags the craft to a crawl is ahead.
+ * - Mystery circles, which are painted flat on the ground and cannot be seen
+ *   from flight altitude at all. A claimed one greys rather than vanishing:
+ *   the mission counts distinct circles, so "I have had this one" is the fact
+ *   worth showing, and dropping it would only send the player back to check.
+ * - The objective marker, which is the run's heading.
+ *
+ * Everything the radar dropped is still visible out of the window, in far more
+ * detail than a dot could give.
+ *
+ * Oriented to the craft's heading rather than north, because the question
+ * being asked is "what is in front of me" - a north-up dial makes the player
+ * do that rotation in their head while flying. The rim carries a north tick so
+ * the rotation is still readable when it matters.
  */
 
 const RADAR_RANGE = 170
@@ -59,11 +62,11 @@ const COLORS = {
   mine: '#ff2f5a',
   mission: '#fff06d',
   checkpoint: '#b7ff63',
-  boon: '#ffb347',
+  water: '#2ad0e0',
 }
 
 export function Radar() {
-  const { runtime } = useGame()
+  const { runtime, t } = useGame()
   const canvas = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
@@ -75,8 +78,9 @@ export function Radar() {
     const center = size / 2
     const scale = center / RADAR_RANGE
     let frame = 0
-    // Reused every frame; the sweep fills it rather than allocating.
+    // Reused every frame; the sweeps fill them rather than allocating.
     const circles: MysteryCircleSite[] = []
+    const lakes: LakeCell[] = []
 
     const draw = () => {
       frame = requestAnimationFrame(draw)
@@ -107,7 +111,33 @@ export function Radar() {
         context.fillRect(px - radius, py - radius, radius * 2, radius * 2)
       }
 
-      // Ground first, so a hostile is never hidden under a landmark.
+      // Water first and flat: it is terrain, and everything else has to read
+      // on top of it. Each tile is drawn as the projected quad of its own
+      // world cell rather than as a rotated square, so neighbouring cells of
+      // one lake share exact edges and the cluster paints as a single body of
+      // water instead of four tiles with seams between them.
+      context.fillStyle = COLORS.water
+      context.globalAlpha = 0.85
+      for (const cell of lakeCellsNear(player, RADAR_RANGE, lakes)) {
+        const x0 = cell.cellX * WORLD_CELL_SIZE - player.x
+        const z0 = cell.cellZ * WORLD_CELL_SIZE - player.z
+        const x1 = x0 + WORLD_CELL_SIZE
+        const z1 = z0 + WORLD_CELL_SIZE
+        const a = projectToRadar(x0, z0, heading, center, scale)
+        const b = projectToRadar(x1, z0, heading, center, scale)
+        const c = projectToRadar(x1, z1, heading, center, scale)
+        const d = projectToRadar(x0, z1, heading, center, scale)
+        context.beginPath()
+        context.moveTo(a.px, a.py)
+        context.lineTo(b.px, b.py)
+        context.lineTo(c.px, c.py)
+        context.lineTo(d.px, d.py)
+        context.closePath()
+        context.fill()
+      }
+      context.globalAlpha = 1
+
+      // Ground landmarks next, so a hostile is never hidden under one.
       if (MYSTERY_ICON?.complete && MYSTERY_ICON.naturalWidth > 0) {
         for (const circle of mysteryCirclesNear(player, RADAR_RANGE, circles)) {
           const { px, py } = projectToRadar(circle.x - player.x, circle.z - player.z, heading, center, scale)
@@ -172,6 +202,22 @@ export function Radar() {
         context.stroke()
       }
 
+      // North, as a tick on the rim. A heading-up dial is the right one to fly
+      // by, but it also means the city never sits still on it; one mark that
+      // does tells the player which way they have turned without asking them
+      // to give up the "ahead is up" reading they are steering with.
+      {
+        const north = projectToRadar(0, 1, heading, center, scale)
+        const angle = Math.atan2(north.py - center, north.px - center)
+        const rim = center - 7
+        const nx = center + Math.cos(angle) * rim
+        const ny = center + Math.sin(angle) * rim
+        context.fillStyle = 'rgba(255,245,199,.85)'
+        context.beginPath()
+        context.arc(nx, ny, 2.6, 0, Math.PI * 2)
+        context.fill()
+      }
+
       // The craft last, so nothing can cover it.
       context.fillStyle = '#ffffff'
       context.beginPath()
@@ -187,14 +233,20 @@ export function Radar() {
   }, [runtime])
 
   return (
-    <div className="planet-radar">
-      <div className="radar-orbit" />
-      <canvas ref={canvas} width={112} height={112} className="radar-canvas" />
-      {/* Two things on the dial, two swatches: what to avoid, and what to
-          go and fly through. */}
+    <div className="planet-radar" aria-label={t.radar}>
+      <div className="radar-dial">
+        <div className="radar-orbit" />
+        <canvas ref={canvas} width={148} height={148} className="radar-canvas" />
+      </div>
+      {/* Three things on the dial, three swatches: what to avoid, what to
+          drink, and what to go and fly through. Each one is named rather than
+          left as a coloured square to decode, and the key sits under the dial
+          rather than over it - the strip it used to cover is what is directly
+          behind the craft. */}
       <div className="radar-key">
-        <i style={{ background: COLORS.hostile }} />
-        <i className="radar-key-mystery" />
+        <span><i style={{ background: COLORS.hostile }} />{t.radarKeyHostile}</span>
+        <span><i style={{ background: COLORS.water }} />{t.radarKeyWater}</span>
+        <span><i className="radar-key-mystery" />{t.radarKeyCircle}</span>
       </div>
     </div>
   )

@@ -59,9 +59,14 @@ export type Strings = {
   controlFly: string
   controlStrafe: string
   controlAim: string
+  controlMove: string
   controlBeam: string
   controlLaser: string
   controlBoost: string
+  /** The in-run control card: its heading, and the label on the button that
+   *  calls it back once it has folded itself away. */
+  tipTitle: string
+  tipToggle: string
   mass: string
   massHint: string
   collapseAt: string
@@ -113,6 +118,11 @@ export type Strings = {
   missionStageComplete: (previous: number, next: number) => string
   reconComplete: string
   radar: string
+  /** The dial's legend. Named rather than left as coloured squares: three
+   *  swatches is exactly where a key stops being self-evident. */
+  radarKeyHostile: string
+  radarKeyWater: string
+  radarKeyCircle: string
   survivedTitle: string
   missionFailedTitle: string
   collapsedTitle: string
@@ -246,9 +256,12 @@ export const STRINGS: Record<Language, Strings> = {
     controlFly: '보는 방향으로 비행',
     controlStrafe: '좌우 이동',
     controlAim: '조종 · 조준',
+    controlMove: '이동',
     controlBeam: '빔 유지 · 흡수',
     controlLaser: '레이저',
     controlBoost: '터보',
+    tipTitle: '조작법',
+    tipToggle: '조작법 다시 보기',
     mass: '질량',
     massHint: '사람은 흡수하고, 고양이는 구출해서 커지세요',
     collapseAt: '붕괴',
@@ -324,6 +337,9 @@ export const STRINGS: Record<Language, Strings> = {
     missionStageComplete: (previous, next) => `미션 ${previous} 완료 · 미션 ${next}, 골라서 해!`,
     reconComplete: '지구 정찰 완료 · 장군님 퇴근 준비 끝!',
     radar: '주변 탐지 · 실시간',
+    radarKeyHostile: '적',
+    radarKeyWater: '호수',
+    radarKeyCircle: '서클',
     survivedTitle: '지구 정찰 완료',
     missionFailedTitle: '정찰 임무 실패',
     collapsedTitle: '지구가 좀 치네?',
@@ -409,9 +425,12 @@ export const STRINGS: Record<Language, Strings> = {
     controlFly: '見ている方向へ飛行',
     controlStrafe: '左右移動',
     controlAim: '操縦・照準',
+    controlMove: '移動',
     controlBeam: 'ビーム維持・吸収',
     controlLaser: 'レーザー',
     controlBoost: 'ターボ',
+    tipTitle: '操作方法',
+    tipToggle: '操作方法をもう一度見る',
     mass: '質量',
     massHint: '人は吸収、猫は救出して大きくなろう',
     collapseAt: '崩壊',
@@ -487,6 +506,9 @@ export const STRINGS: Record<Language, Strings> = {
     missionStageComplete: (previous, next) => `ミッション${previous}完了 · ミッション${next}、好きなものを選べ！`,
     reconComplete: '地球偵察完了 · 将軍も帰宅準備完了！',
     radar: '周辺探知・リアルタイム',
+    radarKeyHostile: '敵',
+    radarKeyWater: '湖',
+    radarKeyCircle: 'サークル',
     survivedTitle: '地球偵察完了',
     missionFailedTitle: '偵察任務 失敗',
     collapsedTitle: '地球、意外とやるな',
@@ -572,9 +594,12 @@ export const STRINGS: Record<Language, Strings> = {
     controlFly: 'FLY WHERE YOU LOOK',
     controlStrafe: 'RIGHT / LEFT',
     controlAim: 'STEER / AIM',
+    controlMove: 'MOVE',
     controlBeam: 'HOLD BEAM · ABSORB',
     controlLaser: 'LASER',
     controlBoost: 'TURBO BOOST',
+    tipTitle: 'CONTROLS',
+    tipToggle: 'Show the controls again',
     mass: 'MASS',
     massHint: 'ABSORB PEOPLE, RESCUE CATS, GROW',
     collapseAt: 'COLLAPSE',
@@ -650,6 +675,9 @@ export const STRINGS: Record<Language, Strings> = {
     missionStageComplete: (previous, next) => `MISSION ${previous} COMPLETE · MISSION ${next}, PICK YOUR OBJECTIVES!`,
     reconComplete: 'EARTH RECON COMPLETE · THE GENERAL IS READY TO CLOCK OUT!',
     radar: 'LOCAL GRID · LIVE',
+    radarKeyHostile: 'Hostile',
+    radarKeyWater: 'Lake',
+    radarKeyCircle: 'Circle',
     survivedTitle: 'EARTH RECON COMPLETE',
     missionFailedTitle: 'RECON MISSION FAILED',
     collapsedTitle: 'EARTH HAD NOTES',

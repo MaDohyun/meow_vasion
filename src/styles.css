@@ -12,6 +12,18 @@
   --coral: #ff5f7c;
   --pink: #ff78bd;
   --violet: #7558aa;
+  /* The in-run HUD reads as instrument glass rather than as the chunky pixel
+     cards the lobby and the results screen are built from: deep navy panels,
+     thin gold edges, rounded corners and a soft drop rather than a hard offset
+     square. Kept as tokens so the whole instrument layer stays one material -
+     the last HUD drifted into five different card treatments. */
+  --hud-glass: rgba(11,20,45,.86);
+  --hud-glass-deep: rgba(7,14,34,.9);
+  --hud-edge: rgba(255,215,94,.78);
+  --hud-edge-cool: rgba(120,206,255,.4);
+  --hud-rule: rgba(255,245,199,.18);
+  --hud-drop: 0 7px 20px rgba(2,6,20,.5), inset 0 1px 0 rgba(255,255,255,.05);
+  --hud-radius: 14px;
 }
 
 * { box-sizing: border-box; }
@@ -49,103 +61,162 @@ button { font: inherit; }
 @keyframes loading-pulse { 50% { color:var(--cream); box-shadow:inset 0 0 24px rgba(100,241,238,.18),0 0 0 9px rgba(100,241,238,.04); } }
 @keyframes loading-drift { to { background-position:48px 48px; } }
 
-.hud { position: fixed; inset: 0; z-index: 5; padding: 18px; pointer-events: none; filter: drop-shadow(3px 4px 0 rgba(22,17,40,.25)); }
+.hud { position: fixed; inset: 0; z-index: 5; padding: 18px; pointer-events: none; }
+/* Every instrument on the HUD is the same piece of glass. The overlays keep
+   the pixel-card .panel they always had; only the in-run layer is restyled. */
+.hud .panel, .hud .tip-body, .hud .radar-dial, .hud .radar-key, .hud .life-hearts, .hud .pilot-portrait {
+  background: var(--hud-glass);
+  border: 2px solid var(--hud-edge);
+  border-radius: var(--hud-radius);
+  box-shadow: var(--hud-drop);
+}
 .panel { background: rgba(33, 27, 53, .91); border: 3px solid var(--cream); box-shadow: 5px 5px 0 var(--ink); }
 .eyebrow { display: block; color: var(--cyan); font-size: 13px; font-weight: 1000; letter-spacing: 2px; opacity: .88; }
 
 /* The left column is a stack rather than two pinned cards: the mission list
    grows and shrinks with the run, and a magic top offset for the card above
    it only ever holds while the text stays the size it was written at. */
-.hud-left { position: absolute; top: 18px; left: 18px; display: flex; flex-direction: column; gap: 10px; width: 366px; }
+.hud-left { position: absolute; top: 18px; left: 18px; display: flex; flex-direction: column; gap: 10px; width: 312px; }
 
 /* The clause a player must not skim past, in every panel that carries one. */
 .hud-warn { color: var(--coral); font-style: normal; font-weight: 1000; text-shadow: 0 0 8px rgba(255,95,124,.45); }
 
-.score-card { position: absolute; top: 18px; right: 18px; width: 300px; padding: 12px 14px; border-top-color: var(--yellow); }
-.score-card > strong { display: block; color: var(--yellow); font-size: 34px; line-height: 1.05; letter-spacing: 1px; }
-/* Score, clock and mass are the three numbers a run is read by, so they are
-   one label-and-value ladder rather than three differently shaped readouts. */
-.score-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-top: 7px; padding-top: 6px; border-top: 1px dashed rgba(255,245,199,.22); color: var(--cream); font-size: 13px; font-weight: 900; letter-spacing: .6px; }
-.score-row b { color: #fff; font-size: 21px; font-weight: 1000; letter-spacing: 1px; }
-.score-row[data-low="true"] b { color: var(--coral); animation: warning-pulse .5s steps(2) infinite; }
-.score-mass b { color: var(--green); }
-.score-hint { margin: 8px 0 0; color: var(--cream); font-size: 12px; font-weight: 900; line-height: 1.45; opacity: .92; }
+/* The top-centre column. Everything that used to be pinned to its own
+   percentage down the middle of the screen - the boss bar, the two alarms, the
+   stage banner - is a child of this instead, so two of them arriving together
+   stack rather than overlap. width:max-content keeps the column exactly as
+   wide as its widest child, so the score bar stays a pill and the boss bar
+   stays the widest thing on screen. */
+.hud-top { position: absolute; top: 18px; left: 50%; display: flex; align-items: center; flex-direction: column; gap: 10px; width: max-content; max-width: min(76vw, 760px); transform: translateX(-50%); }
 
-.mission-panel { width:100%; padding:11px 13px; border-left-color:var(--yellow); }
-.mission-panel .eyebrow { display:block; margin-bottom:9px; color:var(--yellow); font-size:16px; letter-spacing:2px; }
-.mission-panel > div { display:grid; grid-template-columns:20px minmax(0,1fr) auto; align-items:center; gap:7px; min-height:32px; color:var(--cream); border-top:1px dashed rgba(255,245,199,.24); font-size:15px; font-weight:900; line-height:1.4; }
-.mission-panel > div i { color:var(--yellow); font-style:normal; font-size:19px; }
-.mission-panel > div b { color:var(--cyan); font-size:16px; }
+/* Score and clock, side by side in one pill: the two numbers that describe the
+   run rather than the craft. */
+.status-bar { display: flex; align-items: stretch; padding: 9px 4px; }
+.status-cell { display: flex; align-items: center; flex-direction: column; gap: 3px; min-width: 132px; padding: 0 18px; }
+.status-cell > span { color: rgba(255,245,199,.72); font-size: 12px; font-weight: 1000; letter-spacing: 2.4px; }
+.status-cell > strong { color: var(--yellow); font-size: 32px; font-weight: 1000; line-height: 1.05; letter-spacing: 1px; font-variant-numeric: tabular-nums; }
+.status-clock > strong { color: #fff; }
+.status-split { width: 2px; align-self: stretch; margin: 2px 0; background: var(--hud-rule); }
+/* The clock is the one number that can run out, so it is the one that shouts. */
+.status-clock[data-low="true"] > strong { color: var(--coral); animation: warning-pulse .5s steps(2) infinite; }
+/* Absorbing something is worth a point, and the score is where the point
+   lands - a brightness step ties the two together without another floating
+   "+12" card in the middle of the view. */
+.status-bar[data-gain="true"] .status-cell:first-child > strong { color: #fff; transform: scale(1.06); }
+.status-bar .status-cell > strong { transition: color .12s linear, transform .12s ease-out; }
+
+.mission-panel { width:100%; padding:11px 15px 12px; }
+.mission-panel .eyebrow { display:block; margin-bottom:8px; padding-bottom:7px; color:var(--yellow); border-bottom:1px solid var(--hud-rule); font-size:15px; letter-spacing:2.4px; opacity:1; }
+.mission-panel > div { display:grid; grid-template-columns:24px minmax(0,1fr) auto; align-items:center; gap:9px; min-height:33px; color:var(--cream); font-size:15px; font-weight:900; line-height:1.4; word-break:keep-all; }
+.mission-panel > div + div { border-top:1px solid var(--hud-rule); }
+/* The glyph column. Emoji ignore the monospace face the rest of the HUD is
+   set in, so the width is pinned here rather than left to the font. */
+.mission-panel > div i { font-style:normal; font-size:17px; line-height:1; text-align:center; }
+.mission-panel > div b { color:var(--cyan); font-size:16px; font-variant-numeric:tabular-nums; }
 .mission-panel > div[data-complete="true"] { color:rgba(183,255,99,.72); text-decoration:line-through; }
-.mission-panel > div[data-complete="true"] i,.mission-panel > div[data-complete="true"] b { color:var(--green); }
+.mission-panel > div[data-complete="true"] i { opacity:.5; }
+.mission-panel > div[data-complete="true"] b { color:var(--green); }
 .mission-panel.mission-pulse { animation:mission-pop .28s steps(3); }
 .tutorial-mission strong { display:block; color:var(--green); font-size:17px; line-height:1.55; }
 .tutorial-mission p { margin:9px 0 0; color:var(--cream); font-size:15px; line-height:1.45; }
 .tutorial-mission p b { color:var(--yellow); font-size:19px; }
-.mission-banner { padding:10px 18px; color:var(--ink); background:var(--yellow); border:4px solid var(--cream); box-shadow:6px 6px 0 var(--coral); font-size:16px; font-weight:1000; letter-spacing:1px; animation:mission-pop .28s steps(3); }
+.mission-banner { padding:10px 20px; color:var(--ink); background:var(--yellow); border:2px solid var(--cream); border-radius:var(--hud-radius); box-shadow:var(--hud-drop); font-size:16px; font-weight:1000; letter-spacing:1px; animation:mission-pop .28s steps(3); }
 @keyframes mission-pop { from { opacity:0; transform:scale(.72) rotate(-2deg); } to { opacity:1; transform:scale(1); } }
 
-/* The battleship's health, above the wave banner. Deliberately the widest
+/* The battleship's health, directly under the score. Deliberately the widest
    thing on screen: it is the only fight in the game with a health bar, and it
-   should feel like the screen has been taken over. */
-.boss-bar { position: absolute; top: 7.2%; left: 50%; width: min(620px, 74vw); transform: translateX(-50%); text-align: center; }
+   should feel like the screen has been taken over. In the top column's flow
+   rather than pinned, so the alarms below it move down instead of through it. */
+.boss-bar { width: min(620px, 74vw); text-align: center; }
 .boss-bar .eyebrow { display: block; margin-bottom: 4px; color: var(--cream); text-shadow: 2px 2px 0 rgba(22,17,40,.8); font-size: 13px; font-weight: 1000; letter-spacing: 2.4px; }
-.boss-bar-track { height: 13px; background: rgba(22,17,40,.72); border: 3px solid var(--cream); box-shadow: 4px 4px 0 rgba(22,17,40,.55); }
-.boss-bar-track i { display: block; height: 100%; background: linear-gradient(90deg, #ff5f7c, #ffb45c); transition: width .12s linear; }
+.boss-bar-track { height: 14px; padding: 2px; background: var(--hud-glass-deep); border: 2px solid var(--hud-edge); border-radius: 7px; box-shadow: var(--hud-drop); }
+.boss-bar-track i { display: block; height: 100%; border-radius: 4px; background: linear-gradient(90deg, #ff5f7c, #ffb45c); transition: width .12s linear; }
 
-.hud-center { position: absolute; top: 12.5%; left: 50%; display: flex; align-items: center; flex-direction: column; gap: 8px; transform: translateX(-50%); }
-.message { min-width: 250px; padding: 11px 22px; background: var(--cream); color: var(--ink); border: 4px solid var(--ink); box-shadow: 5px 5px 0 rgba(255,95,124,.75); font-size: 15px; font-weight: 1000; letter-spacing: 1.5px; text-align: center; animation: message-pop .18s steps(2); }
-.survive-banner { padding: 9px 18px; color: #fff; background: var(--coral); border: 3px solid #fff; box-shadow: 5px 5px 0 var(--ink); font-size: 18px; font-weight: 1000; letter-spacing: 2px; animation: warning-pulse .45s steps(2) infinite; }
+/* The alarms, queued under the score rather than floating at 24% and 32% of
+   the screen height where they used to overlap each other. */
+.hud-alerts { display: flex; align-items: center; flex-direction: column; gap: 7px; }
+.hud-alert { margin: 0; padding: 10px 20px; color: var(--cream); border: 2px solid rgba(255,245,199,.62); border-radius: var(--hud-radius); box-shadow: var(--hud-drop); font-size: 15px; font-weight: 1000; letter-spacing: 1.2px; text-align: center; animation: message-pop .18s steps(2); }
 @keyframes message-pop { from { transform: scale(.72) rotate(-2deg); } to { transform: scale(1); } }
 @keyframes warning-pulse { 50% { transform: scale(1.045); filter: brightness(1.25); } }
 
-.systems-panel { position: absolute; right: 18px; bottom: 52px; width: 258px; padding: 11px 13px; border-right-color: var(--pink); }
-.system-meter { margin-top: 6px; }
-.system-meter > span { display: flex; justify-content: space-between; color: var(--cream); font-size: 12px; font-weight: 1000; }
-.system-meter > span b { color: var(--yellow); }
-.system-meter > div { height: 9px; background: #111426; border: 1px solid var(--cream); }
-.system-meter > div i { display: block; height: 100%; background: repeating-linear-gradient(90deg,var(--yellow) 0 12px,#ff9d65 12px 15px); }
+/* The flight card, bottom centre: mass, turbo, drag and the keys that drive
+   them. Sized to sit between the radar on one side and the pilot on the other
+   at every desktop width the game is played at. */
+.flight-bar { position: absolute; left: 50%; bottom: 18px; display: flex; flex-wrap: wrap; align-items: flex-start; gap: 16px; width: min(600px, 62vw); padding: 12px 16px 10px; transform: translateX(-50%); }
+.flight-mass { flex: 0 0 auto; display: flex; align-items: flex-start; flex-direction: column; gap: 4px; min-width: 104px; padding-right: 16px; border-right: 1px solid var(--hud-rule); }
+.flight-mass > span { color: var(--green); font-size: 12px; font-weight: 1000; letter-spacing: 2.4px; }
+.flight-mass > b { color: var(--green); font-size: 27px; font-weight: 1000; line-height: 1; letter-spacing: 1px; font-variant-numeric: tabular-nums; }
+.flight-gauges { flex: 1 1 auto; min-width: 0; }
+/* One row of keycaps, welded to the readouts they move rather than stranded
+   in a strip along the bottom edge. */
+.flight-keys { flex: 1 0 100%; display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 18px; margin-top: 9px; padding-top: 9px; border-top: 1px solid var(--hud-rule); color: rgba(255,245,199,.62); font-size: 12px; font-weight: 900; letter-spacing: .5px; }
+.flight-keys span { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+.flight-keys b { padding: 2px 8px; color: var(--cream); background: rgba(255,255,255,.07); border: 1px solid rgba(255,245,199,.4); border-radius: 5px; font-size: 12px; font-weight: 1000; letter-spacing: 1px; }
+.system-meter { margin-top: 0; }
+.system-meter > span { display: flex; justify-content: space-between; color: var(--pink); font-size: 12px; font-weight: 1000; letter-spacing: 1.6px; }
+.system-meter > span b { color: var(--pink); font-variant-numeric: tabular-nums; }
+.system-meter > div { height: 12px; padding: 2px; background: rgba(6,11,28,.8); border: 1px solid rgba(255,120,189,.7); border-radius: 4px; }
+.system-meter > div i { display: block; height: 100%; border-radius: 2px; background: repeating-linear-gradient(90deg,var(--pink) 0 11px,transparent 11px 14px); transition: width .1s linear; }
 .system-meter[data-active="true"] > span b { color: var(--cyan); animation: beam-blink .22s steps(1) infinite; }
-.system-meter[data-active="true"] > div i { background: repeating-linear-gradient(90deg,var(--cyan) 0 12px,#fff06d 12px 15px); }
+.system-meter[data-active="true"] > div { border-color: rgba(100,241,238,.8); }
+.system-meter[data-active="true"] > div i { background: repeating-linear-gradient(90deg,var(--cyan) 0 11px,transparent 11px 14px); }
 /* Same bar language as .system-meter, tuned to a warning colour instead of
    the turbo gauge's cyan/yellow - a fill level reads at a glance, the way a
    raw tonnage figure never did. */
-.ballast-meter { margin-top: 8px; }
-.ballast-meter > span { display: flex; justify-content: space-between; color: var(--cream); font-size: 12px; font-weight: 1000; }
-.ballast-meter > span b { color: var(--pink); }
-.ballast-meter > div { height: 9px; background: #111426; border: 1px solid var(--cream); }
-.ballast-meter > div i { display: block; height: 100%; background: var(--pink); transition: width .1s linear; }
+.ballast-meter { margin-top: 9px; }
+.ballast-meter > span { display: flex; justify-content: space-between; color: #ffb45c; font-size: 12px; font-weight: 1000; letter-spacing: 1.6px; }
+.ballast-meter > span b { color: #ffb45c; font-variant-numeric: tabular-nums; }
+.ballast-meter > div { height: 12px; padding: 2px; background: rgba(6,11,28,.8); border: 1px solid rgba(255,180,92,.6); border-radius: 4px; }
+.ballast-meter > div i { display: block; height: 100%; border-radius: 2px; background: repeating-linear-gradient(90deg,#ffb45c 0 11px,transparent 11px 14px); transition: width .1s linear; }
 .ballast-meter[data-warn="true"] > span b { color: var(--coral); }
-.ballast-meter[data-warn="true"] > div i { background: var(--coral); }
+.ballast-meter[data-warn="true"] > div { border-color: rgba(255,95,124,.8); }
+.ballast-meter[data-warn="true"] > div i { background: repeating-linear-gradient(90deg,var(--coral) 0 11px,transparent 11px 14px); }
 .ballast-meter[data-critical="true"] { animation: warning-pulse .35s steps(2) infinite; }
 /* The gauge says how loaded you are; this says what filling it costs. */
-.meter-note { display: block; margin-top: 4px; color: var(--cream); font-size: 11px; font-style: normal; font-weight: 900; letter-spacing: .4px; text-align: right; }
+.meter-note { display: block; margin-top: 5px; color: rgba(255,245,199,.6); font-size: 11px; font-style: normal; font-weight: 900; letter-spacing: .4px; text-align: right; }
 @keyframes beam-blink { 50% { color: #fff; } }
 
-.time-bonus { position: absolute; top: 31%; left: 50%; padding: 10px 16px; color: var(--ink); background: var(--yellow); border: 3px solid var(--cream); box-shadow: 4px 4px 0 var(--ink); font-size: 18px; font-weight: 1000; letter-spacing: 1px; transform: translateX(-50%); animation: bonus-pop .8s steps(3) both; }
+.time-bonus { position: absolute; top: 96px; left: 50%; padding: 10px 16px; color: var(--ink); background: var(--yellow); border: 2px solid var(--cream); border-radius: 11px; box-shadow: var(--hud-drop); font-size: 18px; font-weight: 1000; letter-spacing: 1px; transform: translateX(-50%); animation: bonus-pop .8s steps(3) both; }
 @keyframes bonus-pop { from { opacity: 0; transform: translate(-50%, 18px) scale(.7); } 22% { opacity: 1; } to { opacity: 0; transform: translate(-50%, -36px) scale(1.06); } }
 
-/* One line, hard against the bottom edge, under everything else at the
-   bottom of the screen. Quiet on purpose: it is a reminder to glance at, not
-   a panel to read, so it is a rule of text rather than another card. */
-.control-strip { position:absolute; left:0; right:0; bottom:0; display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:6px 20px; padding:8px 16px; color:rgba(255,245,199,.5); background:rgba(16,13,26,.62); border-top:1px solid rgba(255,245,199,.14); font-size:13px; font-weight:900; letter-spacing:.6px; }
-.control-strip span { display:inline-flex; align-items:center; gap:6px; white-space:nowrap; }
-/* Grey, not yellow. A key you are being reminded of should not compete with
-   the alarms and the score for the same glance. */
-.control-strip b { padding:2px 7px; color:rgba(255,245,199,.68); background:rgba(255,245,199,.07); border:1px solid rgba(255,245,199,.22); font-size:12px; font-weight:1000; letter-spacing:1px; }
+/* The control card, top right, and the button it folds into. The card is only
+   up for the first few seconds of a run; the button stays for the rest of it,
+   which is the whole trade - a reference you can ask for costs one corner
+   glyph, a reference welded to the screen costs a band of the screen. */
+.control-tips { position:absolute; top:18px; right:18px; display:flex; align-items:flex-start; flex-direction:row-reverse; gap:8px; }
+.tip-toggle { flex:0 0 auto; width:34px; height:34px; padding:0; color:var(--yellow); background:var(--hud-glass); border:2px solid var(--hud-edge); border-radius:50%; box-shadow:var(--hud-drop); font-size:16px; font-weight:1000; line-height:1; cursor:pointer; pointer-events:auto; }
+.tip-toggle:hover { color:var(--ink); background:var(--yellow); }
+/* Dashed rather than solid, because this is the one card on the HUD that is
+   advice instead of instrumentation - and the one that leaves on its own. */
+.tip-body { width:258px; padding:11px 14px 11px; border-style:dashed !important; animation:message-pop .18s steps(2); }
+.tip-body .eyebrow { display:flex; align-items:center; gap:7px; margin-bottom:8px; padding-bottom:7px; color:var(--yellow); border-bottom:1px dashed var(--hud-rule); font-size:13px; letter-spacing:2.4px; opacity:1; }
+.tip-body .eyebrow i { font-size:14px; font-style:normal; line-height:1; }
+.tip-row { display:grid; grid-template-columns:100px minmax(0,1fr); align-items:center; gap:9px; min-height:29px; color:var(--green); font-size:12px; font-weight:1000; letter-spacing:.4px; word-break:keep-all; }
+.tip-row + .tip-row { border-top:1px dashed var(--hud-rule); }
+.tip-row .keycap-set { flex-wrap:wrap; gap:3px; }
+.tip-row .keycap { padding:2px 5px; color:var(--cream); background:rgba(255,255,255,.07); border:1px solid rgba(255,245,199,.5); border-radius:5px; box-shadow:none; font-size:10px; letter-spacing:.6px; }
+.tip-note { margin:10px 0 0; padding-top:8px; color:rgba(255,245,199,.66); border-top:1px dashed var(--hud-rule); font-size:11px; font-weight:900; line-height:1.5; word-break:keep-all; }
 
-.pilot-card { position:absolute; left:18px; bottom:52px; display:flex; align-items:center; gap:12px; width:262px; padding:10px; border-color:#ef8d96; background:rgba(58,50,76,.92); transform:rotate(-1deg); }
-.pilot-portrait { flex:0 0 120px; width:120px; height:110px; border:2px solid var(--cream); background-repeat:no-repeat; image-rendering:pixelated; }
-.pilot-card > div:last-child { min-width:0; }
-.pilot-card b { display:block; margin-top:6px; overflow:hidden; color:#b9df78; font-size:15px; letter-spacing:.4px; text-overflow:ellipsis; }
-.pilot-card[data-expression="surprise"], .pilot-card[data-expression="scream"] { animation:warning-pulse .3s steps(2) infinite; }
+/* The pilot's corner: the face, on screen for the whole run, and a bubble
+   above it only while the run has something to say. No label and no caption -
+   the expression is the readout, and a word under a face is just a word. */
+.pilot-card { position:absolute; right:18px; bottom:18px; display:flex; align-items:flex-end; flex-direction:column; gap:9px; }
+.pilot-portrait { width:118px; height:110px; overflow:hidden; border-color:var(--hud-edge-cool) !important; background-color:#1a2145; background-repeat:no-repeat; image-rendering:pixelated; }
+.pilot-line { max-width:290px; margin:0; padding:9px 14px; color:var(--cream); background:var(--hud-glass-deep); border:2px solid var(--hud-edge); border-radius:var(--hud-radius); box-shadow:var(--hud-drop); font-size:13px; font-weight:1000; line-height:1.5; letter-spacing:.4px; text-align:right; word-break:keep-all; animation:message-pop .18s steps(2); }
+.pilot-card[data-expression="surprise"] .pilot-portrait,
+.pilot-card[data-expression="scream"] .pilot-portrait { animation:warning-pulse .3s steps(2) infinite; }
 .captive-rack { position: absolute; right: 18px; bottom: 123px; min-width: 126px; padding: 7px 10px; background: rgba(33,27,53,.85); border-bottom: 4px solid var(--green); text-align: right; }
 .captive-rack .eyebrow { text-align: left; }
 .captive-rack i { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; margin-left: 3px; color: var(--pink); background: var(--cream); border: 2px solid var(--ink); border-radius: 50%; font-size: 13px; font-style: normal; }
 .captive-rack small { color: #9e99a8; font-size: 11px; }
 
-.planet-radar { position:absolute; left:306px; bottom:52px; width:112px; height:112px; overflow:hidden; border:3px solid var(--cream); border-radius:11px; background-color:#365e70; background-image:linear-gradient(rgba(255,245,199,.1) 1px,transparent 1px),linear-gradient(90deg,rgba(255,245,199,.1) 1px,transparent 1px),radial-gradient(circle at 50% 50%,#66977f 0 18%,#365e70 72%); background-size:22px 22px,22px 22px,100% 100%; box-shadow:5px 5px 0 var(--ink), inset 0 0 0 5px rgba(100,241,238,.14); }
-.radar-orbit { position:absolute; inset:12px; border:1px dashed rgba(255,245,199,.48); border-radius:4px; }
+/* The dial gets the bottom-left corner to itself and the size that corner
+   allows. It used to be 112px squeezed between the pilot card and the systems
+   panel, which is small enough that a lake read as a smudge and two contacts
+   a few metres apart read as one. */
+.planet-radar { position:absolute; left:18px; bottom:18px; width:148px; }
+.hud .radar-dial { position:relative; width:148px; height:148px; overflow:hidden; border-color:var(--hud-edge-cool); background-color:#12352f; background-image:linear-gradient(rgba(150,255,190,.09) 1px,transparent 1px),linear-gradient(90deg,rgba(150,255,190,.09) 1px,transparent 1px),radial-gradient(circle at 50% 50%,#1d5b47 0 20%,#0e2b31 78%); background-size:21px 21px,21px 21px,100% 100%; }
+.radar-orbit { position:absolute; inset:12px; border:1px dashed rgba(160,255,205,.4); border-radius:8px; }
 .district-dot,.target-dot,.player-dot { position:absolute; z-index:2; width:5px; height:5px; border-radius:50%; transform:translate(-50%,-50%); }
 .district-dot { background:rgba(255,245,199,.62); }
 .target-dot { z-index:3; width:9px; height:9px; background:var(--green); border:2px solid #fff; box-shadow:0 0 8px var(--green); animation:warning-pulse .55s steps(2) infinite; }
@@ -166,7 +237,7 @@ button { font: inherit; }
 
 /* The general's tutorial briefing: a portrait plus a VN-style text box, sat
    where the old mission-banner/message pair used to (the same upper-center
-   slot as .hud-center) rather than pinned to the bottom edge, where the
+   slot as the top column) rather than pinned to the bottom edge, where the
    systems/pilot cards crowd it and it reads as cut off. .briefing-touch is
    the click target - on a clickable step it covers the whole screen (the
    .hud shell turns pointer-events off by default, so this opts back in) so
@@ -176,10 +247,13 @@ button { font: inherit; }
 .briefing-touch { position:fixed; inset:0; z-index:8; pointer-events:none; }
 .briefing-touch.clickable { pointer-events:auto; cursor:pointer; }
 /* Sized and centred to the gap between the two HUD columns rather than to
-   the screen, so the general never talks over the hearts or the score. The
-   366px left stack and the 300px score card, plus their 18px insets and a
-   little air, are the 726px this subtracts. */
-.briefing-box { position:absolute; left:calc(50% + 33px); top:12.5%; display:flex; align-items:flex-start; gap:16px; width:min(760px,max(420px,calc(100vw - 726px)),94vw); transform:translate(-50%, 0); animation:message-pop .18s steps(2); }
+   the screen, so the general never talks over the mission list or the control
+   card. The 312px left stack and the 290px control card, plus their 18px
+   insets and a little air, are the 690px this subtracts; the columns are not
+   the same width, so the box is nudged to the middle of what is left rather
+   than to the middle of the screen. Held below the score bar, which is a fixed
+   number of pixels tall rather than a fraction of the viewport. */
+.briefing-box { position:absolute; left:calc(50% + 17px); top:100px; display:flex; align-items:flex-start; gap:16px; width:min(760px,max(420px,calc(100vw - 690px)),94vw); transform:translate(-50%, 0); animation:message-pop .18s steps(2); }
 .briefing-portrait { flex:0 0 auto; width:112px; height:112px; background:#11162a url(/boss/commander.png) center/cover no-repeat; border:4px solid var(--cream); box-shadow:5px 5px 0 var(--ink); }
 .briefing-panel { position:relative; flex:1 1 auto; min-width:0; padding:13px 19px; background:rgba(20,16,32,.94); border:4px solid var(--cream); box-shadow:6px 6px 0 var(--ink); }
 .briefing-panel .eyebrow { display:block; margin-bottom:6px; }
@@ -331,8 +405,9 @@ button { font: inherit; }
    in one long line. Two lines and a squarer card put it back in the read.
    How far up it can go is set by the craft, not by the reticle: the saucer
    sits around y=385..432 (1280x720) and must never be covered - the player
-   flies by it. The floor is the radar at y=590. The card takes the gap. */
-.breaking-band { position:absolute; left:50%; bottom:164px; z-index:6; display:flex; align-items:stretch; width:min(620px,56vw); min-height:116px; overflow:hidden; background:rgba(16,22,52,.94); border:3px solid var(--cream); box-shadow:7px 7px 0 rgba(22,17,40,.6); transform:translateX(-50%); }
+   flies by it. The floor is the flight card at the bottom edge, whose top is
+   about y=580. The card takes the gap. */
+.breaking-band { position:absolute; left:50%; bottom:152px; z-index:6; display:flex; align-items:stretch; width:min(620px,56vw); min-height:116px; overflow:hidden; background:rgba(16,22,52,.94); border:3px solid var(--cream); box-shadow:7px 7px 0 rgba(22,17,40,.6); transform:translateX(-50%); }
 .breaking-band[data-phase="opening"] { animation:breaking-in .45s steps(4) both; }
 .breaking-band[data-phase="closing"] { animation:breaking-out .55s steps(4) both; }
 @keyframes breaking-in { 0% { opacity:0; transform:translate(-50%,64px); } 100% { opacity:1; transform:translate(-50%,0); } }
@@ -360,15 +435,15 @@ button { font: inherit; }
    is given none of the three, and the room they took goes into its size
    instead. The dark shell behind each heart is what keeps it legible over a
    bright sky now that there is no panel under it. */
-.life-hearts { display:flex; align-self:flex-start; align-items:flex-end; gap:9px; margin:2px 0 4px; }
+.life-hearts { display:flex; align-self:flex-start; align-items:flex-end; gap:10px; padding:8px 13px; }
 /* The four zero-blur shadows are a pale outline around the whole heart, and
    they are what a translucent shell cannot do: the craft flies over bright sky
    and over near-black buildings in the same second, so an empty heart has to
    have its own edge rather than borrowing contrast from whatever is behind it.
    The shell is opaque and mid-toned for the same reason. */
-.pixel-heart { width:44px; height:auto; shape-rendering:crispEdges;
-  filter:drop-shadow(0 -1.5px 0 rgba(255,245,199,.62)) drop-shadow(0 1.5px 0 rgba(255,245,199,.62)) drop-shadow(-1.5px 0 0 rgba(255,245,199,.62)) drop-shadow(1.5px 0 0 rgba(255,245,199,.62)) drop-shadow(3px 3px 0 rgba(22,17,40,.75)); }
-.pixel-heart .heart-shell { fill:#524a68; }
+.pixel-heart { width:34px; height:auto; shape-rendering:crispEdges;
+  filter:drop-shadow(2px 2px 0 rgba(4,8,22,.7)); }
+.pixel-heart .heart-shell { fill:#3a4266; }
 .pixel-heart .heart-core { fill:var(--coral); }
 /* Only the hearts that are coming back move, so the row does not shimmer. */
 .life-hearts[data-regen="true"] .pixel-heart:not([data-state="full"]) { animation:warning-pulse 1s steps(2) infinite; }
@@ -379,22 +454,32 @@ button { font: inherit; }
 /* Static on purpose - the pulse used to swap out the centring transform for
    a scale each keyframe step, so the box snapped half its own width sideways
    twice a second instead of pulsing in place. A message worth reading is
-   worth holding still. */
-.overload-alarm { position:absolute; left:50%; top:24%; padding:11px 22px; color:var(--cream); background:rgba(196,44,64,.94); border:3px solid var(--cream); box-shadow:5px 5px 0 rgba(22,17,40,.6); font-size:15px; font-weight:1000; letter-spacing:1.4px; white-space:nowrap; transform:translateX(-50%); }
+   worth holding still. Only the colour separates the two now that they queue
+   in one column: red is "you are about to fall out of the sky", blue is "the
+   lake has hold of you". */
+.overload-alarm { background:rgba(196,44,64,.94); }
 /* The alarm is already red, so the emphasised clause goes bright instead. */
 .overload-alarm .hud-warn { color:var(--yellow); text-shadow:0 0 8px rgba(255,224,95,.5); }
-.water-alarm { position:absolute; left:50%; top:32%; padding:11px 22px; color:var(--cream); background:rgba(38,110,168,.94); border:3px solid var(--cream); box-shadow:5px 5px 0 rgba(22,17,40,.6); font-size:15px; font-weight:1000; letter-spacing:1.4px; white-space:nowrap; transform:translateX(-50%); }
+.water-alarm { background:rgba(38,110,168,.94); }
 
 @media (pointer: coarse), (max-width: 760px) {
   .mobile-controls { display:block; }
   .hud-left { top:8px; left:8px; gap:7px; width:min(206px,52vw); }
   .life-hearts { gap:6px; margin:1px 0 3px; }
   .pixel-heart { width:30px; }
-  .score-card { top:8px; right:8px; width:min(156px,40vw); padding:7px 9px; }
-  .score-card > strong { font-size:24px; }
-  .score-row { margin-top:5px; padding-top:4px; font-size:10px; }
-  .score-row b { font-size:15px; }
-  .score-hint { display:none; }
+  /* No room to centre the run's numbers on a phone: the mission list already
+     owns the left half of the top edge. The column spans the width and hugs
+     the right instead, and the two readouts stack rather than sitting side by
+     side - which is the same corner the score card used to hold. */
+  .hud-top { top:8px; left:8px; right:8px; width:auto; max-width:none; align-items:flex-end; gap:6px; transform:none; }
+  .status-bar { width:min(158px,42vw); flex-direction:column; padding:6px 9px; }
+  .status-cell { flex-direction:row; align-items:baseline; justify-content:space-between; gap:10px; width:100%; min-width:0; padding:2px 0; }
+  .status-cell > span { font-size:9px; letter-spacing:1.2px; }
+  .status-cell > strong { font-size:19px; }
+  .status-split { width:100%; height:2px; align-self:auto; }
+  /* Everything else in the column is a full-width announcement, so it centres
+     itself again rather than inheriting the corner. */
+  .boss-bar, .hud-alerts, .mission-banner { align-self:center; }
   .mission-panel { padding:8px 9px; }
   .mission-panel .eyebrow { margin-bottom:6px; font-size:13px; }
   .mission-panel > div { grid-template-columns:16px minmax(0,1fr) auto; min-height:25px; font-size:12px; }
@@ -403,29 +488,47 @@ button { font: inherit; }
   .tutorial-mission strong { font-size:13px; }
   .tutorial-mission p { font-size:12px; }
   .tutorial-mission p b { font-size:15px; }
-  .systems-panel { display:none; }
-  .control-strip { display:none; }
-  /* No strip to sit above, so the pilot card goes back to the bottom edge,
-     at the width it had before the desktop cards grew. */
-  .pilot-card { bottom:18px; width:230px; }
+  /* The keys are on screen as buttons here, so the card that names them and
+     the row that repeats them both go. */
+  .control-tips { display:none; }
+  .flight-keys { display:none; }
+  .meter-note { display:none; }
+  /* The gauges do not: turbo and drag decide whether the craft can still fly,
+     and a phone used to be shown neither. They take the bottom edge as one
+     slim rule - the only strip of screen the thumbs are not already on - and
+     the touch controls sit above it. */
+  .flight-bar { left:0; right:0; bottom:0; gap:10px; align-items:center; width:auto; padding:6px 10px 7px; border-width:0; border-top:3px solid var(--cream); box-shadow:none; transform:none; }
+  .flight-mass { flex-direction:row; align-items:baseline; gap:7px; min-width:0; padding-right:9px; }
+  .flight-mass > span { font-size:9px; letter-spacing:1.2px; }
+  .flight-mass > b { font-size:17px; }
+  .flight-gauges { display:flex; gap:11px; }
+  .system-meter, .ballast-meter { flex:1 1 0; min-width:0; margin:0; }
+  .system-meter > span, .ballast-meter > span { font-size:9px; }
+  .joystick { bottom:64px; }
+  .mobile-actions { bottom:62px; }
+  .mobile-altitude { bottom:147px; }
+  /* Above the fire buttons and clear of the altitude arrows: the pilot is the
+     one panel here that is read rather than pressed. */
+  .pilot-card { left:auto; right:8px; bottom:192px; gap:6px; }
+  .pilot-portrait { width:60px; height:56px; }
+  .pilot-line { max-width:min(280px,84vw); padding:7px 10px; font-size:11px; }
   .captive-rack { display:none; }
   .planet-radar { display:none; }
-  .boss-bar { top:11%; width:88vw; }
+  .boss-bar { width:88vw; }
   .boss-bar-track { height:10px; border-width:2px; }
   .upgrade-cards { grid-template-columns:1fr; gap:8px; width:94vw; }
   .upgrade-card { min-height:0; padding:10px 11px; }
   .upgrade-card strong { margin-bottom:5px; font-size:11px; }
   .upgrade-card small { font-size:8px; line-height:1.5; }
-  .breaking-band { left:8px; right:8px; bottom:250px; width:auto; min-height:88px; transform:none; }
+  .breaking-band { left:8px; right:8px; bottom:266px; width:auto; min-height:88px; transform:none; }
   .breaking-band[data-phase="opening"] { animation:breaking-in-flat .45s steps(4) both; }
   .breaking-band[data-phase="closing"] { animation:breaking-out-flat .55s steps(4) both; }
   .breaking-anchor { flex-basis:56px; }
   .breaking-body { padding:8px 11px 10px; }
   .breaking-head strong { font-size:13px; }
   .breaking-body p { margin-top:7px; font-size:12px; line-height:1.6; }
-  .hud-center { top:18%; }
-  .message { min-width:190px; padding:7px 11px; font-size:12px; }
-  .overload-alarm, .water-alarm { padding:8px 14px; font-size:12px; letter-spacing:.8px; white-space:normal; text-align:center; max-width:92vw; }
+  .hud-alert { padding:8px 14px; font-size:12px; letter-spacing:.8px; max-width:92vw; }
+  .time-bonus { top:82px; }
   .mission-banner { padding:8px 14px; font-size:13px; }
   .controls-card { max-width:90vw; flex-wrap:wrap; justify-content:center; }
   .result-stats { flex-wrap:wrap; justify-content:center; gap:8px; max-width:90vw; }
@@ -478,10 +581,29 @@ button { font: inherit; }
   .intro-overlay h1 { font-size:46px; }
 }
 
+/* Between a phone and a full desktop the five clusters still fit, but only
+   once each one gives back the width it does not need. Everything here is one
+   number: keep the flight card clear of the dial on its left and the pilot on
+   its right at 761px, the narrowest this layout is ever asked for. */
 @media (max-width: 980px) and (min-width: 761px) {
-  .hud-left { width:308px; }
-  .score-card { width:224px; }
+  .hud-left { width:268px; left:14px; }
   .pixel-heart { width:36px; }
+  .hud-top { top:14px; }
+  .status-cell { min-width:92px; padding:0 10px; }
+  .status-cell > strong { font-size:26px; }
+  .control-tips { top:14px; right:14px; }
+  .tip-body { width:198px; }
+  .tip-row { grid-template-columns:92px minmax(0,1fr); }
+  .planet-radar { left:14px; bottom:14px; width:118px; }
+  .hud .radar-dial { width:118px; height:118px; }
+  .radar-key { width:118px; margin-top:5px; gap:1px 6px; font-size:9px; }
+  .flight-bar { width:min(400px,44vw); bottom:14px; }
+  .flight-mass { min-width:88px; padding-right:11px; }
+  .flight-mass > b { font-size:23px; }
+  .pilot-card { right:14px; bottom:14px; }
+  .pilot-portrait { width:92px; height:86px; }
+  .pilot-line { max-width:190px; padding:8px 11px; font-size:12px; }
+  .briefing-box { top:92px; }
 }
 
 .quality-picker { z-index:2; display:flex; align-items:center; gap:8px; margin-top:14px; padding:7px 12px; background:rgba(20,26,48,.82); border:3px solid var(--cream); box-shadow:4px 4px 0 var(--ink); }
@@ -498,9 +620,13 @@ button { font: inherit; }
 @keyframes daze-reel { 0% { transform: translate(0,0); } 50% { transform: translate(3px,-2px); } 100% { transform: translate(-2px,2px); } }
 
 .radar-canvas { position:absolute; inset:0; z-index:3; width:100%; height:100%; image-rendering:pixelated; }
-.radar-key { position:absolute; z-index:5; top:5px; left:50%; display:flex; gap:3px; transform:translateX(-50%); }
-.radar-key i { width:5px; height:5px; box-shadow:0 0 0 1px rgba(20,16,34,.7); }
-.radar-key-mystery { width:7px; height:7px; margin-top:-1px; background:url(/landmarks/mystery-circle.png) center/contain no-repeat; box-shadow:none; }
+/* Named, not just coloured. Two swatches could be guessed from what is on
+   screen; three is where a key stops being self-evident, and water in
+   particular has to be told apart from "some dark block down there". */
+.radar-key { display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:2px 8px; width:148px; margin-top:7px; padding:5px 3px; color:rgba(255,245,199,.82); border-color:var(--hud-edge-cool) !important; font-size:10px; font-weight:1000; letter-spacing:.4px; }
+.radar-key span { display:inline-flex; align-items:center; gap:4px; white-space:nowrap; }
+.radar-key i { flex:0 0 auto; width:7px; height:7px; border-radius:2px; box-shadow:0 0 0 1px rgba(20,16,34,.7); }
+.radar-key-mystery { width:8px; height:8px; background:url(/landmarks/mystery-circle.png) center/contain no-repeat; box-shadow:none; }
 
 .secondary-button { padding:14px 26px; color:var(--cream); background:rgba(31,25,49,.86); border:4px solid var(--cream); box-shadow:7px 7px 0 var(--ink); font-weight:1000; letter-spacing:2px; cursor:pointer; }
 .secondary-button:hover { transform:translate(2px,2px); box-shadow:5px 5px 0 var(--ink); }

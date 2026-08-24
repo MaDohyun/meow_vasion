@@ -10,6 +10,7 @@ import { LifeHearts } from './LifeHearts'
 import { RichText } from './RichText'
 import { Radar } from './Radar'
 import { pilotFrameStyle } from '../render/pilotArt'
+import { MISSION_ICONS } from './missionIcons'
 import { getAudioVolumes, isLobbyMusicBlocked, onLobbyMusicBlockedChange, playMenuHoverSound, setBgmVolume, setSfxVolume, startLobbyMusic, stopLobbyMusic, unlockAudio } from '../audio'
 
 const formatTime = (seconds: number) => {
@@ -34,7 +35,11 @@ function MissionPanel() {
       <span className="eyebrow">{t.mission} {Math.min(3, snapshot.missionStage)}</span>
       {snapshot.missionQuests.map((quest) => (
         <div key={quest.id} data-complete={quest.complete}>
-          <i>{quest.complete ? '✓' : '·'}</i>
+          {/* The glyph is what the eye finds the row by; the tick that used to
+              sit here only ever appeared once the row no longer mattered. A
+              finished objective is struck through instead, which says the same
+              thing without spending the one column that aids the scan. */}
+          <i aria-hidden="true">{MISSION_ICONS[quest.id]}</i>
           <span>{t.missionCopy[quest.id]}</span>
           <b>{Math.floor(quest.progress)}/{Math.floor(quest.target)}</b>
         </div>
@@ -105,33 +110,203 @@ function HoldButton({
   )
 }
 
+/** How long the control card stays up on its own before folding away. */
+const TIP_AUTO_HIDE_MS = 11000
+
 /**
- * The control reminder, one line along the bottom edge.
+ * The control card, top right.
  *
- * The field manual explains the controls once, in the lobby, and then the
- * player never sees it again - so "which key was the beam" becomes a reason to
- * quit back to the menu. One quiet line of text costs nothing to leave on
- * screen and answers that without interrupting anything.
+ * This used to be a rule of grey text welded along the bottom edge, on screen
+ * for the whole run. It answered "which key was the beam", but it answered it
+ * for the four hundred and ninety-ninth second as loudly as for the first, and
+ * it took a full-width band off the bottom of the screen to do it - the same
+ * band the flight readouts now use.
  *
- * Keyboard only: it is hidden on touch, where the buttons are already labelled
- * and there is no key to name.
+ * So it says the same thing on a timer instead: up when the run starts, folded
+ * away once it has been read, and one button left behind to call it back. The
+ * player who already knows the keys loses nothing; the player who does not can
+ * ask again without going out to the menu.
+ *
+ * Three states rather than a boolean, because "closed itself" and "the player
+ * opened it" are different intents: an auto-shown card times out, a card the
+ * player asked for stays until they close it. Folding away something someone
+ * is in the middle of reading is worse than never showing it.
+ *
+ * The laser and the beam are on it. The keys that fly the craft are the ones a
+ * mock-up remembers to draw; the two that are the entire verb of this game are
+ * the ones a player quits without ever finding.
+ *
+ * Keyboard only: hidden on touch, where the buttons are already labelled and
+ * there is no key to name.
  */
-function ControlStrip() {
+function ControlTips() {
   const { t } = useGame()
-  const keys: [string, string][] = [
-    ['W/S', t.controlFly],
-    ['A/D', t.controlStrafe],
-    ['MOUSE', t.controlAim],
-    ['E', t.controlBeam],
-    ['Q', t.controlLaser],
-    ['SPACE', t.controlBoost],
+  const [state, setState] = useState<'auto' | 'open' | 'closed'>('auto')
+  const open = state !== 'closed'
+
+  useEffect(() => {
+    // Only the card nobody asked for times out.
+    if (state !== 'auto') return
+    const timer = window.setTimeout(() => setState('closed'), TIP_AUTO_HIDE_MS)
+    return () => window.clearTimeout(timer)
+  }, [state])
+
+  const rows: [readonly string[], string][] = [
+    [['W', 'A', 'S', 'D'], t.controlMove],
+    [['MOUSE'], t.controlAim],
+    [['E'], t.controlBeam],
+    [['Q'], t.controlLaser],
+    [['SPACE'], t.controlBoost],
   ]
+
   return (
-    <div className="control-strip">
-      {keys.map(([key, label]) => (
-        <span key={key}><b>{key}</b> {label}</span>
-      ))}
+    <section className="control-tips" data-open={open}>
+      <button
+        type="button"
+        className="tip-toggle"
+        aria-expanded={open}
+        aria-label={t.tipToggle}
+        onClick={() => setState(open ? 'closed' : 'open')}
+      >{open ? '\u00d7' : '?'}</button>
+      {open && (
+        <div className="tip-body">
+          <span className="eyebrow"><i aria-hidden="true">💡</i>{t.tipTitle}</span>
+          {rows.map(([keys, label]) => (
+            <div className="tip-row" key={label}>
+              <span className="keycap-set">
+                {keys.map((key) => <b className={`keycap ${key.length > 1 ? 'keycap-wide' : ''}`} key={key}>{key}</b>)}
+              </span>
+              <span>{label}</span>
+            </div>
+          ))}
+          {/* How to get bigger, said where the rest of the how-to lives rather
+              than parked under the score for the whole run. */}
+          <p className="tip-note">{t.massHint}</p>
+        </div>
+      )}
+    </section>
+  )
+}
+
+/**
+ * Score and clock, in one bar across the top.
+ *
+ * These are the only two numbers that describe the run rather than the craft,
+ * and they used to sit in a corner card with the mass reading and a line of
+ * advice stacked under them - four unrelated things sharing one box because
+ * they happened to arrive at the same time. Mass went to the flight bar with
+ * the other things the ship does, the advice went to the control card, and
+ * what is left is the pair a player actually glances up for.
+ */
+function StatusBar() {
+  const { snapshot, t } = useGame()
+  return (
+    <section className="status-bar panel" data-gain={snapshot.pickupPulse > 0.01}>
+      <div className="status-cell">
+        <span>{t.score}</span>
+        <strong>{Math.floor(snapshot.score).toLocaleString()}</strong>
+      </div>
+      <i className="status-split" aria-hidden="true" />
+      <div className="status-cell status-clock" data-low={snapshot.remainingTime <= 30}>
+        <span>{t.clock}</span>
+        <strong>{formatTime(snapshot.remainingTime)}</strong>
+      </div>
+    </section>
+  )
+}
+
+/**
+ * The two states that end a run without anything shooting at you.
+ *
+ * Both used to be their own floating box at their own fixed percentage down
+ * the screen, which meant the pair of them could stack on top of each other
+ * and neither could be read. They are the same kind of thing - "the craft is
+ * in trouble right now" - so they queue in one column under the score, where
+ * a player is already looking.
+ */
+function Alerts() {
+  const { snapshot, t } = useGame()
+  const overloaded = snapshot.overloadWarn >= 1
+  if (!overloaded && !snapshot.waterAnchored) return null
+  return (
+    <div className="hud-alerts" role="status" aria-live="assertive">
+      {overloaded && <p className="hud-alert overload-alarm"><RichText text={t.overloadAlarm} /></p>}
+      {snapshot.waterAnchored && <p className="hud-alert water-alarm">{t.waterAlarm}</p>}
     </div>
+  )
+}
+
+/**
+ * Everything the craft is doing, in one card along the bottom.
+ *
+ * Mass was in the score card, turbo and drag were in a panel on the right, and
+ * the keys that drive them were in a strip along the bottom edge: three
+ * separate places to look for one question, "can this thing still fly". They
+ * are one card now, and the keycap sits on the readout it moves - a boost
+ * gauge that says SPACE beside it needs no legend elsewhere.
+ *
+ * Both gauges are bars first and numbers second. Neither "0.42 tonnes" nor
+ * "27% slowdown" tells you how close to the ceiling you are the way a fill
+ * level does, and the ceiling is the thing that drops the craft out of the sky.
+ */
+function FlightBar() {
+  const { snapshot, t } = useGame()
+  return (
+    <section className="flight-bar panel">
+      <div className="flight-mass">
+        <span>{t.mass}</span>
+        <b className={snapshot.sizePulse > 0.01 ? 'mass-pulse' : ''}>{`\u00d7${snapshot.size.toFixed(2)}`}</b>
+      </div>
+      <div className="flight-gauges">
+        <div className="system-meter" data-active={snapshot.boostActive}>
+          <span>{t.turbo} <b>{snapshot.boostActive ? t.turboActive : `${Math.round(snapshot.turbo * 100)}%`}</b></span>
+          <div><i style={{ width: `${snapshot.turbo * 100}%` }} /></div>
+        </div>
+        <div className="ballast-meter" data-warn={snapshot.overloadWarn > 0} data-critical={snapshot.overloadWarn >= 1}>
+          <span>{t.drag} <b>{snapshot.overloadWarn >= 1 ? t.overloaded : `${Math.round(snapshot.cargoSlowdown * 100)}% ${t.slowdown}`}</b></span>
+          <div><i style={{ width: `${Math.min(100, (snapshot.ballast / snapshot.ballastLimit) * 100)}%` }} /></div>
+          {/* The gauge shows how loaded you are; only the words say that
+              filling it drops the craft out of the sky. */}
+          <em className="meter-note"><RichText text={t.overloadHint} /></em>
+        </div>
+      </div>
+      <div className="flight-keys">
+        <span><b>E</b>{t.controlBeam}</span>
+        <span><b>Q</b>{t.controlLaser}</span>
+        <span><b className="keycap-wide">SPACE</b>{t.controlBoost}</span>
+      </div>
+    </section>
+  )
+}
+
+/**
+ * The pilot, bottom right, and whatever the run has to say.
+ *
+ * The face is the panel. It carried a "PILOT" label and a line of small talk
+ * underneath it, and neither said anything the portrait was not already
+ * saying - the expressions are the readout, and a caption under a face is
+ * just a caption. So the card is the portrait, on screen for the whole run.
+ *
+ * The callouts - what was just absorbed, what a pickup upgraded, that the
+ * turbo has overheated - used to be a card in the middle of the screen, over
+ * the city the player is flying through. They are a speech bubble over the
+ * pilot instead: it is the one place on the HUD that is already a voice, and
+ * an empty bubble simply is not drawn, so nothing sits there saying nothing.
+ */
+function PilotComms() {
+  const { snapshot, t } = useGame()
+  const line = snapshot.messageKey
+    ? formatMessage(t, snapshot.messageKey, snapshot.messageArg)
+    : snapshot.message
+  return (
+    <section
+      className="pilot-card"
+      data-expression={snapshot.pilotExpression}
+      aria-label={`${t.pilotCam} ${snapshot.pilotExpression}`}
+    >
+      {line && <p className="pilot-line" role="status" aria-live="polite">{line}</p>}
+      <div className="pilot-portrait" style={pilotFrameStyle(snapshot.pilotExpression)} />
+    </section>
   )
 }
 
@@ -647,10 +822,13 @@ export function Hud() {
   return (
     <>
       <div className="hud" data-dazed={snapshot.daze > 0}>
-        {/* Two corners, two questions. Left is what keeps you alive, right is
-            what the run is scored on. Mass used to sit on the left, which put
-            the number you are chasing beside the bar you are defending and
-            made neither read. */}
+        {/* Four corners, four questions, and nothing loose between them. Top
+            left is what keeps you alive and what you are here to do; top
+            centre is how the run is being scored and anything shouting right
+            now; bottom left is where things are; bottom centre is what the
+            craft can still do; bottom right is who is talking to you. Every
+            readout that used to float at its own percentage down the middle of
+            the screen now belongs to one of those five. */}
         <div className="hud-left">
           {/* Hearts and nothing else. This card used to carry a label, a
               "5/5" readout, a shield bar and a hazard line - four ways of
@@ -667,33 +845,28 @@ export function Hud() {
           <MissionPanel />
         </div>
 
-        <section className="score-card panel">
-          <span className="eyebrow">{t.score}</span>
-          <strong>{Math.floor(snapshot.score).toLocaleString()}</strong>
-          <div className="score-row" data-low={snapshot.remainingTime <= 30}>
-            <span>{t.clock}</span><b>{formatTime(snapshot.remainingTime)}</b>
-          </div>
-          {/* Mass rides with the score rather than with the hearts: it is the
-              multiplier the run is graded on, not a thing to defend. */}
-          <div className="score-row score-mass">
-            <span>{t.mass}</span>
-            <b className={snapshot.sizePulse > 0.01 ? 'mass-pulse' : ''}>×{snapshot.size.toFixed(2)}</b>
-          </div>
-          <p className="score-hint">{t.massHint}</p>
-        </section>
+        {/* One column, stacked rather than layered. The boss bar, the overload
+            alarm and the stage banner all used to be pinned to their own fixed
+            percentage down the centre of the screen, so any two of them
+            arriving together drew straight through each other - and the boss
+            turning up is exactly the moment the other two are most likely to.
+            In a column they push each other down instead. */}
+        <div className="hud-top">
+          <StatusBar />
 
-        {/* The battleship's health, across the top of the screen.
-            Sixty-four laser hits is a long time to shoot at something with no
-            sign of progress - without this the fight reads as an invulnerable
-            set piece and the player stops firing. */}
-        {snapshot.bossHealth !== null && (
-          <div className="boss-bar" role="progressbar" aria-valuenow={Math.round(snapshot.bossHealth * 100)} aria-valuemin={0} aria-valuemax={100}>
-            <span className="eyebrow">{t.bossName}</span>
-            <div className="boss-bar-track"><i style={{ width: `${snapshot.bossHealth * 100}%` }} /></div>
-          </div>
-        )}
+          {/* The battleship's health. Sixty-four laser hits is a long time to
+              shoot at something with no sign of progress - without this the
+              fight reads as an invulnerable set piece and the player stops
+              firing. */}
+          {snapshot.bossHealth !== null && (
+            <div className="boss-bar" role="progressbar" aria-valuenow={Math.round(snapshot.bossHealth * 100)} aria-valuemin={0} aria-valuemax={100}>
+              <span className="eyebrow">{t.bossName}</span>
+              <div className="boss-bar-track"><i style={{ width: `${snapshot.bossHealth * 100}%` }} /></div>
+            </div>
+          )}
 
-        <div className="hud-center">
+          <Alerts />
+
           {snapshot.missionBanner && (
             <div className="mission-banner">
               {snapshot.missionBanner.type === 'stage-complete'
@@ -701,42 +874,17 @@ export function Hud() {
                 : t.reconComplete}
             </div>
           )}
-          {(snapshot.messageKey || snapshot.message) && (
-            <div className="message">
-              {snapshot.messageKey ? formatMessage(t, snapshot.messageKey, snapshot.messageArg) : snapshot.message}
-            </div>
-          )}
         </div>
 
-        <Radar />
+        {/* Held back until the general has finished teaching: during the
+            tutorial the same keys are being handed over one at a time, and a
+            card listing all five at once undercuts that. */}
+        {!snapshot.tutorial && <ControlTips key={`tips-${briefingRun}`} />}
 
-        {/* Turbo and overload are the two things that can kill a run on their
-            own (stranded with no boost, or crushed under too much cargo), so
-            they are the only readouts kept here - everything else this panel
-            used to carry (beam lock, altitude band) was detail the player
-            could live without. Both are bars first, numbers second: a raw
-            tonnage figure does not tell you how close to the ceiling you are
-            the way a fill level does. */}
-        <section className="systems-panel panel">
-          <div className="system-meter" data-active={snapshot.boostActive}>
-            <span>SPACE · {t.turbo} <b>{snapshot.boostActive ? t.turboActive : `${Math.round(snapshot.turbo * 100)}%`}</b></span>
-            <div><i style={{ width: `${snapshot.turbo * 100}%` }} /></div>
-          </div>
-          <div className="ballast-meter" data-warn={snapshot.overloadWarn > 0} data-critical={snapshot.overloadWarn >= 1}>
-            <span>{t.drag} <b>{snapshot.overloadWarn >= 1 ? t.overloaded : `${Math.round(snapshot.cargoSlowdown * 100)}% ${t.slowdown}`}</b></span>
-            <div><i style={{ width: `${Math.min(100, (snapshot.ballast / snapshot.ballastLimit) * 100)}%` }} /></div>
-            {/* The gauge shows how loaded you are; only the words say that
-                filling it drops the craft out of the sky. */}
-            <em className="meter-note"><RichText text={t.overloadHint} /></em>
-          </div>
-        </section>
-        <ControlStrip />
-        <section className="pilot-card panel" data-expression={snapshot.pilotExpression} aria-label={`pilot expression ${snapshot.pilotExpression}`}>
-          <div className="pilot-portrait" style={pilotFrameStyle(snapshot.pilotExpression)} />
-          <div><span className="eyebrow">{t.pilotCam}</span><b>{snapshot.pilotExpression.toUpperCase()}</b></div>
-        </section>
-        {snapshot.overloadWarn >= 1 && <div className="overload-alarm"><RichText text={t.overloadAlarm} /></div>}
-        {snapshot.waterAnchored && <div className="water-alarm">{t.waterAlarm}</div>}
+        <Radar />
+        <FlightBar />
+        <PilotComms />
+
         <BreakingNews />
         {snapshot.timeBonusPulse > 0 && <div className="time-bonus">+{snapshot.timeBonusAmount}s</div>}
         <div
