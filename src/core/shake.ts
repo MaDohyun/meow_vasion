@@ -10,6 +10,8 @@
  * state the game can sit in.
  */
 
+import type { HealthLossKind } from './health'
+
 /** Trauma is spent in about a third of a second: felt, then gone. */
 export const SHAKE_DECAY = 3.4
 
@@ -23,6 +25,30 @@ export const DRONE_BLAST_TRAUMA = 0.85
 export const HELICOPTER_RAM_TRAUMA = 0.6
 
 export const SHAKE_TRAUMA_MAX = 1
+
+/**
+ * What one hit is worth, by whatever landed it.
+ *
+ * The kick used to belong to the drone blast and the helicopter ram alone, so
+ * a shell, a curtain orb or the dreadnought's bow gun took a pip of health off
+ * a craft that never moved: the two things the player is looking at - the hull
+ * and the frame around it - answered some hits and ignored the rest, which
+ * reads as the quiet ones not having connected at all. Every source that can
+ * cost health now shakes, and the table is what says how hard: a blast is
+ * still the biggest thing that can happen to you, and a scrape along a tower
+ * is still the smallest, but nothing lands silently any more.
+ */
+export const HIT_TRAUMA: Record<HealthLossKind, number> = {
+  orb: 0.45,
+  rifle: 0.45,
+  rocket: 0.5,
+  building: 0.4,
+  contact: HELICOPTER_RAM_TRAUMA,
+  shell: 0.55,
+  'boss-beam': 0.8,
+  missile: 0.75,
+  explosive: DRONE_BLAST_TRAUMA,
+}
 
 /**
  * Radians, at full trauma. Tuned by what they do on screen rather than by the

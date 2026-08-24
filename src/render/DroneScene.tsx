@@ -37,6 +37,7 @@ import {
   BATTLESHIP_LENGTH,
   BATTLESHIP_TURRETS,
   ENEMY_CAPS,
+  ENEMY_MAX_PROJECTILES,
   DRONE_MINE_BLAST_RADIUS,
   DRONE_MINE_FUSE,
   DRONE_MINE_MODEL_SCALE,
@@ -79,6 +80,14 @@ const CHASE_EYE_HEIGHT = 3.6
  * have changed how flying reads, which this deliberately does not.
  */
 const CHASE_RIG_DROP = 0.6
+
+/**
+ * How fast the hull strobes red while a hit flash is fading, in radians per
+ * second - about five blinks a second, so the flash's own third of a second
+ * carries two of them. Fast enough to read as an alarm rather than a pulse,
+ * slow enough that a 60Hz frame catches both halves of every cycle.
+ */
+const IMPACT_BLINK_RATE = 32
 
 const BEAM_TARGET_RING_CAPACITY = WORLD_MAX_CARS + TRAFFIC_MAX_CARS + 8 + PEDESTRIAN_MAX + CAT_MAX + HAZARD_MAX + Object.values(ENEMY_CAPS).reduce((sum, count) => sum + count, 0)
 const beamTargetRingMaterial = new THREE.MeshBasicMaterial({
@@ -814,15 +823,23 @@ function Ufo() {
 
     // The player should be readable without becoming a glowing white disc.
     // Keep a small, stable self-light in both daytime and nighttime.
-    const impact = Math.max(0, Math.min(1, snapshot.impactFlash))
+    //
+    // Read off the runtime rather than the snapshot: the snapshot is published
+    // about sixteen times a second, which is slower than the blink below and
+    // would sample it into a stutter.
+    const impact = Math.max(0, Math.min(1, game.impactFlash))
+    // Blink, not fade. A tint that only slides back to hull grey reads as the
+    // light changing; strobing it on the way out is what says "that hit me",
+    // and every hit now runs through here - orb, shell, ram, bow gun or mine.
+    const impactBlink = impact * (0.6 + 0.4 * Math.sin(game.pilotClock * IMPACT_BLINK_RATE))
     const mysteryFlash = Math.max(0, Math.min(1, game.mysteryFlash / 0.65))
     const goldFlash = mysteryFlash * (0.78 + 0.22 * (0.5 + 0.5 * Math.sin(game.pilotClock * 24)))
     if (hullMaterial.current) {
-      hullColor.copy(hullBaseColor).lerp(hullImpactColor, impact)
+      hullColor.copy(hullBaseColor).lerp(hullImpactColor, impactBlink)
       hullColor.lerp(hullMysteryColor, goldFlash)
       hullMaterial.current.color.copy(hullColor)
       hullMaterial.current.emissive.copy(hullColor)
-      hullMaterial.current.emissiveIntensity = 0.2 + impact * 1.8 + goldFlash * 2.2
+      hullMaterial.current.emissiveIntensity = 0.2 + impactBlink * 1.8 + goldFlash * 2.2
     }
     if (domeMaterial.current) {
       domeColor.copy(domeBaseColor).lerp(domeMysteryColor, goldFlash)
@@ -1424,20 +1441,22 @@ function EnemyWarnings() {
     let count = 0
     for (const enemy of runtime.current.enemies.slots) {
       if (!enemy.active || enemy.telegraph <= 0) continue
-      // Everyone else gets a ring on the ground beneath them. The battleship
-      // gets one around the turret that is charging: a mark on the street
-      // ninety metres below the ship points at nothing the player can act on.
-      // The anti-air network gets an orange aim point at the locked target
-      // instead - its stream lands up in the sky, so the warning has to be
-      // exactly where the rounds will arrive.
-      if (enemy.kind === 'boss') position.set(enemy.muzzle.x, enemy.muzzle.y, enemy.muzzle.z)
-      else if (enemy.kind === 'anti-air') position.set(enemy.target.x, enemy.target.y, enemy.target.z)
+      // Everyone else gets a ring on the ground beneath them. The battleship's
+      // bow gun gets one around the turret that is charging: a mark on the
+      // street ninety metres below the ship points at nothing the player can
+      // act on. A locked stream - the anti-air network's, and the ship's own
+      // flak, which is the same move - gets an orange aim point at the target
+      // instead, because that stream lands up in the sky and the warning has
+      // to be exactly where the rounds will arrive.
+      const locked = enemy.kind === 'anti-air' || enemy.flakLeft > 0
+      if (locked) position.set(enemy.target.x, enemy.target.y, enemy.target.z)
+      else if (enemy.kind === 'boss') position.set(enemy.muzzle.x, enemy.muzzle.y, enemy.muzzle.z)
       else position.set(enemy.position.x, Math.max(0.08, enemy.position.y - 0.6), enemy.position.z)
       const pulse = 1 + Math.sin(clock.elapsedTime * 18) * 0.12
-      scale.setScalar((enemy.kind === 'boss' ? 3.4 : enemy.kind === 'anti-air' ? 3.4 : 1.25) * pulse)
+      scale.setScalar((locked || enemy.kind === 'boss' ? 3.4 : 1.25) * pulse)
       matrix.compose(position, quaternion, scale)
       mesh.setMatrixAt(count, matrix)
-      color.set(enemy.kind === 'anti-air' ? '#ff9a3d' : enemy.kind === 'boss' ? '#ff5f7c' : '#fff3a3')
+      color.set(locked ? '#ff9a3d' : enemy.kind === 'boss' ? '#ff5f7c' : '#fff3a3')
       mesh.setColorAt(count, color)
       count += 1
     }
@@ -1588,7 +1607,7 @@ function EnemyProjectiles() {
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
   })
   return (
-    <instancedMesh ref={ref} args={[undefined, undefined, 96]} frustumCulled={false} renderOrder={5}>
+    <instancedMesh ref={ref} args={[undefined, undefined, ENEMY_MAX_PROJECTILES]} frustumCulled={false} renderOrder={5}>
       <sphereGeometry args={[1, 6, 4]} />
       <meshBasicMaterial vertexColors transparent opacity={0.94} depthWrite={false} blending={THREE.AdditiveBlending} toneMapped={false} />
     </instancedMesh>
@@ -1597,8 +1616,8 @@ function EnemyProjectiles() {
 
 /**
  * The curtain rounds, drawn as embers: an opaque hot core inside a soft amber
- * shell, both pulsing gently. Two fixed 96-slot instanced meshes, reusing the
- * projectile pool's own slots.
+ * shell, both pulsing gently. Two fixed instanced meshes sized to the shot
+ * pool, reusing the projectile pool's own slots.
  *
  * Deliberately NOT additive, unlike every other shot. Additive blending buys
  * glow at night and pays for it at noon - against a bright sky it converges
@@ -1647,11 +1666,11 @@ function OrbPool() {
   })
   return (
     <group>
-      <instancedMesh ref={shellRef} args={[undefined, undefined, 96]} frustumCulled={false} renderOrder={5}>
+      <instancedMesh ref={shellRef} args={[undefined, undefined, ENEMY_MAX_PROJECTILES]} frustumCulled={false} renderOrder={5}>
         <sphereGeometry args={[1, 10, 8]} />
         <meshBasicMaterial vertexColors transparent opacity={0.55} depthWrite={false} toneMapped={false} />
       </instancedMesh>
-      <instancedMesh ref={coreRef} args={[undefined, undefined, 96]} frustumCulled={false} renderOrder={6}>
+      <instancedMesh ref={coreRef} args={[undefined, undefined, ENEMY_MAX_PROJECTILES]} frustumCulled={false} renderOrder={6}>
         <sphereGeometry args={[1, 8, 6]} />
         <meshBasicMaterial vertexColors toneMapped={false} />
       </instancedMesh>

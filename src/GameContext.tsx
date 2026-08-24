@@ -81,7 +81,7 @@ import { stepLakeAbsorption } from './core/lakes'
 import { createMissionState, isInsideAirCheckpoint, missionHasQuest, recordMissionEvent, startMissionOne, syncMissionState, type MissionQuest, type MissionState } from './core/missions'
 import { MYSTERY_BOOST_DURATION, MYSTERY_BOOST_MAX_MULTIPLIER, mysteryBoostMultiplier } from './core/mysteryCircles'
 import { shouldCrashFromOverload } from './core/overload'
-import { DRONE_BLAST_TRAUMA, HELICOPTER_RAM_TRAUMA, addShakeTrauma, createShakeState, stepShake, type ShakeState } from './core/shake'
+import { DRONE_BLAST_TRAUMA, HELICOPTER_RAM_TRAUMA, HIT_TRAUMA, addShakeTrauma, createShakeState, stepShake, type ShakeState } from './core/shake'
 import { worldPropMass, worldPropsAround } from './core/worldProps'
 import { endingForTimeUp, isVictory, type RunEnding } from './core/ending'
 import { playBoosterSound, playBuildingCollapseSound, playDroneExplosionSound, playLaserSound, playMysteryCircleSound, playNearbyCatCrySound, startBeamSound, startGameplayMusic, stopBeamSound, stopGameplayMusic, stopLobbyMusic, tone, unlockAudio } from './audio'
@@ -100,6 +100,19 @@ export type MissionBanner =
 export const RUN_SECONDS = 300
 /** A laser hit lights a building for about a fifth of a second. */
 export const BUILDING_HIT_FLASH_FADE = 5
+
+/**
+ * How fast the craft's own hit flash fades, in units per second.
+ *
+ * It used to be 5 - a fifth of a second, which is one half-cycle of the blink
+ * the hull draws with it, so the answer to a hit was a single red wash that
+ * could pass for a light changing. Slowed to a bit over a third of a second,
+ * the same flash reads as the hull flashing red twice, which is what a player
+ * glancing at their own craft can actually name as having been hit. Still
+ * short enough to be over well inside the damage cooldown, so a fight never
+ * sits under a permanent red tint.
+ */
+export const IMPACT_FLASH_FADE = 2.7
 export const SURVIVAL_TARGET_TIME = RUN_SECONDS
 
 export type GameRuntime = {
@@ -1341,21 +1354,30 @@ function updateNearbyCatCry(game: GameRuntime, dt: number) {
 }
 
 /**
- * `trauma` is the blast shake, and only explosive hits pass one: a scrape
- * along a tower still reads as the freeze alone. It is spent here rather than
- * at the call site so a hit swallowed by the damage cooldown shakes nothing -
- * that is not a hit the player took.
+ * Every hit answers the same way: the red flash, the freeze, and a kick.
+ *
+ * The shake used to be reserved for explosions, so a helicopter ram and a
+ * drone going off moved the screen while a fighter's orb, an anti-air shell or
+ * the dreadnought's bow gun took health off a craft that sat perfectly still.
+ * A hit the player cannot feel is a hit they have to read off the health bar,
+ * which is the one place they are not looking during a fight. `HIT_TRAUMA`
+ * prices the kick by what landed it, and `trauma` only overrides it where the
+ * same damage kind can arrive two ways - a mine detonating is not a scrape.
+ *
+ * It is all spent here rather than at the call site so a hit swallowed by the
+ * damage cooldown does nothing at all - that is not a hit the player took.
  */
-function registerImpact(game: GameRuntime, source: 'ENEMY' | 'BUILDING', loss?: HealthLossKind, trauma = 0) {
+function registerImpact(game: GameRuntime, source: 'ENEMY' | 'BUILDING', loss?: HealthLossKind, trauma?: number) {
   if (game.damageCooldown > 0 || game.phase !== 'playing') return
   game.damageCooldown = 1.05
   game.impactFlash = 1
   // Replaces the old continuous camera shake: a single short freeze reads as a
-  // hit without leaving the whole late game permanently vibrating. A blast
-  // adds its own decaying kick on top of the freeze - see core/shake.
+  // hit without leaving the whole late game permanently vibrating. The kick
+  // on top of it is a decaying one-shot rather than a state - see core/shake.
   game.hitstop = HITSTOP_TIME
-  if (trauma > 0) addShakeTrauma(game.shake, trauma)
-  wound(game, source === 'BUILDING' ? 'building' : loss ?? 'contact')
+  const kind = source === 'BUILDING' ? 'building' : loss ?? 'contact'
+  addShakeTrauma(game.shake, trauma ?? HIT_TRAUMA[kind])
+  wound(game, kind)
   tone(source === 'BUILDING' ? 'impact' : 'warning')
   if ('vibrate' in navigator) navigator.vibrate?.([35, 20, 35])
 }
@@ -1662,7 +1684,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     }
     game.pilotClock += d
     game.messageTime = Math.max(0, game.messageTime - d)
-    game.impactFlash = Math.max(0, game.impactFlash - d * 5)
+    game.impactFlash = Math.max(0, game.impactFlash - d * IMPACT_FLASH_FADE)
     stepShake(game.shake, d)
     // Short enough to be over before the laser can fire again, so holding the
     // trigger on a tower reads as repeated hits rather than a solid red block.
@@ -2132,10 +2154,12 @@ export function GameProvider({ children }: { children: ReactNode }) {
       // Ploughing through a drone detonates it just as surely as shooting it.
       triggerFireball(game.fireballs, 'aircraft', game.enemies.lastContactPoint, undefined, blastSeed(game))
     }
-    // Contact damage can come from anything solid; a drone detonation or a
-    // helicopter ram earns the shake, so the trauma rides on the blow that
-    // deserves it rather than on the damage number.
-    const ramTrauma = game.enemies.helicopterRams > 0 ? HELICOPTER_RAM_TRAUMA : 0
+    // Contact damage can come from anything solid, and the three ways it
+    // arrives are not the same blow: a mine detonating is the biggest thing
+    // that happens to the hull, a ram is a body blow, and flying into a parked
+    // fighter is neither. Leaving the trauma unset hands the last case to the
+    // HIT_TRAUMA table, which is where every other hit is priced.
+    const ramTrauma = game.enemies.helicopterRams > 0 ? HELICOPTER_RAM_TRAUMA : undefined
     if (contactDamage > 0) registerImpact(game, 'ENEMY', 'contact', contactBlasts > 0 ? DRONE_BLAST_TRAUMA : ramTrauma)
     const previousMissionStage = game.mission.stage
     const previousMissionRevision = game.mission.revision
