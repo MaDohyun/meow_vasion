@@ -209,16 +209,26 @@ button { font: inherit; }
    the height of a caption that has nothing to do with it. */
 .hud-corner { --dial: clamp(112px, 11vw, 148px); position:absolute; left:18px; bottom:18px; z-index:7; display:flex; align-items:flex-start; gap:10px; }
 
-/* The pilot: the face, on screen for the whole run, and a bubble above it only
+/* The pilot: the face, on screen for the whole run, and a bubble below it only
    while the run has something to say. No label and no caption - the expression
-   is the readout, and a word under a face is just a word. */
-.pilot-card { display:flex; align-items:flex-start; flex-direction:column; gap:9px; }
+   is the readout, and a word under a face is just a word.
+
+   `--say` is the band held under the portrait for that bubble, and it is held
+   whether or not there is a line: the bubble is positioned inside the band
+   rather than laid out in it, so the card is the same height all run and the
+   face never shifts to make room for something the pilot just said. The band
+   is sized to the tallest callout any of the three languages can produce.
+   `--say-drop` pushes the band past the bottom of the dial beside it, so a
+   wide bubble sits under the whole instrument corner instead of across the
+   dial's key; where the pilot has no dial next to it, the drop is 0. */
+.pilot-card { --say:64px; --say-drop:24px; display:flex; align-items:flex-start; flex-direction:column; gap:9px; }
+.pilot-line-slot { position:relative; width:100%; margin-top:var(--say-drop,0px); height:var(--say); pointer-events:none; }
 /* As tall as the dial beside it, and as wide as the portrait art's own
    620x550 makes it at that height. The frame fills with `cover`, so forcing it
    square to match the dial exactly would crop the pilot's ears and arms off to
    fit a box that was never measured against them. */
 .pilot-portrait { width:calc(var(--dial) * 1.127); height:var(--dial); overflow:hidden; border-color:var(--hud-edge-cool) !important; background-color:#1a2145; background-repeat:no-repeat; image-rendering:pixelated; }
-.pilot-line { max-width:min(300px,24vw); margin:0; padding:9px 14px; color:var(--cream); background:var(--hud-glass-deep); border:2px solid var(--hud-edge); border-radius:var(--hud-radius); box-shadow:var(--hud-drop); font-size:13px; font-weight:1000; line-height:1.5; letter-spacing:.4px; word-break:keep-all; animation:message-pop .18s steps(2); }
+.pilot-line { position:absolute; top:0; left:0; width:max-content; max-width:min(300px,24vw); margin:0; padding:9px 14px; color:var(--cream); background:var(--hud-glass-deep); border:2px solid var(--hud-edge); border-radius:var(--hud-radius); box-shadow:var(--hud-drop); font-size:13px; font-weight:1000; line-height:1.5; letter-spacing:.4px; word-break:keep-all; animation:message-pop .18s steps(2); }
 .pilot-card[data-expression="surprise"] .pilot-portrait,
 .pilot-card[data-expression="scream"] .pilot-portrait { animation:warning-pulse .3s steps(2) infinite; }
 .captive-rack { position: absolute; right: 18px; bottom: 123px; min-width: 126px; padding: 7px 10px; background: rgba(33,27,53,.85); border-bottom: 4px solid var(--green); text-align: right; }
@@ -534,9 +544,11 @@ button { font: inherit; }
   .hud-corner { display:contents; }
   /* Above the fire buttons and clear of the altitude arrows: the pilot is the
      one panel here that is read rather than pressed. */
-  .pilot-card { position:absolute; left:auto; right:14px; bottom:196px; align-items:flex-end; gap:6px; }
+  .pilot-card { --say:52px; --say-drop:0px; position:absolute; left:auto; right:14px; bottom:196px; align-items:flex-end; gap:6px; }
   .pilot-portrait { width:70px; height:62px; }
-  .pilot-line { max-width:min(280px,84vw); text-align:right; }
+  /* Pinned to the card's right edge, like everything else on this side of the
+     screen: the bubble grows out over the empty sky rather than off-screen. */
+  .pilot-line { left:auto; right:0; max-width:min(280px,84vw); text-align:right; }
   .pilot-line { padding:7px 10px; font-size:11px; }
   .captive-rack { display:none; }
   .planet-radar { display:none; }
@@ -633,9 +645,9 @@ button { font: inherit; }
   .flight-mass > b { font-size:22px; }
   .system-meter, .ballast-meter { grid-template-columns:34px minmax(0,1fr) 48px; gap:8px; }
   .breaking-band { width:min(620px,56vw); }
-  .pilot-card { position:absolute; right:22px; bottom:20px; align-items:flex-end; }
+  .pilot-card { --say:76px; --say-drop:0px; position:absolute; right:22px; bottom:20px; align-items:flex-end; }
   .pilot-portrait { width:108px; height:96px; }
-  .pilot-line { max-width:180px; padding:8px 11px; font-size:12px; text-align:right; }
+  .pilot-line { left:auto; right:0; max-width:180px; padding:8px 11px; font-size:12px; text-align:right; }
   .briefing-box { top:92px; }
 }
 

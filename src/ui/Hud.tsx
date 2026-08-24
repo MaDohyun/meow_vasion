@@ -292,9 +292,15 @@ function FlightBar() {
  *
  * The callouts - what was just absorbed, what a pickup upgraded, that the
  * turbo has overheated - used to be a card in the middle of the screen, over
- * the city the player is flying through. They are a speech bubble over the
+ * the city the player is flying through. They are a speech bubble under the
  * pilot instead: it is the one place on the HUD that is already a voice, and
  * an empty bubble simply is not drawn, so nothing sits there saying nothing.
+ *
+ * The bubble hangs below the portrait in a slot that is always there, empty
+ * or not. A bubble that took its space from the layout when it arrived pushed
+ * the face off the spot the eye had just learnt, which reads as the portrait
+ * jumping rather than as a line being spoken - so the slot holds the space
+ * whether or not there is anything to say, and the face never moves.
  */
 function PilotComms() {
   const { snapshot, t } = useGame()
@@ -307,8 +313,10 @@ function PilotComms() {
       data-expression={snapshot.pilotExpression}
       aria-label={`${t.pilotCam} ${snapshot.pilotExpression}`}
     >
-      {line && <p className="pilot-line" role="status" aria-live="polite">{line}</p>}
       <div className="pilot-portrait" style={pilotFrameStyle(snapshot.pilotExpression)} />
+      <div className="pilot-line-slot">
+        {line && <p className="pilot-line" role="status" aria-live="polite">{line}</p>}
+      </div>
     </section>
   )
 }
