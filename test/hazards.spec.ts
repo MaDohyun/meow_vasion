@@ -1,12 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { CAR_MASS, isAbsorbable } from '../src/core/beam'
+import { CAR_MASS, beamLiftScale, beginNearbyBeamObjectAbsorption, isAbsorbable } from '../src/core/beam'
+import { SIZE_START, ufoDiameter } from '../src/core/size'
 import {
   HAZARD_MAX,
-  HAZARD_TRIGGER_DISTANCE,
   activeHazardCount,
   createHazardState,
   damageHazard,
-  detonateReachedHazard,
   hazardTargetForTime,
   stepHazards,
   truckTargetForTime,
@@ -20,7 +19,7 @@ import { trafficPositionIsDriveable } from '../src/core/traffic'
 const view = (elapsed: number, x = 0, z = 0) => ({ position: { x, y: 6, z }, heading: 0, elapsed })
 
 describe('ground explosives', () => {
-  it('gates non-building objects by one-third of the current UFO diameter', () => {
+  it('gates non-building objects by the current UFO diameter', () => {
     expect(isAbsorbable('explosive', 5.1, 1.8)).toBe(false)
     expect(isAbsorbable('explosive', 5.1, 5.1)).toBe(true)
     expect(isAbsorbable('car', 2.9, 3)).toBe(true)
@@ -84,8 +83,6 @@ describe('ground explosives', () => {
     const truck = state.objects.find((item) => item.active && item.kind === 'truck')!
     truck.inBeam = true
     for (let frame = 0; frame < 60; frame += 1) stepHazards(state, view(10), 1 / 60)
-    expect(truck.alarm).toBe(0)
-    expect(detonateReachedHazard(state, { ...truck.position })).toBeNull()
     expect(truck.active).toBe(true)
   })
 
@@ -96,46 +93,45 @@ describe('ground explosives', () => {
     expect(activeHazardCount(state, 'truck')).toBe(truckTargetForTime(90))
   })
 
-  it('raises the alarm while held and stands down when released', () => {
-    const state = createHazardState(3)
+  it('swallows a tanker drawn to the craft instead of detonating it', () => {
+    // The tanker used to blow up the moment the beam drew it within 3.4m,
+    // which made the most valuable thing on the road the one object that
+    // punished the verb the whole run teaches. It is food now.
+    const state = createHazardState(5)
     stepHazards(state, view(90), 1 / 60)
     for (let frame = 0; frame < 120; frame += 1) stepHazards(state, view(90), 1 / 60)
-    const hazard = state.objects.find((item) => item.active && item.kind === 'explosive')!
-    hazard.inBeam = true
+    const tanker = state.objects.find((item) => item.active && item.kind === 'explosive')!
+    const craft = { x: tanker.position.x, y: tanker.position.y, z: tanker.position.z }
+    tanker.inBeam = true
+
+    // Held right up against the craft: nothing goes off, and it is still there
+    // to be eaten.
     for (let frame = 0; frame < 60; frame += 1) stepHazards(state, view(90), 1 / 60)
-    const heldAlarm = hazard.alarm
-    expect(heldAlarm).toBeGreaterThan(0.5)
-    // Releasing has to visibly defuse it, or the escape hatch reads as useless.
-    hazard.inBeam = false
-    hazard.tether = 0
-    for (let frame = 0; frame < 60; frame += 1) stepHazards(state, view(90), 1 / 60)
-    expect(hazard.alarm).toBeLessThan(heldAlarm)
+    expect(tanker.active).toBe(true)
+    expect(tanker.explosionPending).toBe(false)
+
+    // A craft wide enough and strong enough swallows it through the ordinary
+    // gates - no special case for the tanker in either direction.
+    expect(beamLiftScale(HAZARD_MASS, 4)).toBeGreaterThan(0)
+    const eaten = beginNearbyBeamObjectAbsorption(state.objects, craft, ufoDiameter(1.2), 3.48, 4)
+    expect(eaten?.id).toBe(tanker.id)
+    expect(tanker.absorbing).toBe(true)
+    expect(tanker.explosionPending).toBe(false)
   })
 
-  it('only detonates on a held hazard that reaches the craft', () => {
-    const state = createHazardState(5)
-    const hazard = state.objects[0]!
-    hazard.active = true
-    hazard.position = { x: 0, y: 6, z: 0 }
-    const craft = { x: 0, y: 6, z: 0 }
-    // Sitting on the ground under the craft is not enough; it has to be held.
-    expect(detonateReachedHazard(state, craft)).toBeNull()
-    hazard.inBeam = true
-    expect(detonateReachedHazard(state, craft)?.id).toBe(hazard.id)
-    expect(hazard.active).toBe(false)
-    // And never twice.
-    expect(detonateReachedHazard(state, craft)).toBeNull()
-  })
-
-  it('leaves a held hazard alone until it is drawn close', () => {
-    const state = createHazardState(7)
-    const hazard = state.objects[0]!
-    hazard.active = true
-    hazard.inBeam = true
-    hazard.position = { x: 0, y: 6 - HAZARD_TRIGGER_DISTANCE - 1, z: 0 }
-    expect(detonateReachedHazard(state, { x: 0, y: 6, z: 0 })).toBeNull()
-    hazard.position.y = 6 - HAZARD_TRIGGER_DISTANCE + 0.2
-    expect(detonateReachedHazard(state, { x: 0, y: 6, z: 0 })).not.toBeNull()
+  it('still refuses a tanker the craft is too small or too weak for', () => {
+    const state = createHazardState(11)
+    stepHazards(state, view(90), 1 / 60)
+    for (let frame = 0; frame < 120; frame += 1) stepHazards(state, view(90), 1 / 60)
+    const tanker = state.objects.find((item) => item.active && item.kind === 'explosive')!
+    tanker.inBeam = true
+    const craft = { x: tanker.position.x, y: tanker.position.y, z: tanker.position.z }
+    // Strong enough, too narrow (hull 2.48m against a 5.1m tanker).
+    expect(beginNearbyBeamObjectAbsorption([tanker], craft, ufoDiameter(SIZE_START), 3.48, 7)).toBeNull()
+    // Wide enough, too weak.
+    expect(beginNearbyBeamObjectAbsorption([tanker], craft, ufoDiameter(1.2), 3.48, 1)).toBeNull()
+    expect(tanker.active).toBe(true)
+    expect(tanker.explosionPending).toBe(false)
   })
 
   it('takes three laser hits to blow a tanker and two for a truck', () => {

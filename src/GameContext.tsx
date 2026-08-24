@@ -23,7 +23,6 @@ import { createDaylightSample, daylightClock, sampleDaylight, type DaylightSampl
 import {
   createHazardState,
   damageHazard,
-  detonateReachedHazard,
   stepHazards,
   type HazardState,
 } from './core/hazards'
@@ -1994,17 +1993,11 @@ export function GameProvider({ children }: { children: ReactNode }) {
     absorbFrom(game.beamObjects)
     absorbFrom(game.hazards.objects)
     absorbFrom(game.enemies.slots)
-    const detonated = detonateReachedHazard(game.hazards, game.drone.position)
-    if (detonated) {
-      triggerLaserBurst(game.laserBursts, 'impact', detonated.position, '#ff7a3d')
-      triggerFireball(game.fireballs, 'vehicle', detonated.position, undefined, blastSeed(game))
-      // Spectacle without hull damage, by design: the forecourt blast used to
-      // cost 2.5 pips, which turned every gas station into a trap the warning
-      // could not fully disarm. The daze is the whole price now - the craft
-      // wallows through the fireball instead of bleeding for it.
-      if (game.daze <= 0) game.daze = DAZE_TIME
-      tone('warning')
-    }
+    // A tanker used to detonate here the moment the beam drew it within 3.4m,
+    // which made the one heavy vehicle worth the most points the one object in
+    // the city that punished the verb the whole run teaches. It is food now:
+    // it goes up the beam and is swallowed by the same gates as everything
+    // else, and the laser remains the way to blow one up on purpose.
     game.loadedCars = loadedCarCount(game)
     game.ballast = beamBallast(game)
     for (let index = game.beamObjects.length - 1; index >= 0; index -= 1) {
