@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  ANTI_AIR_SHELL_RADIUS,
-  ANTI_AIR_TELEGRAPH,
+  BATTLESHIP_MAIN_GUN_TELEGRAPH,
   ENEMY_WAVE_STAGES,
   LEAD_ACCURACY,
   PROJECTILE_SPEED,
@@ -16,17 +15,17 @@ import { DRONE_DEFAULTS } from '../src/core/drone'
 /**
  * Fly a course past a hand-emplaced anti-air ring and count the hits.
  *
- * The network is the roster's one remaining lead-aimed shooter - fighters
- * moved to curtain fire (test/danmaku.spec.ts) and helicopters to rams
- * (test/helicopter.spec.ts) - so the aiming rules are proven against it. The
- * real spawner bolts the sites to buildings, which is orthogonal to aiming,
- * so the ring is placed directly.
+ * The network no longer aims - it fires the curtain like everything else
+ * (test/danmaku.spec.ts) - but it is still the densest concentration of guns
+ * that can be stood up without a boss, so it is what the "does moving help"
+ * question gets asked of. The real spawner bolts the sites to buildings, which
+ * is orthogonal to this, so the ring is placed directly.
  *
- * `jink` breaks course several times a second, faster than any telegraph, so
- * no prediction made at aim time survives to the shot.
+ * `speed` of zero parks the craft in the middle of the ring, which is the
+ * mistake the curtain exists to punish.
  */
-function aaRun(options: { speed: number; hitRadius?: number; jink?: boolean }) {
-  const { speed, hitRadius = 1.05, jink = false } = options
+function aaRun(options: { speed: number; hitRadius?: number }) {
+  const { speed, hitRadius = 1.05 } = options
   const state = createEnemyState(0xa11)
   const player = { x: 0, y: 40, z: 0 }
   const velocity = { x: 0, y: 0, z: speed }
@@ -36,15 +35,11 @@ function aaRun(options: { speed: number; hitRadius?: number; jink?: boolean }) {
     site.mode = 'fixed'
     site.hitRadius = 2.2
     const angle = index / sites.length * Math.PI * 2
-    site.position = { x: Math.sin(angle) * 90, y: 30, z: Math.cos(angle) * 90 }
+    site.position = { x: Math.sin(angle) * 40, y: 30, z: Math.cos(angle) * 40 }
   })
   let hits = 0
   const d = 1 / 60
   for (let tick = 0; tick < 40 * 60; tick += 1) {
-    if (jink) {
-      velocity.x = speed * Math.sin(tick * d * 7)
-      velocity.z = speed * Math.cos(tick * d * 7)
-    }
     player.x += velocity.x * d
     player.z += velocity.z * d
     stepEnemies(state, player, d, velocity)
@@ -54,74 +49,41 @@ function aaRun(options: { speed: number; hitRadius?: number; jink?: boolean }) {
 }
 
 describe('lead aiming', () => {
-  it('fires every aimed shot faster than the craft can cruise', () => {
+  it('fires the one aimed shot faster than the craft can cruise', () => {
     // Without this there is no interception solution at all: a fleeing target
     // outruns the bullet and every shot misses no matter how well aimed. The
-    // shots used to be slower than the craft, which is why the real rule of
-    // the game was "stand still and die, move and be immortal".
-    for (const [kind, speed] of Object.entries(PROJECTILE_SPEED)) {
-      if (kind === 'orb') continue
-      expect(speed, kind).toBeGreaterThan(DRONE_DEFAULTS.maxSpeed)
-    }
-    // The orb is the deliberate exception: a curtain round is dodged by
-    // reading the pattern, not outrun, so it sits below cruise on purpose.
+    // bow gun is the only weapon left that aims, so it is the only one this
+    // has to hold for.
+    expect(PROJECTILE_SPEED['boss-beam']).toBeGreaterThan(DRONE_DEFAULTS.maxSpeed)
+    // The orb is the deliberate opposite: a curtain round is dodged by
+    // reading the air, not outrun, so it sits below cruise on purpose.
     expect(PROJECTILE_SPEED.orb).toBeLessThan(DRONE_DEFAULTS.maxSpeed)
   })
 
-  it('hits a craft that holds its heading', () => {
-    // The point of the whole change. Flying in a straight line at full speed
-    // used to be perfect safety.
-    expect(aaRun({ speed: DRONE_DEFAULTS.maxSpeed })).toBeGreaterThan(0)
+  it('punishes a craft that parks in a field of guns', () => {
+    // Every round is fired at where the craft is, so a craft that stays there
+    // is hit by all of them. Hovering is the mistake the curtain prices.
+    expect(aaRun({ speed: 0 })).toBeGreaterThan(0)
   })
 
-  it('misses a craft that breaks its heading', () => {
-    // And the other half: the telegraph is a real window, not decoration.
-    const straight = aaRun({ speed: DRONE_DEFAULTS.maxSpeed })
-    const jinking = aaRun({ speed: DRONE_DEFAULTS.maxSpeed, jink: true })
-    expect(jinking).toBeLessThan(straight)
+  it('lets a craft that keeps moving fly clear', () => {
+    // The curtain's whole bargain, and the reason the rounds are slower than
+    // the craft: a round is aimed at where you were, so moving is the answer
+    // everywhere, against every gun. Not a reduction - a craft under way is
+    // simply somewhere else by the time any of it arrives.
+    const parked = aaRun({ speed: 0 })
+    const moving = aaRun({ speed: DRONE_DEFAULTS.maxSpeed })
+    expect(moving).toBeLessThan(parked)
   })
 
-  it('locks the anti-air beam for three seconds, and sends heavy rounds down it', () => {
-    // The stream itself is specified in test/enemies.spec.ts; this holds the
-    // two halves this file cares about - the beam freezes where it locked,
-    // and what rides it is a shell big enough to be watched coming.
-    expect(ANTI_AIR_TELEGRAPH).toBe(3)
-    const state = createEnemyState(0xaa)
-    const site = state.slots.find((enemy) => enemy.kind === 'anti-air')!
-    site.active = true
-    site.mode = 'fixed'
-    site.position = { x: 0, y: 30, z: 0 }
-    site.attackTimer = 0
-    const still = { x: 0, y: 0, z: 0 }
-    stepEnemies(state, { x: 0, y: 40, z: 80 }, 1 / 60, still)
-    expect(site.aiming).toBe(true)
-    expect(site.telegraphLength).toBe(ANTI_AIR_TELEGRAPH)
-    const muzzle = { ...site.muzzle }
-    const target = { ...site.target }
-    // The beam is fixed: the player moving does not drag it around. Flying
-    // off the line is the dodge, and the line has to hold still to be flown
-    // off of.
-    for (let tick = 0; tick < 60; tick += 1) stepEnemies(state, { x: 40, y: 40, z: 40 }, 1 / 60, still)
-    expect(site.muzzle).toEqual(muzzle)
-    expect(site.target).toEqual(target)
-    // Run the rest of the lock out: what leaves rides the frozen line, and
-    // every round of it is the big shell.
-    for (let tick = 0; tick < 60 * 3; tick += 1) stepEnemies(state, { x: 40, y: 40, z: 40 }, 1 / 60, still)
-    const shells = state.projectiles.filter((projectile) => projectile.active)
-    expect(shells.length).toBeGreaterThan(0)
-    for (const shell of shells) {
-      expect(shell.kind).toBe('missile')
-      expect(shell.radius).toBe(ANTI_AIR_SHELL_RADIUS)
-    }
-  })
-
-  it('gives full lead only to the units that actually aim', () => {
-    // The anti-air network and the battleship's bow gun are the roster's only
-    // aimed weapons, and both arrive when flying straight is supposed to be
-    // fatal - so both lead perfectly. Everything else attacks without aiming
-    // at all: contact, rams, and curtains.
-    expect(LEAD_ACCURACY['anti-air']).toBe(1)
+  it('gives full lead only to the unit that actually aims', () => {
+    // The battleship's bow gun is the roster's last aimed weapon, and it
+    // arrives when flying straight is supposed to be fatal - so it leads
+    // perfectly, and it is shown to the player before it fires.
     expect(LEAD_ACCURACY.boss).toBe(1)
+    expect(BATTLESHIP_MAIN_GUN_TELEGRAPH).toBeGreaterThan(0)
+    // Everything else attacks without aiming at all: contact, rams, curtains.
+    expect(LEAD_ACCURACY['anti-air']).toBe(0)
     expect(LEAD_ACCURACY.drone).toBe(0)
     expect(LEAD_ACCURACY.helicopter).toBe(0)
     expect(LEAD_ACCURACY.fighter).toBe(0)

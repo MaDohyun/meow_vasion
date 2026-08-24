@@ -4,7 +4,7 @@ import { seedForWorldCell, type ProceduralBuilding } from './world'
 
 export type EnemyKind = 'drone' | 'helicopter' | 'fighter' | 'anti-air' | 'boss'
 export type EnemyMode = 'roam' | 'chase' | 'strafe' | 'outbound' | 'fixed'
-export type EnemyProjectileKind = 'rifle' | 'shell' | 'missile' | 'rocket' | 'boss-beam' | 'orb'
+export type EnemyProjectileKind = 'boss-beam' | 'orb'
 
 /**
  * When each wave lands, in seconds.
@@ -163,40 +163,70 @@ export const HELICOPTER_GIVE_UP_RANGE = 78
 export const HELICOPTER_PEEL_RANGE = 58
 
 /**
- * The bullet curtain.
+ * The bullet curtain, and now the roster's only round.
  *
- * Everything else this roster fires is a sniper's answer - one fast, lead-aimed
- * shot that must outrun the craft or it can never land. Orbs are the opposite
- * weapon: slow, unaimed, and many. They are deliberately below cruising speed,
- * because an orb is not meant to be outrun - it is meant to be seen, read, and
- * flown between. The pattern is the attack, not the pellet.
+ * Every gun in the sky fires the same thing: a slow glowing orb, deliberately
+ * below the craft's cruising speed, because an orb is not meant to be outrun -
+ * it is meant to be seen, read, and flown around. One weapon means one thing
+ * to learn. The player no longer has to tell a rifle round from a shell from a
+ * missile at a glance and price each one differently; they read the sky by
+ * where the orbs are and where they are going, which is the only question a
+ * curtain ever asks.
  *
- * Fighters carry a forward fan of them: a fast straight pass, and a spread of
- * orbs down its own nose whenever the player sits inside its view cone. The
- * battleship scatters full rings of them in every direction instead - a halo
- * that makes closing in on the hull a navigation problem, while the bow gun
- * stays the aimed, telegraphed threat at range.
+ * The lead-aimed, telegraphed shot is gone with them. Aiming was a second
+ * grammar bolted onto the first: the anti-air network locked for three
+ * seconds, drew a line, and streamed heavy rounds down it, so the answer to it
+ * was reading a warning rather than reading the air. Now a gun with the craft
+ * in range simply fires one orb at it, every cooldown, and the dodge is the
+ * same dodge everywhere - move, and keep moving.
+ *
+ * Fighters and the anti-air network fire one orb at a time down the bearing to
+ * the craft. The battleship still scatters full rings in every direction - a
+ * halo that makes closing on the hull a navigation problem - and keeps the bow
+ * gun as its one aimed, telegraphed shot, which is the whole reason the ship
+ * reads as a boss and not as a large fighter.
  */
-export const ORB_SPEED = 16
+/**
+ * How fast a curtain round travels: less than half the craft's cruise of 30,
+ * and under its slowest useful throttle.
+ *
+ * This is the number the whole design rests on. A round the player can outfly
+ * is a round they can read, and reading it is the game: at fourteen metres a
+ * second an orb crosses the gap from a fighter's nose to where you are hanging
+ * over a rooftop in about four seconds, which is long enough to see it leave,
+ * decide, and be somewhere else. Nothing about a hit should ever be a surprise
+ * - if the player is where the orb is, they had seconds to not be.
+ *
+ * It also means a craft under way is essentially safe from anything shot at it
+ * from range, and that is correct. The curtain is not there to tax travelling;
+ * it is there to price hovering, beam work, and flying into a nest of guns
+ * without looking.
+ */
+export const ORB_SPEED = 14
 export const ORB_HIT_RADIUS = 0.7
-/** How long a fighter's orb lives - about ninety metres of reach. */
-export const FIGHTER_ORB_LIFE = 5.5
-/** Seconds between fan bursts while the player stays in the cone. */
-export const FIGHTER_ORB_INTERVAL = 2
-/** Half-angle of the view cone the fan answers: the player has to be within
- *  thirty degrees of the fighter's own nose. */
-export const FIGHTER_ORB_CONE = Math.PI / 6
-export const FIGHTER_ORB_RANGE = 90
-/** Orbs per fan, and the angle between neighbours - about ±24 degrees. */
-export const FIGHTER_ORB_FAN = 5
-const FIGHTER_ORB_FAN_STEP = 0.21
+/** Long enough to cross the fighter's whole range and no further, so a missed
+ *  round dies in the air rather than sailing on across the city. */
+export const FIGHTER_ORB_LIFE = 5.4
+/**
+ * Seconds between a fighter's shots.
+ *
+ * It used to be two seconds for a fan of five, gated on the player sitting
+ * inside a thirty-degree view cone off the fighter's nose - so a fighter was
+ * either silent or spat a wall, depending on something the player could not
+ * see. One orb on a shorter cooldown, from any bearing, spends the same
+ * ammunition as a steady drizzle: a single fighter is a nuisance you fly past
+ * and a squadron is weather.
+ */
+export const FIGHTER_ORB_INTERVAL = 1.4
+export const FIGHTER_ORB_RANGE = 70
 /** A fighter crosses the sky in one straight line, well above cruise: the
- *  pass is the manoeuvre, the fan is the attack. */
+ *  pass is the manoeuvre, the orb is the attack. */
 export const FIGHTER_PASS_SPEED = 40
 
 /** Battleship orbs travel a little harder - they have an escort's ground to
- *  cover - but still under cruise, so the halo is flown through, not fled. */
-export const BATTLESHIP_ORB_SPEED = 20
+ *  cover - but still at half the craft's cruise, so the halo is flown through,
+ *  not fled. */
+export const BATTLESHIP_ORB_SPEED = 16
 export const BATTLESHIP_ORB_LIFE = 8
 /** Orbs per ring, and rings per flurry. The second ring is offset half a
  *  spacing so the pair weaves a net rather than retracing the first. */
@@ -363,6 +393,18 @@ export type EnemyState = {
   /** Kind of the last projectile that connected, so the caller can price the
    *  hit by weapon rather than by a raw damage number. */
   lastHitKind: EnemyProjectileKind | null
+  /**
+   * Where the last projectile burst against the hull.
+   *
+   * The caller puts the hit effect there. It is set on every connection, not
+   * only on the ones that cost health: the craft has a second of grace after
+   * a hit, and a round that vanishes into an invulnerable hull with nothing
+   * to show for it reads as the shot passing through.
+   */
+  lastHitPoint: Vec3
+  /** True on any tick a projectile burst against the hull, whatever the
+   *  damage window said. */
+  projectileHit: boolean
   /** Where the last suicide drone detonated, for the explosion effect. */
   lastContactPoint: Vec3
   /** A mine explosion is consumed by the game loop after all enemy movement. */
@@ -468,7 +510,7 @@ function makeProjectile(slot: number): EnemyProjectile {
   return {
     id: `enemy-projectile:${slot}`,
     active: false,
-    kind: 'rifle',
+    kind: 'orb',
     position: { x: 0, y: 0, z: 0 },
     velocity: { x: 0, y: 0, z: 0 },
     life: 0,
@@ -537,7 +579,7 @@ export function createEnemyState(seed = 0x91eab7): EnemyState {
   const slots: EnemySlot[] = []
   for (const kind of ORDER) for (let slot = 0; slot < ENEMY_CAPS[kind]; slot += 1) slots.push(makeSlot(kind, slot))
   const projectiles = Array.from({ length: ENEMY_MAX_PROJECTILES }, (_, slot) => makeProjectile(slot))
-  return { slots, projectiles, destroyedAntiAir: new Set<string>(), waveStage: 0, spawnTimer: 0, randomState: seed >>> 0 || 1, contactKills: 0, helicopterRams: 0, lastHitKind: null, lastContactPoint: { x: 0, y: 0, z: 0 }, mineExplosion: null } satisfies EnemyState
+  return { slots, projectiles, destroyedAntiAir: new Set<string>(), waveStage: 0, spawnTimer: 0, randomState: seed >>> 0 || 1, contactKills: 0, helicopterRams: 0, lastHitKind: null, lastHitPoint: { x: 0, y: 0, z: 0 }, projectileHit: false, lastContactPoint: { x: 0, y: 0, z: 0 }, mineExplosion: null } satisfies EnemyState
 }
 
 export function isAntiAirBuilding(building: Pick<ProceduralBuilding, 'cellX' | 'cellZ'>) {
@@ -724,26 +766,18 @@ function distanceToPlayer(enemy: EnemySlot, player: Vec3) {
 /**
  * Shot speeds.
  *
- * Every aimed shot is above the craft's cruising speed of 30, and that is the
- * whole reason they changed. They used to sit between 16 and 25 - slower than
- * the thing they were shooting at - which means no interception solution
- * exists at all: a fleeing target simply outruns the bullet. Combined with
- * aiming at where the player *was*, the real rule of the game was "stand still
- * and die, move in any direction at all and be immortal", and beam ballast,
- * the only speed penalty in the game, was protecting nothing.
+ * Two entries, because there are two weapons left. The bow gun is the aimed
+ * one and sits above the craft's cruising speed of 30, which is what makes an
+ * interception solution exist at all: a shot slower than its target can never
+ * catch a fleeing craft, however well it was aimed. Turbo (54) still outruns
+ * it, and that is deliberate - turbo is a resource, and spending it to outrun
+ * the boss's one aimed shell is a fair play.
  *
- * Turbo (54) still outruns most of them. That is deliberate: turbo is a
- * resource, and spending it to outrun a shell is a fair play.
- *
- * The orb is the one deliberate exception: it is a curtain round, not a
- * sniper's, and it is dodged by reading the pattern rather than outrun - so it
- * sits below cruise on purpose. See the bullet-curtain block above.
+ * The orb goes the other way on purpose. It is a curtain round, dodged by
+ * reading the air rather than outrun, so it sits below cruise. See the
+ * bullet-curtain block above.
  */
 export const PROJECTILE_SPEED: Record<EnemyProjectileKind, number> = {
-  rifle: 58,
-  shell: 46,
-  missile: 52,
-  rocket: 44,
   'boss-beam': 40,
   orb: ORB_SPEED,
 }
@@ -752,20 +786,19 @@ export const PROJECTILE_SPEED: Record<EnemyProjectileKind, number> = {
  * How well each enemy leads a moving target, 0 (shoots where you are) to 1
  * (shoots exactly where you will be).
  *
- * Only the units that actually aim carry a real figure now: the anti-air
- * network and the battleship's bow gun, both at full lead, because by the
- * time either is on the field flying straight is supposed to be fatal. The
- * rest of the roster attacks without aiming at all - contact, rams, and
- * curtains of orbs - so their entries are zero and exist only because the
- * table is keyed by every kind.
+ * One unit carries a real figure: the battleship's bow gun, at full lead,
+ * because by the time the ship is on the field flying straight is supposed to
+ * be fatal. Everything else attacks without aiming at all - contact, rams, and
+ * curtains of orbs fired down the bearing to wherever the craft happens to be
+ * - so their entries are zero and exist only because the table is keyed by
+ * every kind. The anti-air network used to sit at full lead beside the boss
+ * and it was the roster's second grammar; it fires the curtain now like
+ * everyone else.
  *
- * A lower tier still leads the target properly - it just puts the shot down
- * beside the answer. Scaling the lead instead was the first attempt and it was
- * wrong: an eighty-percent lead is a twenty-percent shortfall, which at a
- * hundred metres is a twenty-metre miss every single time, so a low tier
- * could never hit anything at all. Aiming at the right place with a bounded
- * error makes a low tier look like a near miss rather than like an enemy that
- * cannot shoot.
+ * A lower tier would still lead the target properly - it would just put the
+ * shot down beside the answer. Scaling the lead instead was the first attempt
+ * and it was wrong: an eighty-percent lead is a twenty-percent shortfall,
+ * which at a hundred metres is a twenty-metre miss every single time.
  */
 export const AIM_ERROR_METRES = 16
 
@@ -773,7 +806,7 @@ export const LEAD_ACCURACY: Record<EnemyKind, number> = {
   drone: 0,
   helicopter: 0,
   fighter: 0,
-  'anti-air': 1,
+  'anti-air': 0,
   boss: 1,
 }
 
@@ -842,10 +875,6 @@ function aimProjectile(state: EnemyState, enemy: EnemySlot, player: Vec3, player
   enemy.target.x = player.x + playerVelocity.x * lead + (random(state) - 0.5) * 2 * spread
   enemy.target.y = player.y + playerVelocity.y * lead + (random(state) - 0.5) * spread
   enemy.target.z = player.z + playerVelocity.z * lead + (random(state) - 0.5) * 2 * spread
-  if (kind === 'rocket') {
-    enemy.target.x += (enemy.slot % 3 - 1) * 13
-    enemy.target.z += ((enemy.slot + 1) % 3 - 1) * 13
-  }
   enemy.velocity.x = speed
   enemy.velocity.y = damage
   enemy.velocity.z = kind === 'boss-beam' ? 1 : 0
@@ -853,26 +882,39 @@ function aimProjectile(state: EnemyState, enemy: EnemySlot, player: Vec3, player
 }
 
 /**
- * The anti-air judgement: a three-second orange lock, then a stream.
+ * The anti-air gun, now a curtain piece like everything else.
  *
- * One missile after a 0.8s wink was over before it could be read - at high
- * altitude the network was a damage table, not a mechanic. Three seconds of
- * lock puts the whole exchange in the player's hands: the orange aim point
- * marks the one spot the gun is committed to, and when the lock expires five
- * rounds rattle into exactly that spot in quick succession. Leave the point
- * inside the window and the whole string sails past; sit on it and the
- * stream keeps arriving. A stream rather than a scatter, so the punishment
- * for ignoring the mark reads as one sustained answer, not bad luck.
+ * It used to be the roster's sniper: a three-second orange lock, a blinking
+ * beam drawn to the point it had committed to, and then five heavy shells
+ * streamed into that spot. It worked, and it was a second game. The exchange
+ * was read a warning, then leave the marked spot - which has nothing to do
+ * with the dodge the rest of the sky asks for, and the warning had to be
+ * enormous or the shells were unfair. Two grammars for one verb.
+ *
+ * So the gun lost its lock and its lead. It now does the plainest thing a gun
+ * can do: while the craft is in range, one orb every cooldown, fired straight
+ * at where the craft is. Slow enough to be its own warning, which is what
+ * makes the three seconds of telegraph unnecessary rather than merely absent.
+ *
+ * The reach is far shorter than the old missile envelope of 145 metres,
+ * because a slow round fired from that far away is one the player has already
+ * flown out from under before it arrives - a gun shooting at a dot on the
+ * horizon is just litter in the air. Eighty metres is under five seconds of
+ * flight: a shot you watch coming and answer.
  */
-export const ANTI_AIR_TELEGRAPH = 3
-export const ANTI_AIR_BARRAGE_SHOTS = 5
-/** Seconds between rounds of the stream - five shots in about half a second. */
-export const ANTI_AIR_BARRAGE_INTERVAL = 0.13
-/** The reload after the stream, which is where the counterattack lives. */
-export const ANTI_AIR_RELOAD = 3.8
-/** Each round of the stream is big - a shell you watch coming, not a tracer.
- *  Three seconds of blinking beam promise something heavy on the way. */
-export const ANTI_AIR_SHELL_RADIUS = 1.5
+export const ANTI_AIR_ORB_RANGE = 80
+/**
+ * A shade faster than a fighter's orb and still half the craft's cruise. The
+ * gun is emplaced and cannot close the distance itself, so its round carries
+ * a little of the difference; a craft that simply leaves still leaves.
+ */
+export const ANTI_AIR_ORB_SPEED = 17
+/** Enough to cover the full range and no more, so a missed shot dies in the
+ *  air rather than sailing on across the city. */
+export const ANTI_AIR_ORB_LIFE = ANTI_AIR_ORB_RANGE / ANTI_AIR_ORB_SPEED + 0.4
+/** Seconds between rounds. One gun is a metronome; a rooftop network of them
+ *  is the pressure that makes altitude cost something. */
+export const ANTI_AIR_ORB_INTERVAL = 1.5
 
 function fireProjectile(state: EnemyState, enemy: EnemySlot, kind: EnemyProjectileKind) {
   const projectile = state.projectiles.find((item) => !item.active)
@@ -892,7 +934,7 @@ function fireProjectile(state: EnemyState, enemy: EnemySlot, kind: EnemyProjecti
   projectile.velocity.z = dz / distance * speed
   projectile.life = kind === 'boss-beam' ? 4 : 5.5
   projectile.damage = enemy.velocity.y
-  projectile.radius = kind === 'missile' ? ANTI_AIR_SHELL_RADIUS : kind === 'shell' ? 0.85 : kind === 'boss-beam' ? 1.1 : 0.45
+  projectile.radius = kind === 'boss-beam' ? 1.1 : ORB_HIT_RADIUS
   return true
 }
 
@@ -1086,27 +1128,34 @@ function fireOrb(state: EnemyState, origin: Vec3, bearing: number, speed: number
 }
 
 /**
- * The fighter's fan: a spread of slow orbs down its own nose, only when the
- * player is inside its view cone. The fan is centred on the fighter's heading,
- * not on the player - being in the cone is what makes the heading dangerous,
- * and sidestepping out of it is the dodge.
+ * One orb sent straight down the line to the craft.
+ *
+ * Where it is now, not where it will be: this is the whole of what a gun does
+ * here. There is no lead and no telegraph, because the round is slow enough
+ * that its own flight is the warning - a player who is still on the line four
+ * seconds later chose to be.
+ *
+ * Returns false when the pool is full, so a caller can keep its cooldown
+ * cocked rather than spending it on a shot that never left.
  */
-function fireFighterFan(state: EnemyState, enemy: EnemySlot, player: Vec3) {
-  if (distanceToPlayer(enemy, player) > FIGHTER_ORB_RANGE) return false
-  const forward = Math.max(0.001, Math.hypot(enemy.velocity.x, enemy.velocity.z))
-  const toPlayerX = player.x - enemy.position.x
-  const toPlayerZ = player.z - enemy.position.z
-  const flat = Math.max(0.001, Math.hypot(toPlayerX, toPlayerZ))
-  const facing = (enemy.velocity.x * toPlayerX + enemy.velocity.z * toPlayerZ) / (forward * flat)
-  if (facing < Math.cos(FIGHTER_ORB_CONE)) return false
-  const bearing = Math.atan2(enemy.velocity.x, enemy.velocity.z)
-  // Enough vertical drift to arrive at the player's altitude over the flight,
-  // bounded so the fan stays a wall and never turns into a dive.
-  const climb = Math.max(-6, Math.min(6, (player.y - enemy.position.y) / Math.max(1, flat / ORB_SPEED)))
-  for (let index = 0; index < FIGHTER_ORB_FAN; index += 1) {
-    const offset = (index - (FIGHTER_ORB_FAN - 1) / 2) * FIGHTER_ORB_FAN_STEP
-    fireOrb(state, enemy.position, bearing + offset, ORB_SPEED, climb, FIGHTER_ORB_LIFE)
-  }
+function fireOrbAt(state: EnemyState, origin: Vec3, target: Vec3, speed: number, life: number) {
+  const projectile = state.projectiles.find((item) => !item.active)
+  if (!projectile) return false
+  const dx = target.x - origin.x
+  const dy = target.y - origin.y
+  const dz = target.z - origin.z
+  const distance = Math.max(0.001, Math.hypot(dx, dy, dz))
+  projectile.active = true
+  projectile.kind = 'orb'
+  projectile.position.x = origin.x
+  projectile.position.y = origin.y
+  projectile.position.z = origin.z
+  projectile.velocity.x = dx / distance * speed
+  projectile.velocity.y = dy / distance * speed
+  projectile.velocity.z = dz / distance * speed
+  projectile.life = life
+  projectile.damage = 1
+  projectile.radius = ORB_HIT_RADIUS
   return true
 }
 
@@ -1209,7 +1258,9 @@ export function stepEnemies(state: EnemyState, player: Vec3, dt: number, playerV
       continue
     }
     if (enemy.kind === 'anti-air') {
-      enemy.aiming = player.y >= 28 && distanceToPlayer(enemy, player) <= 145
+      // Emplaced: nothing to step. The gun does not turn, track or lock any
+      // more - it either has the craft in range on its firing tick or it does
+      // not.
     } else if (enemy.kind === 'boss') stepBattleship(enemy, player, d)
     else if (enemy.kind === 'fighter') stepFighter(enemy, player, d)
     else if (enemy.kind === 'drone') stepDroneMine(enemy, player, d)
@@ -1217,42 +1268,26 @@ export function stepEnemies(state: EnemyState, player: Vec3, dt: number, playerV
 
     enemy.attackTimer -= d
     if (enemy.kind === 'boss') { stepBattleshipGuns(state, enemy, player, playerVelocity, d); continue }
+    // Drones and helicopters never fire at all: both deal contact damage only.
+    // Drones because thirty-odd of them shooting would bury the screen;
+    // helicopters because the ram is the whole attack. What is left is two
+    // guns that share one rule - in range on the firing tick, one orb leaves.
+    if (enemy.attackTimer > 0) continue
     if (enemy.kind === 'fighter') {
-      // Curtain fire, not marksmanship: no telegraph and no lead. The orbs
-      // are slow enough to be their own warning, and the cadence only counts
-      // bursts that actually left - the timer waits, cocked, until the player
-      // crosses into the cone.
-      if (enemy.attackTimer <= 0 && fireFighterFan(state, enemy, player)) enemy.attackTimer = FIGHTER_ORB_INTERVAL
+      // The cadence only counts shots that actually left: with the pool full
+      // the timer stays cocked rather than quietly eating the shot.
+      if (distanceToPlayer(enemy, player) > FIGHTER_ORB_RANGE) continue
+      if (fireOrbAt(state, enemy.position, player, ORB_SPEED, FIGHTER_ORB_LIFE)) enemy.attackTimer = FIGHTER_ORB_INTERVAL
       continue
     }
-    // Drones and helicopters never reach the aimed-fire path: both deal
-    // contact damage only. Drones because thirty-odd of them firing would
-    // bury the screen in projectiles; helicopters because the ram is the
-    // whole attack. That leaves the anti-air network as the sky's one
-    // remaining sniper.
-    if (enemy.telegraph > 0) {
-      enemy.telegraph = Math.max(0, enemy.telegraph - d)
-      if (enemy.telegraph <= 0) {
-        if (enemy.kind === 'anti-air') {
-          // First round leaves the moment the lock expires; the rest of the
-          // stream follows on the burst timer below, all at the locked point.
-          fireProjectile(state, enemy, 'missile')
-          enemy.burstLeft = ANTI_AIR_BARRAGE_SHOTS - 1
-        }
-        enemy.aiming = false
-        enemy.attackTimer = enemy.kind === 'anti-air' ? ANTI_AIR_BARRAGE_INTERVAL : 3.8
-      }
-    } else if (enemy.kind === 'anti-air' && enemy.burstLeft > 0) {
-      if (enemy.attackTimer <= 0) {
-        fireProjectile(state, enemy, 'missile')
-        enemy.burstLeft -= 1
-        enemy.attackTimer = enemy.burstLeft > 0 ? ANTI_AIR_BARRAGE_INTERVAL : ANTI_AIR_RELOAD
-      }
-    } else if (enemy.attackTimer <= 0) {
-      if (enemy.kind === 'anti-air' && player.y >= 28 && distanceToPlayer(enemy, player) < 145) {
-        aimProjectile(state, enemy, player, playerVelocity, 'missile', PROJECTILE_SPEED.missile, 10, ANTI_AIR_TELEGRAPH)
-      }
-    }
+    if (enemy.kind !== 'anti-air') continue
+    // A rooftop gun cannot shoot down through its own building, and that is
+    // the whole altitude rule now: fly under the emplacement and it has no
+    // shot. It replaces a flat "above 28 metres" gate, which said the same
+    // thing for a short tower and something arbitrary for a tall one.
+    if (player.y < enemy.position.y) continue
+    if (distanceToPlayer(enemy, player) > ANTI_AIR_ORB_RANGE) continue
+    if (fireOrbAt(state, enemy.position, player, ANTI_AIR_ORB_SPEED, ANTI_AIR_ORB_LIFE)) enemy.attackTimer = ANTI_AIR_ORB_INTERVAL
   }
   return state
 }
@@ -1284,6 +1319,7 @@ export function stepEnemyProjectiles(state: EnemyState, player: Vec3, dt: number
   const d = Math.min(Math.max(0, dt), 0.05)
   let damage = 0
   state.lastHitKind = null
+  state.projectileHit = false
   for (const projectile of state.projectiles) {
     if (!projectile.active) continue
     projectile.position.x += projectile.velocity.x * d
@@ -1296,7 +1332,14 @@ export function stepEnemyProjectiles(state: EnemyState, player: Vec3, dt: number
     }
     const distance = Math.hypot(projectile.position.x - player.x, projectile.position.y - player.y, projectile.position.z - player.z)
     if (distance <= projectile.radius + playerRadius) {
+      // A round that touches the hull is spent, always. The craft's damage
+      // window can decide the hit costs nothing, but nothing about that makes
+      // the orb keep flying - it burst, and the caller puts a flash where.
       projectile.active = false
+      state.projectileHit = true
+      state.lastHitPoint.x = projectile.position.x
+      state.lastHitPoint.y = projectile.position.y
+      state.lastHitPoint.z = projectile.position.z
       // Worst hit wins rather than the sum: a burst arriving on one frame
       // should not price out as a single catastrophic blow.
       if (!state.lastHitKind || projectile.damage > damage) state.lastHitKind = projectile.kind
@@ -1330,7 +1373,7 @@ export function nearbyEnemyThreats(state: EnemyState, player: Vec3) {
   let count = 0
   for (const enemy of state.slots) {
     if (!enemy.active || enemy.absorbing || enemy.inBeam || enemy.tether > 0.02) continue
-    const range = enemy.kind === 'anti-air' ? 145 : enemy.kind === 'drone' ? 32 : enemy.kind === 'helicopter' ? HELICOPTER_DETECT_RANGE : enemy.hitRadius + 2.4
+    const range = enemy.kind === 'anti-air' ? ANTI_AIR_ORB_RANGE : enemy.kind === 'drone' ? 32 : enemy.kind === 'helicopter' ? HELICOPTER_DETECT_RANGE : enemy.hitRadius + 2.4
     if (distanceToPlayer(enemy, player) <= range) count += 1
   }
   return count

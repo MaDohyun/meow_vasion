@@ -31,16 +31,22 @@ export const MAX_HEALTH = 5
  * skill that answers it.
  */
 export const HEALTH_LOSS = {
-  // The cheapest hit in the game, because it is the most visible one: a slow
-  // curtain orb was on screen for seconds before it arrived.
+  // Half a heart, and the sky's only bullet.
+  //
+  // Every gun outside the boss fires the orb now, so this one figure prices
+  // the whole curtain. It is the cheapest hit in the game because it is the
+  // most visible one: a slow round is on screen for seconds before it
+  // arrives, and a player who is still in front of it chose to be. It is also
+  // small enough that being clipped is a correction rather than a disaster -
+  // four of them cost what one anti-air shell used to, and the shells were
+  // the reason altitude read as a damage table.
   orb: 0.5,
-  rifle: 0.5,
-  rocket: 0.5,
   building: 0.5,
   contact: 1,
-  shell: 1,
+  // The battleship's bow gun: the one aimed, telegraphed shot left, and the
+  // only one that costs more than a scrape. It is shown to the player before
+  // it leaves, so it is allowed to hurt.
   'boss-beam': 1.5,
-  missile: 2,
   explosive: 2.5,
 } as const
 

@@ -1,8 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
-  ANTI_AIR_BARRAGE_INTERVAL,
-  ANTI_AIR_BARRAGE_SHOTS,
-  ANTI_AIR_TELEGRAPH,
+  ANTI_AIR_ORB_INTERVAL,
+  ANTI_AIR_ORB_RANGE,
   DRONE_MINE_HIT_RADIUS,
   ENEMY_CAPS,
   ENEMY_MAX_HP,
@@ -131,37 +130,38 @@ describe('time-based enemy waves', () => {
     expect(hitEnemy(state, boss.id).destroyed).toBe(true)
   })
 
-  it('locks anti-air on for three seconds, then streams five rounds at the point', () => {
+  it('answers a craft in range with one orb per cooldown, and nothing else', () => {
     const state = createEnemyState()
     const emplacement = state.slots.find((enemy) => enemy.kind === 'anti-air')!
     emplacement.active = true
     emplacement.position = { x: 0, y: 20, z: 0 }
     emplacement.attackTimer = 0
-    // A craft in the high band, inside range, holding still - far enough
-    // that no round of the stream reaches it inside this test's window.
+    // A craft above the emplacement, inside range, holding still - far enough
+    // that no round reaches it inside this test's window.
     const player = { x: 60, y: 40, z: 0 }
-    stepEnemies(state, player, 1 / 60)
-    expect(emplacement.aiming).toBe(true)
-    expect(emplacement.telegraph).toBeCloseTo(ANTI_AIR_TELEGRAPH, 1)
-    // And the gun itself is worth shooting back at: four hits, not ten.
+    // The gun is worth shooting back at: four hits, not ten.
     expect(ENEMY_MAX_HP['anti-air']).toBe(4)
-    expect(state.projectiles.some((projectile) => projectile.active)).toBe(false)
-    // Nothing leaves the gun until the lock runs out...
-    for (let tick = 0; tick < Math.ceil(ANTI_AIR_TELEGRAPH * 60) + 2; tick += 1) stepEnemies(state, player, 1 / 60)
+    // The first round leaves on the first tick it has a target. No lock, no
+    // wind-up, and nothing on the gun that says it is about to fire.
+    stepEnemies(state, player, 1 / 60)
+    expect(emplacement.aiming).toBe(false)
+    expect(emplacement.telegraph).toBe(0)
     const opening = state.projectiles.filter((projectile) => projectile.active)
-    // ...then the first round leaves alone - a stream, not a volley...
     expect(opening.length).toBe(1)
-    for (let tick = 0; tick < Math.ceil(ANTI_AIR_BARRAGE_INTERVAL * (ANTI_AIR_BARRAGE_SHOTS - 1) * 60) + 4; tick += 1) stepEnemies(state, player, 1 / 60)
+    expect(opening[0]!.kind).toBe('orb')
+    // Then one more every cooldown for as long as the craft stays in range:
+    // a metronome, not a burst and a reload.
+    for (let tick = 0; tick < Math.ceil(ANTI_AIR_ORB_INTERVAL * 3 * 60) + 6; tick += 1) {
+      stepEnemies(state, player, 1 / 60)
+    }
     const shots = state.projectiles.filter((projectile) => projectile.active)
-    expect(shots.length).toBe(ANTI_AIR_BARRAGE_SHOTS)
-    for (const shot of shots) expect(shot.kind).toBe('missile')
-    // ...and every round rides the same heading into the locked aim point:
-    // dodge the point and the whole string misses together.
-    const headings = new Set(shots.map((shot) => `${shot.velocity.x.toFixed(2)}:${shot.velocity.y.toFixed(2)}:${shot.velocity.z.toFixed(2)}`))
-    expect(headings.size).toBe(1)
-    // The stream over, the gun settles into its reload.
-    expect(emplacement.burstLeft).toBe(0)
-    expect(emplacement.attackTimer).toBeGreaterThan(1)
+    expect(shots.length).toBe(4)
+    for (const shot of shots) expect(shot.kind).toBe('orb')
+    // Out of range, the gun goes quiet rather than firing at the horizon.
+    for (let tick = 0; tick < Math.ceil(ANTI_AIR_ORB_INTERVAL * 3 * 60); tick += 1) {
+      stepEnemies(state, { x: ANTI_AIR_ORB_RANGE + 40, y: 40, z: 0 }, 1 / 60)
+    }
+    expect(state.projectiles.filter((projectile) => projectile.active).length).toBe(4)
   })
 
   it('flashes a survivor on every laser hit, fading in a fifth of a second', () => {

@@ -396,6 +396,9 @@ const GameContext = createContext<GameContextValue | null>(null)
 const UFO_UPGRADES = { speed: 0, stability: 0, rack: 0, special: 'none' as const }
 
 const HITSTOP_TIME = 0.05
+/** The colour a curtain round bursts in - the same soft red it flew in, so the
+ *  flash on the hull is recognisably the thing that just hit it. */
+const ORB_HIT_COLOR = '#ff6b62'
 const CAT_CRY_HEAR_DISTANCE = 18
 const CAT_CRY_INTERVAL = 4.5
 /** Which callout each pickup raises. The words live in i18n like every other
@@ -2092,6 +2095,16 @@ export function GameProvider({ children }: { children: ReactNode }) {
     // Buildings (and ruins) are real cover from the orb curtains: the same
     // collider pool the craft flies against also catches the slow rounds.
     const projectileDamage = stepEnemyProjectiles(game.enemies, game.drone.position, d, game.sizeProfile.hitRadius, game.worldColliders)
+    // A round that touched the hull bursts there, whether or not it cost
+    // anything. The craft has a second of grace after every hit, and inside it
+    // an orb used to simply blink out of existence - which reads as the shot
+    // passing through rather than as armour holding. The burst and the spit of
+    // fire are the answer the hull owes every round that connects; the flash,
+    // the freeze and the health only follow the ones that land for real.
+    if (game.enemies.projectileHit) {
+      triggerLaserBurst(game.laserBursts, 'impact', game.enemies.lastHitPoint, ORB_HIT_COLOR)
+      triggerFireball(game.fireballs, 'strike', game.enemies.lastHitPoint, undefined, blastSeed(game))
+    }
     if (projectileDamage > 0) registerImpact(game, 'ENEMY', game.enemies.lastHitKind ?? 'contact')
     // A bigger craft is a bigger target: the same stream of fire is harder to
     // survive once fat, which is what stops growth from being free.
