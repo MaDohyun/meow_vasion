@@ -117,26 +117,33 @@ export function claimBoon(state: BoonState, circleId: string): BoonClaim | null 
 }
 
 /**
- * The item bobs over the circle's centre. Well inside the beacon column, low
- * enough that the opening saucer's ceiling clears it with room to spare, high
- * enough that eating one is a deliberate approach rather than a side effect
- * of crossing the mark for its turbo refill.
+ * The item hangs high over the circle's centre, somewhere in the 50-80m band
+ * - each circle at its own hashed height so a skyline of them reads as
+ * scattered treasure rather than a row of lamps. Up there it is visible from
+ * across the district, and it is also a growth goal: the opening saucer's
+ * ceiling (~31m) cannot reach it, a craft around size 1.5 clears 50m, and
+ * size ~3.5 clears the top of the band - so the sky fills with boxes you can
+ * see before you can have them.
  */
-export const BOON_HOVER_HEIGHT = 12
-export const BOON_BOB_AMPLITUDE = 2.2
+export const BOON_HOVER_MIN = 50
+export const BOON_HOVER_MAX = 80
+export const BOON_BOB_AMPLITUDE = 3
 export const BOON_BOB_SPEED = 1.5
 
 /** One function for the simulation and the render layer, fed the runtime's
  *  own clock, so the item is eaten exactly where it is drawn. */
 export function boonHoverY(time: number, circleId: string) {
-  const phase = (hashCircleId(circleId) % 628) / 100
-  return BOON_HOVER_HEIGHT + Math.sin(time * BOON_BOB_SPEED + phase) * BOON_BOB_AMPLITUDE
+  const hash = hashCircleId(circleId)
+  const base = BOON_HOVER_MIN + BOON_BOB_AMPLITUDE
+    + hash % (BOON_HOVER_MAX - BOON_HOVER_MIN - BOON_BOB_AMPLITUDE * 2)
+  return base + Math.sin(time * BOON_BOB_SPEED + (hash % 628) / 100) * BOON_BOB_AMPLITUDE
 }
 
 /** Generous on purpose: the approach is the skill being asked for, not the
- *  final half-metre. Both grow a little with the hull's hit radius. */
-export const BOON_PICKUP_RADIUS = 6.5
-export const BOON_PICKUP_VERTICAL = 4.2
+ *  final half-metre. Both grow a little with the hull's hit radius, and both
+ *  are sized to the box - a big target that reads big should catch big. */
+export const BOON_PICKUP_RADIUS = 8
+export const BOON_PICKUP_VERTICAL = 6
 
 /** What a pickup is worth once every stat is capped: a meaningful patch, not
  *  a full repair - free full heals would defang the late waves. */

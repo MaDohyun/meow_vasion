@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
-  BOON_BOB_AMPLITUDE,
   BOON_DEFINITIONS,
-  BOON_HOVER_HEIGHT,
+  BOON_HOVER_MAX,
+  BOON_HOVER_MIN,
   BOON_IDS,
   allBoonsMaxed,
   boonBonus,
@@ -103,13 +103,16 @@ describe('mystery-circle boon pickups', () => {
     expect(shotsToDestroy(boonMultiplier(state, 'laser-power'))).toBe(Math.ceil(buildingMaxHealth(tower) / 2))
   })
 
-  it('bobs the item inside its promised band, per-circle out of phase', () => {
-    for (const time of [0, 1.3, 7.7, 42]) {
-      const y = boonHoverY(time, 'mystery:5:5')
-      expect(y).toBeGreaterThanOrEqual(BOON_HOVER_HEIGHT - BOON_BOB_AMPLITUDE)
-      expect(y).toBeLessThanOrEqual(BOON_HOVER_HEIGHT + BOON_BOB_AMPLITUDE)
+  it('hangs every box inside the 50-80m band, per-circle at its own height', () => {
+    for (const id of ['mystery:5:5', 'mystery:6:5', 'mystery:-3:12']) {
+      for (const time of [0, 1.3, 7.7, 42]) {
+        const y = boonHoverY(time, id)
+        expect(y).toBeGreaterThanOrEqual(BOON_HOVER_MIN)
+        expect(y).toBeLessThanOrEqual(BOON_HOVER_MAX)
+      }
     }
-    // Two circles do not bob in lockstep - the phase comes from the id.
+    // Two circles neither share a height nor bob in lockstep - both come off
+    // the id hash, so a skyline of boxes reads as scattered treasure.
     expect(boonHoverY(1, 'mystery:5:5')).not.toBeCloseTo(boonHoverY(1, 'mystery:6:5'), 5)
   })
 })

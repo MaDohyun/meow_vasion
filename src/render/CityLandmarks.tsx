@@ -6,7 +6,6 @@ import { useGame } from '../GameContext'
 import { BEAM_ABSORB_TIME } from '../core/beam'
 import { bulletinFor } from '../i18n'
 import { BUILDING, GROUND } from '../constants/palette'
-import { makeBlastFieldMaterial } from './entityMaterials'
 import {
   groundLandmarkForCell,
   isNewsTower,
@@ -22,7 +21,7 @@ import {
   WORLD_CELL_SIZE,
   WORLD_MAX_BUILDINGS,
 } from '../core/world'
-import { BOON_COLORS, BOON_HEAL_COLOR, boonForCircle, boonHoverY } from '../core/boons'
+import { boonHoverY } from '../core/boons'
 import {
   busStopsAround,
   isWorldPropDisplaced,
@@ -331,19 +330,72 @@ mysteryParticleGeometry.setAttribute('color', mysteryParticleColorAttribute)
 mysteryParticleGeometry.setDrawRange(0, 0)
 
 /**
- * The pickup saucer hovering over an unclaimed circle: a flattened hull with
- * a little dome, one merged geometry so the whole pool is a single draw. The
- * stat it grants is said with instance colour (see core/boons BOON_COLORS);
- * a soft uniform emissive keeps it readable inside the night-time beacon.
+ * The pickup is a big golden question-mark block - the arcade's lucky box -
+ * turning slowly in the 50-80m band. Drawn, not shipped: the face is a canvas
+ * texture (yellow brick, corner rivets, a fat white "?") so the asset budget
+ * stays untouched, and the same texture doubles as the emissive map so the
+ * box glows through the night the way the beacon under it does.
  */
-const boonSaucerGeometry = mergeGeometries([
-  new THREE.SphereGeometry(1.55, 14, 10).scale(1, 0.4, 1),
-  new THREE.SphereGeometry(0.72, 12, 8).translate(0, 0.42, 0),
-], false)!
-const boonSaucerMaterial = new THREE.MeshToonMaterial({
-  color: '#ffffff',
-  emissive: new THREE.Color('#5a4618'),
-  emissiveIntensity: 0.6,
+function makeBoonBlockTexture() {
+  const canvas = document.createElement('canvas')
+  canvas.width = canvas.height = 128
+  const context = canvas.getContext('2d')!
+  context.fillStyle = '#f6b12b'
+  context.fillRect(0, 0, 128, 128)
+  context.strokeStyle = '#d18a17'
+  context.lineWidth = 10
+  context.strokeRect(5, 5, 118, 118)
+  context.fillStyle = '#8a5a1e'
+  for (const [x, y] of [[20, 20], [108, 20], [20, 108], [108, 108]] as const) {
+    context.beginPath()
+    context.arc(x, y, 7, 0, Math.PI * 2)
+    context.fill()
+  }
+  context.font = '900 84px sans-serif'
+  context.textAlign = 'center'
+  context.textBaseline = 'middle'
+  context.lineWidth = 10
+  context.strokeStyle = '#c47c12'
+  context.strokeText('?', 64, 68)
+  context.fillStyle = '#fdf6e0'
+  context.fillText('?', 64, 68)
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace
+  return texture
+}
+const boonBlockTexture = makeBoonBlockTexture()
+export const BOON_BLOCK_SIZE = 4.6
+const boonBlockGeometry = new THREE.BoxGeometry(BOON_BLOCK_SIZE, BOON_BLOCK_SIZE, BOON_BLOCK_SIZE)
+const boonBlockMaterial = withLandmarkGlow(new THREE.MeshToonMaterial({
+  map: boonBlockTexture,
+  emissive: new THREE.Color('#ffd76a'),
+  emissiveMap: boonBlockTexture,
+}), 0.16, 0.9)
+
+/** The gold glitter around each box: big, slow, and twinkling, so the box
+ *  reads as treasure from across the district. */
+const BOON_SPARKLES_PER_ITEM = 46
+const BOON_SPARKLE_ITEM_CAP = 8
+const BOON_SPARKLE_CAPACITY = BOON_SPARKLES_PER_ITEM * BOON_SPARKLE_ITEM_CAP
+const boonSparklePositions = new Float32Array(BOON_SPARKLE_CAPACITY * 3)
+const boonSparkleColors = new Float32Array(BOON_SPARKLE_CAPACITY * 3)
+const boonSparkleGeometry = new THREE.BufferGeometry()
+const boonSparklePositionAttribute = new THREE.BufferAttribute(boonSparklePositions, 3)
+const boonSparkleColorAttribute = new THREE.BufferAttribute(boonSparkleColors, 3)
+boonSparklePositionAttribute.setUsage(THREE.DynamicDrawUsage)
+boonSparkleColorAttribute.setUsage(THREE.DynamicDrawUsage)
+boonSparkleGeometry.setAttribute('position', boonSparklePositionAttribute)
+boonSparkleGeometry.setAttribute('color', boonSparkleColorAttribute)
+boonSparkleGeometry.setDrawRange(0, 0)
+const boonSparkleMaterial = new THREE.PointsMaterial({
+  color: '#ffe08a',
+  size: 0.9,
+  vertexColors: true,
+  transparent: true,
+  opacity: 0.85,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+  sizeAttenuation: true,
 })
 
 /** Laser answer on a landmark, in the buildings' own hit red. Instance
@@ -787,12 +839,12 @@ function MysterySignalPool() {
 }
 
 /**
- * One pickup saucer per circle that has not been eaten yet.
+ * One lucky box per circle that has not been eaten yet.
  *
  * Bob height comes from core/boons fed with the runtime's own clock, so the
- * item is drawn exactly where the simulation will eat it. Colour is looked up
- * per frame rather than cached: when a stat maxes out mid-run, a circle that
- * carried it re-deals to whatever is still open, and the item has to show it.
+ * box is drawn exactly where the simulation will eat it. It turns slowly on
+ * its own axis, each circle out of phase, the way treasure turns in every
+ * arcade that ever had treasure.
  */
 function BoonPickupPool() {
   const { runtime } = useGame()
@@ -802,7 +854,6 @@ function BoonPickupPool() {
   const scale = useMemo(() => new THREE.Vector3(1, 1, 1), [])
   const rotation = useMemo(() => new THREE.Quaternion(), [])
   const euler = useMemo(() => new THREE.Euler(), [])
-  const color = useMemo(() => new THREE.Color(), [])
 
   useFrame(() => {
     const mesh = ref.current
@@ -816,20 +867,62 @@ function BoonPickupPool() {
       const centerX = (cell.cellX + 0.5) * WORLD_CELL_SIZE
       const centerZ = (cell.cellZ + 0.5) * WORLD_CELL_SIZE
       const seed = seedForWorldCell(cell.cellX, cell.cellZ, 0x626f6f6e)
-      euler.set(0, game.sessionTime * 1.6 + (seed % 628) / 100, 0)
+      euler.set(0, game.sessionTime * 0.9 + (seed % 628) / 100, 0)
       rotation.setFromEuler(euler)
       position.set(centerX, boonHoverY(game.sessionTime, id), centerZ)
       matrix.compose(position, rotation, scale)
       mesh.setMatrixAt(count, matrix)
-      const boon = boonForCircle(game.boons, id)
-      mesh.setColorAt(count, color.set(boon ? BOON_COLORS[boon] : BOON_HEAL_COLOR))
       count += 1
       if (count >= LANDMARK_CELL_COUNT) break
     }
-    setPoolCount(mesh, count, true)
+    setPoolCount(mesh, count)
   })
 
-  return <instancedMesh ref={ref} args={[boonSaucerGeometry, boonSaucerMaterial, LANDMARK_CELL_COUNT]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }} />
+  return <instancedMesh ref={ref} args={[boonBlockGeometry, boonBlockMaterial, LANDMARK_CELL_COUNT]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }} />
+}
+
+/**
+ * The glitter. Each unclaimed box wears a slow orbit of gold flecks that
+ * twinkle out of phase - computed fresh from the clock like the bin litter,
+ * so nothing is simulated and nothing needs cleaning up when a box is eaten.
+ */
+function BoonSparklePool() {
+  const { runtime } = useGame()
+  useFrame(() => {
+    const game = runtime.current
+    const time = game.sessionTime
+    let slot = 0
+    let items = 0
+    for (const cell of groundCellsAround(game.drone.position, LANDMARK_RADIUS_CELLS)) {
+      if (groundLandmarkForCell(cell) !== 'mystery-circle') continue
+      const id = mysteryCircleForCell(cell.cellX, cell.cellZ)
+      if (!id || game.boons.claimed.has(id)) continue
+      if (items >= BOON_SPARKLE_ITEM_CAP) break
+      const centerX = (cell.cellX + 0.5) * WORLD_CELL_SIZE
+      const centerZ = (cell.cellZ + 0.5) * WORLD_CELL_SIZE
+      const itemY = boonHoverY(time, id)
+      for (let sparkle = 0; sparkle < BOON_SPARKLES_PER_ITEM; sparkle += 1) {
+        // Golden-angle spread, so the swarm never lines up into spokes.
+        const phase = sparkle * 2.399963
+        const orbit = 3.6 + (sparkle % 5) * 0.85
+        const angle = phase + time * (0.45 + (sparkle % 3) * 0.3)
+        const index = slot * 3
+        boonSparklePositions[index] = centerX + Math.cos(angle) * orbit
+        boonSparklePositions[index + 1] = itemY + Math.sin(time * 1.1 + phase) * (2.4 + (sparkle % 4) * 0.6)
+        boonSparklePositions[index + 2] = centerZ + Math.sin(angle) * orbit
+        const twinkle = Math.sin(time * 6 + sparkle * 1.7) ** 2
+        boonSparkleColors[index] = 0.6 + twinkle * 0.4
+        boonSparkleColors[index + 1] = 0.48 + twinkle * 0.38
+        boonSparkleColors[index + 2] = 0.16 + twinkle * 0.22
+        slot += 1
+      }
+      items += 1
+    }
+    boonSparkleGeometry.setDrawRange(0, slot)
+    boonSparklePositionAttribute.needsUpdate = true
+    boonSparkleColorAttribute.needsUpdate = true
+  })
+  return <points geometry={boonSparkleGeometry} material={boonSparkleMaterial} frustumCulled={false} renderOrder={4} />
 }
 
 function mergedBoxes(parts: [number, number, number, number, number, number][]) {
@@ -886,77 +979,6 @@ function LiftedBusStopPool() {
   return <instancedMesh ref={ref} args={[busStopGeometry, undefined, WORLD_MAX_BUILDINGS]} frustumCulled={false} renderOrder={2} onUpdate={(mesh) => { mesh.count = 0 }}>
     <meshToonMaterial color={BUILDING.TRANSIT} />
   </instancedMesh>
-}
-
-/**
- * The mines' red shell, breathing over every live gas station.
- *
- * A forecourt is the one piece of city dressing that answers the beam with a
- * detonation instead of a lift, and nothing on screen said so - the first
- * station a player touched was always a surprise. Wearing the same bubble the
- * mines wear says "explosive" in a language the run has already taught. It
- * only breathes: a station has no fuse to arm, so it never goes hard the way
- * a triggered mine does.
- */
-const GAS_STATION_WARNING_RADIUS = 9
-const GAS_STATION_WARNING_CENTRE = 3
-
-function GasStationWarningPool() {
-  const { runtime } = useGame()
-  const ref = useRef<THREE.InstancedMesh>(null)
-  const stations = useRef<{ x: number; z: number; phase: number }[]>([])
-  const lastKey = useRef('')
-  const matrix = useMemo(() => new THREE.Matrix4(), [])
-  const position = useMemo(() => new THREE.Vector3(), [])
-  const rotation = useMemo(() => new THREE.Quaternion(), [])
-  const scale = useMemo(() => new THREE.Vector3(), [])
-  const charge = useMemo(() => new THREE.InstancedBufferAttribute(new Float32Array(LANDMARK_CELL_COUNT), 1), [])
-  const geometry = useMemo(() => {
-    const sphere = new THREE.SphereGeometry(1, 28, 18)
-    sphere.setAttribute('aCharge', charge)
-    return sphere
-  }, [charge])
-  const material = useMemo(() => makeBlastFieldMaterial(), [])
-
-  useFrame(({ clock }) => {
-    const mesh = ref.current
-    if (!mesh) return
-    const world = runtime.current.world
-    // Positions only move when the district streams or a station is blown;
-    // the per-frame work is just the breathing charge.
-    const key = `${world.cellX}:${world.cellZ}:${runtime.current.destroyedLandmarks.size}`
-    if (key !== lastKey.current) {
-      lastKey.current = key
-      stations.current = []
-      for (const cell of groundCellsAround(runtime.current.drone.position, LANDMARK_RADIUS_CELLS)) {
-        if (groundLandmarkForCell(cell) !== 'gas-station') continue
-        if (runtime.current.destroyedLandmarks.has(landmarkId('gas-station', cell.cellX, cell.cellZ))) continue
-        if (stations.current.length >= LANDMARK_CELL_COUNT) break
-        stations.current.push({
-          x: (cell.cellX + 0.5) * WORLD_CELL_SIZE,
-          z: (cell.cellZ + 0.5) * WORLD_CELL_SIZE,
-          phase: (seedForWorldCell(cell.cellX, cell.cellZ, 0xb1a57) % 628) / 100,
-        })
-      }
-      for (const [index, station] of stations.current.entries()) {
-        position.set(station.x, GAS_STATION_WARNING_CENTRE, station.z)
-        scale.setScalar(GAS_STATION_WARNING_RADIUS)
-        matrix.compose(position, rotation, scale)
-        mesh.setMatrixAt(index, matrix)
-      }
-      mesh.count = stations.current.length
-      mesh.instanceMatrix.needsUpdate = true
-    }
-    // The mines' idle rhythm, each forecourt on its own phase so a district of
-    // stations does not blink in unison.
-    for (const [index, station] of stations.current.entries()) {
-      const breath = 0.5 + 0.5 * Math.sin(clock.elapsedTime * 0.85 + station.phase * 3.1)
-      charge.array[index] = 0.1 + breath * breath * 0.62
-    }
-    charge.needsUpdate = true
-  })
-
-  return <instancedMesh ref={ref} args={[geometry, material, LANDMARK_CELL_COUNT]} frustumCulled={false} renderOrder={4} />
 }
 
 /**
@@ -1368,7 +1390,6 @@ function TransitUtilityPool() {
       </instancedMesh>
       <instancedMesh ref={gasStations} args={[gasStationGeometry, gasStationMaterial, LANDMARK_CELL_COUNT]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }} />
       <instancedMesh ref={gasBands} args={[gasStationBandGeometry, gasStationCanopyMaterial, LANDMARK_CELL_COUNT]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }} />
-      <GasStationWarningPool />
       <instancedMesh ref={communicationsRed} args={[communicationsRedGeometry, communicationsRedMaterial, LANDMARK_CELL_COUNT]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }} />
       <instancedMesh ref={communicationsWhite} args={[communicationsWhiteGeometry, communicationsWhiteMaterial, LANDMARK_CELL_COUNT]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }} />
       <LiftedPowerPylonPool />
@@ -1433,6 +1454,7 @@ export const CityLandmarks = memo(function CityLandmarks() {
       <MysteryCirclePool />
       <MysterySignalPool />
       <BoonPickupPool />
+      <BoonSparklePool />
       <TransitUtilityPool />
       <ParkingLotPool />
     </group>

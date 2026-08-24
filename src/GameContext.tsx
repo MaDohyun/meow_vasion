@@ -1940,9 +1940,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
     if (detonated) {
       triggerLaserBurst(game.laserBursts, 'impact', detonated.position, '#ff7a3d')
       triggerFireball(game.fireballs, 'vehicle', detonated.position, undefined, blastSeed(game))
-      wound(game, 'explosive')
-      // Only re-arm from zero: chained dazes would compound into a stun by
-      // another name.
+      // Spectacle without hull damage, by design: the forecourt blast used to
+      // cost 2.5 pips, which turned every gas station into a trap the warning
+      // could not fully disarm. The daze is the whole price now - the craft
+      // wallows through the fireball instead of bleeding for it.
       if (game.daze <= 0) game.daze = DAZE_TIME
       tone('warning')
     }
