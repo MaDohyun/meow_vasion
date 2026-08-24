@@ -57,6 +57,33 @@ describe('night visibility ramps', () => {
     expect(shader.vertexShader).toContain('vLamp = aLamp;')
   })
 
+  it('lights an aiming enemy instead of repainting it', () => {
+    const material = applyNightVisibility(new THREE.MeshToonMaterial({ vertexColors: true }), {
+      rimColor: '#d9b45b',
+      lamp: [0.4, 2.6],
+      alert: true,
+    })
+    const shader = compile(material)
+    // Per instance, because which enemy is aiming changes every frame while
+    // the model is shared by the whole pool.
+    expect(shader.vertexShader).toContain('attribute float aAlert;')
+    expect(shader.vertexShader).toContain('vAlert = aAlert;')
+    // The alert is added light. It must never end up multiplying the surface,
+    // which is what the old instance-colour warning did.
+    expect(shader.fragmentShader).toContain('totalEmissiveRadiance += uAlertColor * vAlert')
+    expect(shader.fragmentShader).not.toContain('diffuseColor.rgb *= uAlertColor')
+    // Most of the warning lives on the edge and the lamps, not on the body.
+    const body = Number(/uAlertColor \* vAlert \* \(\s*([0-9.]+)/.exec(shader.fragmentShader)?.[1])
+    expect(body).toBeGreaterThan(0)
+    expect(body).toBeLessThan(0.25)
+  })
+
+  it('leaves the alert channel out of a material that did not ask for it', () => {
+    const shader = compile(applyNightVisibility(new THREE.MeshToonMaterial(), { rimColor: '#b8c2bf' }))
+    expect(shader.vertexShader).not.toContain('aAlert')
+    expect(shader.fragmentShader).not.toContain('uAlertColor')
+  })
+
   it('declares the lamp attribute only for models that carry lamps', () => {
     const plain = applyNightVisibility(new THREE.MeshToonMaterial(), { rimColor: '#b8c2bf' })
     const shader = compile(plain)
@@ -112,6 +139,11 @@ describe('enemies keep their colours after dark', () => {
       // Lamps have to burn past the body they are mounted on, or they read as
       // paint rather than as light.
       expect(shader.uniforms.uLampStrength!.value).toBeGreaterThan(1)
+      // Every enemy but the battleship warns through added light. The
+      // battleship fires almost continuously, so an always-on warning would
+      // say nothing and is left off deliberately.
+      if (kind === 'boss') expect(shader.fragmentShader).not.toContain('uAlertColor')
+      else expect(shader.fragmentShader).toContain('uAlertColor * vAlert')
     }
   })
 

@@ -1408,9 +1408,13 @@ function MineBlastFieldPool() {
       // does not blink in unison. Armed: hard, fast, and climbing.
       const fuse = enemy.mineArmed ? 1 - Math.max(0, enemy.mineFuse) / DRONE_MINE_FUSE : 0
       const breath = 0.5 + 0.5 * Math.sin(clock.elapsedTime * 0.85 + enemy.phase * 3.1)
+      // Idle is deliberately faint now: a field of these is the biggest red
+      // thing in the sky, and at the old amplitude an unarmed mine read as a
+      // red ball rather than as a boundary drawn around a grey one. The armed
+      // end is untouched - that is the half that has to be impossible to miss.
       charge.array[count] = enemy.mineArmed
         ? (0.85 + fuse * 0.95) * (0.86 + 0.14 * Math.sin(clock.elapsedTime * 19))
-        : 0.1 + breath * breath * 0.62
+        : 0.07 + breath * breath * 0.34
       count += 1
     }
     mesh.count = count
@@ -1431,6 +1435,7 @@ function MineBlastFieldPool() {
 function MinePool() {
   const { runtime } = useGame()
   const ref = useRef<THREE.InstancedMesh>(null)
+  const alert = enemyAlert.drone
   const matrix = useMemo(() => new THREE.Matrix4(), [])
   const position = useMemo(() => new THREE.Vector3(), [])
   const quaternion = useMemo(() => new THREE.Quaternion(), [])
@@ -1451,12 +1456,14 @@ function MinePool() {
       matrix.compose(position, quaternion, scale)
       mesh.setMatrixAt(count, matrix)
       const armed = enemy.mineArmed ? 0.5 + 0.5 * Math.sin(clock.elapsedTime * 15) ** 2 : 0
-      color.setRGB(mineIdleTint, mineIdleTint, mineIdleTint).lerp(mineArmedTint, armed)
+      color.setRGB(mineIdleTint, mineIdleTint, mineIdleTint).lerp(mineArmedTint, armed * 0.55)
       mesh.setColorAt(count, color)
+      alert.array[count] = armed
       count += 1
     }
     mesh.count = count
     mesh.instanceMatrix.needsUpdate = true
+    alert.needsUpdate = true
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
   })
   return <instancedMesh ref={ref} args={[mineGeometry, enemyMaterial.drone, ENEMY_CAPS.drone]} frustumCulled={false} />
@@ -1478,9 +1485,39 @@ const enemyGeometry: Record<PooledEnemyKind, THREE.BufferGeometry> = {
   boss: bossGeometry(),
 }
 
+/**
+ * Which instances in a pool are about to fire.
+ *
+ * The lock-on warning used to be written into the instance colour, which
+ * multiplies through the baked vertex colours and turned a chasing helicopter
+ * into a solid red one for as long as the chase lasted. This carries the same
+ * state as its own channel instead, so `nightVisibility` can light the warning
+ * on the edge and the lamps and leave the model's colours alone.
+ *
+ * Built alongside the models at module scope: each pool owns exactly one
+ * `InstancedMesh` over exactly one of these, and the sizes are the same fixed
+ * caps everything else in the render tree is built from.
+ */
+function alertAttribute(capacity: number) {
+  return new THREE.InstancedBufferAttribute(new Float32Array(capacity), 1)
+}
+
+const enemyAlert: Record<EnemyKind, THREE.InstancedBufferAttribute> = {
+  drone: alertAttribute(ENEMY_CAPS.drone),
+  helicopter: alertAttribute(ENEMY_CAPS.helicopter),
+  fighter: alertAttribute(ENEMY_CAPS.fighter),
+  'anti-air': alertAttribute(ENEMY_CAPS['anti-air']),
+  boss: alertAttribute(ENEMY_CAPS.boss),
+}
+for (const kind of Object.keys(enemyGeometry) as PooledEnemyKind[]) {
+  enemyGeometry[kind].setAttribute('aAlert', enemyAlert[kind])
+}
+mineGeometry.setAttribute('aAlert', enemyAlert.drone)
+
 function EnemyPool({ kind }: { kind: PooledEnemyKind }) {
   const { runtime } = useGame()
   const ref = useRef<THREE.InstancedMesh>(null)
+  const alert = enemyAlert[kind]
   const matrix = useMemo(() => new THREE.Matrix4(), [])
   const position = useMemo(() => new THREE.Vector3(), [])
   const quaternion = useMemo(() => new THREE.Quaternion(), [])
@@ -1518,25 +1555,27 @@ function EnemyPool({ kind }: { kind: PooledEnemyKind }) {
       scale.setScalar(size * absorbScale)
       matrix.compose(position, quaternion, scale)
       mesh.setMatrixAt(count, matrix)
-      // The battleship is exempt from the aiming tint. On a small enemy a red
-      // flash is a useful "about to shoot"; on a seventy-metre hull it floods
-      // every panel, turret and stripe with one colour and the silhouette -
-      // the whole reason the ship is shaped like a ship - disappears. It fires
-      // almost continuously, so it would be red for the entire fight. Its
-      // warning is the turret ring and the aim line instead.
-      if (enemy.aiming && kind !== 'boss') color.set('#ff6573')
-      else if (kind === 'anti-air') color.set('#7f8765')
+      // The lock-on no longer touches the instance colour. `aiming` is a state,
+      // not a flash - a helicopter holds it for the whole chase - and writing
+      // red here multiplied through every baked vertex colour and left one flat
+      // red shape. It goes out on the alert channel instead, which lights the
+      // edge and the running lights and leaves the paint alone. The battleship
+      // stays out of it entirely: it fires almost continuously, so an
+      // always-on warning says nothing.
+      if (kind === 'anti-air') color.set('#7f8765')
       else if (kind === 'boss') color.set('#eef2f6')
       else color.setRGB(0.84 + (enemy.slot % 3) * 0.07, 0.84 + (enemy.slot % 3) * 0.07, 0.84 + (enemy.slot % 3) * 0.07)
-      // Every laser hit answers in the same red the buildings use. Kept light
-      // on the battleship: under sustained fire a full tint would hold the
-      // whole seventy-metre silhouette red for the entire fight.
-      if (enemy.hurt > 0) color.lerp(enemyHitTint, Math.min(1, enemy.hurt) * (kind === 'boss' ? 0.3 : 0.75))
+      // A laser hit still answers on the body, because that one *is* a flash:
+      // it lasts a moment and has to be unmistakable. Lighter than it was, now
+      // that the alert channel carries the sustained warning.
+      if (enemy.hurt > 0) color.lerp(enemyHitTint, Math.min(1, enemy.hurt) * (kind === 'boss' ? 0.3 : 0.5))
       mesh.setColorAt(count, color)
+      alert.array[count] = enemy.aiming && kind !== 'boss' ? 1 : 0
       count += 1
     }
     mesh.count = count
     mesh.instanceMatrix.needsUpdate = true
+    alert.needsUpdate = true
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
   })
   return (

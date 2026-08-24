@@ -47,7 +47,42 @@ export type NightVisibilityOptions = {
   /** Brightness multiplier for parts tagged `aLamp`. Omit for a model with no
    *  lamps: the attribute is only declared when this is asked for. */
   lamp?: NightRamp
+  /** Turns on the per-instance `aAlert` channel. See ALERT below. */
+  alert?: boolean
 }
+
+/**
+ * What an enemy about to fire looks like.
+ *
+ * It used to be `instanceColor = #ff6573`, which multiplies through every baked
+ * vertex colour: the whole model came out one flat red. On a helicopter that is
+ * not a flash but a state - `aiming` is true for the entire chase - so a
+ * helicopter that had seen the player was simply a red helicopter from then on,
+ * and nothing about its shape or its own colours survived. The battleship was
+ * already exempted from this for exactly that reason; the reasoning just never
+ * reached the small enemies, which are the ones on screen most of the time.
+ *
+ * So the warning is lit rather than painted. The edge burns, the running lights
+ * go red-hot, and only a thin wash reaches the body - enough that the whole
+ * silhouette reads hostile, far too little to repaint it. These are constants
+ * rather than day/night ramps because a warning has to read at noon as well as
+ * at midnight.
+ */
+const ALERT = {
+  color: '#ff5a6e',
+  /** Flat wash over the whole body. Deliberately small. */
+  body: 0.09,
+  /**
+   * Fresnel edge. The exponent matters more than the strength here: most of a
+   * helicopter is a capsule, so a soft falloff grazes almost all of it and the
+   * "edge" quietly becomes the whole body again. Kept tight so it outlines.
+   */
+  rim: 0.85,
+  rimPower: 2.7,
+  /** The model's own lamps, run hot. This is the loudest part of the warning
+   *  and the cheapest: lamps are a handful of vertices and already blooming. */
+  lamp: 2.9,
+} as const
 
 const DEFAULT_RIM: NightRamp = [0.1, 0.34]
 const DEFAULT_LIFT: NightRamp = [0.04, 0.6]
@@ -85,6 +120,8 @@ export function applyNightVisibility<T extends THREE.Material>(material: T, opti
   const liftRamp = options.lift ?? DEFAULT_LIFT
   const lampRamp = options.lamp
   const rimColor = new THREE.Color(options.rimColor)
+  const alertColor = new THREE.Color(ALERT.color)
+  const useAlert = options.alert === true
   const rimPower = options.rimPower ?? 2.6
   const previousCompile = material.onBeforeCompile
   const previousCacheKey = material.customProgramCacheKey.bind(material)
@@ -109,6 +146,17 @@ export function applyNightVisibility<T extends THREE.Material>(material: T, opti
         .replace('#include <begin_vertex>', `#include <begin_vertex>
           vLamp = aLamp;`)
     }
+    if (useAlert) {
+      shader.uniforms.uAlertColor = { value: alertColor }
+      // Per instance, not per vertex: which enemy is aiming changes every
+      // frame, and the model is shared by the whole pool.
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', `#include <common>
+          attribute float aAlert;
+          varying float vAlert;`)
+        .replace('#include <begin_vertex>', `#include <begin_vertex>
+          vAlert = aAlert;`)
+    }
 
     // Patched into `emissivemap_fragment` because `totalEmissiveRadiance` and
     // `diffuseColor` are both in scope there and it lands before tone mapping,
@@ -119,7 +167,8 @@ export function applyNightVisibility<T extends THREE.Material>(material: T, opti
         uniform float uRimStrength;
         uniform float uRimPower;
         uniform float uNightLift;
-        ${lampRamp ? 'uniform float uLampStrength;\n        varying float vLamp;' : ''}`)
+        ${lampRamp ? 'uniform float uLampStrength;\n        varying float vLamp;' : ''}
+        ${useAlert ? 'uniform vec3 uAlertColor;\n        varying float vAlert;' : ''}`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
         {
           // The surface re-emitting itself. Hue is whatever the model already
@@ -135,11 +184,18 @@ export function applyNightVisibility<T extends THREE.Material>(material: T, opti
           ${lampRamp ? 'totalEmissiveRadiance += diffuseColor.rgb * vLamp * uLampStrength;' : ''}
           float facing = abs(dot(normalize(vNormal), normalize(vViewPosition)));
           totalEmissiveRadiance += uRimColor * pow(1.0 - facing, uRimPower) * uRimStrength;
+          ${useAlert ? `
+          // About to fire: lit, not repainted. See ALERT above.
+          totalEmissiveRadiance += uAlertColor * vAlert * (
+            ${ALERT.body.toFixed(3)}
+            + pow(1.0 - facing, ${ALERT.rimPower.toFixed(2)}) * ${ALERT.rim.toFixed(3)}
+            ${lampRamp ? `+ vLamp * ${ALERT.lamp.toFixed(3)}` : ''}
+          );` : ''}
         }`)
   }
   // Keeps this variant from sharing a compiled program with an unpatched
   // material of the same type, or with a differently tuned sibling.
   material.customProgramCacheKey = () =>
-    `${previousCacheKey()}-night-${options.rimColor}-${rimRamp.join(':')}-${liftRamp.join(':')}-${lampRamp?.join(':') ?? 'nolamp'}-${rimPower}`
+    `${previousCacheKey()}-night-${options.rimColor}-${rimRamp.join(':')}-${liftRamp.join(':')}-${lampRamp?.join(':') ?? 'nolamp'}-${useAlert ? 'alert' : 'noalert'}-${rimPower}`
   return material
 }

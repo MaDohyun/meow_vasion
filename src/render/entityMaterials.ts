@@ -131,7 +131,17 @@ function makeEnemyMaterial(kind: EnemyKind) {
       night.flat[0],
       night.flat[1],
     ),
-    { rimColor: ENEMY_GLOW[kind], rim: night.rim, lift: night.lift, lamp: night.lamp, rimPower: 2.8 },
+    {
+      rimColor: ENEMY_GLOW[kind],
+      rim: night.rim,
+      lift: night.lift,
+      lamp: night.lamp,
+      rimPower: 2.8,
+      // The battleship stays out of the alert channel. It fires almost
+      // continuously, so a lock-on warning that is always on tells the player
+      // nothing; its warning is the turret ring and the aim line.
+      alert: kind !== 'boss',
+    },
   )
 }
 
