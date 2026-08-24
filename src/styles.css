@@ -146,7 +146,7 @@ button { font: inherit; }
    carry a row of keycaps along the bottom, which made the one card that is
    never read closely the tallest thing on the screen - and the keys are named
    in the control panel on the right anyway. */
-.flight-bar { position: absolute; left: 50%; bottom: 30px; display: flex; align-items: center; gap: 16px; width: min(520px, 56vw); padding: 10px 16px; transform: translateX(-50%); }
+.flight-bar { position: absolute; left: 50%; bottom: 30px; display: flex; align-items: center; gap: 16px; width: min(520px, 42vw); padding: 10px 16px; transform: translateX(-50%); }
 .flight-mass { flex: 0 0 auto; display: flex; align-items: flex-start; flex-direction: column; gap: 2px; min-width: 92px; padding-right: 16px; border-right: 1px solid var(--hud-rule); }
 .flight-mass > span { color: var(--green); font-size: 12px; font-weight: 1000; letter-spacing: 2.4px; }
 .flight-mass > b { color: var(--green); font-size: 26px; font-weight: 1000; line-height: 1.1; letter-spacing: 1px; font-variant-numeric: tabular-nums; }
@@ -200,15 +200,25 @@ button { font: inherit; }
 .tip-note + .tip-note { margin-top:6px; padding-top:6px; border-top:0; }
 .tip-warn .hud-warn { color:var(--coral); }
 
-/* The pilot's corner: the face, on screen for the whole run, and a bubble
-   above it only while the run has something to say. No label and no caption -
-   the expression is the readout, and a word under a face is just a word. */
-.pilot-card { position:absolute; right:34px; bottom:26px; display:flex; align-items:flex-end; flex-direction:column; gap:9px; }
-/* Sized to the portrait art's own 620x550 rather than to a round number: the
-   frame fills with `cover`, so any other ratio crops the pilot's ears or
-   shoulders off to fit a box that was never measured against them. */
-.pilot-portrait { width:146px; height:130px; overflow:hidden; border-color:var(--hud-edge-cool) !important; background-color:#1a2145; background-repeat:no-repeat; image-rendering:pixelated; }
-.pilot-line { max-width:290px; margin:0; padding:9px 14px; color:var(--cream); background:var(--hud-glass-deep); border:2px solid var(--hud-edge); border-radius:var(--hud-radius); box-shadow:var(--hud-drop); font-size:13px; font-weight:1000; line-height:1.5; letter-spacing:.4px; text-align:right; word-break:keep-all; animation:message-pop .18s steps(2); }
+/* The bottom-left cluster: the pilot, then the dial, at a matched size.
+   `--dial` sizes both from one number and shrinks with the viewport, so the
+   pair, the flight card and the news band never have to be re-fitted against
+   each other by hand at every width - they all read from the same vw.
+   Top-aligned rather than bottom-aligned: the dial's legend hangs below it,
+   and lining the pair up by their bottoms would push the face down by exactly
+   the height of a caption that has nothing to do with it. */
+.hud-corner { --dial: clamp(112px, 11vw, 148px); position:absolute; left:18px; bottom:18px; z-index:7; display:flex; align-items:flex-start; gap:10px; }
+
+/* The pilot: the face, on screen for the whole run, and a bubble above it only
+   while the run has something to say. No label and no caption - the expression
+   is the readout, and a word under a face is just a word. */
+.pilot-card { display:flex; align-items:flex-start; flex-direction:column; gap:9px; }
+/* As tall as the dial beside it, and as wide as the portrait art's own
+   620x550 makes it at that height. The frame fills with `cover`, so forcing it
+   square to match the dial exactly would crop the pilot's ears and arms off to
+   fit a box that was never measured against them. */
+.pilot-portrait { width:calc(var(--dial) * 1.127); height:var(--dial); overflow:hidden; border-color:var(--hud-edge-cool) !important; background-color:#1a2145; background-repeat:no-repeat; image-rendering:pixelated; }
+.pilot-line { max-width:min(300px,24vw); margin:0; padding:9px 14px; color:var(--cream); background:var(--hud-glass-deep); border:2px solid var(--hud-edge); border-radius:var(--hud-radius); box-shadow:var(--hud-drop); font-size:13px; font-weight:1000; line-height:1.5; letter-spacing:.4px; word-break:keep-all; animation:message-pop .18s steps(2); }
 .pilot-card[data-expression="surprise"] .pilot-portrait,
 .pilot-card[data-expression="scream"] .pilot-portrait { animation:warning-pulse .3s steps(2) infinite; }
 .captive-rack { position: absolute; right: 18px; bottom: 123px; min-width: 126px; padding: 7px 10px; background: rgba(33,27,53,.85); border-bottom: 4px solid var(--green); text-align: right; }
@@ -220,8 +230,8 @@ button { font: inherit; }
    allows. It used to be 112px squeezed between the pilot card and the systems
    panel, which is small enough that a lake read as a smudge and two contacts
    a few metres apart read as one. */
-.planet-radar { position:absolute; left:18px; bottom:18px; width:148px; }
-.hud .radar-dial { position:relative; width:148px; height:148px; overflow:hidden; border-color:var(--hud-edge-cool); background-color:#12352f; background-image:linear-gradient(rgba(150,255,190,.09) 1px,transparent 1px),linear-gradient(90deg,rgba(150,255,190,.09) 1px,transparent 1px),radial-gradient(circle at 50% 50%,#1d5b47 0 20%,#0e2b31 78%); background-size:21px 21px,21px 21px,100% 100%; }
+.planet-radar { width:var(--dial); }
+.hud .radar-dial { position:relative; width:var(--dial); height:var(--dial); overflow:hidden; border-color:var(--hud-edge-cool); background-color:#12352f; background-image:linear-gradient(rgba(150,255,190,.09) 1px,transparent 1px),linear-gradient(90deg,rgba(150,255,190,.09) 1px,transparent 1px),radial-gradient(circle at 50% 50%,#1d5b47 0 20%,#0e2b31 78%); background-size:21px 21px,21px 21px,100% 100%; }
 .radar-orbit { position:absolute; inset:12px; border:1px dashed rgba(160,255,205,.4); border-radius:8px; }
 .district-dot,.target-dot,.player-dot { position:absolute; z-index:2; width:5px; height:5px; border-radius:50%; transform:translate(-50%,-50%); }
 .district-dot { background:rgba(255,245,199,.62); }
@@ -419,7 +429,7 @@ button { font: inherit; }
    flies by it. The floor is the flight card at the bottom edge, whose top is
    about y=625 - the radar moved out from under this card into the corner, so
    the gap is the flight card's now. */
-.breaking-band { position:absolute; left:50%; bottom:122px; z-index:6; display:flex; align-items:stretch; width:min(620px,56vw); min-height:112px; overflow:hidden; background:var(--hud-glass-deep); border:2px solid var(--hud-edge); border-radius:var(--hud-radius); box-shadow:var(--hud-drop); transform:translateX(-50%); }
+.breaking-band { position:absolute; left:50%; bottom:122px; z-index:6; display:flex; align-items:stretch; width:min(620px,44vw); min-height:112px; overflow:hidden; background:var(--hud-glass-deep); border:2px solid var(--hud-edge); border-radius:var(--hud-radius); box-shadow:var(--hud-drop); transform:translateX(-50%); }
 .breaking-band[data-phase="opening"] { animation:breaking-in .45s steps(4) both; }
 .breaking-band[data-phase="closing"] { animation:breaking-out .55s steps(4) both; }
 @keyframes breaking-in { 0% { opacity:0; transform:translate(-50%,64px); } 100% { opacity:1; transform:translate(-50%,0); } }
@@ -519,11 +529,15 @@ button { font: inherit; }
   .joystick { bottom:64px; }
   .mobile-actions { bottom:62px; }
   .mobile-altitude { bottom:147px; }
+  /* No dial to pair with here - it is hidden - so the corner wrapper drops out
+     of the layout and the pilot takes its own place again. */
+  .hud-corner { display:contents; }
   /* Above the fire buttons and clear of the altitude arrows: the pilot is the
      one panel here that is read rather than pressed. */
-  .pilot-card { left:auto; right:14px; bottom:196px; gap:6px; }
+  .pilot-card { position:absolute; left:auto; right:14px; bottom:196px; align-items:flex-end; gap:6px; }
   .pilot-portrait { width:70px; height:62px; }
-  .pilot-line { max-width:min(280px,84vw); padding:7px 10px; font-size:11px; }
+  .pilot-line { max-width:min(280px,84vw); text-align:right; }
+  .pilot-line { padding:7px 10px; font-size:11px; }
   .captive-rack { display:none; }
   .planet-radar { display:none; }
   .boss-bar { width:88vw; }
@@ -607,16 +621,21 @@ button { font: inherit; }
   .control-tips { top:14px; right:14px; }
   .tip-body { width:198px; }
   .tip-row { grid-template-columns:92px minmax(0,1fr); }
-  .planet-radar { left:14px; bottom:14px; width:118px; }
+  /* Three clusters will not fit across this bottom edge at a size any of them
+     can be read at, so the pair splits: the dial keeps the corner and the
+     pilot goes back to the opposite one. */
+  .hud-corner { display:contents; }
+  .planet-radar { position:absolute; left:14px; bottom:14px; width:118px; }
   .hud .radar-dial { width:118px; height:118px; }
   .radar-key { width:118px; margin-top:5px; gap:1px 6px; font-size:9px; }
   .flight-bar { width:min(388px,44vw); bottom:26px; padding:9px 12px; gap:11px; }
   .flight-mass { min-width:78px; padding-right:11px; }
   .flight-mass > b { font-size:22px; }
   .system-meter, .ballast-meter { grid-template-columns:34px minmax(0,1fr) 48px; gap:8px; }
-  .pilot-card { right:22px; bottom:20px; }
+  .breaking-band { width:min(620px,56vw); }
+  .pilot-card { position:absolute; right:22px; bottom:20px; align-items:flex-end; }
   .pilot-portrait { width:108px; height:96px; }
-  .pilot-line { max-width:180px; padding:8px 11px; font-size:12px; }
+  .pilot-line { max-width:180px; padding:8px 11px; font-size:12px; text-align:right; }
   .briefing-box { top:92px; }
 }
 
@@ -637,7 +656,7 @@ button { font: inherit; }
 /* Named, not just coloured. Two swatches could be guessed from what is on
    screen; three is where a key stops being self-evident, and water in
    particular has to be told apart from "some dark block down there". */
-.radar-key { display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:2px 8px; width:148px; margin-top:7px; padding:5px 3px; color:rgba(255,245,199,.82); border-color:var(--hud-edge-cool) !important; font-size:10px; font-weight:1000; letter-spacing:.4px; }
+.radar-key { display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:2px 8px; width:var(--dial); margin-top:7px; padding:5px 3px; color:rgba(255,245,199,.82); border-color:var(--hud-edge-cool) !important; font-size:10px; font-weight:1000; letter-spacing:.4px; }
 .radar-key span { display:inline-flex; align-items:center; gap:4px; white-space:nowrap; }
 .radar-key i { flex:0 0 auto; width:7px; height:7px; border-radius:2px; box-shadow:0 0 0 1px rgba(20,16,34,.7); }
 .radar-key-mystery { width:8px; height:8px; background:url(/landmarks/mystery-circle.png) center/contain no-repeat; box-shadow:none; }

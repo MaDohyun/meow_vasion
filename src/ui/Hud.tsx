@@ -914,9 +914,17 @@ export function Hud() {
             card listing all five at once undercuts that. */}
         {!snapshot.tutorial && <ControlTips key={`tips-${briefingRun}`} />}
 
-        <Radar />
+        {/* The instrument corner. The pilot and the dial are one cluster, not
+            two: both answer "where am I and how is this going", both are read
+            with a glance rather than studied, and pairing them at a matched
+            size leaves the bottom of the screen with three things on it
+            instead of four. The pilot leads because the face is the thing the
+            eye lands on first. */}
+        <div className="hud-corner">
+          <PilotComms />
+          <Radar />
+        </div>
         <FlightBar />
-        <PilotComms />
 
         <BreakingNews />
         {snapshot.timeBonusPulse > 0 && <div className="time-bonus">+{snapshot.timeBonusAmount}s</div>}
