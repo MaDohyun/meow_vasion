@@ -8,89 +8,37 @@ import {
   stepEnemies,
   stepEnemyProjectiles,
   syncEnemyTiers,
-  type EnemyKind,
 } from '../src/core/enemies'
 import { DRONE_DEFAULTS } from '../src/core/drone'
 
-/** Each enemy only shoots in its own altitude band. Helicopters are absent:
- *  they ram instead of shooting, so the fighter is the low-band shooter. */
-const BAND: Partial<Record<EnemyKind, number>> = {
-  fighter: 12, 'anti-air': 40,
-}
-
 /**
- * Fly a course past a wave and count the hits.
+ * Fly a course past a hand-emplaced anti-air ring and count the hits.
  *
- * `turn` is applied every tick once the run is under way, which is what
- * separates holding a heading from breaking one.
+ * The network is the roster's one remaining lead-aimed shooter - fighters
+ * moved to curtain fire (test/danmaku.spec.ts) and helicopters to rams
+ * (test/helicopter.spec.ts) - so the aiming rules are proven against it. The
+ * real spawner bolts the sites to buildings, which is orthogonal to aiming,
+ * so the ring is placed directly.
+ *
+ * `jink` breaks course several times a second, faster than any telegraph, so
+ * no prediction made at aim time survives to the shot.
  */
-function run(options: {
-  kind: EnemyKind
-  speed: number
-  hitRadius?: number
-  seconds?: number
-  jink?: boolean
-}) {
-  const { kind, speed, hitRadius = 1.05, seconds = 40, jink = false } = options
+function aaRun(options: { speed: number; hitRadius?: number; jink?: boolean }) {
+  const { speed, hitRadius = 1.05, jink = false } = options
   const state = createEnemyState(0xa11)
-  const altitude = BAND[kind] ?? 12
-  const player = { x: 0, y: altitude, z: 0 }
+  const player = { x: 0, y: 40, z: 0 }
   const velocity = { x: 0, y: 0, z: speed }
-  const at = ENEMY_WAVE_STAGES[4]!.at
-  // Long enough for the wave to actually fill. The spawner hands out a few
-  // slots a second across every kind, so a short warm-up measures a half-built
-  // wave and moves whenever any kind's budget changes.
-  for (let tick = 0; tick < 1600; tick += 1) syncEnemyTiers(state, at, player, 0, 0.05)
-  for (const enemy of state.slots) if (enemy.active && enemy.kind !== kind) enemy.active = false
+  const sites = state.slots.filter((enemy) => enemy.kind === 'anti-air')
+  sites.forEach((site, index) => {
+    site.active = true
+    site.mode = 'fixed'
+    site.hitRadius = 2.2
+    const angle = index / sites.length * Math.PI * 2
+    site.position = { x: Math.sin(angle) * 90, y: 30, z: Math.cos(angle) * 90 }
+  })
   let hits = 0
   const d = 1 / 60
-  for (let tick = 0; tick < seconds * 60; tick += 1) {
-    if (jink) {
-      // Break course several times a second: faster than any telegraph, so no
-      // prediction made at aim time survives to the shot.
-      const swing = Math.sin(tick * d * 7)
-      velocity.x = speed * swing
-      velocity.z = speed * Math.cos(tick * d * 7)
-    }
-    player.x += velocity.x * d
-    player.z += velocity.z * d
-    stepEnemies(state, player, d, velocity)
-    syncEnemyTiers(state, at, player, 0, d)
-    if (stepEnemyProjectiles(state, player, d, hitRadius) > 0) hits += 1
-  }
-  return hits
-}
-
-const MIXED_WAVE_SEEDS = [0xa11, 0x5c3, 0x77b]
-
-/**
- * The same course flown against a whole wave rather than one enemy type,
- * averaged over several spawn seeds.
- *
- * One seed decides where a hundred enemies stand, so a single run swings by
- * several hits on nothing more than a different draw - and every enemy budget
- * change reshuffles the draw. These tests guard the ordering of the three
- * courses, so they average rather than pinning themselves to one city.
- */
-function mixedWave(options: { speed: number; hitRadius?: number; jink?: boolean; altitude?: number }) {
-  let total = 0
-  for (const seed of MIXED_WAVE_SEEDS) total += mixedWaveRun(seed, options)
-  return total / MIXED_WAVE_SEEDS.length
-}
-
-function mixedWaveRun(seed: number, options: { speed: number; hitRadius?: number; jink?: boolean; altitude?: number }) {
-  const { speed, hitRadius = 1.05, jink = false, altitude = 12 } = options
-  const state = createEnemyState(seed)
-  const player = { x: 0, y: altitude, z: 0 }
-  const velocity = { x: 0, y: 0, z: speed }
-  const at = ENEMY_WAVE_STAGES[4]!.at
-  // Long enough for the wave to actually fill. The spawner hands out a few
-  // slots a second across every kind, so a short warm-up measures a half-built
-  // wave and moves whenever any kind's budget changes.
-  for (let tick = 0; tick < 1600; tick += 1) syncEnemyTiers(state, at, player, 0, 0.05)
-  let hits = 0
-  const d = 1 / 60
-  for (let tick = 0; tick < 60 * 60; tick += 1) {
+  for (let tick = 0; tick < 40 * 60; tick += 1) {
     if (jink) {
       velocity.x = speed * Math.sin(tick * d * 7)
       velocity.z = speed * Math.cos(tick * d * 7)
@@ -98,79 +46,49 @@ function mixedWaveRun(seed: number, options: { speed: number; hitRadius?: number
     player.x += velocity.x * d
     player.z += velocity.z * d
     stepEnemies(state, player, d, velocity)
-    syncEnemyTiers(state, at, player, 0, d)
     if (stepEnemyProjectiles(state, player, d, hitRadius) > 0) hits += 1
   }
   return hits
 }
 
 describe('lead aiming', () => {
-  it('fires faster than the craft can cruise', () => {
+  it('fires every aimed shot faster than the craft can cruise', () => {
     // Without this there is no interception solution at all: a fleeing target
     // outruns the bullet and every shot misses no matter how well aimed. The
     // shots used to be slower than the craft, which is why the real rule of
     // the game was "stand still and die, move and be immortal".
     for (const [kind, speed] of Object.entries(PROJECTILE_SPEED)) {
+      if (kind === 'orb') continue
       expect(speed, kind).toBeGreaterThan(DRONE_DEFAULTS.maxSpeed)
     }
+    // The orb is the deliberate exception: a curtain round is dodged by
+    // reading the pattern, not outrun, so it sits below cruise on purpose.
+    expect(PROJECTILE_SPEED.orb).toBeLessThan(DRONE_DEFAULTS.maxSpeed)
   })
 
   it('hits a craft that holds its heading', () => {
     // The point of the whole change. Flying in a straight line at full speed
-    // used to be perfect safety. The fighter carries these runs now that the
-    // helicopter rams instead of shooting.
-    expect(run({ kind: 'fighter', speed: DRONE_DEFAULTS.maxSpeed })).toBeGreaterThan(0)
+    // used to be perfect safety.
+    expect(aaRun({ speed: DRONE_DEFAULTS.maxSpeed })).toBeGreaterThan(0)
   })
 
   it('misses a craft that breaks its heading', () => {
     // And the other half: the telegraph is a real window, not decoration.
-    const straight = run({ kind: 'fighter', speed: DRONE_DEFAULTS.maxSpeed })
-    const jinking = run({ kind: 'fighter', speed: DRONE_DEFAULTS.maxSpeed, jink: true })
+    const straight = aaRun({ speed: DRONE_DEFAULTS.maxSpeed })
+    const jinking = aaRun({ speed: DRONE_DEFAULTS.maxSpeed, jink: true })
     expect(jinking).toBeLessThan(straight)
   })
 
-  it('hits a big craft far more often than a small one', () => {
-    // Size is the cost of growing, and it only became a real cost once shots
-    // could arrive at all. Judged purely on geometry: same aim, bigger target.
-    const small = run({ kind: 'fighter', speed: DRONE_DEFAULTS.maxSpeed, hitRadius: 1.05 })
-    const large = run({ kind: 'fighter', speed: DRONE_DEFAULTS.maxSpeed, hitRadius: 3.26 })
-    expect(large).toBeGreaterThan(small)
-  })
-
-  it('makes holding a heading dangerous and breaking one safe', () => {
-    // The whole design, measured against a full wave rather than one enemy
-    // type. Before leading, a straight run at cruise took zero hits at every
-    // altitude - the real rule was "stand still and die, move and be
-    // immortal". Wide bounds: this guards the ordering, not the tuning.
-    // Hovering used to be judged here too, against helicopter rifle fire.
-    // The rifles are gone: a helicopter punishes a parked craft by ramming
-    // it, which projectile counting cannot see, so that half of the rule
-    // lives in test/helicopter.spec.ts ('locks on ... and runs them down').
-    const straight = mixedWave({ speed: DRONE_DEFAULTS.maxSpeed })
-    const jinking = mixedWave({ speed: DRONE_DEFAULTS.maxSpeed, jink: true })
-    expect(straight).toBeGreaterThan(3)
-    expect(jinking).toBeLessThan(straight / 3)
-  })
-
-  it('charges a grown craft heavily for holding a heading', () => {
-    // Size is the price of growing, and weaving is how it is paid. A big craft
-    // that flies straight should be in real trouble; a big craft that weaves
-    // should still be alive.
-    const bigStraight = mixedWave({ speed: DRONE_DEFAULTS.maxSpeed, hitRadius: 3.26 })
-    const smallStraight = mixedWave({ speed: DRONE_DEFAULTS.maxSpeed, hitRadius: 1.05 })
-    const bigJinking = mixedWave({ speed: DRONE_DEFAULTS.maxSpeed, hitRadius: 3.26, jink: true })
-    expect(bigStraight).toBeGreaterThan(smallStraight * 2)
-    expect(bigJinking).toBeLessThan(bigStraight / 3)
-  })
-
-  it('leads worse the lower the enemy tier', () => {
-    // The wave ladder is the difficulty curve: fighters teach the rule, the
-    // anti-air network enforces it. Helicopters and drones do not shoot at
-    // all - one rams, the other detonates - so neither holds a lead figure
-    // worth ordering.
-    expect(LEAD_ACCURACY.fighter).toBeLessThan(LEAD_ACCURACY['anti-air'])
+  it('gives full lead only to the units that actually aim', () => {
+    // The anti-air network and the battleship's bow gun are the roster's only
+    // aimed weapons, and both arrive when flying straight is supposed to be
+    // fatal - so both lead perfectly. Everything else attacks without aiming
+    // at all: contact, rams, and curtains.
     expect(LEAD_ACCURACY['anti-air']).toBe(1)
+    expect(LEAD_ACCURACY.boss).toBe(1)
     expect(LEAD_ACCURACY.drone).toBe(0)
+    expect(LEAD_ACCURACY.helicopter).toBe(0)
+    expect(LEAD_ACCURACY.fighter).toBe(0)
   })
 
   it('never homes: a shot keeps the velocity it left with', () => {

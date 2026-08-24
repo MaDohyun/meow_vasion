@@ -31,6 +31,9 @@ export const MAX_HEALTH = 5
  * skill that answers it.
  */
 export const HEALTH_LOSS = {
+  // The cheapest hit in the game, because it is the most visible one: a slow
+  // curtain orb was on screen for seconds before it arrived.
+  orb: 0.5,
   rifle: 0.5,
   rocket: 0.5,
   building: 0.5,

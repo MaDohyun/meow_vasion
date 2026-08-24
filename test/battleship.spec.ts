@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { isAbsorbable } from '../src/core/beam'
+import { DRONE_DEFAULTS } from '../src/core/drone'
 import {
   BATTLESHIP_ALTITUDE,
   BATTLESHIP_LENGTH,
-  BATTLESHIP_MAIN_GUN_EVERY,
+  BATTLESHIP_MAIN_GUN_TELEGRAPH,
   BATTLESHIP_ORBIT,
+  BATTLESHIP_ORB_RING_COUNT,
   BATTLESHIP_TURRETS,
   ENEMY_MAX_HP,
   ENEMY_WAVE_STAGES,
@@ -65,47 +67,53 @@ describe("earth's last resort", () => {
     expect(delta).toBeLessThan(0.35)
   })
 
-  it('walks a broadside down the hull instead of firing one big shot', () => {
+  it('scatters slow orb rings in every direction instead of aimed broadsides', () => {
     const { state, player, ship } = launch()
-    const origins: { at: number; x: number; z: number }[] = []
-    let previousTelegraph = ship.telegraph
+    // Only the ship: the wave's fighters carry curtains of their own, and this
+    // is about whose orbs ring the hull.
+    for (const enemy of state.slots) if (enemy !== ship) enemy.active = false
+    let orbs: typeof state.projectiles = []
     for (let tick = 0; tick < 30 * 60; tick += 1) {
       stepEnemies(state, player, 1 / 60)
-      // A fresh aim: the telegraph jumped back up.
-      if (ship.telegraph > previousTelegraph) origins.push({ at: tick / 60, x: ship.muzzle.x, z: ship.muzzle.z })
-      previousTelegraph = ship.telegraph
+      orbs = state.projectiles.filter((projectile) => projectile.active && projectile.kind === 'orb')
+      if (orbs.length >= BATTLESHIP_ORB_RING_COUNT) break
     }
-    expect(origins.length).toBeGreaterThan(BATTLESHIP_TURRETS.length)
-    // Successive shots inside a broadside leave from different guns, and the
-    // guns are metres apart along the hull.
-    let moved = 0
-    for (let index = 1; index < origins.length; index += 1) {
-      const gap = Math.hypot(origins[index]!.x - origins[index - 1]!.x, origins[index]!.z - origins[index - 1]!.z)
-      if (gap > 4) moved += 1
+    expect(orbs.length).toBeGreaterThanOrEqual(BATTLESHIP_ORB_RING_COUNT)
+    // Every direction at once: the bearings cover the whole compass.
+    const sectors = new Set(orbs.map((orb) => {
+      const bearing = (Math.atan2(orb.velocity.x, orb.velocity.z) + Math.PI * 2) % (Math.PI * 2)
+      return Math.floor(bearing / (Math.PI / 4))
+    }))
+    expect(sectors.size).toBe(8)
+    // Slow: the halo is flown through, not fled.
+    for (const orb of orbs) {
+      expect(Math.hypot(orb.velocity.x, orb.velocity.z)).toBeLessThan(DRONE_DEFAULTS.maxSpeed)
     }
-    expect(moved).toBeGreaterThan(origins.length / 2)
-    // And they are staggered, not simultaneous.
-    const spacing = origins.slice(1).map((shot, index) => shot.at - origins[index]!.at)
-    expect(Math.min(...spacing)).toBeGreaterThan(0.05)
   })
 
-  it('reloads between broadsides, which is when the laser gets used', () => {
+  it('reloads between flurries, which is when the laser gets used', () => {
     const { state, player, ship } = launch()
-    const gaps: number[] = []
-    let last = 0
-    let previousTelegraph = ship.telegraph
+    for (const enemy of state.slots) if (enemy !== ship) enemy.active = false
+    // Times when fresh orbs joined the sky. Rings inside one flurry are close
+    // together; the reload shows up as a long silence between clusters.
+    const bursts: number[] = []
+    let previous = 0
     for (let tick = 0; tick < 40 * 60; tick += 1) {
       stepEnemies(state, player, 1 / 60)
-      if (ship.telegraph > previousTelegraph) { gaps.push(tick / 60 - last); last = tick / 60 }
-      previousTelegraph = ship.telegraph
+      const count = state.projectiles.filter((projectile) => projectile.active && projectile.kind === 'orb').length
+      if (count > previous) bursts.push(tick / 60)
+      previous = count
     }
-    // At least one long pause per handful of shots: the fight has a rhythm
+    expect(bursts.length).toBeGreaterThan(2)
+    const gaps = bursts.slice(1).map((at, index) => at - bursts[index]!)
+    // At least one long pause per handful of rings: the fight has a rhythm
     // rather than being a continuous wall.
-    expect(Math.max(...gaps.slice(1))).toBeGreaterThan(3)
+    expect(Math.max(...gaps)).toBeGreaterThan(3)
   })
 
-  it('fires the bow gun with a much longer warning than the turrets', () => {
+  it('keeps the bow gun as the only aimed, telegraphed shot', () => {
     const { state, player, ship } = launch()
+    for (const enemy of state.slots) if (enemy !== ship) enemy.active = false
     const telegraphs: number[] = []
     let previousTelegraph = ship.telegraph
     for (let tick = 0; tick < 60 * 60; tick += 1) {
@@ -113,13 +121,10 @@ describe("earth's last resort", () => {
       if (ship.telegraph > previousTelegraph) telegraphs.push(ship.telegraphLength)
       previousTelegraph = ship.telegraph
     }
-    const longest = Math.max(...telegraphs)
-    const shortest = Math.min(...telegraphs)
-    expect(longest).toBeGreaterThan(shortest * 3)
-    // Roughly one main-gun shot per BATTLESHIP_MAIN_GUN_EVERY volleys.
-    const heavy = telegraphs.filter((value) => value === longest).length
-    expect(heavy).toBeGreaterThan(0)
-    expect(heavy).toBeLessThan(telegraphs.length / BATTLESHIP_MAIN_GUN_EVERY)
+    // The rings fire without warning - they are their own warning - so every
+    // telegraph that appears is the bow gun's long one.
+    expect(telegraphs.length).toBeGreaterThan(1)
+    for (const length of telegraphs) expect(length).toBeCloseTo(BATTLESHIP_MAIN_GUN_TELEGRAPH, 5)
   })
 
   it('spreads its turrets across the length of the hull', () => {
