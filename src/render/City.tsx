@@ -13,6 +13,8 @@ import {
   groundLandmarkForCell,
   isNewsTower,
   isConvenienceStore,
+  lakeShoreDecorAround,
+  LAKE_SHORE_DECOR_CAPACITY,
 } from '../core/cityLandmarks'
 import {
   isWorldPropDisplaced,
@@ -21,6 +23,7 @@ import {
   utilityPolesAround,
   worldPropVisibilityKey,
   worldPropsAround,
+  LANDMARK_RADIUS_CELLS,
   STREETLIGHT_RADIUS_CELLS,
   TREE_VARIANT_ROUND,
   TREE_VARIANT_SLENDER,
@@ -40,6 +43,7 @@ import {
   WORLD_REMOVE_RADIUS,
   seedForWorldCell,
   lakeClusterForCell,
+  lakeWaterRect,
   parkClusterForCell,
   sameLandmarkCluster,
   type ActiveWorld,
@@ -899,21 +903,13 @@ function WaterPool() {
     // One tile per actual lake cell, not the cluster's bounding box - a
     // bounding box fills in corners an L-shaped cluster never claims, and
     // flattens the four-in-a-row shape into a long rectangle that reads as a
-    // river instead of a lake. Each tile keeps the usual margin on any edge
-    // that faces open ground, but drops to zero on edges that face another
-    // cell in the same cluster, so neighbouring tiles butt up with no seam.
-    const margin = 4.25
+    // river instead of a lake. lakeWaterRect owns the per-edge margin so the
+    // shore dressing lands on the same waterline this mesh draws.
     for (const cell of groundCellsAround(runtime.current.drone.position)) {
-      if (!lakeClusterForCell(cell.cellX, cell.cellZ)) continue
+      const rect = lakeWaterRect(cell.cellX, cell.cellZ)
+      if (!rect) continue
       if (slot >= GROUND_CELL_COUNT) break
-      const westOpen = !sameLandmarkCluster(cell.cellX, cell.cellZ, cell.cellX - 1, cell.cellZ)
-      const eastOpen = !sameLandmarkCluster(cell.cellX, cell.cellZ, cell.cellX + 1, cell.cellZ)
-      const southOpen = !sameLandmarkCluster(cell.cellX, cell.cellZ, cell.cellX, cell.cellZ - 1)
-      const northOpen = !sameLandmarkCluster(cell.cellX, cell.cellZ, cell.cellX, cell.cellZ + 1)
-      const minX = cell.cellX * WORLD_CELL_SIZE + (westOpen ? margin : 0)
-      const maxX = (cell.cellX + 1) * WORLD_CELL_SIZE - (eastOpen ? margin : 0)
-      const minZ = cell.cellZ * WORLD_CELL_SIZE + (southOpen ? margin : 0)
-      const maxZ = (cell.cellZ + 1) * WORLD_CELL_SIZE - (northOpen ? margin : 0)
+      const { minX, maxX, minZ, maxZ } = rect
       position.set((minX + maxX) * 0.5, 0.055, (minZ + maxZ) * 0.5)
       scale.set(maxX - minX, maxZ - minZ, 1)
       matrix.compose(position, rotation, scale)
@@ -2288,6 +2284,110 @@ const ruinGeometries = RUIN_TIERS.map((_, tier) => {
   ], false)!
 })
 
+/**
+ * Reeds and boulders along the waterline of every lake.
+ *
+ * The lake mesh is a rectangle, and a rectangle of moving blue reads as a
+ * municipal pool no matter how well it ripples - the giveaway is the edge,
+ * four straight lines meeting at right angles. These break it up: each piece
+ * is placed within a couple of metres of the waterline lakeWaterRect defines,
+ * some on the dry lip and some standing in the shallows, so the outline the
+ * eye follows is ragged even though the plane underneath is still square.
+ *
+ * Two pools, no simulation. Nothing here is a beam object - a reed clump is
+ * scenery, and adding it to the beam would put a shrub in the same weight
+ * ladder as a parked car for no gain.
+ */
+const shoreRockGeometry = new THREE.DodecahedronGeometry(0.5, 0)
+
+const REED_BLADES = 6
+const shoreReedGeometry = (() => {
+  const parts = []
+  for (let blade = 0; blade < REED_BLADES; blade += 1) {
+    const angle = (blade / REED_BLADES) * Math.PI * 2 + 0.4
+    const height = 0.78 + (blade % 3) * 0.26
+    const lean = 0.15 + (blade % 2) * 0.13
+    parts.push(tintedPart(
+      new THREE.ConeGeometry(0.068, height, 4)
+        .translate(0, height / 2, 0)
+        .rotateZ(Math.cos(angle) * lean)
+        .rotateX(-Math.sin(angle) * lean)
+        .translate(Math.cos(angle) * 0.13, 0, Math.sin(angle) * 0.13),
+      blade % 2 === 0 ? GROUND.SHORE_REED : GROUND.SHORE_REED_TIP,
+    ))
+  }
+  return mergeGeometries(parts, false)!
+})()
+
+// Detail 0 leaves the dodecahedron's own flat face normals in place, which is
+// what keeps the boulder faceted - a smooth-shaded one at this size reads as a
+// bubble, and MeshToonMaterial has no flatShading of its own to fall back on.
+const shoreRockMaterial = new THREE.MeshToonMaterial({ color: '#ffffff', gradientMap: toonGradient })
+const shoreReedMaterial = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: toonGradient })
+
+function LakeShoreDecorPool() {
+  const { runtime } = useGame()
+  const rocks = useRef<THREE.InstancedMesh>(null)
+  const reeds = useRef<THREE.InstancedMesh>(null)
+  const lastKey = useRef('')
+  const matrix = useMemo(() => new THREE.Matrix4(), [])
+  const position = useMemo(() => new THREE.Vector3(), [])
+  const scale = useMemo(() => new THREE.Vector3(), [])
+  const rotation = useMemo(() => new THREE.Quaternion(), [])
+  const euler = useMemo(() => new THREE.Euler(), [])
+  const color = useMemo(() => new THREE.Color(), [])
+
+  useFrame(() => {
+    if (!rocks.current || !reeds.current) return
+    const world = runtime.current.world
+    const key = `${world.cellX}:${world.cellZ}`
+    if (lastKey.current === key) return
+    lastKey.current = key
+    let rockSlot = 0
+    let reedSlot = 0
+    for (const item of lakeShoreDecorAround(runtime.current.drone.position, LANDMARK_RADIUS_CELLS)) {
+      // The one deterministic angle each piece carries doubles as its shade
+      // and height roll, so the shore needs no second seed to stop reading as
+      // one boulder and one reed clump copied along the bank.
+      const spread = item.angle / (Math.PI * 2)
+      if (item.kind === 'rock') {
+        if (rockSlot >= LAKE_SHORE_DECOR_CAPACITY) continue
+        // Sunk to the waist so the waterline cuts across the boulder instead
+        // of leaving it perched on top of the lake.
+        position.set(item.x, item.size * 0.2, item.z)
+        euler.set(spread * 0.5, item.angle, spread * 0.35)
+        rotation.setFromEuler(euler)
+        scale.set(item.size, item.size * (0.54 + spread * 0.2), item.size * 0.88)
+        matrix.compose(position, rotation, scale)
+        rocks.current.setMatrixAt(rockSlot, matrix)
+        rocks.current.setColorAt(rockSlot, color.set(GROUND.SHORE_ROCK).multiplyScalar(0.84 + spread * 0.3))
+        rockSlot += 1
+        continue
+      }
+      if (reedSlot >= LAKE_SHORE_DECOR_CAPACITY) continue
+      position.set(item.x, 0.02, item.z)
+      euler.set(0, item.angle, 0)
+      rotation.setFromEuler(euler)
+      scale.set(item.size, item.size * (0.85 + spread * 0.6), item.size)
+      matrix.compose(position, rotation, scale)
+      reeds.current.setMatrixAt(reedSlot, matrix)
+      reedSlot += 1
+    }
+    rocks.current.count = rockSlot
+    reeds.current.count = reedSlot
+    rocks.current.instanceMatrix.needsUpdate = true
+    reeds.current.instanceMatrix.needsUpdate = true
+    if (rocks.current.instanceColor) rocks.current.instanceColor.needsUpdate = true
+  })
+
+  return (
+    <group>
+      <instancedMesh ref={rocks} args={[shoreRockGeometry, shoreRockMaterial, LAKE_SHORE_DECOR_CAPACITY]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }} />
+      <instancedMesh ref={reeds} args={[shoreReedGeometry, shoreReedMaterial, LAKE_SHORE_DECOR_CAPACITY]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }} />
+    </group>
+  )
+}
+
 function RuinPool() {
   const { runtime } = useGame()
   const refs = [
@@ -2350,6 +2450,7 @@ export const City = memo(function City() {
     <group>
       <GroundPool />
       <WaterPool />
+      <LakeShoreDecorPool />
       <BuildingPool />
       <SpecialBuildingPool specialty="factory" />
       <SpecialBuildingPool specialty="department-store" />

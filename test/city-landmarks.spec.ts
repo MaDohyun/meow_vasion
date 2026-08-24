@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { getProceduralCell, isLakeAt, WORLD_CELL_SIZE, type ProceduralBuilding } from '../src/core/world'
+import {
+  getProceduralCell,
+  isLakeAt,
+  lakeWaterRect,
+  LAKE_TILE_MARGIN,
+  WORLD_CELL_SIZE,
+  worldCellCoord,
+  type ProceduralBuilding,
+} from '../src/core/world'
 import { beamLiftScale } from '../src/core/beam'
 import { WORLD_PROP_MASS } from '../src/core/worldProps'
 import {
@@ -13,7 +21,11 @@ import {
   NEWS_TOWER_MIN_HEIGHT,
   isNewsTower,
   isConvenienceStore,
+  lakeShoreDecorAround,
   lakeShoreTreesAround,
+  LAKE_SHORE_DECOR_CAPACITY,
+  LAKE_SHORE_DECOR_DRY_LIP,
+  LAKE_SHORE_DECOR_SHALLOWS,
   newsScreenMount,
   parkingCarsAround,
 } from '../src/core/cityLandmarks'
@@ -165,6 +177,48 @@ describe('news screen mounting', () => {
     const mount = newsScreenMount(tower(NEWS_TOWER_MIN_HEIGHT))
     expect(NEWS_SCREEN_MOUNT_MARGIN).toBeGreaterThan(1)
     expect(mount.height).toBe(NEWS_SCREEN_HEIGHT + NEWS_SCREEN_MOUNT_MARGIN * 2)
+  })
+
+  it('breaks the lake outline with reeds and rocks that hug the waterline', () => {
+    // Sweep several deterministic lake sectors rather than pinning the test to
+    // one layout, exactly as the shore tree case above does.
+    const decor = lakeShoreDecorAround({ x: 0, z: 0 }, 48)
+
+    expect(decor.length).toBeGreaterThan(0)
+    expect(decor.some((item) => item.kind === 'rock')).toBe(true)
+    expect(decor.some((item) => item.kind === 'reed')).toBe(true)
+    for (const item of decor) {
+      // Every piece belongs to a lake cell, and sits within a couple of metres
+      // of that cell's waterline - never adrift in open water or out on the
+      // road, both of which the straight-edge fix would look wrong doing.
+      expect(isLakeAt(item)).toBe(true)
+      const rect = lakeWaterRect(worldCellCoord(item.x), worldCellCoord(item.z))!
+      expect(rect).not.toBeNull()
+      const distances = [
+        rect.westOpen ? item.x - rect.minX : Infinity,
+        rect.eastOpen ? rect.maxX - item.x : Infinity,
+        rect.southOpen ? item.z - rect.minZ : Infinity,
+        rect.northOpen ? rect.maxZ - item.z : Infinity,
+      ]
+      const toWaterline = Math.min(...distances)
+      expect(toWaterline).toBeGreaterThanOrEqual(-LAKE_SHORE_DECOR_DRY_LIP - 1e-6)
+      expect(toWaterline).toBeLessThanOrEqual(LAKE_SHORE_DECOR_SHALLOWS + 1e-6)
+      // The dry lip is narrower than the margin the water tile holds back, so
+      // nothing lands past the kerb of the road that rings the lake.
+      expect(LAKE_SHORE_DECOR_DRY_LIP).toBeLessThan(LAKE_TILE_MARGIN)
+      expect(item.size).toBeGreaterThan(0)
+    }
+  })
+
+  it('keeps the shore dressing deterministic and inside its instanced pools', () => {
+    for (const [x, z] of [[0, 0], [512, -337], [-1204, 890]] as const) {
+      const first = lakeShoreDecorAround({ x, z })
+      const second = lakeShoreDecorAround({ x, z })
+      expect(second).toEqual(first)
+      // Each kind has a pool of its own, so the worst case is one kind taking
+      // every slot a render radius produces.
+      expect(first.length).toBeLessThanOrEqual(LAKE_SHORE_DECOR_CAPACITY)
+    }
   })
 
   it('makes a landmark demolition a two-shot judgement, one-shot only when the laser is maxed', () => {

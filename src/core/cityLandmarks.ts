@@ -3,6 +3,7 @@ import {
   buildingMass,
   getProceduralCell,
   lakeClusterForCell,
+  lakeWaterRect,
   mysteryCircleForCell,
   parkClusterForCell,
   PARKED_CAR_COLORS,
@@ -17,6 +18,16 @@ import {
 export type GroundLandmark = 'park' | 'subway' | 'parking-lot' | 'power-pylon' | 'gas-station' | 'communications' | 'lake' | 'mystery-circle' | null
 export type CrowdSpawnZone = { x: number; z: number; radius: number; kind: 'park' | 'parking-lot' }
 export type LakeShoreTree = { x: number; z: number; height: number; crown: number }
+export type LakeShoreDecorKind = 'rock' | 'reed'
+export type LakeShoreDecor = {
+  x: number
+  z: number
+  kind: LakeShoreDecorKind
+  /** Footprint radius in metres; reeds take their height from it as well. */
+  size: number
+  /** Yaw in radians, so no two neighbours present the same silhouette. */
+  angle: number
+}
 
 /**
  * Deterministic landmark selection shared by simulation and rendering. The
@@ -235,6 +246,104 @@ export function lakeShoreTreesAround(position: Pick<Vec3, 'x' | 'z'>, radius = 6
     }
   }
   return trees
+}
+
+/**
+ * Pebbles and reed clumps along a lake's waterline.
+ *
+ * The water tile is a rectangle, and a rectangle of blue reads as a municipal
+ * pool rather than a lake however nicely it ripples. These break the straight
+ * edge: each piece sits within a few metres of the waterline, some on the dry
+ * lip and some standing in the shallows, so the outline the eye follows is
+ * ragged even though the mesh underneath is still square.
+ *
+ * Decoration only - nothing here is a beam object. It never enters the
+ * simulation, so it costs two instanced pools and no per-frame work beyond
+ * the cell-key rebuild the other ground pools already do.
+ */
+export const LAKE_SHORE_DECOR_PER_EDGE = 9
+/** Hard ceiling on one sweep, comfortably above the ~500 the densest lake
+ *  district produces. Each instanced pool is sized to it in full, so a shore
+ *  that comes out all rock or all reed still has a slot for every piece. */
+export const LAKE_SHORE_DECOR_CAPACITY = 640
+/** Metres of dry lip outside the waterline a piece may claim. Well short of
+ *  the margin the water tile holds back, so none of it reaches the road. */
+export const LAKE_SHORE_DECOR_DRY_LIP = 1.1
+/** Metres into the shallows a piece may wade. */
+export const LAKE_SHORE_DECOR_SHALLOWS = 3.4
+
+export function lakeShoreDecorAround(position: Pick<Vec3, 'x' | 'z'>, radius = 6): LakeShoreDecor[] {
+  const decor: LakeShoreDecor[] = []
+  const occupied = new Set<string>()
+  // A piece and its companion both have to land somewhere on the shore band,
+  // and two shores meeting at a corner must not stack a rock on a reed.
+  const place = (x: number, z: number, item: Omit<LakeShoreDecor, 'x' | 'z'>) => {
+    const key = `${Math.round(x)}:${Math.round(z)}`
+    if (occupied.has(key)) return
+    occupied.add(key)
+    decor.push({ ...item, x, z })
+  }
+  for (const cell of groundCellsAround(position, radius)) {
+    const rect = lakeWaterRect(cell.cellX, cell.cellZ)
+    if (!rect) continue
+    const sides = [
+      { open: rect.westOpen, axis: 'x' as const, edge: rect.minX, inward: 1 },
+      { open: rect.eastOpen, axis: 'x' as const, edge: rect.maxX, inward: -1 },
+      { open: rect.southOpen, axis: 'z' as const, edge: rect.minZ, inward: 1 },
+      { open: rect.northOpen, axis: 'z' as const, edge: rect.maxZ, inward: -1 },
+    ]
+    for (const [sideIndex, side] of sides.entries()) {
+      // An internal seam of a multi-cell lake is open water, not a shore.
+      if (!side.open) continue
+      const alongMin = side.axis === 'x' ? rect.minZ : rect.minX
+      const alongMax = side.axis === 'x' ? rect.maxZ : rect.maxX
+      const spacing = (alongMax - alongMin) / LAKE_SHORE_DECOR_PER_EDGE
+      for (let index = 0; index < LAKE_SHORE_DECOR_PER_EDGE; index += 1) {
+        const seed = seedForWorldCell(cell.cellX, cell.cellZ, 0x1a6ed00 + sideIndex * 32 + index)
+        // A shore is not a fence: a fifth of the slots stay bare.
+        if (seed % 100 < 18) continue
+        const slot = (index + 0.5) / LAKE_SHORE_DECOR_PER_EDGE
+        // Nearly a full slot of drift, so the row of anchors underneath never
+        // shows through as evenly spaced dressing.
+        const along = alongMin
+          + slot * (alongMax - alongMin)
+          + ((((seed >>> 7) % 101) / 100) - 0.5) * spacing * 0.95
+        // Measured from the waterline: negative is the dry lip outside it,
+        // positive is standing in the shallows.
+        const depth = -LAKE_SHORE_DECOR_DRY_LIP
+          + (((seed >>> 13) % 101) / 100) * (LAKE_SHORE_DECOR_DRY_LIP + LAKE_SHORE_DECOR_SHALLOWS)
+        const kind: LakeShoreDecorKind = ((seed >>> 21) % 100) < 46 ? 'rock' : 'reed'
+        const size = kind === 'rock'
+          ? 0.85 + ((seed >>> 25) % 7) * 0.16
+          : 0.9 + ((seed >>> 25) % 7) * 0.13
+        const angle = (((seed >>> 3) % 360) / 180) * Math.PI
+        const offset = side.edge + side.inward * depth
+        place(
+          side.axis === 'x' ? offset : along,
+          side.axis === 'x' ? along : offset,
+          { kind, size, angle },
+        )
+        // Boulders and reeds both come in clumps. One evenly spaced piece per
+        // slot reads as a row of bollards however much the anchor is jittered;
+        // a companion half its size beside it reads as a shore.
+        if ((seed >>> 17) % 100 >= 44) continue
+        const companionAlong = along + (((seed >>> 11) % 2 === 0) ? -1 : 1) * (0.75 + size * 0.5)
+        if (companionAlong < alongMin || companionAlong > alongMax) continue
+        const companionDepth = Math.max(
+          -LAKE_SHORE_DECOR_DRY_LIP,
+          Math.min(LAKE_SHORE_DECOR_SHALLOWS, depth + 0.6 + ((seed >>> 29) % 4) * 0.35),
+        )
+        const companionOffset = side.edge + side.inward * companionDepth
+        place(
+          side.axis === 'x' ? companionOffset : companionAlong,
+          side.axis === 'x' ? companionAlong : companionOffset,
+          { kind, size: size * 0.62, angle: angle + 1.1 },
+        )
+      }
+    }
+    if (decor.length >= LAKE_SHORE_DECOR_CAPACITY) return decor.slice(0, LAKE_SHORE_DECOR_CAPACITY)
+  }
+  return decor
 }
 
 /**
