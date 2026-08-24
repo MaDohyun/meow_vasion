@@ -526,6 +526,12 @@ function PullableCars() {
  * cats, heavy vehicles, buildings and liftable enemies without allocating a
  * mesh per target. Objects above the current grip band stay unmarked so the
  * effect never promises a pull the craft cannot perform.
+ *
+ * Lift, not swallow. The ring marks what the beam can move, which is the
+ * weight ladder's question; whether the thing will then fit through the hull
+ * is a separate one (see maxAbsorbDiameter in GameContext). A ringed load
+ * wider than the craft is carried rather than eaten - honest, because the
+ * promise the ring makes is the pull, and the pull happens.
  */
 function BeamTargetRings() {
   const { runtime, snapshot } = useGame()

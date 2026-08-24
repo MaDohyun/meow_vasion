@@ -16,7 +16,7 @@ import {
   stepBeamObjects,
 } from '../src/core/beam'
 import { CAT_MASS, PEDESTRIAN_MASS } from '../src/core/crowds'
-import { SIZE_MAX, SIZE_MIN, SIZE_START, sizeProfile } from '../src/core/size'
+import { SIZE_MAX, SIZE_MIN, SIZE_START, UFO_BASE_DIAMETER, sizeProfile, ufoDiameter } from '../src/core/size'
 
 const makeCar = (id = 'car-1', x = 0, y = 0.65, z = 0): BeamObject => ({
   id,
@@ -314,6 +314,63 @@ describe('tractor beam physics', () => {
     for (const [kind, mass] of [['cat', CAT_MASS], ['pedestrian', PEDESTRIAN_MASS]] as const) {
       expect(beamLiftScale(mass, opening.beamStrength), kind).toBeGreaterThan(0)
     }
+  })
+
+  it('refuses to swallow anything wider than the hull, however strong the beam', () => {
+    // The swallow gate and the pull gate are different questions. `beam-grip`
+    // buys up to five rungs of strength without adding a centimetre of hull,
+    // so a craft that can drag a station mouth around is not thereby a craft
+    // that can fit one through itself.
+    const prop = (kind: BeamObject['kind'], diameter: number, mass: number): BeamObject => {
+      const object = makeCar(`${kind}:1`, 0, 2.4, 0)
+      object.kind = kind
+      object.diameter = diameter
+      object.mass = mass
+      object.inBeam = true
+      return object
+    }
+    const swallow = (object: BeamObject, size: number, strength: number) =>
+      beginNearbyBeamObjectAbsorption([object], { x: 0, y: 2.6, z: 0 }, ufoDiameter(size), 3.48, strength)
+
+    // The opening saucer is 2.48m across. Five grip cards put a 7.2m shelter
+    // and an 8.6m station mouth well inside the weight band...
+    const hull = ufoDiameter(SIZE_START)
+    expect(hull).toBeCloseTo(2.484)
+    const carded = sizeProfile(SIZE_START).beamStrength + 5
+    for (const [kind, diameter, mass] of [['bus-stop', 7.2, 5], ['subway', 8.6, 7]] as const) {
+      expect(beamLiftScale(mass, carded), kind).toBeGreaterThan(0)
+      // ...and the hull still refuses them.
+      const object = prop(kind, diameter, mass)
+      expect(swallow(object, SIZE_START, carded), kind).toBeNull()
+      expect(object.absorbing, kind).toBe(false)
+    }
+
+    // Grown wide enough to fit one, the same craft eats it.
+    const roomy = 8.6 / UFO_BASE_DIAMETER
+    expect(ufoDiameter(roomy)).toBeCloseTo(8.6)
+    const station = prop('subway', 8.6, 7)
+    expect(swallow(station, roomy, carded)).toBe(station)
+    expect(station.absorbing).toBe(true)
+  })
+
+  it('keeps the hull gate independent of the weight ladder in both directions', () => {
+    const object = (diameter: number, mass: number): BeamObject => {
+      const built = makeCar('gated', 0, 2.4, 0)
+      built.diameter = diameter
+      built.mass = mass
+      built.inBeam = true
+      return built
+    }
+    const swallow = (built: BeamObject, size: number, strength: number) =>
+      beginNearbyBeamObjectAbsorption([built], { x: 0, y: 2.6, z: 0 }, ufoDiameter(size), 3.48, strength)
+
+    // Wide enough but too heavy: refused by weight.
+    expect(swallow(object(1, 7), 4, 1)).toBeNull()
+    // Light enough but too wide: refused by bulk.
+    expect(swallow(object(40, 1), 4, 7)).toBeNull()
+    // Both satisfied: eaten.
+    const fits = object(1, 1)
+    expect(swallow(fits, 4, 7)).toBe(fits)
   })
 
   it('awards more base score for a larger absorbed object', () => {

@@ -78,8 +78,15 @@ const DEFAULT_DIAMETER: Record<BeamObjectKind, number> = {
 
 /** Building-mounted anti-air emplacements and the battleship are the beam
  *  objects treated as architecture. Everything else is eligible once it is no
- *  wider than a third of the current UFO diameter - though among enemies only
- *  the drone mine is even grabbable: the rest are flagged `beamImmune`. */
+ *  wider than the hull itself - `maxDiameter` is the current UFO diameter -
+ *  though among enemies only the drone mine is even grabbable: the rest are
+ *  flagged `beamImmune`.
+ *
+ *  This is the swallow gate, not the pull gate. What the beam can shift is the
+ *  weight ladder's question (see beamLiftScale); this one asks the separate
+ *  question of what will go through the hull, and the two are not the same -
+ *  `beam-grip` buys strength without buying width, so a small craft with cards
+ *  can hold far more than it can eat. */
 export function isAbsorbable(kind: BeamObjectKind, diameter = DEFAULT_DIAMETER[kind], maxDiameter = Number.POSITIVE_INFINITY) {
   // The battleship is excluded by kind rather than by size. Gating it on
   // diameter would make it edible to a craft at the size cap, and it is meant
