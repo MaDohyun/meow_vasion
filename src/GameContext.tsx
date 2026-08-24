@@ -1964,16 +1964,23 @@ export function GameProvider({ children }: { children: ReactNode }) {
     // Weight decides what the craft can move; bulk decides what it can eat.
     //
     // This was POSITIVE_INFINITY, which switched the size half off entirely -
-    // and the weight ladder does not cover for it, because `beam-grip` buys up
-    // to five rungs of strength without adding a centimetre of hull. Three
-    // cards on the opening saucer put a 7.2m bus shelter inside the band of a
-    // craft 2.48m across; five put an 8.6m station mouth there. Both were
-    // swallowed whole, by a saucer a third their width.
+    // `isAbsorbable` took a `maxDiameter` and documented a hull rule that was
+    // never actually applied. A hull cannot swallow what will not fit through
+    // it, whatever the beam can drag, so the rule is now handed the number it
+    // always wanted.
     //
-    // A hull cannot swallow what will not fit through it, whatever the beam
-    // can drag. Above this the beam still lifts and carries - that is the
-    // weight ladder's business and it is untouched - it simply hangs there as
-    // ballast instead of vanishing, and you fly it somewhere or cut the beam.
+    // Be honest about what this changes today: nothing. Now that strength
+    // comes from size alone, the weight ladder opens later than the hull for
+    // every object in the game - a car fits the hull at 0.54 and is liftable
+    // at 1.13, a shelter fits at 1.34 and lifts at 3.77 - so weight is what
+    // the player actually feels and this never fires on its own. It is the
+    // invariant, not the balance: the moment a mass or a diameter is retuned,
+    // or anything raises strength without widening the hull, it is what stops
+    // a two-metre saucer swallowing an eight-metre station mouth.
+    //
+    // Above it the beam still lifts and carries - that is the weight ladder's
+    // business and it is untouched - the load simply hangs as ballast instead
+    // of vanishing, and you fly it somewhere or cut the beam.
     const maxAbsorbDiameter = ufoDiameter(game.sizeProfile.size)
     // The same integer the lifting ladder runs on, and it gates every object
     // rather than city dressing alone. Flying low over a shelter - or a car,

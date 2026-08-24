@@ -317,10 +317,11 @@ describe('tractor beam physics', () => {
   })
 
   it('refuses to swallow anything wider than the hull, however strong the beam', () => {
-    // The swallow gate and the pull gate are different questions. `beam-grip`
-    // buys up to five rungs of strength without adding a centimetre of hull,
-    // so a craft that can drag a station mouth around is not thereby a craft
-    // that can fit one through itself.
+    // The swallow gate and the pull gate are different questions, so the test
+    // drives them independently: a beam strong enough to drag a station mouth
+    // around does not thereby make a craft that can fit one through itself.
+    // Size currently feeds both, so no live craft reaches this combination -
+    // that is the point of pinning it here rather than in a balance test.
     const prop = (kind: BeamObject['kind'], diameter: number, mass: number): BeamObject => {
       const object = makeCar(`${kind}:1`, 0, 2.4, 0)
       object.kind = kind
@@ -332,16 +333,16 @@ describe('tractor beam physics', () => {
     const swallow = (object: BeamObject, size: number, strength: number) =>
       beginNearbyBeamObjectAbsorption([object], { x: 0, y: 2.6, z: 0 }, ufoDiameter(size), 3.48, strength)
 
-    // The opening saucer is 2.48m across. Five grip cards put a 7.2m shelter
-    // and an 8.6m station mouth well inside the weight band...
+    // The opening saucer is 2.48m across. Hand it enough strength to put a
+    // 7.2m shelter and an 8.6m station mouth well inside the weight band...
     const hull = ufoDiameter(SIZE_START)
     expect(hull).toBeCloseTo(2.484)
-    const carded = sizeProfile(SIZE_START).beamStrength + 5
+    const strong = sizeProfile(SIZE_START).beamStrength + 5
     for (const [kind, diameter, mass] of [['bus-stop', 7.2, 5], ['subway', 8.6, 7]] as const) {
-      expect(beamLiftScale(mass, carded), kind).toBeGreaterThan(0)
+      expect(beamLiftScale(mass, strong), kind).toBeGreaterThan(0)
       // ...and the hull still refuses them.
       const object = prop(kind, diameter, mass)
-      expect(swallow(object, SIZE_START, carded), kind).toBeNull()
+      expect(swallow(object, SIZE_START, strong), kind).toBeNull()
       expect(object.absorbing, kind).toBe(false)
     }
 
@@ -349,7 +350,7 @@ describe('tractor beam physics', () => {
     const roomy = 8.6 / UFO_BASE_DIAMETER
     expect(ufoDiameter(roomy)).toBeCloseTo(8.6)
     const station = prop('subway', 8.6, 7)
-    expect(swallow(station, roomy, carded)).toBe(station)
+    expect(swallow(station, roomy, strong)).toBe(station)
     expect(station.absorbing).toBe(true)
   })
 
