@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
   MISSION_ONE_POOL,
+  MISSION_RUN_SECONDS,
   MISSION_THREE_QUESTS,
   MISSION_TWO_POOL,
   createMissionState,
   isInsideAirCheckpoint,
   recordMissionEvent,
+  startFinalMission,
   startMissionOne,
   syncMissionState,
   type MissionQuest,
@@ -41,6 +43,23 @@ function completeQuest(state: ReturnType<typeof createMissionState>, quest: Miss
 }
 
 describe('three-stage reconnaissance missions', () => {
+  it('drops the developer drill straight into the final assignment', () => {
+    // The drill opens on the dreadnought, so it needs the stage that actually
+    // asks for the dreadnought - a boss fight with the objective two stages
+    // away would be testing a different fight from the one players get.
+    const state = createMissionState(5)
+    startFinalMission(state, 180)
+    expect(state.stage).toBe(3)
+    expect(state.stageStartedAt).toBe(180)
+    expect(state.quests.map((quest) => quest.id)).toEqual([...MISSION_THREE_QUESTS])
+    // The survival objective is what is left of the run, not the whole of it.
+    const survival = state.quests.find((quest) => quest.id === 'survive-final')!
+    expect(survival.target).toBe(MISSION_RUN_SECONDS - 180)
+    // And killing the ship still counts, exactly as it would in a real run.
+    recordMissionEvent(state, { type: 'destroy-enemy', kind: 'boss', amount: 1 }, 190)
+    expect(state.quests.find((quest) => quest.id === 'destroy-battleship')!.complete).toBe(true)
+  })
+
   it('counts an air checkpoint as soon as the craft passes through its ring', () => {
     const checkpoint = { x: 10, y: 20, z: 30 }
     expect(isInsideAirCheckpoint({ x: 10, y: 20, z: 34.99 }, checkpoint)).toBe(true)

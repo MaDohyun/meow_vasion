@@ -257,6 +257,11 @@ button { font: inherit; }
 .intro-actions .primary-button { display:flex; align-items:center; gap:20px; min-width:188px; margin-top:0; padding:13px 15px 13px 21px; background:linear-gradient(135deg,#ffe674,#ffc857); border:2px solid var(--cream); box-shadow:4px 4px 0 #031326,0 0 18px rgba(255,224,95,.12); }
 .intro-actions .primary-button b { margin-left:auto; color:var(--coral); font-size:13px; }
 .intro-actions .secondary-button { min-width:110px; padding:13px 18px; color:var(--cream); background:rgba(3,17,37,.78); border:2px solid rgba(100,241,238,.8); box-shadow:4px 4px 0 #031326; }
+/* The developer drill. Dashed, muted and on a line of its own under the three
+   real entrances: it is a workshop door, not a fourth way to play, and it must
+   never be mistaken for one at a glance. */
+.intro-actions .dev-button { flex-basis:100%; display:flex; align-items:center; justify-content:center; gap:8px; padding:9px 14px; color:rgba(226,238,255,.72); background:rgba(3,17,37,.5); border:2px dashed rgba(226,238,255,.34); font-family:inherit; font-size:9px; font-weight:1000; letter-spacing:2px; cursor:pointer; }
+.intro-actions .dev-button:hover { color:var(--cream); border-color:rgba(255,224,95,.7); }
 /* The lobby's own language switch. It sits under the menu rather than inside
    the options panel so a player who cannot read the menu never has to guess
    which button opens the settings. Each label is set in its own language. */
@@ -467,6 +472,7 @@ button { font: inherit; }
   .intro-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px; width:min(88vw,330px); margin-top:12px; }
   .intro-actions .primary-button { grid-column:1/-1; min-width:0; width:100%; padding:10px 12px 10px 16px; border-width:2px; box-shadow:3px 3px 0 #031326; font-size:9px; }
   .intro-actions .secondary-button { min-width:0; padding:9px 8px; border-width:2px; box-shadow:3px 3px 0 #031326; font-size:8px; }
+  .intro-actions .dev-button { grid-column:1/-1; padding:7px 8px; font-size:8px; letter-spacing:1px; }
   .lobby-language { gap:5px; margin-top:9px; }
   .lobby-language button { padding:6px 9px; border-width:2px; box-shadow:2px 2px 0 #031326; font-size:8px; letter-spacing:1px; }
 }
@@ -523,6 +529,9 @@ button { font: inherit; }
    of their own and the board arrives as a panel on top rather than as another
    block pushing the score off a short screen. */
 .result-actions { display:flex; align-items:center; gap:12px; flex-wrap:wrap; justify-content:center; }
+/* Why the board is missing on a drill run. Quiet, because it is an answer to a
+   question rather than something the screen is trying to say. */
+.result-dev-note { z-index:2; margin:12px 0 0; font-size:11px; font-weight:1000; letter-spacing:1px; opacity:.66; }
 .ghost-button { z-index:2; margin-top:15px; padding:14px 24px; color:var(--cream); background:transparent; border:4px solid var(--cream); box-shadow:7px 7px 0 var(--ink); font-weight:1000; letter-spacing:2px; cursor:pointer; }
 .ghost-button:hover { color:var(--ink); background:var(--cyan); transform:translate(2px,2px); box-shadow:5px 5px 0 var(--ink); }
 

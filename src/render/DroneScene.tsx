@@ -37,6 +37,7 @@ import {
   BATTLESHIP_LENGTH,
   BATTLESHIP_TURRETS,
   ENEMY_CAPS,
+  ENEMY_MAX_PROJECTILES,
   DRONE_MINE_BLAST_RADIUS,
   DRONE_MINE_FUSE,
   DRONE_MINE_MODEL_SCALE,
@@ -79,6 +80,14 @@ const CHASE_EYE_HEIGHT = 3.6
  * have changed how flying reads, which this deliberately does not.
  */
 const CHASE_RIG_DROP = 0.6
+
+/**
+ * How fast the hull strobes red while a hit flash is fading, in radians per
+ * second - about five blinks a second, so the flash's own third of a second
+ * carries two of them. Fast enough to read as an alarm rather than a pulse,
+ * slow enough that a 60Hz frame catches both halves of every cycle.
+ */
+const IMPACT_BLINK_RATE = 32
 
 const BEAM_TARGET_RING_CAPACITY = WORLD_MAX_CARS + TRAFFIC_MAX_CARS + 8 + PEDESTRIAN_MAX + CAT_MAX + HAZARD_MAX + Object.values(ENEMY_CAPS).reduce((sum, count) => sum + count, 0)
 const beamTargetRingMaterial = new THREE.MeshBasicMaterial({
@@ -814,15 +823,23 @@ function Ufo() {
 
     // The player should be readable without becoming a glowing white disc.
     // Keep a small, stable self-light in both daytime and nighttime.
-    const impact = Math.max(0, Math.min(1, snapshot.impactFlash))
+    //
+    // Read off the runtime rather than the snapshot: the snapshot is published
+    // about sixteen times a second, which is slower than the blink below and
+    // would sample it into a stutter.
+    const impact = Math.max(0, Math.min(1, game.impactFlash))
+    // Blink, not fade. A tint that only slides back to hull grey reads as the
+    // light changing; strobing it on the way out is what says "that hit me",
+    // and every hit now runs through here - orb, shell, ram, bow gun or mine.
+    const impactBlink = impact * (0.6 + 0.4 * Math.sin(game.pilotClock * IMPACT_BLINK_RATE))
     const mysteryFlash = Math.max(0, Math.min(1, game.mysteryFlash / 0.65))
     const goldFlash = mysteryFlash * (0.78 + 0.22 * (0.5 + 0.5 * Math.sin(game.pilotClock * 24)))
     if (hullMaterial.current) {
-      hullColor.copy(hullBaseColor).lerp(hullImpactColor, impact)
+      hullColor.copy(hullBaseColor).lerp(hullImpactColor, impactBlink)
       hullColor.lerp(hullMysteryColor, goldFlash)
       hullMaterial.current.color.copy(hullColor)
       hullMaterial.current.emissive.copy(hullColor)
-      hullMaterial.current.emissiveIntensity = 0.2 + impact * 1.8 + goldFlash * 2.2
+      hullMaterial.current.emissiveIntensity = 0.2 + impactBlink * 1.8 + goldFlash * 2.2
     }
     if (domeMaterial.current) {
       domeColor.copy(domeBaseColor).lerp(domeMysteryColor, goldFlash)
@@ -1423,21 +1440,33 @@ function EnemyWarnings() {
   const position = useMemo(() => new THREE.Vector3(), [])
   const scale = useMemo(() => new THREE.Vector3(), [])
   const quaternion = useMemo(() => new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0)), [])
+  const color = useMemo(() => new THREE.Color(), [])
   useFrame(({ clock }) => {
     const mesh = ref.current
     if (!mesh) return
     let count = 0
     for (const enemy of runtime.current.enemies.slots) {
       if (!enemy.active || enemy.telegraph <= 0) continue
-      position.set(enemy.muzzle.x, enemy.muzzle.y, enemy.muzzle.z)
+      // The ship telegraphs two different things and they want different
+      // marks. The bow gun gets a ring around the turret that is charging - a
+      // mark on the street ninety metres below the hull points at nothing the
+      // player can act on. The flak stream gets an orange aim point at the
+      // locked target instead, because that stream lands up in the sky and the
+      // warning has to be exactly where the rounds will arrive.
+      const locked = enemy.flakLeft > 0
+      if (locked) position.set(enemy.target.x, enemy.target.y, enemy.target.z)
+      else position.set(enemy.muzzle.x, enemy.muzzle.y, enemy.muzzle.z)
       const pulse = 1 + Math.sin(clock.elapsedTime * 18) * 0.12
       scale.setScalar(3.4 * pulse)
       matrix.compose(position, quaternion, scale)
       mesh.setMatrixAt(count, matrix)
+      color.set(locked ? '#ff9a3d' : '#ff5f7c')
+      mesh.setColorAt(count, color)
       count += 1
     }
     mesh.count = count
     mesh.instanceMatrix.needsUpdate = true
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
   })
   return (
     <instancedMesh ref={ref} args={[undefined, undefined, ENEMY_WARNING_CAPACITY]} frustumCulled={false} renderOrder={4}>
@@ -1445,11 +1474,11 @@ function EnemyWarnings() {
       {/* No vertexColors - the same pitfall City.tsx documents on its lot and
           beacon materials: this ring geometry carries no per-vertex colour
           attribute, so the flag makes the shader multiply by one that isn't
-          there and the whole warning comes out black. One telegraph is left in
-          the game and it is one colour, so the material simply carries it.
-          Not tone-mapped: this is the player's only warning and must not dim
-          with the rest of the scene at night. */}
-      <meshBasicMaterial color="#ff5f7c" transparent opacity={0.9} depthWrite={false} side={THREE.DoubleSide} toneMapped={false} />
+          there and the whole warning comes out black. The per-ring colour is
+          setColorAt above, which works on its own; it is the flag that has to
+          go, not the tint. Not tone-mapped: this is the player's only warning
+          and must not dim with the rest of the scene at night. */}
+      <meshBasicMaterial transparent opacity={0.9} depthWrite={false} side={THREE.DoubleSide} toneMapped={false} />
     </instancedMesh>
   )
 }
@@ -1573,7 +1602,7 @@ function EnemyProjectiles() {
     mesh.instanceMatrix.needsUpdate = true
   })
   return (
-    <instancedMesh ref={ref} args={[undefined, undefined, 96]} frustumCulled={false} renderOrder={5}>
+    <instancedMesh ref={ref} args={[undefined, undefined, ENEMY_MAX_PROJECTILES]} frustumCulled={false} renderOrder={5}>
       <sphereGeometry args={[1, 6, 4]} />
       {/* No vertexColors: plain sphere geometry, no per-vertex colour
           attribute - see EnemyWarnings above. Additive blending on a black
@@ -1667,7 +1696,7 @@ function OrbPool() {
   })
   return (
     <group>
-      <instancedMesh ref={flareRef} args={[undefined, undefined, 96]} frustumCulled={false} renderOrder={5}>
+      <instancedMesh ref={flareRef} args={[undefined, undefined, ENEMY_MAX_PROJECTILES]} frustumCulled={false} renderOrder={5}>
         <planeGeometry args={[1, 1]} />
         {/* White, because the colour is already in the texture: the flare
             cools from white at the core to a soft red at the tips, and that
@@ -1684,7 +1713,7 @@ function OrbPool() {
           toneMapped={false}
         />
       </instancedMesh>
-      <instancedMesh ref={coreRef} args={[undefined, undefined, 96]} frustumCulled={false} renderOrder={6}>
+      <instancedMesh ref={coreRef} args={[undefined, undefined, ENEMY_MAX_PROJECTILES]} frustumCulled={false} renderOrder={6}>
         <sphereGeometry args={[1, 8, 6]} />
         {/* A hard little centre inside the flare, for the distances where the
             sprite is a handful of pixels and its own white core has been

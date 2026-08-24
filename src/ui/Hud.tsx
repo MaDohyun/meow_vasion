@@ -224,8 +224,23 @@ function Options({ onClose }: { onClose: () => void }) {
   )
 }
 
+/**
+ * Whether the developer entrances are on screen.
+ *
+ * On in a dev server always, and in a built game only when the address asks
+ * for it - `?dev=1` in the query, or a `#dev` hash. The drill has to be
+ * reachable from a deployed build, because that is where the fight actually
+ * gets looked at, without putting a debug button in front of every player who
+ * opens the lobby.
+ */
+export function devToolsEnabled() {
+  if (import.meta.env.DEV) return true
+  if (typeof window === 'undefined') return false
+  return /(?:^|[?&])dev=1(?:&|$)/.test(window.location.search) || window.location.hash === '#dev'
+}
+
 function Intro() {
-  const { start, t, language, setLanguage } = useGame()
+  const { start, startBattleshipDrill, t, language, setLanguage } = useGame()
   const [optionsOpen, setOptionsOpen] = useState(false)
   const [howToOpen, setHowToOpen] = useState(false)
   // The browser will not let the lobby track be heard until it has seen a
@@ -272,6 +287,13 @@ function Intro() {
           <button className="primary-button" onMouseEnter={playMenuHoverSound} onClick={start}><span>{t.start}</span><b aria-hidden="true">▶</b></button>
           <button className="secondary-button" onMouseEnter={playMenuHoverSound} onClick={() => setHowToOpen(true)}>{t.howTo}</button>
           <button className="secondary-button" onMouseEnter={playMenuHoverSound} onClick={() => setOptionsOpen(true)}>{t.options}</button>
+          {/* Below the three real entrances and styled as its own thing, so it
+              reads as a workshop door rather than a fourth way to play. */}
+          {devToolsEnabled() && (
+            <button className="dev-button" type="button" onMouseEnter={playMenuHoverSound} onClick={startBattleshipDrill}>
+              <span aria-hidden="true">⚙</span>{t.devDrill}
+            </button>
+          )}
         </div>
         {/* The language switch also lives in the options panel, but a player who
             cannot read the lobby yet is exactly the player least likely to find
@@ -597,8 +619,11 @@ function Results() {
           the destination - so it keeps the loud button and the first slot. */}
       <div className="result-actions">
         <button className="primary-button" onClick={restart}>{t.retry}</button>
-        <button type="button" className="ghost-button" onClick={() => setRanking(true)}>{t.rankingOpen}</button>
+        {/* A drill starts on the last wave with a craft nobody earned, so its
+            number is not a score. The board is simply not offered. */}
+        {!snapshot.devRun && <button type="button" className="ghost-button" onClick={() => setRanking(true)}>{t.rankingOpen}</button>}
       </div>
+      {snapshot.devRun && <p className="result-dev-note">{t.devRunNote}</p>}
       {ranking && <RankingPanel onClose={() => setRanking(false)} />}
     </div>
   )
@@ -761,7 +786,11 @@ export function Hud() {
             <span>{t.tutorialPressE}</span>
           </div>
         )}
-        {snapshot.phase === 'playing' && <BossBriefing key={briefingRun} />}
+        {/* The briefing teaches the four controls over the tutorial cat, and a
+            drill run has already left the tutorial behind - talking the player
+            through the beam while a dreadnought is overhead is the general
+            reading from the wrong page. */}
+        {snapshot.phase === 'playing' && !snapshot.devRun && <BossBriefing key={briefingRun} />}
       </div>
       <MobileControls />
       {snapshot.phase === 'results' && <Results />}

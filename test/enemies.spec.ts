@@ -16,6 +16,7 @@ import {
   syncAntiAirEnemies,
   syncEnemyTiers,
   waveStageForTime,
+  type EnemyKind,
 } from '../src/core/enemies'
 import { isAbsorbable } from '../src/core/beam'
 import { getProceduralCell, type ProceduralBuilding } from '../src/core/world'
@@ -114,9 +115,14 @@ describe('time-based enemy waves', () => {
 
   it('escalates to a bounded mixed army and a single boss', () => {
     const { state } = fillWave(LAST_WAVE_AT)
-    expect(activeEnemyCount(state, 'drone')).toBe(ENEMY_CAPS.drone)
-    expect(activeEnemyCount(state, 'helicopter')).toBe(ENEMY_CAPS.helicopter)
-    expect(activeEnemyCount(state, 'fighter')).toBe(ENEMY_CAPS.fighter)
+    // The wave table is the floor rather than the whole population now: the
+    // dreadnought launches escorts of its own on top of what the spawner
+    // fills, and the caps are the ceiling that keeps that bounded.
+    const targets = ENEMY_WAVE_STAGES[ENEMY_WAVE_STAGES.length - 1]!.targets as Partial<Record<EnemyKind, number>>
+    for (const kind of ['drone', 'helicopter', 'fighter'] as const) {
+      expect(activeEnemyCount(state, kind)).toBeGreaterThanOrEqual(targets[kind]!)
+      expect(activeEnemyCount(state, kind)).toBeLessThanOrEqual(ENEMY_CAPS[kind])
+    }
     expect(activeEnemyCount(state, 'boss')).toBe(1)
     expect(state.slots.length).toBeLessThan(160)
   })

@@ -43,10 +43,12 @@ export const HEALTH_LOSS = {
   orb: 0.5,
   building: 0.5,
   contact: 1,
-  // The battleship's bow gun: the one aimed, telegraphed shot left, and the
-  // only one that costs more than a scrape. It is shown to the player before
-  // it leaves, so it is allowed to hurt.
+  // The battleship's two aimed weapons, and the only hits that cost more than
+  // a scrape. Both are shown to the player before they leave - the bow gun
+  // behind a long aim line, the flak behind a three-second lock - so both are
+  // allowed to hurt.
   'boss-beam': 1.5,
+  flak: 2,
   explosive: 2.5,
 } as const
 

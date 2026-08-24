@@ -1,12 +1,24 @@
 import { describe, expect, it } from 'vitest'
 import { isAbsorbable } from '../src/core/beam'
 import { DRONE_DEFAULTS } from '../src/core/drone'
+import { maxAltitude } from '../src/core/size'
 import {
   BATTLESHIP_ALTITUDE,
+  BATTLESHIP_ESCORT_FIGHTERS,
+  BATTLESHIP_ESCORT_HELICOPTERS,
+  BATTLESHIP_ESCORT_INTERVAL,
+  BATTLESHIP_ESCORT_MINES,
+  BATTLESHIP_ESCORT_RADIUS,
+  BATTLESHIP_FLAK_EVERY,
+  BATTLESHIP_FLAK_TELEGRAPH,
+  BATTLESHIP_FLAK_PAIR,
+  BATTLESHIP_FLAK_ROUNDS,
   BATTLESHIP_LENGTH,
   BATTLESHIP_MAIN_GUN_TELEGRAPH,
   BATTLESHIP_ORBIT,
+  BATTLESHIP_ORB_PITCHES,
   BATTLESHIP_ORB_RING_COUNT,
+  BATTLESHIP_PURSUIT_RANGE,
   BATTLESHIP_TURRETS,
   ENEMY_MAX_HP,
   ENEMY_WAVE_STAGES,
@@ -111,7 +123,7 @@ describe("earth's last resort", () => {
     expect(Math.max(...gaps)).toBeGreaterThan(3)
   })
 
-  it('keeps the bow gun as the only aimed, telegraphed shot', () => {
+  it('shows both of its aimed shots before either leaves', () => {
     const { state, player, ship } = launch()
     for (const enemy of state.slots) if (enemy !== ship) enemy.active = false
     const telegraphs: number[] = []
@@ -122,9 +134,126 @@ describe("earth's last resort", () => {
       previousTelegraph = ship.telegraph
     }
     // The rings fire without warning - they are their own warning - so every
-    // telegraph that appears is the bow gun's long one.
+    // telegraph that appears belongs to one of the two aimed moves, and over a
+    // minute of fighting both of them come round.
     expect(telegraphs.length).toBeGreaterThan(1)
-    for (const length of telegraphs) expect(length).toBeCloseTo(BATTLESHIP_MAIN_GUN_TELEGRAPH, 5)
+    for (const length of telegraphs) expect([BATTLESHIP_MAIN_GUN_TELEGRAPH, BATTLESHIP_FLAK_TELEGRAPH]).toContain(length)
+    expect(telegraphs).toContain(BATTLESHIP_MAIN_GUN_TELEGRAPH)
+    expect(telegraphs).toContain(BATTLESHIP_FLAK_TELEGRAPH)
+  })
+
+  it('locks one point and answers it two barrels at a time', () => {
+    const { state, player, ship } = launch()
+    for (const enemy of state.slots) if (enemy !== ship) enemy.active = false
+    const shells = () => state.projectiles.filter((projectile) => projectile.active && projectile.kind === 'flak')
+    // Cocked one volley short of the flak, so the next cycle is the move under
+    // test rather than whatever the fight happened to be up to.
+    ship.telegraph = 0
+    ship.burstLeft = 0
+    ship.flakLeft = 0
+    ship.attackTimer = 0
+    ship.volley = BATTLESHIP_FLAK_EVERY - 1
+    stepEnemies(state, player, 1 / 60)
+    // Three seconds of lock, and nothing in the air yet: the mark is the whole
+    // fairness of the move.
+    expect(ship.aiming).toBe(true)
+    expect(ship.telegraphLength).toBeCloseTo(BATTLESHIP_FLAK_TELEGRAPH, 5)
+    expect(shells()).toHaveLength(0)
+    const rounds: number[] = []
+    let firstPair: { x: number; y: number; z: number }[] = []
+    for (let tick = 0; tick < 60 * 5 && rounds.length < BATTLESHIP_FLAK_ROUNDS; tick += 1) {
+      const before = shells().length
+      stepEnemies(state, player, 1 / 60)
+      const after = shells()
+      if (after.length > before) {
+        rounds.push(after.length - before)
+        if (firstPair.length === 0) firstPair = after.map((projectile) => ({ ...projectile.position }))
+      }
+    }
+    expect(rounds).toHaveLength(BATTLESHIP_FLAK_ROUNDS)
+    for (const round of rounds) expect(round).toBe(BATTLESHIP_FLAK_PAIR)
+    // Out of two turrets, not one barrel twice: the pair leaves from points a
+    // good part of the hull apart.
+    expect(firstPair).toHaveLength(BATTLESHIP_FLAK_PAIR)
+    const spread = Math.hypot(firstPair[0]!.x - firstPair[1]!.x, firstPair[0]!.y - firstPair[1]!.y, firstPair[0]!.z - firstPair[1]!.z)
+    expect(spread).toBeGreaterThan(BATTLESHIP_LENGTH * 0.1)
+  })
+
+  it('scatters the halo above and below itself as well as around', () => {
+    // A flat ring is a disc in the air, and a disc is dodged by doing the one
+    // thing this game makes easiest: changing altitude.
+    const { state, player, ship } = launch()
+    for (const enemy of state.slots) if (enemy !== ship) enemy.active = false
+    let orbs: typeof state.projectiles = []
+    for (let tick = 0; tick < 30 * 60; tick += 1) {
+      stepEnemies(state, player, 1 / 60)
+      orbs = state.projectiles.filter((projectile) => projectile.active && projectile.kind === 'orb')
+      if (orbs.length >= BATTLESHIP_ORB_RING_COUNT) break
+    }
+    expect(orbs.length).toBe(BATTLESHIP_ORB_RING_COUNT * BATTLESHIP_ORB_PITCHES.length)
+    // Pitch relative to the ring's own flight, so this is the layering rather
+    // than the shared drift toward the player's altitude.
+    const pitches = orbs.map((orb) => Math.atan2(orb.velocity.y, Math.hypot(orb.velocity.x, orb.velocity.z)))
+    const middle = (Math.max(...pitches) + Math.min(...pitches)) / 2
+    expect(pitches.some((pitch) => pitch > middle + 0.1)).toBe(true)
+    expect(pitches.some((pitch) => pitch < middle - 0.1)).toBe(true)
+    // Still under cruise in every layer: the halo is flown through, not fled.
+    for (const orb of orbs) expect(Math.hypot(orb.velocity.x, orb.velocity.z)).toBeLessThan(DRONE_DEFAULTS.maxSpeed)
+  })
+
+  it('runs down a player who just keeps flying away', () => {
+    // Station-keeping is a following distance, so holding one heading used to
+    // leave the boss behind the horizon and end the last wave without a fight.
+    const { state, player, ship } = launch()
+    for (const enemy of state.slots) if (enemy !== ship) enemy.active = false
+    const velocity = { x: DRONE_DEFAULTS.boostSpeed, y: 0, z: 0 }
+    let worst = 0
+    for (let tick = 0; tick < 60 * 90; tick += 1) {
+      player.x += velocity.x / 60
+      stepEnemies(state, player, 1 / 60, velocity)
+      worst = Math.max(worst, Math.hypot(ship.position.x - player.x, ship.position.z - player.z))
+    }
+    // A minute and a half of turbo in one direction, and it is still on top of
+    // the player rather than a dot behind them.
+    expect(worst).toBeLessThan(BATTLESHIP_PURSUIT_RANGE * 1.1)
+    expect(Math.hypot(ship.position.x - player.x, ship.position.z - player.z)).toBeLessThan(BATTLESHIP_PURSUIT_RANGE)
+  })
+
+  it('launches mines, a helicopter and a fighter every ten seconds', () => {
+    const { state, player, ship } = launch()
+    for (const enemy of state.slots) {
+      if (enemy === ship) continue
+      enemy.active = false
+      enemy.respawn = 0
+    }
+    // Parked well away from the craft: the ordinary spawner works around the
+    // player, so anything that turns up beside the hull came off its deck.
+    ship.position.x = 900
+    ship.position.z = 0
+    ship.position.y = BATTLESHIP_ALTITUDE
+    state.escortTimer = BATTLESHIP_ESCORT_INTERVAL
+    const alongside = () => state.slots.filter((enemy) => enemy.active && enemy.kind !== 'boss'
+      && Math.hypot(enemy.position.x - ship.position.x, enemy.position.z - ship.position.z) < BATTLESHIP_ESCORT_RADIUS * 2)
+    const fly = (seconds: number) => {
+      for (let tick = 0; tick < 60 * seconds; tick += 1) syncEnemyTiers(state, LAST_WAVE_AT, player, 0, 1 / 60)
+    }
+    fly(BATTLESHIP_ESCORT_INTERVAL - 1)
+    expect(alongside()).toHaveLength(0)
+    fly(2)
+    const launched = alongside()
+    expect(launched.filter((enemy) => enemy.kind === 'drone')).toHaveLength(BATTLESHIP_ESCORT_MINES)
+    expect(launched.filter((enemy) => enemy.kind === 'helicopter')).toHaveLength(BATTLESHIP_ESCORT_HELICOPTERS)
+    expect(launched.filter((enemy) => enemy.kind === 'fighter')).toHaveLength(BATTLESHIP_ESCORT_FIGHTERS)
+    // Everything leaves the deck under the keel rather than above it.
+    for (const escort of launched) expect(escort.position.y).toBeLessThan(BATTLESHIP_ALTITUDE)
+    // And the fighter is pointed at the player as it goes.
+    const fighter = launched.find((enemy) => enemy.kind === 'fighter')!
+    const toPlayer = Math.atan2(player.x - fighter.position.x, player.z - fighter.position.z)
+    const run = Math.atan2(fighter.velocity.x, fighter.velocity.z)
+    expect(Math.abs(Math.atan2(Math.sin(run - toPlayer), Math.cos(run - toPlayer)))).toBeLessThan(0.02)
+    // One launch per interval, not one per tick.
+    fly(1)
+    expect(alongside()).toHaveLength(launched.length)
   })
 
   it('spreads its turrets across the length of the hull', () => {
@@ -136,6 +265,23 @@ describe("earth's last resort", () => {
     const spots = BATTLESHIP_TURRETS.map((_, index) => ({ ...battleshipTurretPoint(ship, index, point) }))
     const span = Math.max(...spots.map((spot) => spot.z)) - Math.min(...spots.map((spot) => spot.z))
     expect(span).toBeGreaterThan(BATTLESHIP_LENGTH * 0.6)
+  })
+
+  it('is in reach of the craft the developer drill hands over, at once', () => {
+    // Mirrors DRILL_CRAFT_SIZE in GameContext, kept as a literal here rather
+    // than importing a React module into a core test - the same thing
+    // daylight.spec does with the run length. What the drill promises is a
+    // craft that can fly up to the ship; the opening saucer's ceiling is
+    // thirty metres and the ship holds station at ninety-six, so a drill on a
+    // starting craft would be a screenshot of the fight, not the fight.
+    const drillCraftSize = 5.2
+    expect(maxAltitude(drillCraftSize)).toBeGreaterThan(BATTLESHIP_ALTITUDE)
+    // And the ship is up as soon as the drill's clock is, rather than a wave
+    // interval later: the spawner puts the boss first whenever one is owed.
+    const state = createEnemyState(19)
+    const player = { x: 0, y: 60, z: 0 }
+    syncEnemyTiers(state, LAST_WAVE_AT, player, 0, 1 / 60)
+    expect(state.slots.filter((enemy) => enemy.kind === 'boss' && enemy.active)).toHaveLength(1)
   })
 
   it('takes a real laser investment to bring down', () => {
