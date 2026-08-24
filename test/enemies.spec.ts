@@ -78,6 +78,20 @@ describe('time-based enemy waves', () => {
     expect(hitEnemy(state, boss.id).destroyed).toBe(true)
   })
 
+  it('flashes a survivor on every laser hit, fading in a fifth of a second', () => {
+    const { state } = fillWave(LAST_WAVE_AT)
+    const boss = state.slots.find((enemy) => enemy.kind === 'boss' && enemy.active)!
+    expect(boss.hurt).toBe(0)
+    hitEnemy(state, boss.id)
+    expect(boss.hurt).toBe(1)
+    const player = { x: 500, y: 6, z: 500 }
+    for (let tick = 0; tick < 6; tick += 1) stepEnemies(state, player, 1 / 60)
+    expect(boss.hurt).toBeGreaterThan(0)
+    expect(boss.hurt).toBeLessThan(1)
+    for (let tick = 0; tick < 20; tick += 1) stepEnemies(state, player, 1 / 60)
+    expect(boss.hurt).toBe(0)
+  })
+
   it('enables deterministic anti-air sites only at the late high-altitude wave', () => {
     const buildings = antiAirBuildings(ENEMY_CAPS['anti-air'] + 2)
     const first = createEnemyState()

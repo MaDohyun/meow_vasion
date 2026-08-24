@@ -345,6 +345,11 @@ const boonSaucerMaterial = new THREE.MeshToonMaterial({
   emissiveIntensity: 0.6,
 })
 
+/** Laser answer on a landmark, in the buildings' own hit red. Instance
+ *  colours multiply the material, so white is "untouched". */
+const landmarkHitTint = new THREE.Color(BUILDING.LASER_HIT)
+const landmarkBaseTint = new THREE.Color('#ffffff')
+
 const mysteryParticleMaterial = new THREE.PointsMaterial({
   color: '#ffe7a2',
   size: 0.28,
@@ -1054,19 +1059,58 @@ function TransitUtilityPool() {
   const communicationsRed = useRef<THREE.InstancedMesh>(null)
   const communicationsWhite = useRef<THREE.InstancedMesh>(null)
   const lastKey = useRef('')
+  /** Landmark id → instance index, so the per-frame laser flash can paint the
+   *  one station or mast that was just shot without a pool rebuild. */
+  const gasSlots = useRef(new Map<string, number>())
+  const commSlots = useRef(new Map<string, number>())
+  const litLandmarks = useRef(new Set<string>())
   const matrix = useMemo(() => new THREE.Matrix4(), [])
   const position = useMemo(() => new THREE.Vector3(), [])
   const scale = useMemo(() => new THREE.Vector3(1, 1, 1), [])
   const rotation = useMemo(() => new THREE.Quaternion(), [])
   const euler = useMemo(() => new THREE.Euler(), [])
+  const color = useMemo(() => new THREE.Color(), [])
 
   useFrame(() => {
     if (!subway.current || !subwayOpenings.current || !subwaySigns.current || !busStops.current || !busSigns.current || !pylons.current) return
     if (!gasStations.current || !gasBands.current || !communicationsRed.current || !communicationsWhite.current) return
+    // The laser flash runs every frame; the pool below only rebuilds when the
+    // streamed world (or a demolition) changes. Same split City.tsx uses for
+    // the building flash.
+    const flashMeshes = (id: string): [THREE.InstancedMesh, number][] => {
+      const gasIndex = gasSlots.current.get(id)
+      if (gasIndex !== undefined) return [[gasStations.current!, gasIndex], [gasBands.current!, gasIndex]]
+      const commIndex = commSlots.current.get(id)
+      if (commIndex !== undefined) return [[communicationsRed.current!, commIndex], [communicationsWhite.current!, commIndex]]
+      return []
+    }
+    const flashes = runtime.current.landmarkHitFlash
+    let flashDirty = false
+    for (const id of litLandmarks.current) {
+      if (flashes.has(id)) continue
+      for (const [mesh, index] of flashMeshes(id)) { mesh.setColorAt(index, landmarkBaseTint); flashDirty = true }
+      litLandmarks.current.delete(id)
+    }
+    for (const [id, flash] of flashes) {
+      const targets = flashMeshes(id)
+      if (!targets.length) continue
+      color.copy(landmarkBaseTint).lerp(landmarkHitTint, Math.min(1, flash) * 0.7)
+      for (const [mesh, index] of targets) mesh.setColorAt(index, color)
+      litLandmarks.current.add(id)
+      flashDirty = true
+    }
+    if (flashDirty) {
+      for (const mesh of [gasStations.current, gasBands.current, communicationsRed.current, communicationsWhite.current]) {
+        if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
+      }
+    }
     const world = runtime.current.world
     const key = `${world.cellX}:${world.cellZ}:${runtime.current.destroyedLandmarks.size}|${worldPropVisibilityKey(runtime.current.destroyedWorldProps, runtime.current.beamObjects)}`
     if (key === lastKey.current) return
     lastKey.current = key
+    gasSlots.current.clear()
+    commSlots.current.clear()
+    litLandmarks.current.clear()
     let subwayCount = 0
     let busCount = 0
     let pylonCount = 0
@@ -1104,6 +1148,11 @@ function TransitUtilityPool() {
         position.set(centerX, 5.35, centerZ)
         matrix.compose(position, rotation, scale)
         gasBands.current.setMatrixAt(gasCount, matrix)
+        gasSlots.current.set(landmarkId(landmark, cell.cellX, cell.cellZ), gasCount)
+        // Whole pool back to white on rebuild: the first setColorAt call
+        // creates a zeroed buffer, and an uninitialised instance draws black.
+        gasStations.current.setColorAt(gasCount, landmarkBaseTint)
+        gasBands.current.setColorAt(gasCount, landmarkBaseTint)
         gasCount += 1
       } else if (landmark === 'communications') {
         const id = landmarkId(landmark, cell.cellX, cell.cellZ)
@@ -1113,6 +1162,9 @@ function TransitUtilityPool() {
         matrix.compose(position, rotation, scale)
         communicationsRed.current.setMatrixAt(communicationsCount, matrix)
         communicationsWhite.current.setMatrixAt(communicationsCount, matrix)
+        commSlots.current.set(id, communicationsCount)
+        communicationsRed.current.setColorAt(communicationsCount, landmarkBaseTint)
+        communicationsWhite.current.setColorAt(communicationsCount, landmarkBaseTint)
         communicationsCount += 1
       } else {
         const id = `power-pylon:${cell.cellX}:${cell.cellZ}`
@@ -1144,10 +1196,10 @@ function TransitUtilityPool() {
     for (const mesh of [subway.current, subwayOpenings.current, subwaySigns.current]) setPoolCount(mesh, subwayCount)
     for (const mesh of [busStops.current, busSigns.current]) setPoolCount(mesh, busCount)
     setPoolCount(pylons.current, pylonCount)
-    setPoolCount(gasStations.current, gasCount)
-    setPoolCount(gasBands.current, gasCount)
-    setPoolCount(communicationsRed.current, communicationsCount)
-    setPoolCount(communicationsWhite.current, communicationsCount)
+    setPoolCount(gasStations.current, gasCount, true)
+    setPoolCount(gasBands.current, gasCount, true)
+    setPoolCount(communicationsRed.current, communicationsCount, true)
+    setPoolCount(communicationsWhite.current, communicationsCount, true)
   })
 
   return (

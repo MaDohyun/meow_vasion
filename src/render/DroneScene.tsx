@@ -1347,6 +1347,10 @@ function MinePool() {
   return <instancedMesh ref={ref} args={[mineGeometry, mineMaterial, ENEMY_CAPS.drone]} frustumCulled={false} />
 }
 
+/** Same red the building flash uses, so "that took a hit" reads identically
+ *  on everything the laser can touch. */
+const enemyHitTint = new THREE.Color(BUILDING.LASER_HIT)
+
 const enemyGeometry: Record<EnemyKind, THREE.BufferGeometry> = {
   drone: droneGeometry(),
   helicopter: helicopterGeometry(),
@@ -1412,6 +1416,10 @@ function EnemyPool({ kind }: { kind: EnemyKind }) {
       else if (kind === 'tank' || kind === 'anti-air') color.set('#7f8765')
       else if (kind === 'boss') color.set('#eef2f6')
       else color.setRGB(0.84 + (enemy.slot % 3) * 0.07, 0.84 + (enemy.slot % 3) * 0.07, 0.84 + (enemy.slot % 3) * 0.07)
+      // Every laser hit answers in the same red the buildings use. Kept light
+      // on the battleship: under sustained fire a full tint would hold the
+      // whole seventy-metre silhouette red for the entire fight.
+      if (enemy.hurt > 0) color.lerp(enemyHitTint, Math.min(1, enemy.hurt) * (kind === 'boss' ? 0.3 : 0.75))
       mesh.setColorAt(count, color)
       count += 1
     }

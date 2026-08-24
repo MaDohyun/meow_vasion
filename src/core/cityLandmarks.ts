@@ -269,6 +269,24 @@ export type DestructibleLandmarkKind = 'gas-station' | 'communications'
  */
 export const GAS_STATION_BEAM_MASS = 9
 
+/**
+ * Laser damage a rare landmark soaks before it goes up.
+ *
+ * One shot used to be the whole judgement, which made the two most
+ * spectacular demolitions in the game also the cheapest. Two base hits means
+ * the first shot is a visible commitment - the landmark flashes and stands -
+ * and a fully boosted laser (x2.0) earns the one-shot back as a reward.
+ */
+export const LANDMARK_LASER_HITS = 2
+
+/** Same accumulator shape as damageBuilding, keyed by landmark id. */
+export function damageLandmark(health: Map<string, number>, id: string, damage: number) {
+  const before = health.get(id) ?? LANDMARK_LASER_HITS
+  const after = Math.max(0, before - Math.max(0, damage))
+  health.set(id, after)
+  return { hit: damage > 0, destroyed: after <= 0, health: after }
+}
+
 export type DestructibleLandmark = {
   id: string
   kind: DestructibleLandmarkKind

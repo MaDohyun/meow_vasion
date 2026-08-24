@@ -205,6 +205,9 @@ export type EnemySlot = BeamObject & {
   active: boolean
   hp: number
   maxHp: number
+  /** 1 the instant a laser lands, fading over a fifth of a second. Drives the
+   *  render tint so every hit answers visibly, like buildings already do. */
+  hurt: number
   position: Vec3
   velocity: Vec3
   target: Vec3
@@ -395,6 +398,7 @@ function makeSlot(kind: EnemyKind, slot: number): EnemySlot {
     color: '#ff3355',
     hp: ENEMY_MAX_HP[kind],
     maxHp: ENEMY_MAX_HP[kind],
+    hurt: 0,
     position: { x: 0, y: 0, z: 0 },
     velocity: { x: 0, y: 0, z: 0 },
     rotation: { x: 0, y: 0, z: 0 },
@@ -451,6 +455,7 @@ function resetSlot(enemy: EnemySlot, player: Vec3, heading: number, state: Enemy
   enemy.generation += 1
   enemy.id = `enemy:${enemy.kind}:${enemy.slot}:${enemy.generation}`
   enemy.hp = enemy.maxHp
+  enemy.hurt = 0
   enemy.active = true
   enemy.sourceId = null
   enemy.age = 0
@@ -632,6 +637,7 @@ export function syncAntiAirEnemies(state: EnemyState, elapsed: number, buildings
     slot.id = `enemy:anti-air:${slot.slot}:${slot.generation}`
     slot.active = true
     slot.hp = slot.maxHp
+    slot.hurt = 0
     slot.sourceId = building.id
     slot.mode = 'fixed'
     slot.beamImmune = true
@@ -972,6 +978,8 @@ export function stepEnemies(state: EnemyState, player: Vec3, dt: number, playerV
   state.mineExplosion = null
   for (const enemy of state.slots) {
     if (!enemy.active) continue
+    // Same fade the building flash uses, so every laser answer reads alike.
+    enemy.hurt = Math.max(0, enemy.hurt - d * 5)
     const mine = enemy.kind === 'drone' && isDroneMine(enemy)
     if (mine) {
       const distance = distanceToPlayer(enemy, player)
@@ -1077,6 +1085,7 @@ export function stepEnemyProjectiles(state: EnemyState, player: Vec3, dt: number
 export function hitEnemy(state: EnemyState, id: string, damage = 1) {
   for (const enemy of state.slots) {
     if (!enemy.active || enemy.absorbing || enemy.id !== id) continue
+    enemy.hurt = 1
     enemy.hp = Math.max(0, enemy.hp - damage)
     if (enemy.hp > 0) return { hit: true, destroyed: false, kind: enemy.kind, enemy }
     enemy.active = false

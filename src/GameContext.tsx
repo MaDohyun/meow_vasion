@@ -16,7 +16,7 @@ import {
   stepBeamObjects,
 } from './core/beam'
 import { createCrowdState, finishTutorialCrowd, prepareTutorialCrowd, primeCrowds, stepCrowds, type CrowdState } from './core/crowds'
-import { type CrowdSpawnZone, GAS_STATION_BEAM_MASS, canAbsorbBuilding, crowdSpawnZonesAround, destructibleLandmarksAround, nearestDestructibleLandmark, parkingCarsAround, type DestructibleLandmark } from './core/cityLandmarks'
+import { type CrowdSpawnZone, GAS_STATION_BEAM_MASS, canAbsorbBuilding, crowdSpawnZonesAround, damageLandmark, destructibleLandmarksAround, nearestDestructibleLandmark, parkingCarsAround, type DestructibleLandmark } from './core/cityLandmarks'
 import { STRINGS, readStoredLanguage, storeLanguage, type Language, type MessageKey } from './i18n'
 import { createDaylightSample, daylightClock, sampleDaylight, type DaylightSample } from './core/daylight'
 import {
@@ -193,6 +193,10 @@ export type GameRuntime = {
   buildingHitFlash: Map<string, number>
   ruinedBuildings: Map<string, BuildingRuin>
   destroyedLandmarks: Set<string>
+  /** Laser damage soaked so far by each still-standing landmark. */
+  landmarkHealth: Map<string, number>
+  /** Landmarks currently lit by a laser hit, same shape as buildingHitFlash. */
+  landmarkHitFlash: Map<string, number>
   crowdThreats: Vec3[]
   crowdSpawnZones: CrowdSpawnZone[]
   phase: GamePhase
@@ -607,6 +611,8 @@ function makeRuntime(): GameRuntime {
     buildingHitFlash: new Map<string, number>(),
     ruinedBuildings: new Map<string, BuildingRuin>(),
     destroyedLandmarks: new Set<string>(),
+    landmarkHealth: new Map<string, number>(),
+    landmarkHitFlash: new Map<string, number>(),
     crowdThreats,
     crowdSpawnZones,
     phase: 'intro',
@@ -1027,6 +1033,8 @@ function registerBuildingLaserHit(game: GameRuntime, id: string) {
 function detonateLandmark(game: GameRuntime, landmark: DestructibleLandmark) {
   if (game.destroyedLandmarks.has(landmark.id)) return false
   game.destroyedLandmarks.add(landmark.id)
+  game.landmarkHealth.delete(landmark.id)
+  game.landmarkHitFlash.delete(landmark.id)
   const point = landmark.position
   for (let burst = 0; burst < 4; burst += 1) {
     triggerLaserBurst(game.laserBursts, 'impact', {
@@ -1504,6 +1512,11 @@ export function GameProvider({ children }: { children: ReactNode }) {
       if (next <= 0) game.buildingHitFlash.delete(id)
       else game.buildingHitFlash.set(id, next)
     }
+    for (const [id, flash] of game.landmarkHitFlash) {
+      const next = flash - d * BUILDING_HIT_FLASH_FADE
+      if (next <= 0) game.landmarkHitFlash.delete(id)
+      else game.landmarkHitFlash.set(id, next)
+    }
     game.pickupPulse = Math.max(0, game.pickupPulse - d * 3.2)
     game.missionPulse = Math.max(0, game.missionPulse - d * 3.2)
     game.missionBannerTime = Math.max(0, game.missionBannerTime - d)
@@ -1891,7 +1904,13 @@ export function GameProvider({ children }: { children: ReactNode }) {
       if (aim.targetKind === 'building' && aim.targetId) registerBuildingLaserHit(game, aim.targetId)
       if (aim.targetKind === 'landmark' && aim.targetId) {
         const landmark = destructibleLandmarksAround(game.drone.position).find((candidate) => candidate.id === aim.targetId)
-        if (landmark) detonateLandmark(game, landmark)
+        // Two base hits, scaled by laser power - a maxed laser one-shots. The
+        // first shot lights the landmark up and leaves it standing.
+        if (landmark && !game.destroyedLandmarks.has(landmark.id)) {
+          const result = damageLandmark(game.landmarkHealth, landmark.id, boonMultiplier(game.boons, 'laser-power'))
+          game.landmarkHitFlash.set(landmark.id, 1)
+          if (result.destroyed) detonateLandmark(game, landmark)
+        }
       }
       if (aim.targetKind === 'car' && aim.targetId) {
         const destroyed = aim.targetId.startsWith('hazard:')

@@ -4,6 +4,8 @@ import { beamLiftScale } from '../src/core/beam'
 import { WORLD_PROP_MASS } from '../src/core/worldProps'
 import {
   GAS_STATION_BEAM_MASS,
+  LANDMARK_LASER_HITS,
+  damageLandmark,
   groundLandmarkForCell,
   hasBusStop,
   NEWS_SCREEN_HEIGHT,
@@ -163,5 +165,19 @@ describe('news screen mounting', () => {
     const mount = newsScreenMount(tower(NEWS_TOWER_MIN_HEIGHT))
     expect(NEWS_SCREEN_MOUNT_MARGIN).toBeGreaterThan(1)
     expect(mount.height).toBe(NEWS_SCREEN_HEIGHT + NEWS_SCREEN_MOUNT_MARGIN * 2)
+  })
+
+  it('makes a landmark demolition a two-shot judgement, one-shot only when the laser is maxed', () => {
+    expect(LANDMARK_LASER_HITS).toBe(2)
+    // Stock laser: the first shot lights it up and leaves it standing.
+    const stock = new Map<string, number>()
+    expect(damageLandmark(stock, 'gas-station:1:2', 1).destroyed).toBe(false)
+    expect(damageLandmark(stock, 'gas-station:1:2', 1).destroyed).toBe(true)
+    // Partial laser levels accumulate rather than rounding away.
+    const boosted = new Map<string, number>()
+    expect(damageLandmark(boosted, 'communications:3:4', 1.2).destroyed).toBe(false)
+    expect(damageLandmark(boosted, 'communications:3:4', 1.2).destroyed).toBe(true)
+    // A fully boosted laser (x2.0) earns the old one-shot back.
+    expect(damageLandmark(new Map(), 'gas-station:5:6', 2).destroyed).toBe(true)
   })
 })
