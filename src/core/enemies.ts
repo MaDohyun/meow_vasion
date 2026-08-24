@@ -870,6 +870,9 @@ export const ANTI_AIR_BARRAGE_SHOTS = 5
 export const ANTI_AIR_BARRAGE_INTERVAL = 0.13
 /** The reload after the stream, which is where the counterattack lives. */
 export const ANTI_AIR_RELOAD = 3.8
+/** Each round of the stream is big - a shell you watch coming, not a tracer.
+ *  Three seconds of blinking beam promise something heavy on the way. */
+export const ANTI_AIR_SHELL_RADIUS = 1.5
 
 function fireProjectile(state: EnemyState, enemy: EnemySlot, kind: EnemyProjectileKind) {
   const projectile = state.projectiles.find((item) => !item.active)
@@ -889,7 +892,7 @@ function fireProjectile(state: EnemyState, enemy: EnemySlot, kind: EnemyProjecti
   projectile.velocity.z = dz / distance * speed
   projectile.life = kind === 'boss-beam' ? 4 : 5.5
   projectile.damage = enemy.velocity.y
-  projectile.radius = kind === 'missile' || kind === 'shell' ? 0.85 : kind === 'boss-beam' ? 1.1 : 0.45
+  projectile.radius = kind === 'missile' ? ANTI_AIR_SHELL_RADIUS : kind === 'shell' ? 0.85 : kind === 'boss-beam' ? 1.1 : 0.45
   return true
 }
 
@@ -1182,17 +1185,10 @@ export function stepEnemies(state: EnemyState, player: Vec3, dt: number, playerV
       // for, and a mine that sat ticking under the hull for a third of a
       // second read as a dud rather than as a hit.
       const struck = distance <= enemy.hitRadius + playerRadius
-      // A mine on the beam rides disarmed. The field-and-fuse arming is for a
-      // craft flying through a minefield; a mine being reeled in crosses the
-      // field the moment the pull starts, so left on it "caught" would mean
-      // "already exploding". Held, it stays quiet until it actually reaches
-      // the hull - the same strike rule as flying into one - and a release
-      // inside the field hands it straight back to the ordinary arming.
-      const held = enemy.inBeam || enemy.tether > 0.02
-      if (held && !struck) {
-        enemy.mineArmed = false
-        enemy.mineFuse = 0
-      } else if (!enemy.mineArmed && (struck || distance <= DRONE_MINE_BLAST_RADIUS)) {
+      // One arming rule, on the beam or off it. A mine reeled in by the beam
+      // crosses the radius-9 field like any other approach, arms there, and
+      // the fuse does the rest - catching a bomb does not make it politer.
+      if (!enemy.mineArmed && (struck || distance <= DRONE_MINE_BLAST_RADIUS)) {
         enemy.mineArmed = true
         enemy.mineFuse = DRONE_MINE_FUSE
       }

@@ -186,6 +186,10 @@ button { font: inherit; }
 .briefing-panel p { margin:0 0 6px; color:var(--cream); font-size:16px; font-weight:900; line-height:1.6; }
 .briefing-panel p:last-of-type { margin-bottom:0; }
 .briefing-hint { display:block; margin-top:9px; color:var(--yellow); font-size:12px; font-weight:1000; letter-spacing:1px; text-align:right; animation: warning-pulse .8s steps(2) infinite; }
+/* "Do this" rather than "click on": a hands-on step names the key it is
+   waiting for, and a different colour keeps it from reading as the same
+   click-to-continue prompt the player has been tapping through. */
+.briefing-await { color:var(--cyan); }
 .briefing-skip { position:absolute; top:-16px; right:-8px; padding:6px 10px; color:var(--ink); background:var(--yellow); border:3px solid var(--cream); box-shadow:3px 3px 0 var(--ink); font-size:13px; font-weight:1000; letter-spacing:1px; cursor:pointer; pointer-events:auto; }
 @media (max-width: 760px) {
   .briefing-box { bottom:auto; left:50%; top:14px; gap:10px; width:calc(100vw - 28px); }

@@ -62,6 +62,24 @@ const roundedCarBodyGeometry = new RoundedBoxGeometry(1.8, 0.62, 3.1, 2, 0.15)
 const roundedCarCabinGeometry = new RoundedBoxGeometry(1.55, 0.62, 1.55, 2, 0.18)
 const beamRingGeometry = new THREE.RingGeometry(0.9, 1, 28)
 const BEAM_RING_COUNT = 5
+/**
+ * How far above the craft the chase camera's eye sits, before speed, altitude
+ * and size add their own lift.
+ */
+const CHASE_EYE_HEIGHT = 3.6
+
+/**
+ * How far the whole chase rig sits below where it used to.
+ *
+ * Taken off the eye and the look-at point alike, so the camera's angle is
+ * untouched and only the frame slides down: the craft rides a little higher on
+ * screen and more of the street it is reaching into comes into view. Dropping
+ * the eye alone would have tilted the camera up at the sky instead, which is
+ * backwards for a game whose only verb points at the ground - and it would
+ * have changed how flying reads, which this deliberately does not.
+ */
+const CHASE_RIG_DROP = 0.6
+
 const BEAM_TARGET_RING_CAPACITY = WORLD_MAX_CARS + TRAFFIC_MAX_CARS + 8 + PEDESTRIAN_MAX + CAT_MAX + HAZARD_MAX + Object.values(ENEMY_CAPS).reduce((sum, count) => sum + count, 0)
 const beamTargetRingMaterial = new THREE.MeshBasicMaterial({
   color: '#a7fff0',
@@ -829,13 +847,13 @@ function Ufo() {
     const distance = smoothedCameraPull.current + speedRatio * 3.3 + altitudeView
     cameraPosition.set(
       game.drone.position.x - forwardX * distance,
-      Math.max(1, game.drone.position.y + 3.6 + speedRatio * 1.1 + altitudeView + sizeLift - forwardY * distance * 0.72),
+      Math.max(1, game.drone.position.y + CHASE_EYE_HEIGHT - CHASE_RIG_DROP + speedRatio * 1.1 + altitudeView + sizeLift - forwardY * distance * 0.72),
       game.drone.position.z - forwardZ * distance,
     )
     camera.position.lerp(cameraPosition, 1 - Math.exp(-3.2 * dt))
     cameraTarget.set(
       game.drone.position.x + forwardX * (5.5 + speedRatio * 3),
-      game.drone.position.y + forwardY * (5.5 + speedRatio * 3),
+      game.drone.position.y - CHASE_RIG_DROP + forwardY * (5.5 + speedRatio * 3),
       game.drone.position.z + forwardZ * (5.5 + speedRatio * 3),
     )
     camera.lookAt(cameraTarget)
@@ -1451,7 +1469,7 @@ function EnemyAimLines() {
   const axis = useMemo(() => new THREE.Vector3(0, 1, 0), [])
   const direction = useMemo(() => new THREE.Vector3(), [])
   const color = useMemo(() => new THREE.Color(), [])
-  useFrame(() => {
+  useFrame(({ clock }) => {
     const mesh = ref.current
     if (!mesh) return
     let count = 0
@@ -1475,15 +1493,24 @@ function EnemyAimLines() {
       )
       // Thickens as the telegraph runs out, so "about to fire" is legible
       // without reading a number. Measured against this shot's own telegraph -
-      // the battleship's bow gun waits four times as long as its turrets, and
-      // a fixed per-kind figure would show both as the same warning.
+      // the bow gun waits far longer than a turret did, and a fixed per-kind
+      // figure would show both as the same warning.
       const charge = Math.min(1, Math.max(0, 1 - enemy.telegraph / enemy.telegraphLength))
-      scale.set(0.09 + charge * 0.16, length, 0.09 + charge * 0.16)
+      const antiAir = enemy.kind === 'anti-air'
+      // The anti-air beam is the searchlight from the photo: a heavy, fixed
+      // red line that blinks for its whole three-second lock. The blink is a
+      // square wave, not a fade - a light snapping on and off reads as a
+      // countdown where a pulse reads as decoration - and it quickens as the
+      // shot gets close.
+      const girth = antiAir ? 0.22 + charge * 0.2 : 0.09 + charge * 0.16
+      scale.set(girth, length, girth)
       matrix.compose(position, quaternion, scale)
       mesh.setMatrixAt(count, matrix)
-      // The anti-air line matches its orange aim point, so lock and landing
-      // zone read as one warning.
-      color.set(enemy.kind === 'anti-air' ? '#ff9a3d' : enemy.kind === 'boss' ? '#ff5f7c' : enemy.kind === 'fighter' ? '#ff78bd' : '#fff3a3')
+      // Searchlight red rather than the aim point's orange: the beam is the
+      // countdown and the point is the landing zone, and the blink is what
+      // separates "locked on you" from every steady marker on screen.
+      color.set(antiAir ? '#ff2038' : enemy.kind === 'boss' ? '#ff5f7c' : '#fff3a3')
+      if (antiAir && Math.sin(clock.elapsedTime * (9 + charge * 14)) < -0.1) color.multiplyScalar(0.16)
       mesh.setColorAt(count, color)
       count += 1
     }
@@ -1516,17 +1543,21 @@ function EnemyProjectiles() {
     if (!mesh) return
     let count = 0
     for (const projectile of runtime.current.enemies.projectiles) {
-      if (!projectile.active) continue
+      // Orbs live in their own pool: they are slow curtain rounds, and the
+      // additive tracer look that suits everything here washes out against a
+      // bright sky exactly when a curtain most needs to be readable.
+      if (!projectile.active || projectile.kind === 'orb') continue
       position.set(projectile.position.x, projectile.position.y, projectile.position.z)
-      const size = projectile.kind === 'boss-beam' ? 1.35 : projectile.kind === 'missile' ? 0.95 : projectile.kind === 'orb' ? 0.9 : projectile.kind === 'shell' ? 0.8 : 0.48
+      // The anti-air round is the biggest thing in the pool short of the bow
+      // gun: three seconds of blinking beam promise something heavy, so
+      // something heavy is what has to arrive.
+      const size = projectile.kind === 'boss-beam' ? 1.35 : projectile.kind === 'missile' ? 1.6 : projectile.kind === 'shell' ? 0.8 : 0.48
       // Stretched along travel rather than a round dot: at these speeds a
       // sphere gives no sense of which way a shot is going, and which way it
       // is going is the only thing the player can act on once it is out.
-      // Except the orb: it is slow enough to track by eye, and a curtain of
-      // round embers is the look the pattern is meant to have.
       travel.set(projectile.velocity.x, projectile.velocity.y, projectile.velocity.z)
       const speed = travel.length()
-      if (speed > 0.001 && projectile.kind !== 'orb') {
+      if (speed > 0.001) {
         travel.divideScalar(speed)
         quaternion.setFromUnitVectors(shotAxis, travel)
         scale.set(size, size * (1 + speed * 0.05), size)
@@ -1536,7 +1567,7 @@ function EnemyProjectiles() {
       }
       matrix.compose(position, quaternion, scale)
       mesh.setMatrixAt(count, matrix)
-      color.set(projectile.kind === 'boss-beam' ? '#ff5f7c' : projectile.kind === 'missile' ? '#ffe05f' : projectile.kind === 'orb' ? '#ffc75a' : projectile.kind === 'shell' ? '#ff9c54' : projectile.kind === 'rocket' ? '#ff78bd' : '#fff5c7')
+      color.set(projectile.kind === 'boss-beam' ? '#ff5f7c' : projectile.kind === 'missile' ? '#ffe05f' : projectile.kind === 'shell' ? '#ff9c54' : projectile.kind === 'rocket' ? '#ff78bd' : '#fff5c7')
       mesh.setColorAt(count, color)
       count += 1
     }
@@ -1549,6 +1580,70 @@ function EnemyProjectiles() {
       <sphereGeometry args={[1, 6, 4]} />
       <meshBasicMaterial vertexColors transparent opacity={0.94} depthWrite={false} blending={THREE.AdditiveBlending} toneMapped={false} />
     </instancedMesh>
+  )
+}
+
+/**
+ * The curtain rounds, drawn as embers: an opaque hot core inside a soft amber
+ * shell, both pulsing gently. Two fixed 96-slot instanced meshes, reusing the
+ * projectile pool's own slots.
+ *
+ * Deliberately NOT additive, unlike every other shot. Additive blending buys
+ * glow at night and pays for it at noon - against a bright sky it converges
+ * on white-on-white, which is how the first pass of these was on screen for
+ * five seconds at a time without being seen at all. A normal-blended opaque
+ * core is visible against anything the sky can be.
+ */
+function OrbPool() {
+  const { runtime } = useGame()
+  const shellRef = useRef<THREE.InstancedMesh>(null)
+  const coreRef = useRef<THREE.InstancedMesh>(null)
+  const matrix = useMemo(() => new THREE.Matrix4(), [])
+  const position = useMemo(() => new THREE.Vector3(), [])
+  const scale = useMemo(() => new THREE.Vector3(), [])
+  const identity = useMemo(() => new THREE.Quaternion(), [])
+  const shellColor = useMemo(() => new THREE.Color('#ffb020'), [])
+  const coreColor = useMemo(() => new THREE.Color('#fff3c0'), [])
+  useFrame(({ clock }) => {
+    const shell = shellRef.current
+    const core = coreRef.current
+    if (!shell || !core) return
+    const time = clock.elapsedTime
+    let count = 0
+    for (const projectile of runtime.current.enemies.projectiles) {
+      if (!projectile.active || projectile.kind !== 'orb') continue
+      position.set(projectile.position.x, projectile.position.y, projectile.position.z)
+      // Each ember breathes on its own phase so a ring reads as embers, not
+      // as a rigid lattice of spheres.
+      const pulse = 1 + Math.sin(time * 9 + count * 1.7) * 0.16
+      scale.setScalar(1.35 * pulse)
+      matrix.compose(position, identity, scale)
+      shell.setMatrixAt(count, matrix)
+      shell.setColorAt(count, shellColor)
+      scale.setScalar(0.62 * pulse)
+      matrix.compose(position, identity, scale)
+      core.setMatrixAt(count, matrix)
+      core.setColorAt(count, coreColor)
+      count += 1
+    }
+    shell.count = count
+    core.count = count
+    shell.instanceMatrix.needsUpdate = true
+    core.instanceMatrix.needsUpdate = true
+    if (shell.instanceColor) shell.instanceColor.needsUpdate = true
+    if (core.instanceColor) core.instanceColor.needsUpdate = true
+  })
+  return (
+    <group>
+      <instancedMesh ref={shellRef} args={[undefined, undefined, 96]} frustumCulled={false} renderOrder={5}>
+        <sphereGeometry args={[1, 10, 8]} />
+        <meshBasicMaterial vertexColors transparent opacity={0.55} depthWrite={false} toneMapped={false} />
+      </instancedMesh>
+      <instancedMesh ref={coreRef} args={[undefined, undefined, 96]} frustumCulled={false} renderOrder={6}>
+        <sphereGeometry args={[1, 8, 6]} />
+        <meshBasicMaterial vertexColors toneMapped={false} />
+      </instancedMesh>
+    </group>
   )
 }
 
@@ -2327,6 +2422,7 @@ export function DroneScene() {
       <EnemyWarnings />
       <EnemyAimLines />
       <EnemyProjectiles />
+      <OrbPool />
       <LaserProjectiles />
       <LaserBursts />
       <FireballPool />

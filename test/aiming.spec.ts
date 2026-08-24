@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
+  ANTI_AIR_SHELL_RADIUS,
+  ANTI_AIR_TELEGRAPH,
   ENEMY_WAVE_STAGES,
   LEAD_ACCURACY,
   PROJECTILE_SPEED,
@@ -77,6 +79,40 @@ describe('lead aiming', () => {
     const straight = aaRun({ speed: DRONE_DEFAULTS.maxSpeed })
     const jinking = aaRun({ speed: DRONE_DEFAULTS.maxSpeed, jink: true })
     expect(jinking).toBeLessThan(straight)
+  })
+
+  it('locks the anti-air beam for three seconds, and sends heavy rounds down it', () => {
+    // The stream itself is specified in test/enemies.spec.ts; this holds the
+    // two halves this file cares about - the beam freezes where it locked,
+    // and what rides it is a shell big enough to be watched coming.
+    expect(ANTI_AIR_TELEGRAPH).toBe(3)
+    const state = createEnemyState(0xaa)
+    const site = state.slots.find((enemy) => enemy.kind === 'anti-air')!
+    site.active = true
+    site.mode = 'fixed'
+    site.position = { x: 0, y: 30, z: 0 }
+    site.attackTimer = 0
+    const still = { x: 0, y: 0, z: 0 }
+    stepEnemies(state, { x: 0, y: 40, z: 80 }, 1 / 60, still)
+    expect(site.aiming).toBe(true)
+    expect(site.telegraphLength).toBe(ANTI_AIR_TELEGRAPH)
+    const muzzle = { ...site.muzzle }
+    const target = { ...site.target }
+    // The beam is fixed: the player moving does not drag it around. Flying
+    // off the line is the dodge, and the line has to hold still to be flown
+    // off of.
+    for (let tick = 0; tick < 60; tick += 1) stepEnemies(state, { x: 40, y: 40, z: 40 }, 1 / 60, still)
+    expect(site.muzzle).toEqual(muzzle)
+    expect(site.target).toEqual(target)
+    // Run the rest of the lock out: what leaves rides the frozen line, and
+    // every round of it is the big shell.
+    for (let tick = 0; tick < 60 * 3; tick += 1) stepEnemies(state, { x: 40, y: 40, z: 40 }, 1 / 60, still)
+    const shells = state.projectiles.filter((projectile) => projectile.active)
+    expect(shells.length).toBeGreaterThan(0)
+    for (const shell of shells) {
+      expect(shell.kind).toBe('missile')
+      expect(shell.radius).toBe(ANTI_AIR_SHELL_RADIUS)
+    }
   })
 
   it('gives full lead only to the units that actually aim', () => {
