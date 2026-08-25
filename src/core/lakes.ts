@@ -91,16 +91,23 @@ export function lakeCellCapacity(cellX: number, cellZ: number) {
  * once, with a pop.
  *
  * Scaled by what the tile actually held, so a deep tile is a bigger meal in
- * every sense rather than only a longer one. Across the capacity range that
- * puts a tile between +12% and +20%: the bottom sits above a cat (+5.8%) and
- * the top lands exactly on the largest tower `absorbBeamObject` can pay.
+ * every sense rather than only a longer one. Across the capacity range a lake
+ * is worth +4.5% to +7.5%, which puts drinking one dry between swallowing a
+ * pedestrian (+4.6%) and swallowing a cat (+7.6%).
  *
- * Per second of held beam it comes out a flat ~1.9% whatever the tile rolled,
- * against roughly 2.8% for eating the city at the rate test/feeding.spec.ts
- * measures. The lake is deliberately about two thirds of the city's rate - a
- * safer-looking, finite option, never the better one.
+ * It was 0.0004 - two and a half times this - and that was broken, in a way
+ * the per-second arithmetic hid. Water arrives at a flat 50 L/s and pays a
+ * flat share of the hull however big that hull is, while the city pays more
+ * per second the bigger the beam gets. So water is at its strongest exactly
+ * when the craft is at its weakest: at the old figure a pilot could hold the
+ * beam over six lakes and come out of the first minute more than twice the
+ * size they started, with no flying involved. Comparing rates against a
+ * measured blind sweep of a populated district said that was fine, because
+ * that sweep is a best case nobody flies while they are still learning.
+ *
+ * The score is what water is for now (300-500 a lake). Growth is the tip.
  */
-export const LAKE_DRAIN_SIZE_GAIN_PER_LITRE = 0.0004
+export const LAKE_DRAIN_SIZE_GAIN_PER_LITRE = 0.00015
 
 /** Growth for draining this particular tile. */
 export function lakeDrainSizeGain(cellX: number, cellZ: number) {

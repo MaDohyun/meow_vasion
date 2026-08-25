@@ -18,7 +18,7 @@ import {
   LAKE_DRAIN_SIZE_GAIN_PER_LITRE,
 } from '../src/core/lakes'
 import { MISSION_TARGETS } from '../src/core/missions'
-import { SIZE_GAIN } from '../src/core/size'
+import { SIZE_GAIN, growSizeBy } from '../src/core/size'
 import { lakeCellsNear, type ProceduralBuilding } from '../src/core/world'
 
 const building = (height: number): ProceduralBuilding => ({
@@ -157,22 +157,31 @@ describe('recon overhaul support systems', () => {
     expect(LAKE_CELL_CAPACITY_MIN).toBeGreaterThanOrEqual(MISSION_TARGETS['absorb-water'])
   })
 
-  it('grows the craft per tile at a rate the city still beats per second', () => {
-    // The honest comparison is per second of play, not per tile: a deep tile
-    // grows more only because it took longer to drink.
+  it('keeps a drained lake a meal rather than a shortcut past the city', () => {
+    // Water is the one meal that does not get better as the craft grows: it
+    // arrives at a flat 50 L/s and pays a flat share of the hull, while the
+    // city pays more per second the bigger the beam gets. That makes water
+    // strongest exactly when the craft is weakest, so the opening is where
+    // this has to be priced - not the average.
     const cityPerSecond = Math.pow(1 + SIZE_GAIN.pedestrian, 0.8) - 1
     for (const capacity of [LAKE_CELL_CAPACITY_MIN, 400, LAKE_CELL_CAPACITY_MAX]) {
       const gain = capacity * LAKE_DRAIN_SIZE_GAIN_PER_LITRE
       const seconds = capacity / LAKE_ABSORPTION_LITRES_PER_SECOND
+      // A whole lake is one body swallowed: more than a pedestrian at its
+      // deepest, never more than a cat.
+      expect(gain).toBeGreaterThan(SIZE_GAIN.pedestrian * 0.9)
+      expect(gain).toBeLessThan(SIZE_GAIN.cat)
+      // And nowhere near a way to grow: the city is several times faster per
+      // second even at the opening size, where water is at its relative best.
       const lakePerSecond = Math.pow(1 + gain, 1 / seconds) - 1
-      // Water is a real meal - bigger than a cat, never bigger than the
-      // largest tower absorbBeamObject can pay.
-      expect(gain).toBeGreaterThan(SIZE_GAIN.cat)
-      expect(gain).toBeLessThanOrEqual(0.2)
-      // ...but eating the city stays the faster way to grow, at every roll.
-      expect(lakePerSecond).toBeLessThan(cityPerSecond)
-      expect(lakePerSecond).toBeGreaterThan(cityPerSecond * 0.5)
+      expect(lakePerSecond).toBeLessThan(cityPerSecond * 0.3)
+      expect(lakePerSecond).toBeGreaterThan(0)
     }
+    // Six lakes drunk back to back - the run that prompted the cut - must not
+    // come close to doubling the craft on held beam alone.
+    let size = 1
+    for (let lake = 0; lake < 6; lake += 1) size = growSizeBy(size, 400 * LAKE_DRAIN_SIZE_GAIN_PER_LITRE)
+    expect(size).toBeLessThan(1.5)
     // The gain a tile actually pays is the one derived from its capacity.
     expect(lakeDrainSizeGain(3, -7)).toBeCloseTo(lakeCellCapacity(3, -7) * LAKE_DRAIN_SIZE_GAIN_PER_LITRE, 10)
   })
