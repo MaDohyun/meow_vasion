@@ -14,7 +14,8 @@ import {
   isBoonMaxed,
 } from '../src/core/boons'
 import { buildingMaxHealth, damageBuilding } from '../src/core/buildings'
-import { type BeamField, type BeamObject, stepBeamObjects } from '../src/core/beam'
+import { type BeamField, type BeamObject, beamProfile, isInsideBeam, stepBeamObjects } from '../src/core/beam'
+import { BEAM_APERTURE_MAX, BEAM_PULL_MAX, BEAM_REACH_MAX } from '../src/core/size'
 import { createDroneState, stepDrone } from '../src/core/drone'
 import { mysteryCircleForCell, mysteryCirclesNear, worldCellCenter, worldCellCoord, type MysteryCircleSite, type ProceduralBuilding } from '../src/core/world'
 
@@ -25,13 +26,16 @@ function maxOut(state = createBoonState(), ids = BOON_IDS) {
 }
 
 describe('mystery-circle boon pickups', () => {
-  it('keeps the promised caps: laser five, handling two, the rest three each', () => {
+  it('keeps the promised caps: laser five, handling one or two, the rest three', () => {
     expect(BOON_IDS).toEqual([
-      'laser-power', 'speed', 'turn-rate', 'beam-pull', 'turbo-recharge', 'turbo-capacity',
+      'laser-power', 'speed', 'turn-rate', 'beam-radius', 'beam-reach', 'beam-pull',
+      'turbo-recharge', 'turbo-capacity',
     ])
     expect(BOON_DEFINITIONS['laser-power'].maxLevel).toBe(5)
     expect(BOON_DEFINITIONS.speed.maxLevel).toBe(3)
-    expect(BOON_DEFINITIONS['turn-rate'].maxLevel).toBe(2)
+    expect(BOON_DEFINITIONS['turn-rate'].maxLevel).toBe(1)
+    expect(BOON_DEFINITIONS['beam-radius'].maxLevel).toBe(1)
+    expect(BOON_DEFINITIONS['beam-reach'].maxLevel).toBe(1)
     expect(BOON_DEFINITIONS['beam-pull'].maxLevel).toBe(2)
     expect(BOON_DEFINITIONS['turbo-recharge'].maxLevel).toBe(3)
     expect(BOON_DEFINITIONS['turbo-capacity'].maxLevel).toBe(3)
@@ -40,16 +44,50 @@ describe('mystery-circle boon pickups', () => {
     expect(BOON_DEFINITIONS['turbo-capacity'].step * 3).toBeCloseTo(4.5)
   })
 
-  it('keeps the two handling stats small enough to read as tuning', () => {
-    // Yaw is what the dodge is made of and beam pull feeds the haul spring
-    // twice, so both caps are deliberately modest: a fifth quicker round a
-    // corner, and about half again as fast on the haul.
+  it('keeps the handling stats small enough to read as tuning', () => {
+    // Yaw is what the dodge is made of, beam pull feeds the haul spring
+    // twice, and cone and reach are stats growth already owns - so every cap
+    // here is a slice of what size does over a run, not a replacement for it.
     const state = maxOut()
-    expect(boonMultiplier(state, 'turn-rate')).toBeCloseTo(1.2)
+    expect(boonMultiplier(state, 'turn-rate')).toBeCloseTo(1.15)
+    expect(boonMultiplier(state, 'beam-radius')).toBeCloseTo(1.15)
+    expect(boonMultiplier(state, 'beam-reach')).toBeCloseTo(1.2)
     const pull = boonMultiplier(state, 'beam-pull')
     expect(pull).toBeCloseTo(1.24)
     expect(pull * pull).toBeGreaterThan(1.5)
     expect(pull * pull).toBeLessThan(1.6)
+    // None of the three that size also owns may out-run growth itself.
+    expect(boonMultiplier(state, 'beam-radius')).toBeLessThan(BEAM_APERTURE_MAX)
+    expect(boonMultiplier(state, 'beam-reach')).toBeLessThan(BEAM_REACH_MAX)
+    expect(pull).toBeLessThan(BEAM_PULL_MAX)
+  })
+
+  it('widens and lengthens the cone the physics actually catches with', () => {
+    const state = maxOut(createBoonState(), ['beam-radius', 'beam-reach'])
+    const plain = beamProfile(false, 1, 1)
+    const upgraded = beamProfile(
+      false,
+      boonMultiplier(state, 'beam-radius'),
+      boonMultiplier(state, 'beam-reach'),
+    )
+    expect(upgraded.baseRadius).toBeCloseTo(plain.baseRadius * 1.15)
+    expect(upgraded.coneSpread).toBeCloseTo(plain.coneSpread * 1.15)
+    expect(upgraded.maxDrop).toBeCloseTo(plain.maxDrop * 1.2)
+    // What that buys, said in the terms the player sees: a car just outside
+    // the plain cone is inside the upgraded one, and one just past the plain
+    // beam's end is in reach.
+    const field = (radius: number, reach: number): BeamField => ({
+      active: true, boosting: false,
+      position: { x: 0, y: 7, z: 0 }, velocity: { x: 0, y: 0, z: 0 },
+      radiusScale: radius, reachScale: reach,
+    })
+    const plainRadius = plain.baseRadius + (7 - 0.65) * plain.coneSpread
+    const wide = { position: { x: plainRadius + 0.3, y: 0.65, z: 0 } }
+    expect(isInsideBeam(wide, field(1, 1))).toBe(false)
+    expect(isInsideBeam(wide, field(1.15, 1))).toBe(true)
+    const deep = { position: { x: 0, y: 7 - plain.maxDrop - 2, z: 0 } }
+    expect(isInsideBeam(deep, field(1, 1))).toBe(false)
+    expect(isInsideBeam(deep, field(1, 1.2))).toBe(true)
   })
 
   it('grants one level per circle and never the same circle twice', () => {
@@ -100,7 +138,9 @@ describe('mystery-circle boon pickups', () => {
     // The exact chain GameContext runs on a hit: claimBoon raises the level,
     // boonMultiplier turns it into damage, damageBuilding spends it. Max the
     // other stats first so every circle deals laser, then eat five.
-    const state = maxOut(createBoonState(), ['speed', 'turn-rate', 'beam-pull', 'turbo-recharge', 'turbo-capacity'])
+    const state = maxOut(createBoonState(), [
+      'speed', 'turn-rate', 'beam-radius', 'beam-reach', 'beam-pull', 'turbo-recharge', 'turbo-capacity',
+    ])
     for (let circle = 0; circle < 5; circle += 1) {
       const claim = claimBoon(state, `mystery:${circle}:0`)
       expect(claim).toEqual({ kind: 'stat', id: 'laser-power', level: circle + 1 })
@@ -124,11 +164,11 @@ describe('mystery-circle boon pickups', () => {
     expect(shotsToDestroy(boonMultiplier(state, 'laser-power'))).toBe(Math.ceil(buildingMaxHealth(tower) / 2))
   })
 
-  it('turns exactly a fifth quicker at a maxed turn-rate, through stepDrone', () => {
+  it('turns exactly the promised 15% quicker at a maxed turn-rate, through stepDrone', () => {
     // GameContext feeds the pickup through stepDrone's own yaw lever, whose
     // coefficient is 0.15 per level, so the bonus is divided by it. Get the
     // divide wrong and the stat quietly lands somewhere else entirely - this
-    // pins the promised 20% to the number the flight model actually turns at.
+    // pins the promised 15% to the number the flight model actually turns at.
     const maxed = maxOut(createBoonState(), ['turn-rate'])
     const flat = { throttle: 1, steer: 1, vertical: 0, special: false }
     const upgrades = { speed: 0, stability: 0, rack: 0, special: 'none' as const }
@@ -141,7 +181,7 @@ describe('mystery-circle boon pickups', () => {
     }
     const base = yawAfter(0)
     const upgraded = yawAfter(boonBonus(maxed, 'turn-rate') / 0.15)
-    expect(upgraded / base).toBeCloseTo(1.2, 5)
+    expect(upgraded / base).toBeCloseTo(1.15, 5)
   })
 
   it('hauls a caught load faster at a maxed beam-pull', () => {

@@ -4,7 +4,7 @@
  * The card screen is gone. Stopping the run to pick one of three random cards
  * meant the stats you wanted arrived on the deck's schedule, not yours, and a
  * five-minute run never came close to the caps anyway. The body stats now ride
- * on hull size (see core/size); the six flight-and-fight stats here are
+ * on hull size (see core/size); the eight flight-and-fight stats here are
  * earned by flying somewhere: each mystery circle hovers one glowing saucer
  * item over its beacon, and eating it grants one level of whatever that
  * circle carries.
@@ -29,6 +29,8 @@ export type BoonId =
   | 'laser-power'
   | 'speed'
   | 'turn-rate'
+  | 'beam-radius'
+  | 'beam-reach'
   | 'beam-pull'
   | 'turbo-recharge'
   | 'turbo-capacity'
@@ -40,28 +42,39 @@ export type BoonDefinition = {
   step: number
   /**
    * Where the stat stops. Without a cap the correct play is to farm circles
-   * forever; with one, a run that clears all eighteen levels has actually
+   * forever; with one, a run that clears all nineteen levels has actually
    * finished something and the pickups move on to healing.
    */
   maxLevel: number
 }
 
 /**
- * Two levels each on turn rate and beam pull, and small steps on both.
+ * The handling stats are capped low - one level on turn, cone and reach, two
+ * on pull - and their steps are sized so that single level is still worth
+ * flying to.
  *
- * They are the two stats that change how the craft *handles* rather than what
- * it is worth, so a big number on either rewrites the game rather than
- * improving it: yaw is what the whole dodge is made of, and beam pull feeds
- * the haul spring twice (once in the spring constant, once in the vertical
- * drive - see core/beam), so its felt speed-up is roughly the multiplier
- * squared. A maxed turn is a fifth quicker round a corner; a maxed pull hauls
- * about half again as fast. Both are read instantly from the cockpit and
- * neither retunes the game around itself.
+ * These are the stats that change how the craft *handles* rather than what it
+ * is worth, so a big number on any of them rewrites the game rather than
+ * improving it. Three of them are also stats size already owns, and a pickup
+ * that out-ran growth would be saying the craft is bigger than it looks - so
+ * each is a slice of the range growth covers, never a replacement for it:
+ * size takes the cone to 1.75x and the reach to 2.75x over a whole run (see
+ * core/size), and the pickup adds a sixth or a fifth on top of wherever the
+ * hull has got to.
+ *
+ * At the caps: a sixth quicker round a corner, a cone a sixth wider (so ~1.3x
+ * the ground swept per pass, area going as the square), a fifth further down
+ * the beam, and a haul about half again as fast - pull feeds the spring twice
+ * (once in the spring constant, once in the vertical drive - see core/beam),
+ * so its felt speed-up is roughly the multiplier squared. Each is read
+ * instantly from the cockpit and none retunes the game around itself.
  */
 export const BOON_DEFINITIONS: Record<BoonId, BoonDefinition> = {
   'laser-power': { id: 'laser-power', step: 0.2, maxLevel: 5 },
   speed: { id: 'speed', step: 0.08, maxLevel: 3 },
-  'turn-rate': { id: 'turn-rate', step: 0.1, maxLevel: 2 },
+  'turn-rate': { id: 'turn-rate', step: 0.15, maxLevel: 1 },
+  'beam-radius': { id: 'beam-radius', step: 0.15, maxLevel: 1 },
+  'beam-reach': { id: 'beam-reach', step: 0.2, maxLevel: 1 },
   'beam-pull': { id: 'beam-pull', step: 0.12, maxLevel: 2 },
   'turbo-recharge': { id: 'turbo-recharge', step: 0.2, maxLevel: 3 },
   'turbo-capacity': { id: 'turbo-capacity', step: 1.5, maxLevel: 3 },
@@ -183,6 +196,8 @@ export const BOON_COLORS: Record<BoonId, string> = {
   'laser-power': '#ff557f',
   speed: '#6deeff',
   'turn-rate': '#b07bff',
+  'beam-radius': '#dff6ff',
+  'beam-reach': '#3fa9ff',
   'beam-pull': '#7bffcf',
   'turbo-recharge': '#ffd24d',
   'turbo-capacity': '#ff8a45',

@@ -492,6 +492,8 @@ const BOON_MESSAGE_KEY: Record<BoonId, MessageKey> = {
   'laser-power': 'msgBoonLaser',
   speed: 'msgBoonSpeed',
   'turn-rate': 'msgBoonTurnRate',
+  'beam-radius': 'msgBoonBeamRadius',
+  'beam-reach': 'msgBoonBeamReach',
   'beam-pull': 'msgBoonBeamPull',
   'turbo-recharge': 'msgBoonTurboRecharge',
   'turbo-capacity': 'msgBoonTurboCapacity',
@@ -802,6 +804,23 @@ function liftLimit(game: GameRuntime) {
  *  the ceiling, and the whole weight ladder hangs off it. */
 function beamStrength(game: GameRuntime) {
   return game.sizeProfile.beamStrength
+}
+
+/**
+ * The beam's shape: what the hull gives, times what the pickups add.
+ *
+ * One source for the physics field, the drawn cone and the smoke snapshot.
+ * The render layer carries a comment about the last time these drifted apart
+ * - the drawn beam stayed at the default while the volume that actually
+ * caught things grew, so the visible beam and the real one were two different
+ * shapes. A pickup that widened only one of them would be the same bug again.
+ */
+function beamRadiusScale(game: GameRuntime) {
+  return game.sizeProfile.beamScale * boonMultiplier(game.boons, 'beam-radius')
+}
+
+function beamReachScale(game: GameRuntime) {
+  return game.sizeProfile.beamReach * boonMultiplier(game.boons, 'beam-reach')
 }
 
 function refreshWorldGeometry(game: GameRuntime) {
@@ -1501,8 +1520,8 @@ function snapshotOf(game: GameRuntime): GameSnapshot {
     broadcastStage: game.broadcastTime > 0 ? game.broadcastStage : null,
     broadcastRemaining: game.broadcastTime,
     boonLevels: game.boons.levels,
-    beamRadiusScale: game.sizeProfile.beamScale,
-    beamReachScale: game.sizeProfile.beamReach,
+    beamRadiusScale: beamRadiusScale(game),
+    beamReachScale: beamReachScale(game),
     daylightLabel: game.daylight.label,
     daylightClock: daylightClock(game.sessionTime),
     nightFactor: game.daylight.nightFactor,
@@ -2092,12 +2111,12 @@ export function GameProvider({ children }: { children: ReactNode }) {
       velocity: game.drone.velocity,
       // Radius, reach and pull all follow the hull: a bigger craft sweeps a
       // wider cone, reaches the street from its own cruising altitude, and
-      // hauls what it catches visibly faster - no card involved in any of it.
-      radiusScale: game.sizeProfile.beamScale,
-      reachScale: game.sizeProfile.beamReach,
-      // Pull is the one beam property a pickup can raise. Radius and reach
-      // stay pure hull: they say how big the craft is, and an item that made
-      // a small saucer sweep like a big one would be saying otherwise.
+      // hauls what it catches visibly faster. The pickups multiply on top of
+      // that rather than replacing it - each is a slice of the same range
+      // growth covers (see core/boons), so a grown craft is always the one
+      // with the bigger beam and the item is a bonus on whatever it has.
+      radiusScale: beamRadiusScale(game),
+      reachScale: beamReachScale(game),
       gripScale: game.sizeProfile.beamPull * boonMultiplier(game.boons, 'beam-pull'),
       // Natural grip from size, and nothing else - the whole 1..12 ladder is
       // growth now.

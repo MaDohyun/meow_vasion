@@ -6,6 +6,7 @@ import * as THREE from 'three'
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { useGame } from '../GameContext'
+import { boonMultiplier } from '../core/boons'
 import { BUILDING, ENTITY, FX, LIGHT, SKY } from '../constants/palette'
 import {
   applyEntityDaylight,
@@ -769,8 +770,10 @@ function TractorBeam() {
   // Same scales the physics uses. These were left at their defaults, so the
   // drawn beam never widened or lengthened with the craft while the pickup
   // volume did - the visible beam and the beam that actually catches things
-  // were two different shapes. beamRadiusScale IS the size profile's aperture
-  // now, so it is applied once, not multiplied in twice.
+  // were two different shapes. The snapshot's two scales ARE the numbers the
+  // beam field is built from (hull aperture and reach, times whatever the
+  // cone and range pickups add), so they are applied once here, never
+  // multiplied in a second time.
   const profile = beamProfile(snapshot.boostActive, snapshot.beamRadiusScale, snapshot.beamReachScale)
   const length = Math.max(0.8, beamVisualLength(runtime.current.drone.position.y, profile.maxDrop))
   const radius = profile.baseRadius + length * profile.coneSpread
@@ -2184,7 +2187,7 @@ function PerformanceProbe() {
       activeEnemyProjectiles: runtime.current.enemies.projectiles.filter((projectile) => projectile.active).length,
       laserShotsFired: runtime.current.laserShotsFired,
       boonLevels: { ...runtime.current.boons.levels },
-      beamReachScale: runtime.current.sizeProfile.beamReach,
+      beamReachScale: runtime.current.sizeProfile.beamReach * boonMultiplier(runtime.current.boons, 'beam-reach'),
       height: runtime.current.drone.position.y,
       missionStage: runtime.current.mission.stage,
       // The debrief freezes the world, so a smoke run needs to see it as a
