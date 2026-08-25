@@ -1039,11 +1039,12 @@ export function Hud() {
 
         <BreakingNews />
         {snapshot.timeBonusPulse > 0 && <div className="time-bonus">+{snapshot.timeBonusAmount}s</div>}
-        {/* Gold, and standing on the contact rather than under the cursor,
-            whenever the magnet in core/autoTarget has hold of something in the
-            sky. The cream cross under the hand is the resting state, so the
-            colour change is the whole readout: the laser is pointed at that,
-            and no longer at wherever the hand happens to be. */}
+        {/* The same four brackets throughout - a pixel heavier and gold, and
+            standing on the contact rather than under the cursor, whenever the
+            magnet in core/autoTarget has hold of something in the sky. Nothing
+            is added to the screen: the reticle changes state, and that state
+            says the laser is pointed at that rather than at wherever the hand
+            happens to be. */}
         <div
           className={snapshot.autoTarget ? 'reticle locked' : 'reticle'}
           style={{

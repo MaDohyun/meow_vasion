@@ -77,11 +77,16 @@ export type AutoTargetProjector = (point: Vec3, radius: number) =>
  * How much slack the ring has beyond the target's own outline, as a fraction
  * of half the screen height.
  *
- * Roughly a thumb's width at a laptop's height. It is what makes a distant
- * mine - a few pixels of contact - grabbable at all, and it is small enough
- * that two contacts a hand apart are still two separate things to point at.
+ * About twenty pixels at a laptop's height. It is what makes a distant mine -
+ * a few pixels of contact - grabbable at all, and it is small enough that two
+ * contacts a hand apart are still two separate things to point at.
+ *
+ * It started half again this wide and read as the game taking the hand rather
+ * than steadying it. The rule the number has to satisfy is narrow: the magnet
+ * pays for the pixel the cursor missed by, not for the aim the player never
+ * took.
  */
-export const AUTO_TARGET_GRAB = 0.1
+export const AUTO_TARGET_GRAB = 0.065
 
 /**
  * The wider ring a lock has to leave before it breaks.
@@ -89,8 +94,32 @@ export const AUTO_TARGET_GRAB = 0.1
  * Without it a target sitting exactly on the edge of the grab ring flickers
  * between locked and free every frame the craft rolls, and the reticle
  * strobes gold. Leaving is a deliberate movement; entering is not.
+ *
+ * Kept at about 1.6x the grab ring: the gap is what makes the lock steady, so
+ * easing the magnet means shrinking both together rather than closing it.
  */
-export const AUTO_TARGET_RELEASE = 0.17
+export const AUTO_TARGET_RELEASE = 0.105
+
+/**
+ * How much of a target's own silhouette counts towards its ring.
+ *
+ * Not all of it. Pointing at the edge of a shape is pointing at the shape, but
+ * a sphere's projection is generous - a hit sphere is drawn around the widest
+ * part of the machine, not around what the player reads as its body - so the
+ * full radius grabbed from noticeably outside the outline.
+ */
+export const AUTO_TARGET_SILHOUETTE = 0.6
+
+/**
+ * The most a silhouette may add, however close the target is.
+ *
+ * This is the dreadnought's clause. Its turret spheres are eight metres across
+ * and at close quarters one covers a third of the screen, so an uncapped ring
+ * meant that anywhere near the ship - the sky beside it included - snapped the
+ * reticle onto a gun. Capped, the magnet asks for the hull the way it asks for
+ * everything else: put the cursor roughly on it.
+ */
+export const AUTO_TARGET_SILHOUETTE_MAX = 0.2
 
 /**
  * How deep inside its own ring a new contact must be to steal a live lock.
@@ -105,12 +134,17 @@ export const AUTO_TARGET_STEAL = 0.55
 /** Nothing closer than this to the eye is a target - it is the eye. */
 const MIN_DEPTH = 0.5
 
+/** How much of this contact's outline its ring is allowed to inherit. */
+function silhouette(candidate: AutoTargetCandidate) {
+  return Math.min(AUTO_TARGET_SILHOUETTE_MAX, candidate.radius * AUTO_TARGET_SILHOUETTE)
+}
+
 function grabRadius(candidate: AutoTargetCandidate) {
-  return AUTO_TARGET_GRAB + candidate.radius
+  return AUTO_TARGET_GRAB + silhouette(candidate)
 }
 
 function releaseRadius(candidate: AutoTargetCandidate) {
-  return AUTO_TARGET_RELEASE + candidate.radius
+  return AUTO_TARGET_RELEASE + silhouette(candidate)
 }
 
 /** Distance from the cursor to a contact, in half-screen-height units. */
