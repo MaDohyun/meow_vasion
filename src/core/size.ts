@@ -44,9 +44,9 @@ export const SIZE_MIN = 0.3
  * has no further rungs to hand out, because there is nothing left in the world
  * heavier than a dreadnought to open.
  *
- * 15, which is a saucer 81m across. The pacing anchor in SIZE_GAIN is written
- * against this number: a beginner who is trying arrives here as the five
- * minutes run out.
+ * 15, which is a saucer 81m across. A beginner is around 60m when their five
+ * minutes are up, so this is what a strong run is reaching for rather than
+ * where every run ends: the bot in test/feeding.spec.ts gets here at 3:49.
  */
 export const SIZE_MATURE = 15
 /** Visible width of the saucer at size 1. */
@@ -65,12 +65,12 @@ export const SIZE_MAX_DIAMETER = 150
  * stretch between them is growth with no rungs left to hand out - the craft
  * is still getting bigger on the last body of the last second.
  *
- * Past SIZE_MATURE the falloff has bottomed out at GROWTH_FALLOFF_MIN, so each
- * meal there is worth 7% of what it was worth at the opening: a crawl rather
- * than a wall. At that rate the 81m mature hull needs another 339 pedestrians
- * to reach 150m - about eight minutes of uninterrupted perfect feeding against
- * a five minute run, and fourteen for a beginner. A very strong run ends near
- * 125m, so the ceiling is close enough to be something a great run is visibly
+ * The step ladder in growthFalloff keeps going the whole way up, so the last
+ * bands are the expensive ones: 80m to 100m costs 94 pedestrians, 100m to 120m
+ * costs 140, 120m to 140m costs 215. Getting from the mature 81m hull to the
+ * ceiling is 624 more bodies - nine and a half minutes of uninterrupted
+ * perfect feeding against a five minute run. A very strong run ends near 110m,
+ * so the ceiling is close enough to be something a great run is visibly
  * climbing towards and far enough that meeting it is the story of that run
  * rather than a thing that happens on a Tuesday.
  *
@@ -111,24 +111,12 @@ export const SIZE_CAMERA_LIFT_MAX = 7.5
  * These are the rates a *small* craft eats at. They are the top of the curve,
  * not the whole of it - growthFalloff below tapers them as the hull fills out.
  *
- * These rates are set from one anchor, because it is the one that can be
- * stated in minutes rather than in meals: **a beginner trying hard should be
- * around sixty percent of the size range three and a half minutes in, and
- * should touch the ceiling only as the five minutes run out.** Taking a
- * beginner's intake at roughly 0.6 bodies a second - a little over half what
- * the steered bot in test/feeding.spec.ts manages, since a person is also
- * dodging, aiming and reading the mission - that lands 60% at 207s and the cap
- * at 307s.
+ * These are only the opening rates. What a meal is actually worth is this
+ * times growthFalloff, which steps down every twenty metres of hull - the
+ * pacing lives in that ladder, and the anchor it is cut to is stated there.
  *
- * They were 0.046/0.076 when the run shipped and the same run capped out
- * inside ninety seconds. The whole ladder came down twice for it.
- *
- * One thing this anchor cannot do is hold for every skill level at once. A
- * player who feeds at the bot's rate still reaches the ceiling around three
- * minutes; the gap between them and a beginner is skill, and no growth curve
- * can be slow for one and fast for the other. The curve is pinned to the
- * newer player because a ceiling reached early costs them the rest of their
- * run, while an expert reaching it early has already had the run.
+ * They were 0.046/0.076 when the run shipped, and that run was 81m across
+ * inside ninety seconds.
  */
 export const SIZE_GAIN = {
   pedestrian: 0.026,
@@ -138,47 +126,60 @@ export const SIZE_GAIN = {
 export type SizeGainKind = keyof typeof SIZE_GAIN
 
 /**
- * What a meal is still worth at the ceiling, as a fraction of the opening
- * rate. Growth never stops - the last stretch is meant to be a climb, not a
- * wall - but a craft the size of a city block should not put on another block
- * for the same handful of pedestrians that doubled it in the first ten
- * seconds.
+ * How much of the opening rate one step of growth costs you.
  *
- * Down from 0.18, and this is the only lever that can put distance between
- * "most of the way" and "all the way". Proportional growth measures the range
- * in doublings, and the last forty percent of it is barely a third of a
- * doubling - so without a taper the top of the range is something a run
- * passes through, not something it ends on. At 0.07 the final stretch costs
- * fifty-one pedestrians against ninety-three for the opening stretch, which is
- * the ceiling being earned rather than arrived at.
+ * The ladder replaced a smooth curve, and it replaced it because of what the
+ * smooth one did to the opening: growth that only tapers by how far along the
+ * range you are keeps essentially the full rate over the whole early game, so
+ * the saucer left the streets before the player had seen them. The city is
+ * full of things to look at from head height - traffic, shore props, the
+ * forecourt of a gas station - and a hull that is through 40m in the first
+ * minute is never at head height again.
  *
- * It does not go much lower than this. The number is a floor on the rate, so
- * halving it does not double the climb - it only buys another log's worth -
- * and somewhere below here the last stretch stops reading as a climb and
- * starts reading as the wall the rule above forbids.
+ * So the brake is hung on the hull itself. Every twenty metres of diameter the
+ * rate takes a step down, and the steps are what the player feels: growing
+ * visibly gets harder each time the saucer outgrows another slice of the city
+ * rather than at some point on a curve nobody can see.
  */
-export const GROWTH_FALLOFF_MIN = 0.07
+export const GROWTH_STEP = 0.55
+/** A step every twenty metres of hull - 20m, 40m, 60m and on up. */
+export const GROWTH_STEP_DIAMETER = 20
 /**
- * Above 1 so the taper is back-loaded: the first third of the range keeps
- * essentially the full opening rate (the curve is flat where p is small) and
- * the bite only arrives once the craft is genuinely huge, which is where the
- * player asked for the brakes.
+ * What a meal is worth at the very top, as a fraction of the opening rate.
+ *
+ * Derived rather than chosen: it is simply where seven steps of the ladder
+ * land by the time the hull is at the 150m ceiling. Growth never stops - the
+ * last stretch is meant to be a climb, not a wall - but a craft two and a half
+ * times the height of the skyline should not put on another storey for the
+ * handful of pedestrians that doubled it in the first ten seconds.
  */
-export const GROWTH_FALLOFF_EXPONENT = 2
+export const GROWTH_FALLOFF_MIN = Math.pow(GROWTH_STEP, Math.floor(SIZE_MAX_DIAMETER / GROWTH_STEP_DIAMETER))
+
+/** Which rung of the ladder a hull of this size is standing on. 0 below 20m. */
+export function growthStep(size: number) {
+  return Math.floor(ufoDiameter(size) / GROWTH_STEP_DIAMETER)
+}
 
 /**
- * Multiplier on every gain, 1 at the opening size falling to
- * GROWTH_FALLOFF_MIN at the ceiling.
+ * Multiplier on every gain: 1 while the saucer is still street-sized, halving
+ * again at every twenty metres of hull.
  *
- * Purely proportional growth means each meal is worth more in absolute metres
- * than the last, so the back half of the run used to rush past: ten pedestrians
- * covered the top third of the range while the opening third took seventy. This
- * flips that around - roughly ninety meals for the first third and fifty for
- * the last - so the run ends on the part of the curve it used to skip.
+ * The whole pacing anchor is in here, and it is stated in minutes because that
+ * is the only unit worth arguing about: **a beginner who is trying should be
+ * about 60m across when the five minutes run out.** Taking a beginner's intake
+ * at roughly 0.6 bodies a second - a little over half what the steered bot in
+ * test/feeding.spec.ts manages, since a person is also dodging, aiming and
+ * reading the mission - GROWTH_STEP at 0.55 puts them at 20m at 2:17, 40m at
+ * 3:38 and 60m at 5:05.
+ *
+ * The bands are deliberately uneven in metres and even in effort. A step costs
+ * roughly the same number of meals as the one before it - 82, 49, 52, 67 - so
+ * each new twenty metres is a comparable stretch of play rather than a
+ * comparable amount of eating, which is what stops the hull running away from
+ * the player once the meals themselves get bigger.
  */
 export function growthFalloff(size: number) {
-  const progress = sizeGrowthProgress(size)
-  return GROWTH_FALLOFF_MIN + (1 - GROWTH_FALLOFF_MIN) * (1 - Math.pow(progress, GROWTH_FALLOFF_EXPONENT))
+  return Math.pow(GROWTH_STEP, growthStep(size))
 }
 
 export type SizeProfile = {

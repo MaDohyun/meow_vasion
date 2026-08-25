@@ -11,18 +11,22 @@ import {
   CAMERA_GROWTH_PULL_BACK,
   CAMERA_REST_DISTANCE,
   GROWTH_FALLOFF_MIN,
+  GROWTH_STEP,
   HEALTH_BONUS_HEARTS_MAX,
   LIFT_CAPACITY_MIN,
   SIZE_MATURE,
   SIZE_MAX,
+  SIZE_MAX_DIAMETER,
   SIZE_MIN,
   SIZE_START,
+  UFO_BASE_DIAMETER,
   beamStrengthForSize,
   bonusHeartsForSize,
   clampSize,
   growSize,
   growSizeBy,
   growthFalloff,
+  growthStep,
   liftCapacityForSize,
   maxAltitude,
   sizeProfile,
@@ -50,76 +54,84 @@ describe('craft size as growth, not as health', () => {
     expect(growSizeBy(SIZE_START, 0)).toBe(SIZE_START)
   })
 
-  it('opens fast and tapers once the hull is huge', () => {
-    // The first meals have to land visibly - the opening saucer is the one
-    // place a single pedestrian should read as an event - while the top of the
-    // range has to stay a climb. Purely proportional growth did the opposite:
-    // each meal was worth more metres than the last, so the ceiling arrived in
-    // a rush after a slow start.
-    const mealsToReach = (from: number, to: number) => {
-      let size = from
-      let meals = 0
-      while (size < to && meals < 10000) {
-        size = growSize(size, 'pedestrian')
-        meals += 1
-      }
-      return meals
-    }
-    const span = SIZE_MATURE - SIZE_START
-    const firstThird = mealsToReach(SIZE_START, SIZE_START + span * 0.3)
-    const lastThird = mealsToReach(SIZE_START + span * 0.7, SIZE_MATURE)
-    // The opening is the generous end now, but the taper has to bite hard
-    // enough that the last stretch is not a formality. Both bounds moved out
-    // when the curve was pinned to a beginner's five minutes rather than to a
-    // meal count - the shape is the same, it just buys the range with half
-    // again as many meals.
-    expect(lastThird).toBeGreaterThan(30)
-    expect(firstThird).toBeLessThan(110)
-    // Full growth still sits inside one run's worth of eating - a run is about
-    // 330 bodies at the rate test/feeding.spec.ts measures, and the last rung
-    // has to sit inside that or it is decoration.
-    expect(mealsToReach(SIZE_START, SIZE_MATURE)).toBeLessThan(230)
-    // Growth never stops, it only slows - and it slows monotonically.
+  it('steps the growth rate down every twenty metres of hull', () => {
+    // The brake is hung on the hull, not on how far along the range you are.
+    // A curve that only knew about progress kept nearly the full opening rate
+    // over the whole early game, and the saucer was out of the streets before
+    // the player had seen them - which is the part of the run that is about
+    // looking at the city rather than about being bigger than it.
     expect(growthFalloff(SIZE_START)).toBeCloseTo(1, 5)
-    expect(growthFalloff(SIZE_MATURE)).toBeCloseTo(GROWTH_FALLOFF_MIN, 5)
+    const atDiameter = (metres: number) => growthFalloff(metres / UFO_BASE_DIAMETER)
+    // Full rate right up to the first step, then a step at every twenty.
+    expect(atDiameter(19.9)).toBeCloseTo(1, 5)
+    expect(atDiameter(20.1)).toBeCloseTo(GROWTH_STEP, 5)
+    expect(atDiameter(40.1)).toBeCloseTo(GROWTH_STEP ** 2, 5)
+    expect(atDiameter(60.1)).toBeCloseTo(GROWTH_STEP ** 3, 5)
+    // ...and the ladder keeps going above that rather than flattening off,
+    // which is what keeps the ceiling out past the end of a run.
+    expect(atDiameter(SIZE_MAX_DIAMETER)).toBeCloseTo(GROWTH_FALLOFF_MIN, 5)
+    expect(GROWTH_FALLOFF_MIN).toBeLessThan(GROWTH_STEP ** 3)
+    // Never rises, never reaches zero.
     let previous = Infinity
-    for (let size = SIZE_START; size <= SIZE_MATURE; size += 0.25) {
+    for (let size = SIZE_START; size <= SIZE_MAX; size += 0.25) {
       const falloff = growthFalloff(size)
       expect(falloff).toBeLessThanOrEqual(previous)
       expect(falloff).toBeGreaterThan(0)
       previous = falloff
     }
+    // Each band costs a comparable stretch of play. This is the point of
+    // hanging the steps on diameter: without them the bands would get cheaper
+    // as they went, because a proportional meal is worth more metres the
+    // bigger the hull already is.
+    const mealsBetween = (fromMetres: number, toMetres: number) => {
+      let size = Math.max(SIZE_START, fromMetres / UFO_BASE_DIAMETER)
+      let meals = 0
+      while (ufoDiameter(size) < toMetres && meals < 10000) {
+        size = growSize(size, 'pedestrian')
+        meals += 1
+      }
+      return meals
+    }
+    const bands = [mealsBetween(0, 20), mealsBetween(20, 40), mealsBetween(40, 60), mealsBetween(60, 80)]
+    for (const band of bands) {
+      expect(band).toBeGreaterThan(35)
+      expect(band).toBeLessThan(100)
+    }
     // A grown craft still gains more absolute metres per meal than a small one
-    // does; the taper trims the curve, it does not invert it.
+    // does; the ladder trims the rate, it does not invert it.
     expect(growSize(SIZE_MATURE * 0.5, 'pedestrian') - SIZE_MATURE * 0.5).toBeGreaterThan(
       growSize(SIZE_START, 'pedestrian') - SIZE_START,
     )
   })
 
-  it('is paced against a beginner\'s five minutes, not against a meal count', () => {
-    // The tuning anchor, in the only units that can be argued about: minutes.
-    // A beginner who is trying takes in roughly 0.6 bodies a second - a little
-    // over half the steered bot in test/feeding.spec.ts, because a person is
-    // also dodging, aiming and reading the mission - and the curve is set so
-    // that player is around sixty percent of the range three and a half
-    // minutes in and reaches full growth as the five minutes run out.
+  it('leaves a beginner about sixty metres across when the five minutes run out', () => {
+    // The tuning anchor, in the only units worth arguing about: minutes and
+    // metres. A beginner who is trying takes in roughly 0.6 bodies a second -
+    // a little over half the steered bot in test/feeding.spec.ts, because a
+    // person is also dodging, aiming and reading the mission.
     const BEGINNER_BODIES_PER_SECOND = 0.6
-    const secondsToReach = (target: number) => {
-      let size = SIZE_START
-      let meals = 0
-      while (size < target - 1e-12 && meals < 10000) {
-        size = growSize(size, 'pedestrian')
-        meals += 1
-      }
-      return meals / BEGINNER_BODIES_PER_SECOND
+    const RUN_SECONDS = 300
+    let size = SIZE_START
+    const secondsAt: number[] = []
+    for (let meal = 0; meal < 10000; meal += 1) {
+      const before = growthStep(size)
+      size = growSize(size, 'pedestrian')
+      if (growthStep(size) > before) secondsAt.push(meal / BEGINNER_BODIES_PER_SECOND)
+      if (meal / BEGINNER_BODIES_PER_SECOND >= RUN_SECONDS) break
     }
-    const sixtyPercent = SIZE_START + (SIZE_MATURE - SIZE_START) * 0.6
-    expect(secondsToReach(sixtyPercent)).toBeGreaterThan(180)
-    expect(secondsToReach(sixtyPercent)).toBeLessThan(240)
-    // And the last rung is the end of the run rather than a thing passed on
-    // the way to it: inside the five minutes, but only just.
-    expect(secondsToReach(SIZE_MATURE)).toBeGreaterThan(270)
-    expect(secondsToReach(SIZE_MATURE)).toBeLessThan(340)
+    // Five minutes of a beginner's feeding is a saucer around 60m across -
+    // enormous next to the 2.5m it started at, and still under the 81m where
+    // the stat ladders run out.
+    expect(ufoDiameter(size)).toBeGreaterThan(50)
+    expect(ufoDiameter(size)).toBeLessThan(70)
+    expect(size).toBeLessThan(SIZE_MATURE)
+    // The steps land spread through the run rather than all in the first
+    // minute: 20m a bit past two minutes, 40m before four, 60m at the end.
+    expect(secondsAt[0]).toBeGreaterThan(100)
+    expect(secondsAt[0]).toBeLessThan(160)
+    expect(secondsAt[1]).toBeGreaterThan(190)
+    expect(secondsAt[1]).toBeLessThan(250)
+    expect(secondsAt[2]).toBeGreaterThan(270)
   })
 
   it('puts the ceiling past the end of a run, not inside it', () => {
@@ -144,7 +156,7 @@ describe('craft size as growth, not as health', () => {
     let fed = SIZE_START
     for (let meal = 0; meal < 332; meal += 1) fed = growSize(fed, 'pedestrian')
     expect(fed).toBeLessThan(SIZE_MAX * 0.8)
-    expect(ufoDiameter(fed)).toBeGreaterThan(100)
+    expect(ufoDiameter(fed)).toBeGreaterThan(90)
     // The stat ladders do not care what happens up there: they are spent by
     // SIZE_MATURE and hold their last rung for ever.
     const mature = sizeProfile(SIZE_MATURE)
