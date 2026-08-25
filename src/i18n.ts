@@ -314,7 +314,7 @@ export const STRINGS: Record<Language, Strings> = {
   ko: {
     titleKicker: 'MEOWVASION',
     titleLine1: '침략할',
-    titleLine2: '거냥',
+    titleLine2: '거냥!',
     tagline: '5분 안에 지구 정찰을 끝내고 유유히 튀세요',
     lobbyOrdersTag: '작전 명령',
     lobbyOrders: '5분 동안 지구 정찰 임무를 완수하라!',
@@ -527,7 +527,7 @@ export const STRINGS: Record<Language, Strings> = {
   ja: {
     titleKicker: 'MEOWVASION',
     titleLine1: 'しんりゃく',
-    titleLine2: 'するにゃん',
+    titleLine2: 'するにゃん！',
     tagline: '5分で地球の偵察を終えて、悠々と逃げ帰ろう',
     lobbyOrdersTag: '作戦命令',
     lobbyOrders: '5分間で偵察隊の任務を完遂せよ！',
@@ -740,7 +740,7 @@ export const STRINGS: Record<Language, Strings> = {
   en: {
     titleKicker: 'ALIEN RECON CAT-BOT',
     titleLine1: 'MEOW',
-    titleLine2: 'VASION',
+    titleLine2: 'VASION!',
     tagline: 'Finish the Earth recon inside five minutes, then slip away',
     lobbyOrdersTag: 'STANDING ORDERS',
     lobbyOrders: 'Complete the recon squad mission within 5 minutes!',
