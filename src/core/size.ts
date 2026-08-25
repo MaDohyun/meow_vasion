@@ -76,16 +76,28 @@ export const SIZE_CAMERA_LIFT_MAX = 7.5
  * These are the rates a *small* craft eats at. They are the top of the curve,
  * not the whole of it - growthFalloff below tapers them as the hull fills out.
  *
- * Trimmed by roughly a quarter from the rates the run shipped with: the saucer
- * was outgrowing the city it was eating, so the first minute handed over a
- * hull that no longer had anything to reach for. The ceiling and the falloff
- * are untouched - a full run still reaches SIZE_MAX - it simply takes about a
- * hundred and twenty meals rather than ninety-five, which is the difference
- * between growing through a run and growing past it.
+ * These rates are set from one anchor, because it is the one that can be
+ * stated in minutes rather than in meals: **a beginner trying hard should be
+ * around sixty percent of the size range three and a half minutes in, and
+ * should touch the ceiling only as the five minutes run out.** Taking a
+ * beginner's intake at roughly 0.6 bodies a second - a little over half what
+ * the steered bot in test/feeding.spec.ts manages, since a person is also
+ * dodging, aiming and reading the mission - that lands 60% at 207s and the cap
+ * at 307s.
+ *
+ * They were 0.046/0.076 when the run shipped and the same run capped out
+ * inside ninety seconds. The whole ladder came down twice for it.
+ *
+ * One thing this anchor cannot do is hold for every skill level at once. A
+ * player who feeds at the bot's rate still reaches the ceiling around three
+ * minutes; the gap between them and a beginner is skill, and no growth curve
+ * can be slow for one and fast for the other. The curve is pinned to the
+ * newer player because a ceiling reached early costs them the rest of their
+ * run, while an expert reaching it early has already had the run.
  */
 export const SIZE_GAIN = {
-  pedestrian: 0.035,
-  cat: 0.058,
+  pedestrian: 0.026,
+  cat: 0.043,
 } as const
 
 export type SizeGainKind = keyof typeof SIZE_GAIN
@@ -96,8 +108,21 @@ export type SizeGainKind = keyof typeof SIZE_GAIN
  * wall - but a craft the size of a city block should not put on another block
  * for the same handful of pedestrians that doubled it in the first ten
  * seconds.
+ *
+ * Down from 0.18, and this is the only lever that can put distance between
+ * "most of the way" and "all the way". Proportional growth measures the range
+ * in doublings, and the last forty percent of it is barely a third of a
+ * doubling - so without a taper the top of the range is something a run
+ * passes through, not something it ends on. At 0.07 the final stretch costs
+ * fifty-one pedestrians against ninety-three for the opening stretch, which is
+ * the ceiling being earned rather than arrived at.
+ *
+ * It does not go much lower than this. The number is a floor on the rate, so
+ * halving it does not double the climb - it only buys another log's worth -
+ * and somewhere below here the last stretch stops reading as a climb and
+ * starts reading as the wall the rule above forbids.
  */
-export const GROWTH_FALLOFF_MIN = 0.18
+export const GROWTH_FALLOFF_MIN = 0.07
 /**
  * Above 1 so the taper is back-loaded: the first third of the range keeps
  * essentially the full opening rate (the curve is flat where p is small) and
@@ -113,8 +138,8 @@ export const GROWTH_FALLOFF_EXPONENT = 2
  * Purely proportional growth means each meal is worth more in absolute metres
  * than the last, so the back half of the run used to rush past: ten pedestrians
  * covered the top third of the range while the opening third took seventy. This
- * flips that around - roughly seventy meals for the first third and twenty-five
- * for the last - without changing how long a whole run to the ceiling takes.
+ * flips that around - roughly ninety meals for the first third and fifty for
+ * the last - so the run ends on the part of the curve it used to skip.
  */
 export function growthFalloff(size: number) {
   const progress = sizeGrowthProgress(size)

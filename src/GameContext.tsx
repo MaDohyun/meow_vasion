@@ -1534,7 +1534,7 @@ function absorbBeamObject(game: GameRuntime, object: BeamObject) {
   // parked cars was worth more hull than the street was worth flying down. The
   // cap did not, so the largest tower still pays what it always paid - the
   // trim lands on the everyday meal, not on the once-a-run one.
-  growBy(game, Math.min(0.2, 0.009 + diameter * 0.009))
+  growBy(game, Math.min(0.2, 0.007 + diameter * 0.007))
   game.absorbedCount += 1
   bankAbsorbScore(game, reward)
   game.pickupPulse = 1

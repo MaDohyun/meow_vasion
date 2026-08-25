@@ -92,15 +92,19 @@ export function lakeCellCapacity(cellX: number, cellZ: number) {
  *
  * Scaled by what the tile actually held, so a deep tile is a bigger meal in
  * every sense rather than only a longer one. Across the capacity range that
- * puts a tile between +12% and +20%: the bottom sits above a cat (+5.8%) and
- * the top lands exactly on the largest tower `absorbBeamObject` can pay.
+ * puts a tile between +9% and +15%: the bottom sits well above a cat (+4.3%)
+ * and the top stays under the largest tower `absorbBeamObject` can pay (+20%).
  *
- * Per second of held beam it comes out a flat ~1.9% whatever the tile rolled,
- * against roughly 2.8% for eating the city at the rate test/feeding.spec.ts
+ * Per second of held beam it comes out a flat ~1.4% whatever the tile rolled,
+ * against roughly 2.1% for eating the city at the rate test/feeding.spec.ts
  * measures. The lake is deliberately about two thirds of the city's rate - a
  * safer-looking, finite option, never the better one.
+ *
+ * It came down from 0.0004 with the city's own rate rather than on its own
+ * account: this number is only ever meaningful next to SIZE_GAIN, and leaving
+ * it while the city slowed would have quietly made water the better meal.
  */
-export const LAKE_DRAIN_SIZE_GAIN_PER_LITRE = 0.0004
+export const LAKE_DRAIN_SIZE_GAIN_PER_LITRE = 0.0003
 
 /** Growth for draining this particular tile. */
 export function lakeDrainSizeGain(cellX: number, cellZ: number) {

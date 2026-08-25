@@ -68,13 +68,16 @@ describe('craft size as growth, not as health', () => {
     const firstThird = mealsToReach(SIZE_START, SIZE_START + span * 0.3)
     const lastThird = mealsToReach(SIZE_START + span * 0.7, SIZE_MAX)
     // The opening is the generous end now, but the taper has to bite hard
-    // enough that the last stretch is not a formality. The bounds moved out
-    // with the SIZE_GAIN trim: the shape of the curve is the same, it just
-    // buys the same range with about a quarter more meals.
-    expect(lastThird).toBeGreaterThan(15)
-    expect(firstThird).toBeLessThan(80)
-    // Still a reachable ceiling inside one run's worth of eating.
-    expect(mealsToReach(SIZE_START, SIZE_MAX)).toBeLessThan(140)
+    // enough that the last stretch is not a formality. Both bounds moved out
+    // when the curve was pinned to a beginner's five minutes rather than to a
+    // meal count - the shape is the same, it just buys the range with half
+    // again as many meals.
+    expect(lastThird).toBeGreaterThan(30)
+    expect(firstThird).toBeLessThan(110)
+    // Still a reachable ceiling inside one run's worth of eating - a run is
+    // about 330 bodies at the rate test/feeding.spec.ts measures, and the
+    // ceiling has to sit inside that or it is decoration.
+    expect(mealsToReach(SIZE_START, SIZE_MAX)).toBeLessThan(230)
     // Growth never stops, it only slows - and it slows monotonically.
     expect(growthFalloff(SIZE_START)).toBeCloseTo(1, 5)
     expect(growthFalloff(SIZE_MAX)).toBeCloseTo(GROWTH_FALLOFF_MIN, 5)
@@ -90,6 +93,32 @@ describe('craft size as growth, not as health', () => {
     expect(growSize(SIZE_MAX * 0.5, 'pedestrian') - SIZE_MAX * 0.5).toBeGreaterThan(
       growSize(SIZE_START, 'pedestrian') - SIZE_START,
     )
+  })
+
+  it('is paced against a beginner\'s five minutes, not against a meal count', () => {
+    // The tuning anchor, in the only units that can be argued about: minutes.
+    // A beginner who is trying takes in roughly 0.6 bodies a second - a little
+    // over half the steered bot in test/feeding.spec.ts, because a person is
+    // also dodging, aiming and reading the mission - and the curve is set so
+    // that player is around sixty percent of the range three and a half
+    // minutes in and touches the ceiling as the five minutes run out.
+    const BEGINNER_BODIES_PER_SECOND = 0.6
+    const secondsToReach = (target: number) => {
+      let size = SIZE_START
+      let meals = 0
+      while (size < target - 1e-12 && meals < 10000) {
+        size = growSize(size, 'pedestrian')
+        meals += 1
+      }
+      return meals / BEGINNER_BODIES_PER_SECOND
+    }
+    const sixtyPercent = SIZE_START + (SIZE_MAX - SIZE_START) * 0.6
+    expect(secondsToReach(sixtyPercent)).toBeGreaterThan(180)
+    expect(secondsToReach(sixtyPercent)).toBeLessThan(240)
+    // And the ceiling is the end of the run rather than a thing passed on the
+    // way to it: inside the five minutes, but only just.
+    expect(secondsToReach(SIZE_MAX)).toBeGreaterThan(270)
+    expect(secondsToReach(SIZE_MAX)).toBeLessThan(340)
   })
 
   it('opens the world up as it grows', () => {
