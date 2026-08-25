@@ -68,6 +68,30 @@ export function createBuildingRuin(building: ProceduralBuilding): BuildingRuin {
   }
 }
 
+/**
+ * What a pile of rubble weighs on the beam.
+ *
+ * Five, which is a rooftop plant kit or a bus shelter - well under the eight
+ * to eleven the block weighed before it came down. That is the point of the
+ * number: what is left after a demolition is a fraction of what stood there,
+ * so a craft nowhere near strong enough to lift a tower can still clear the
+ * mess it made of one. It opens around a fifth of the way up the run, which
+ * is roughly where the hull first grows wide enough to swallow a footprint
+ * this broad - the two gates land together rather than one teasing the other.
+ */
+export const RUIN_BEAM_MASS = 5
+
+/**
+ * A ruin's bulk for the hull gate.
+ *
+ * Width only, unlike `buildingBulk` which has to fold in height: rubble is
+ * ninety percent of the block's footprint and less than four metres tall, so
+ * its height never decides anything and folding it in would only flatter it.
+ */
+export function ruinBulk(ruin: Pick<BuildingRuin, 'size'>) {
+  return Math.max(ruin.size.x, ruin.size.z)
+}
+
 export function ruinCollider(ruin: BuildingRuin): Aabb {
   return {
     id: `ruin:${ruin.id}`,

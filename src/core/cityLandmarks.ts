@@ -109,11 +109,18 @@ export function buildingNeonSignLayout(building: ProceduralBuilding): BuildingNe
  *
  * Building tiers use the same integer weight ladder as every other object.
  * The one-step margin is the deliberately slow `w = g + 1` lift band.
+ *
+ * There are no exemptions left. The news tower used to be one - a city you
+ * can strip to nothing is a duller one, and the broadcast screens are this
+ * game's voice - but a screen that survives a craft the size of the block it
+ * is bolted to says something worse than "duller": it says the rule is about
+ * what a building *is* rather than what it weighs. Height charges the tower
+ * for it instead. A news tower is at least forty-four units tall, so it is
+ * always a ten or an eleven, which is the top of the city ladder and the last
+ * thing a run opens. The bulletins are the HUD's own band and go on either
+ * way; what a swallowed tower costs is the screen on the skyline.
  */
 export function canAbsorbBuilding(building: ProceduralBuilding, beamStrength: number) {
-  // News towers stay standing. A city you can strip to nothing is a duller
-  // one, and the broadcast screens are this game's voice.
-  if (isNewsTower(building)) return false
   return buildingMass(building) <= beamStrength + 1
 }
 
@@ -387,14 +394,21 @@ export function gasStationsAround(position: Pick<Vec3, 'x' | 'z'>, radius = 6) {
 export type DestructibleLandmarkKind = 'gas-station' | 'communications'
 
 /**
- * What the beam has to be able to shift before a forecourt comes apart.
+ * The forecourt's rung on the weight ladder - heavier than a pylon, lighter
+ * than a comms mast.
  *
- * Every other structure in the city answers the beam by weight, and a gas
- * station had no weight at all: the cone touching it was the whole test, so a
- * craft with the feeblest beam in the game blew one up by flying over it. This
- * is the station's rung on the same ladder - heavier than a pylon, lighter
- * than a comms mast - and it is a demolition rather than a lift only because a
- * station has no lifted model to carry off.
+ * It began as the price of a demolition: touching a station used to detonate
+ * it, so the cone brushing past was the whole test and the feeblest beam in
+ * the game blew one up by flying over. Weight fixed the graze but kept the
+ * blast, because a station had no lifted model to carry off.
+ *
+ * It has one now, so this is what it says it is: the weight of a filling
+ * station. A beam strong enough tears the whole forecourt up - canopy, pumps
+ * and shop together - and carries or eats it like any other prop, and blowing
+ * one up is the laser's business, exactly as with the tanker parked on it.
+ *
+ * Read through `WORLD_PROP_MASS['gas-station']` by the beam and kept here
+ * because the laser knows the same object as a landmark.
  */
 export const GAS_STATION_BEAM_MASS = 9
 

@@ -14,12 +14,13 @@ import {
   groundLandmarkForCell,
   isNewsTower,
   isConvenienceStore,
-  lakeShoreDecorAround,
   LAKE_SHORE_DECOR_CAPACITY,
 } from '../core/cityLandmarks'
 import {
-  isWorldPropDisplaced,
+  hiddenWorldPropIds,
   isWorldPropHidden,
+  isWorldPropLifted,
+  lakeShorePropsAround,
   trashBinsAround,
   utilityPolesAround,
   worldPropVisibilityKey,
@@ -1330,6 +1331,19 @@ const sharedFacade: { material: THREE.MeshToonMaterial | null; geometry: THREE.B
 /** At most a handful are ever in the air at once. */
 const LIFTED_BUILDING_CAPACITY = 8
 
+/**
+ * The one question every lifted pool asks, bound to this run's demolition set.
+ *
+ * A prop is drawn by exactly one pool at a time: the static one where the world
+ * put it, this one once the beam has moved it or the laser has struck it off.
+ * Both halves read the same rule from core/worldProps so neither can drift.
+ */
+function useLiftedProp() {
+  const { runtime } = useGame()
+  return (object: Parameters<typeof isWorldPropLifted>[0]) =>
+    isWorldPropLifted(object, runtime.current.destroyedWorldProps)
+}
+
 function LiftedBuildingPool() {
   const { runtime } = useGame()
   const ref = useRef<THREE.InstancedMesh>(null)
@@ -1957,6 +1971,7 @@ const LIFTED_WORLD_PROP_CAPACITY = WORLD_MAX_BUILDINGS * 3
 
 function LiftedRoofStructurePool({ variant }: { variant: number }) {
   const { runtime } = useGame()
+  const lifted = useLiftedProp()
   const ref = useRef<THREE.InstancedMesh>(null)
   const matrix = useMemo(() => new THREE.Matrix4(), [])
   const position = useMemo(() => new THREE.Vector3(), [])
@@ -1969,7 +1984,7 @@ function LiftedRoofStructurePool({ variant }: { variant: number }) {
     if (!mesh) return
     let count = 0
     for (const object of runtime.current.beamObjects) {
-      if (!object.active || object.kind !== 'rooftop-structure' || object.worldProp?.variant !== variant) continue
+      if (!lifted(object) || object.kind !== 'rooftop-structure' || object.worldProp?.variant !== variant) continue
       if (count >= LIFTED_WORLD_PROP_CAPACITY) break
       const swallow = object.absorbing ? Math.max(0.05, object.absorbTimer / BEAM_ABSORB_TIME) : 1
       position.set(object.position.x, object.position.y, object.position.z)
@@ -1992,6 +2007,7 @@ function LiftedRoofStructurePool({ variant }: { variant: number }) {
 
 function LiftedTreePool({ variant }: { variant: number }) {
   const { runtime } = useGame()
+  const lifted = useLiftedProp()
   const ref = useRef<THREE.InstancedMesh>(null)
   const matrix = useMemo(() => new THREE.Matrix4(), [])
   const position = useMemo(() => new THREE.Vector3(), [])
@@ -2003,7 +2019,7 @@ function LiftedTreePool({ variant }: { variant: number }) {
     if (!mesh) return
     let count = 0
     for (const object of runtime.current.beamObjects) {
-      if (!isWorldPropDisplaced(object) || object.kind !== 'tree' || object.worldProp?.variant !== variant) continue
+      if (!lifted(object) || object.kind !== 'tree' || object.worldProp?.variant !== variant) continue
       if (count >= LIFTED_WORLD_PROP_CAPACITY) break
       const swallow = object.absorbing ? Math.max(0.05, object.absorbTimer / BEAM_ABSORB_TIME) : 1
       position.set(object.position.x, object.position.y, object.position.z)
@@ -2026,6 +2042,7 @@ function LiftedTreePool({ variant }: { variant: number }) {
 
 function LiftedUtilityPolePool() {
   const { runtime } = useGame()
+  const lifted = useLiftedProp()
   const ref = useRef<THREE.InstancedMesh>(null)
   const matrix = useMemo(() => new THREE.Matrix4(), [])
   const position = useMemo(() => new THREE.Vector3(), [])
@@ -2038,7 +2055,7 @@ function LiftedUtilityPolePool() {
     if (!mesh) return
     let count = 0
     for (const object of runtime.current.beamObjects) {
-      if (!object.active || object.kind !== 'utility-pole') continue
+      if (!lifted(object) || object.kind !== 'utility-pole') continue
       if (count >= LIFTED_WORLD_PROP_CAPACITY) break
       const swallow = object.absorbing ? Math.max(0.05, object.absorbTimer / BEAM_ABSORB_TIME) : 1
       position.set(object.position.x, object.position.y, object.position.z)
@@ -2115,6 +2132,7 @@ function TrashBinPool() {
 
 function LiftedTrashBinPool() {
   const { runtime } = useGame()
+  const lifted = useLiftedProp()
   const ref = useRef<THREE.InstancedMesh>(null)
   const matrix = useMemo(() => new THREE.Matrix4(), [])
   const position = useMemo(() => new THREE.Vector3(), [])
@@ -2126,7 +2144,7 @@ function LiftedTrashBinPool() {
     if (!mesh) return
     let count = 0
     for (const object of runtime.current.beamObjects) {
-      if (!object.active || object.kind !== 'trash-bin') continue
+      if (!lifted(object) || object.kind !== 'trash-bin') continue
       if (count >= LIFTED_WORLD_PROP_CAPACITY) break
       const swallow = object.absorbing ? Math.max(0.05, object.absorbTimer / BEAM_ABSORB_TIME) : 1
       position.set(object.position.x, object.position.y, object.position.z)
@@ -2295,9 +2313,18 @@ const ruinGeometries = RUIN_TIERS.map((_, tier) => {
  * some on the dry lip and some standing in the shallows, so the outline the
  * eye follows is ragged even though the plane underneath is still square.
  *
- * Two pools, no simulation. Nothing here is a beam object - a reed clump is
- * scenery, and adding it to the beam would put a shrub in the same weight
- * ladder as a parked car for no gain.
+ * They are beam objects now, at weight 1 - the lightest rung there is, and the
+ * one the opening saucer is already strong enough for. A pond is therefore the
+ * one place a brand-new craft can practise the verb on scenery instead of on
+ * bodies, which is worth more than the tidiness of keeping a shrub out of the
+ * same ladder as a parked car.
+ *
+ * Four pools: one static and one lifted for each of the two shapes. The static
+ * pair draws a piece where `lakeShorePropsAround` put it and drops it the
+ * moment the beam moves it; the lifted pair picks it up from there. Every
+ * transform is baked in the core generator so the swap is invisible - all the
+ * render layer derives is the boulder's tilt and shade, both read off the
+ * piece's own yaw.
  */
 const shoreRockGeometry = new THREE.DodecahedronGeometry(0.5, 0)
 
@@ -2326,6 +2353,28 @@ const shoreReedGeometry = (() => {
 const shoreRockMaterial = new THREE.MeshToonMaterial({ color: '#ffffff', gradientMap: toonGradient })
 const shoreReedMaterial = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: toonGradient })
 
+/**
+ * A boulder's tilt, and the roll behind its shade and height.
+ *
+ * The one deterministic yaw each piece carries doubles as its variety roll, so
+ * the shore needs no second seed to stop reading as one boulder and one reed
+ * clump copied along the bank. Both pools that draw a piece read it the same
+ * way, which is why it lives here rather than inside either of them.
+ */
+function shoreSpread(yaw: number) {
+  return yaw / (Math.PI * 2)
+}
+
+function shoreRockTilt(euler: THREE.Euler, yaw: number) {
+  const spread = shoreSpread(yaw)
+  euler.set(spread * 0.5, yaw, spread * 0.35)
+  return euler
+}
+
+function shoreRockShade(color: THREE.Color, yaw: number) {
+  return color.set(GROUND.SHORE_ROCK).multiplyScalar(0.84 + shoreSpread(yaw) * 0.3)
+}
+
 function LakeShoreDecorPool() {
   const { runtime } = useGame()
   const rocks = useRef<THREE.InstancedMesh>(null)
@@ -2341,35 +2390,31 @@ function LakeShoreDecorPool() {
   useFrame(() => {
     if (!rocks.current || !reeds.current) return
     const world = runtime.current.world
-    const key = `${world.cellX}:${world.cellZ}`
+    // The visibility half of the key is what makes a swallowed boulder stay
+    // swallowed: without it the static pool would keep drawing a copy of every
+    // piece the beam has picked up or eaten.
+    const key = `${world.cellX}:${world.cellZ}|${worldPropVisibilityKey(runtime.current.destroyedWorldProps, runtime.current.beamObjects)}`
     if (lastKey.current === key) return
     lastKey.current = key
+    const hidden = hiddenWorldPropIds(runtime.current.destroyedWorldProps, runtime.current.beamObjects)
     let rockSlot = 0
     let reedSlot = 0
-    for (const item of lakeShoreDecorAround(runtime.current.drone.position, LANDMARK_RADIUS_CELLS)) {
-      // The one deterministic angle each piece carries doubles as its shade
-      // and height roll, so the shore needs no second seed to stop reading as
-      // one boulder and one reed clump copied along the bank.
-      const spread = item.angle / (Math.PI * 2)
-      if (item.kind === 'rock') {
+    for (const prop of lakeShorePropsAround(runtime.current.drone.position, LANDMARK_RADIUS_CELLS)) {
+      if (hidden.has(prop.id)) continue
+      position.set(prop.position.x, prop.position.y, prop.position.z)
+      scale.set(prop.scale.x, prop.scale.y, prop.scale.z)
+      if (prop.kind === 'shore-rock') {
         if (rockSlot >= LAKE_SHORE_DECOR_CAPACITY) continue
-        // Sunk to the waist so the waterline cuts across the boulder instead
-        // of leaving it perched on top of the lake.
-        position.set(item.x, item.size * 0.2, item.z)
-        euler.set(spread * 0.5, item.angle, spread * 0.35)
-        rotation.setFromEuler(euler)
-        scale.set(item.size, item.size * (0.54 + spread * 0.2), item.size * 0.88)
+        rotation.setFromEuler(shoreRockTilt(euler, prop.rotation))
         matrix.compose(position, rotation, scale)
         rocks.current.setMatrixAt(rockSlot, matrix)
-        rocks.current.setColorAt(rockSlot, color.set(GROUND.SHORE_ROCK).multiplyScalar(0.84 + spread * 0.3))
+        rocks.current.setColorAt(rockSlot, shoreRockShade(color, prop.rotation))
         rockSlot += 1
         continue
       }
       if (reedSlot >= LAKE_SHORE_DECOR_CAPACITY) continue
-      position.set(item.x, 0.02, item.z)
-      euler.set(0, item.angle, 0)
+      euler.set(0, prop.rotation, 0)
       rotation.setFromEuler(euler)
-      scale.set(item.size, item.size * (0.85 + spread * 0.6), item.size)
       matrix.compose(position, rotation, scale)
       reeds.current.setMatrixAt(reedSlot, matrix)
       reedSlot += 1
@@ -2386,6 +2431,122 @@ function LakeShoreDecorPool() {
       <instancedMesh ref={rocks} args={[shoreRockGeometry, shoreRockMaterial, LAKE_SHORE_DECOR_CAPACITY]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }} />
       <instancedMesh ref={reeds} args={[shoreReedGeometry, shoreReedMaterial, LAKE_SHORE_DECOR_CAPACITY]} frustumCulled={false} onUpdate={(mesh) => { mesh.count = 0 }} />
     </group>
+  )
+}
+
+/**
+ * The lakeside pieces the beam has hold of.
+ *
+ * The static pool above drops a piece the moment it moves, so this is the only
+ * thing drawing it from then on: up the beam, hanging under the craft, tumbling
+ * away from a blast, or shrinking into the hull as it is swallowed. The
+ * geometry and materials are the static pool's own, so nothing about the piece
+ * changes at the hand-off except who is drawing it.
+ */
+function LiftedLakeShorePool({ kind }: { kind: 'shore-rock' | 'shore-reed' }) {
+  const { runtime } = useGame()
+  const lifted = useLiftedProp()
+  const ref = useRef<THREE.InstancedMesh>(null)
+  const matrix = useMemo(() => new THREE.Matrix4(), [])
+  const position = useMemo(() => new THREE.Vector3(), [])
+  const scale = useMemo(() => new THREE.Vector3(), [])
+  const rotation = useMemo(() => new THREE.Quaternion(), [])
+  const euler = useMemo(() => new THREE.Euler(), [])
+  const color = useMemo(() => new THREE.Color(), [])
+
+  useFrame(() => {
+    const mesh = ref.current
+    if (!mesh) return
+    let count = 0
+    for (const object of runtime.current.beamObjects) {
+      if (object.kind !== kind || !lifted(object)) continue
+      if (count >= LIFTED_WORLD_PROP_CAPACITY) break
+      const swallow = object.absorbing ? Math.max(0.05, object.absorbTimer / BEAM_ABSORB_TIME) : 1
+      position.set(object.position.x, object.position.y, object.position.z)
+      euler.set(object.rotation.x, object.rotation.y, object.rotation.z)
+      rotation.setFromEuler(euler)
+      scale.set(object.scale?.x ?? 1, object.scale?.y ?? 1, object.scale?.z ?? 1).multiplyScalar(swallow)
+      matrix.compose(position, rotation, scale)
+      mesh.setMatrixAt(count, matrix)
+      // A carried boulder keeps the shade it had on the bank. The reed pool
+      // paints itself from baked vertex colours and has no instance colour to
+      // write, so only the rock answers here.
+      if (kind === 'shore-rock') mesh.setColorAt(count, shoreRockShade(color, object.worldProp?.rotation ?? 0))
+      count += 1
+    }
+    mesh.count = count
+    mesh.instanceMatrix.needsUpdate = true
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
+  })
+
+  return (
+    <instancedMesh
+      ref={ref}
+      args={[
+        kind === 'shore-rock' ? shoreRockGeometry : shoreReedGeometry,
+        kind === 'shore-rock' ? shoreRockMaterial : shoreReedMaterial,
+        LIFTED_WORLD_PROP_CAPACITY,
+      ]}
+      frustumCulled={false}
+      renderOrder={2}
+      onUpdate={(mesh) => { mesh.count = 0 }}
+    />
+  )
+}
+
+/**
+ * The rubble the beam has hold of.
+ *
+ * `grabRuins` takes a ruin out of `ruinedBuildings` the instant it is caught,
+ * so RuinPool below stops drawing it on the same frame and this is the only
+ * thing drawing it from then on. The geometry and the half-lit tint are that
+ * pool's own - a pile that changed shape or shade as it left the ground would
+ * read as one object being swapped for another.
+ *
+ * The static pool stands its geometry on y = 0 and scales it to the ruin's
+ * size, while the beam object carries the centre of that box. Hence the half
+ * height taken off here: the same pile, described from the middle instead of
+ * from the floor.
+ */
+function LiftedRuinPool({ tier }: { tier: number }) {
+  const { runtime } = useGame()
+  const ref = useRef<THREE.InstancedMesh>(null)
+  const matrix = useMemo(() => new THREE.Matrix4(), [])
+  const position = useMemo(() => new THREE.Vector3(), [])
+  const scale = useMemo(() => new THREE.Vector3(), [])
+  const rotation = useMemo(() => new THREE.Quaternion(), [])
+  const euler = useMemo(() => new THREE.Euler(), [])
+  const color = useMemo(() => new THREE.Color(), [])
+
+  useFrame(() => {
+    const mesh = ref.current
+    if (!mesh) return
+    let count = 0
+    for (const object of runtime.current.beamObjects) {
+      if (!object.active || object.kind !== 'ruin') continue
+      if (RUIN_TIERS.indexOf(object.ruin?.tier ?? 'low') !== tier) continue
+      if (count >= LIFTED_WORLD_PROP_CAPACITY) break
+      const swallow = object.absorbing ? Math.max(0.05, object.absorbTimer / BEAM_ABSORB_TIME) : 1
+      const height = object.scale?.y ?? 1
+      position.set(object.position.x, object.position.y - height / 2, object.position.z)
+      euler.set(object.rotation.x, object.rotation.y, object.rotation.z)
+      rotation.setFromEuler(euler)
+      scale.set(object.scale?.x ?? 1, height, object.scale?.z ?? 1).multiplyScalar(swallow)
+      matrix.compose(position, rotation, scale)
+      mesh.setMatrixAt(count, matrix)
+      mesh.setColorAt(count, color.set(object.color).multiplyScalar(0.52))
+      count += 1
+    }
+    mesh.count = count
+    mesh.instanceMatrix.needsUpdate = true
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
+  })
+
+  return (
+    <instancedMesh ref={ref} args={[ruinGeometries[tier], undefined, LIFTED_WORLD_PROP_CAPACITY]} frustumCulled={false} renderOrder={2} onUpdate={(mesh) => { mesh.count = 0 }}>
+      {/* No vertexColors, for the same reason RuinPool has none. */}
+      <meshToonMaterial gradientMap={toonGradient} />
+    </instancedMesh>
   )
 }
 
@@ -2452,11 +2613,14 @@ export const City = memo(function City() {
       <GroundPool />
       <WaterPool />
       <LakeShoreDecorPool />
+      <LiftedLakeShorePool kind="shore-rock" />
+      <LiftedLakeShorePool kind="shore-reed" />
       <BuildingPool />
       <SpecialBuildingPool specialty="factory" />
       <SpecialBuildingPool specialty="department-store" />
       <FactorySmokePool />
       <RuinPool />
+      {RUIN_TIERS.map((tier, index) => <LiftedRuinPool key={`lifted-ruin-${tier}`} tier={index} />)}
       <LiftedBuildingPool />
       <MassingPool form="podium" />
       <MassingPool form="setback" />
