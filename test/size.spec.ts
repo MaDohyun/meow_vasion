@@ -414,25 +414,35 @@ describe('the hull carrying the laser', () => {
   })
 
   it('spends shots the way the wave ladder expects', () => {
-    // What the change is actually for, said in shots rather than multipliers.
-    // hitEnemy subtracts damage and kills at zero, so this is ceil(hp/damage).
+    // The whole point of the size step and of the HP numbers, said in shots
+    // rather than multipliers. hitEnemy subtracts damage and kills at zero, so
+    // this is ceil(hp/damage) - and every number below is one a player counts.
     const shots = (hp: number, damage: number) => Math.ceil(hp / damage)
     const grown = LASER_POWER_GROWN
     const item = 1 + BOON_DEFINITIONS['laser-power'].step
 
-    // A starter craft: four shots for a fighter, which is the problem.
-    expect(shots(ENEMY_MAX_HP.fighter, 1)).toBe(4)
-    // Grown, but no pickup - three. Not two: 4/1.5 is 2.67 and a fighter does
-    // not die on a partial shot.
-    expect(shots(ENEMY_MAX_HP.fighter, grown)).toBe(3)
-    // Grown AND carrying the circle's laser item - two. The two-shot fighter
-    // is the pair, not the hull on its own.
+    // A starter craft: three shots for a fighter.
+    expect(shots(ENEMY_MAX_HP.fighter, 1)).toBe(3)
+    // Grown past forty metres, and it is two - without having found a single
+    // mystery circle. That is what growth is being paid for here.
+    expect(shots(ENEMY_MAX_HP.fighter, grown)).toBe(2)
+    // The item alone does the same, and the two together do not go below two:
+    // a fighter is never a one-shot, so it always has to be flown at twice.
+    expect(shots(ENEMY_MAX_HP.fighter, item)).toBe(2)
     expect(shots(ENEMY_MAX_HP.fighter, grown * item)).toBe(2)
-    // Helicopters fall to two either way; the step is what makes a fighter
-    // cost the same as a helicopter used to.
+    // Helicopters are two shots for anyone, and one only for a grown craft
+    // that also took the item - the sky's cheapest real target.
+    expect(shots(ENEMY_MAX_HP.helicopter, 1)).toBe(2)
     expect(shots(ENEMY_MAX_HP.helicopter, grown)).toBe(2)
-    // The dreadnought stays a real fight: a grown craft with the item still
-    // spends nearly thirty shots on it.
-    expect(shots(ENEMY_MAX_HP.boss, grown * item)).toBe(29)
+    expect(shots(ENEMY_MAX_HP.helicopter, grown * item)).toBe(1)
+    // Mines still pop on one, whatever the laser is.
+    expect(shots(ENEMY_MAX_HP.drone, 1)).toBe(1)
+    // The dreadnought stays a real fight rather than a formality: twenty shots
+    // even for a grown craft carrying the item, and forty-four for a starter.
+    expect(shots(ENEMY_MAX_HP.boss, 1)).toBe(44)
+    expect(shots(ENEMY_MAX_HP.boss, grown)).toBe(30)
+    expect(shots(ENEMY_MAX_HP.boss, grown * item)).toBe(20)
+    // And it stays the sky's longest fight by a wide margin.
+    expect(shots(ENEMY_MAX_HP.boss, grown)).toBeGreaterThan(shots(ENEMY_MAX_HP.fighter, grown) * 10)
   })
 })

@@ -99,16 +99,28 @@ export const ENEMY_TIER: Record<EnemyKind, number> = {
   boss: 7,
 }
 
+/**
+ * Read these as shot counts, because that is what a player experiences.
+ *
+ * They are set against the laser the run actually has by the time each one is
+ * in the sky, not against the opening one. A craft past forty metres shoots
+ * for 1.5 (see core/size), so at these numbers a fighter is two shots and a
+ * helicopter two - and the mystery circle's laser item is what takes them to
+ * two and one. The point of dropping them was that a fighter costing four
+ * hits made the one weapon that answers the sky feel like a hand drill.
+ */
 export const ENEMY_MAX_HP: Record<EnemyKind, number> = {
   drone: 1,
-  helicopter: 3,
-  fighter: 4,
-  // Fifty seconds of fighting. An unupgraded laser can just about do it; the
-  // laser pickup takes about a third of the shots off that, which is the
-  // whole point of putting a laser-only target in the game - it is the one
-  // thing in the sky that cannot be eaten, so the one stat that answers it
-  // has to be worth flying for.
-  boss: 64,
+  helicopter: 2,
+  fighter: 3,
+  /**
+   * The one target that cannot be eaten, so the only one the laser has to
+   * itself - it has to be long enough to be a fight and short enough to fit
+   * in the run's last stretch. At 0.27s a shot that is 12s of continuous fire
+   * for a starter laser, 8s once grown, 5.5s with the circle's item too, none
+   * of which counts the flying between bursts.
+   */
+  boss: 44,
 }
 
 /**

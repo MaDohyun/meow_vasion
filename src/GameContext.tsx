@@ -1289,7 +1289,7 @@ function loadedCarCount(game: GameRuntime) {
 function registerEnemyHit(game: GameRuntime, id: string, damage: number) {
   const result = hitEnemy(game.enemies, id, damage)
   if (result.hit && result.enemy && result.enemy.kind === 'boss') {
-    // Sparks where the shot landed, so a hull that takes sixty-four hits still
+    // Sparks where the shot landed, so a hull that takes dozens of hits still
     // answers each one.
     triggerLaserBurst(game.laserBursts, 'impact', result.enemy.position)
   }
@@ -1311,10 +1311,14 @@ function registerEnemyHit(game: GameRuntime, id: string, damage: number) {
   if (result.enemy && ENEMY_BLAST[result.kind]) {
     triggerFireball(game.fireballs, ENEMY_BLAST[result.kind]!, result.enemy.position, undefined, blastSeed(game))
   }
-  // The ship is worth about two and a half times what it was: it now takes
-  // sixty-four laser hits instead of twenty-five, and a reward that did not
-  // move with that would make the fight cost more than it pays.
-  const reward = result.kind === 'boss' ? 3200 : result.kind === 'fighter' ? 140 : result.kind === 'helicopter' ? 80 : 35
+  // The dreadnought pays ten thousand - a round number, and deliberately in a
+  // different class from everything else in the sky. It is the one target that
+  // takes dozens of hits, the one nothing but a nearly-grown craft can eat,
+  // and the one the whole last wave is built around; a reward that read as "a lot
+  // of fighters" made the fight an expensive way to farm a number instead of
+  // the thing the run is for. At this figure it is the single largest prize a
+  // run can bank, and killing it is what a scoreboard place is made of.
+  const reward = result.kind === 'boss' ? 10000 : result.kind === 'fighter' ? 140 : result.kind === 'helicopter' ? 80 : 35
   game.enemiesDown += 1
   bankDestroyScore(game, reward)
   setMessage(game, 'msgEnemyDown', 1.4, reward)
