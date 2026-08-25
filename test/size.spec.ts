@@ -13,10 +13,8 @@ import {
   GROWTH_FALLOFF_MIN,
   GROWTH_STEP,
   HEALTH_BONUS_HEARTS_MAX,
-  GROWN_DIAMETER,
-  LASER_POWER_GROWN,
-  GROWN_SIZE,
-  SPEED_GROWN,
+  LASER_POWER_MAX,
+  SPEED_MAX,
   LIFT_CAPACITY_MIN,
   CROWD_VALUE,
   GROWTH_PER_POINT,
@@ -418,69 +416,108 @@ describe('craft size as growth, not as health', () => {
 })
 
 describe('the hull carrying the laser', () => {
-  it('gives the throttle the same step, worth one speed pickup', () => {
-    expect(speedPowerForSize(SIZE_START)).toBe(1)
-    expect(speedPowerForSize(GROWN_SIZE - 0.01)).toBe(1)
-    expect(speedPowerForSize(GROWN_SIZE)).toBe(SPEED_GROWN)
-    expect(sizeProfile(GROWN_SIZE).speedPower).toBe(SPEED_GROWN)
-    // The same line as the laser, not a second one that happens to match.
-    expect(laserPowerForSize(GROWN_SIZE)).toBe(LASER_POWER_GROWN)
-    // Worth exactly what finding a speed part is worth, so "the craft grew"
-    // and "you found one" read as the same size of gain on the throttle.
-    expect(SPEED_GROWN - 1).toBeCloseTo(BOON_DEFINITIONS.speed.step)
+  it('ramps both with growth instead of stepping, and tops out at maturity', () => {
+    // A step meant the metre between 39 and 41 across was worth more than the
+    // twenty after it. Both ramp off the same progress every other growth stat
+    // uses, so every meal moves them.
+    expect(laserPowerForSize(SIZE_START)).toBeCloseTo(1, 1)
+    expect(speedPowerForSize(SIZE_START)).toBeCloseTo(1, 1)
+    expect(speedPowerForSize(SIZE_MATURE)).toBeCloseTo(SPEED_MAX)
+    expect(laserPowerForSize(SIZE_MAX)).toBeCloseTo(LASER_POWER_MAX)
+    // Monotonic the whole way up, with no cliff anywhere in it.
+    let previousLaser = 0
+    let previousSpeed = 0
+    let biggestJump = 0
+    for (let size = SIZE_START; size <= SIZE_MAX; size += 0.05) {
+      const laser = laserPowerForSize(size)
+      const speed = speedPowerForSize(size)
+      expect(laser).toBeGreaterThanOrEqual(previousLaser)
+      expect(speed).toBeGreaterThanOrEqual(previousSpeed)
+      if (previousLaser > 0) biggestJump = Math.max(biggestJump, laser - previousLaser)
+      previousLaser = laser
+      previousSpeed = speed
+    }
+    expect(biggestJump).toBeLessThan(0.02)
+    // The two stop in different places on purpose. Speed saturates at
+    // maturity with everything else; the laser keeps climbing to the ceiling,
+    // which is what leaves the one-shot fighter out past where most runs end.
+    expect(speedPowerForSize(SIZE_MAX)).toBeCloseTo(SPEED_MAX)
+    expect(laserPowerForSize(SIZE_MATURE)).toBeLessThan(LASER_POWER_MAX - 0.5)
+    expect(laserPowerForSize(SIZE_MAX)).toBeGreaterThan(laserPowerForSize(SIZE_MATURE))
+    expect(sizeProfile(SIZE_MAX).laserPower).toBeCloseTo(LASER_POWER_MAX)
+    expect(sizeProfile(SIZE_MATURE).speedPower).toBeCloseTo(SPEED_MAX)
   })
 
-  it('is a width, and switches on at forty metres across', () => {
-    // The threshold is stated as the saucer's width because that is what it
-    // describes, so the guard is a width too - a size number that happened to
-    // match today would say nothing if the base diameter moved.
-    expect(ufoDiameter(GROWN_SIZE)).toBeCloseTo(GROWN_DIAMETER)
-    expect(laserPowerForSize(SIZE_START)).toBe(1)
-    expect(ufoDiameter(SIZE_START)).toBeLessThan(GROWN_DIAMETER)
-    expect(laserPowerForSize(GROWN_SIZE - 0.01)).toBe(1)
-    expect(laserPowerForSize(GROWN_SIZE)).toBe(LASER_POWER_GROWN)
-    expect(laserPowerForSize(SIZE_MAX)).toBe(LASER_POWER_GROWN)
-    expect(sizeProfile(GROWN_SIZE).laserPower).toBe(LASER_POWER_GROWN)
-    // Inside the run rather than at either end: before it a player is plinking
-    // at fighters with a starter gun, and at the top of the ladder it would
-    // arrive too late to have been worth growing for. Measured against
-    // SIZE_MATURE like every other rung - SIZE_MAX is the 150m ceiling out
-    // past the end of a run, and nothing is paced against that.
-    const progress = (GROWN_SIZE - SIZE_START) / (SIZE_MATURE - SIZE_START)
-    expect(progress).toBeGreaterThan(0.3)
-    expect(progress).toBeLessThan(0.65)
+  it('pays the one-shot kills off late, not early', () => {
+    // The point of the ceiling: a run that actually grows gets to delete the
+    // things that were shooting at it. Both land inside the growth range, and
+    // the fighter lands near the top of it so it stays a reward.
+    const diameterWhere = (test: (size: number) => boolean) => {
+      for (let size = SIZE_START; size <= SIZE_MAX; size += 0.01) {
+        if (test(size)) return ufoDiameter(size)
+      }
+      return null
+    }
+    const oneShot = (hp: number) => diameterWhere((size) => laserPowerForSize(size) >= hp)
+    const helicopter = oneShot(ENEMY_MAX_HP.helicopter)
+    const fighter = oneShot(ENEMY_MAX_HP.fighter)
+    expect(helicopter).not.toBeNull()
+    expect(fighter).not.toBeNull()
+    // Helicopters land mid-run, a little past maturity's halfway point.
+    expect(helicopter!).toBeGreaterThan(45)
+    expect(helicopter!).toBeLessThan(60)
+    // Fighters only past 100m across - beyond maturity (81m), so it is the
+    // last thing a great run earns rather than a thing maturity hands over.
+    expect(fighter!).toBeGreaterThan(100)
+    expect(fighter!).toBeGreaterThan(ufoDiameter(SIZE_MATURE))
+    expect(fighter!).toBeLessThan(ufoDiameter(SIZE_MAX))
+    expect(fighter!).toBeGreaterThan(helicopter!)
   })
 
-  it('spends shots the way the wave ladder expects', () => {
-    // The whole point of the size step and of the HP numbers, said in shots
-    // rather than multipliers. hitEnemy subtracts damage and kills at zero, so
-    // this is ceil(hp/damage) - and every number below is one a player counts.
-    const shots = (hp: number, damage: number) => Math.ceil(hp / damage)
-    const grown = LASER_POWER_GROWN
-    const item = 1 + BOON_DEFINITIONS['laser-power'].step
+  it('spends shots the way the wave ladder expects, at every size', () => {
+    // The point of the HP numbers and of the ramp, said in shots rather than
+    // multipliers. hitEnemy subtracts damage and kills at zero, so this is
+    // ceil(hp/damage) - every number below is one a player counts.
+    const shots = (hp: number, size: number, withItem = false) => {
+      const item = withItem ? 1 + BOON_DEFINITIONS['laser-power'].step : 1
+      return Math.ceil(hp / (laserPowerForSize(size) * item))
+    }
+    const at = (diameter: number) => diameter / UFO_BASE_DIAMETER
 
-    // A starter craft: three shots for a fighter.
-    expect(shots(ENEMY_MAX_HP.fighter, 1)).toBe(3)
-    // Grown past forty metres, and it is two - without having found a single
-    // mystery circle. That is what growth is being paid for here.
-    expect(shots(ENEMY_MAX_HP.fighter, grown)).toBe(2)
-    // The item alone does the same, and the two together do not go below two:
-    // a fighter is never a one-shot, so it always has to be flown at twice.
-    expect(shots(ENEMY_MAX_HP.fighter, item)).toBe(2)
-    expect(shots(ENEMY_MAX_HP.fighter, grown * item)).toBe(2)
-    // Helicopters are two shots for anyone, and one only for a grown craft
-    // that also took the item - the sky's cheapest real target.
-    expect(shots(ENEMY_MAX_HP.helicopter, 1)).toBe(2)
-    expect(shots(ENEMY_MAX_HP.helicopter, grown)).toBe(2)
-    expect(shots(ENEMY_MAX_HP.helicopter, grown * item)).toBe(1)
-    // Mines still pop on one, whatever the laser is.
-    expect(shots(ENEMY_MAX_HP.drone, 1)).toBe(1)
-    // The dreadnought stays a real fight rather than a formality: twenty shots
-    // even for a grown craft carrying the item, and forty-four for a starter.
-    expect(shots(ENEMY_MAX_HP.boss, 1)).toBe(44)
-    expect(shots(ENEMY_MAX_HP.boss, grown)).toBe(30)
-    expect(shots(ENEMY_MAX_HP.boss, grown * item)).toBe(20)
-    // And it stays the sky's longest fight by a wide margin.
-    expect(shots(ENEMY_MAX_HP.boss, grown)).toBeGreaterThan(shots(ENEMY_MAX_HP.fighter, grown) * 10)
+    // The opening saucer, which is where the run has to be survivable.
+    expect(shots(ENEMY_MAX_HP.fighter, SIZE_START)).toBe(3)
+    expect(shots(ENEMY_MAX_HP.helicopter, SIZE_START)).toBe(2)
+    expect(shots(ENEMY_MAX_HP.drone, SIZE_START)).toBe(1)
+
+    // Mid-run, around where the fighters and the dreadnought arrive.
+    expect(shots(ENEMY_MAX_HP.fighter, at(40))).toBe(2)
+    expect(shots(ENEMY_MAX_HP.helicopter, at(40))).toBe(2)
+
+    // Maturity (81m): helicopters delete, fighters still cost two.
+    expect(shots(ENEMY_MAX_HP.helicopter, SIZE_MATURE)).toBe(1)
+    expect(shots(ENEMY_MAX_HP.fighter, SIZE_MATURE)).toBe(2)
+
+    // Past 100m across, and the fighter goes too - the run's last reward.
+    expect(shots(ENEMY_MAX_HP.fighter, at(101))).toBe(1)
+    expect(shots(ENEMY_MAX_HP.fighter, SIZE_MAX)).toBe(1)
+
+    // The item brings each one forward rather than adding a tier of its own -
+    // nothing goes below one shot, so a fighter is never cheaper than a mine.
+    expect(shots(ENEMY_MAX_HP.fighter, SIZE_MATURE, true)).toBe(1)
+    expect(shots(ENEMY_MAX_HP.helicopter, at(40), true)).toBe(1)
+
+    // The dreadnought stays a real fight at every size - that is what its 64
+    // is for against a laser that ramps to 4.0. Sixty-four shots for a
+    // starter, thirty-seven around forty metres, twenty-five at maturity, and
+    // still sixteen at the ceiling.
+    expect(shots(ENEMY_MAX_HP.boss, SIZE_START)).toBe(64)
+    expect(shots(ENEMY_MAX_HP.boss, at(40))).toBe(37)
+    expect(shots(ENEMY_MAX_HP.boss, SIZE_MATURE)).toBe(25)
+    expect(shots(ENEMY_MAX_HP.boss, SIZE_MAX)).toBe(16)
+    // Even the biggest craft carrying the item spends double figures on it.
+    expect(shots(ENEMY_MAX_HP.boss, SIZE_MAX, true)).toBeGreaterThanOrEqual(10)
+    expect(shots(ENEMY_MAX_HP.boss, SIZE_MAX)).toBeGreaterThan(
+      shots(ENEMY_MAX_HP.fighter, SIZE_MAX) * 10,
+    )
   })
 })

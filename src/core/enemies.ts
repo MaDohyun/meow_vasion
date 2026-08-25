@@ -114,13 +114,17 @@ export const ENEMY_MAX_HP: Record<EnemyKind, number> = {
   helicopter: 2,
   fighter: 3,
   /**
-   * The one target that cannot be eaten, so the only one the laser has to
-   * itself - it has to be long enough to be a fight and short enough to fit
-   * in the run's last stretch. At 0.27s a shot that is 12s of continuous fire
-   * for a starter laser, 8s once grown, 5.5s with the circle's item too, none
-   * of which counts the flying between bursts.
+   * Back to 64 now that the laser ramps with the craft rather than stepping
+   * once. It was cut to 44 against a laser that stopped at 1.5x; against one
+   * that reaches 4.0 the same 44 would have made the run's climax shorter the
+   * better the run had gone, which is backwards - the dreadnought is the thing
+   * a big craft is FOR.
+   *
+   * At 0.27s a shot: 64 shots for a starter laser, 37 around forty metres
+   * across, 25 at maturity, 16 at the ceiling. Even the last of those is 4.3s
+   * of continuous fire, and none of it counts the flying between bursts.
    */
-  boss: 44,
+  boss: 64,
 }
 
 /**
