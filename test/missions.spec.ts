@@ -1,213 +1,190 @@
 import { describe, expect, it } from 'vitest'
 import {
-  MISSION_ONE_POOL,
-  MISSION_THREE_QUESTS,
-  MISSION_TWO_POOL,
+  MISSION_COUNT,
+  MISSION_DEBRIEF_IDS,
+  MISSION_ORDER,
+  MISSION_RUN_SECONDS,
+  MISSION_TARGETS,
+  closeRecon,
   createMissionState,
-  isInsideAirCheckpoint,
+  isReconComplete,
+  missionHasQuest,
+  peekMissionDebrief,
   recordMissionEvent,
   startMissionOne,
   syncMissionState,
-  type MissionQuest,
-  type MissionQuestId,
+  takeMissionDebrief,
+  type MissionState,
 } from '../src/core/missions'
 
-function completeEvent(id: MissionQuestId, target: number) {
-  if (id === 'capture-cats') return { type: 'capture-cat', amount: target } as const
-  if (id === 'capture-people') return { type: 'capture-person', amount: target } as const
-  if (id === 'destroy-cars') return { type: 'destroy-car', amount: target } as const
-  if (id === 'destroy-trucks') return { type: 'destroy-truck', amount: target } as const
-  if (id === 'destroy-tankers') return { type: 'destroy-tanker', amount: target } as const
-  if (id === 'absorb-water') return { type: 'absorb-water', litres: target } as const
-  if (id === 'ruin-buildings') return { type: 'ruin-building', amount: target } as const
-  if (id === 'destroy-comms') return { type: 'destroy-comms', amount: target } as const
-  if (id === 'destroy-drones') return { type: 'destroy-enemy', kind: 'drone', amount: target } as const
-  if (id === 'destroy-fighters') return { type: 'destroy-enemy', kind: 'fighter', amount: target } as const
-  if (id === 'absorb-rooftop-structures') return { type: 'absorb-rooftop-structure', amount: target } as const
-  if (id === 'absorb-trees') return { type: 'absorb-tree', amount: target } as const
-  if (id === 'absorb-streetlights') return { type: 'absorb-streetlight', amount: target } as const
-  if (id === 'air-checkpoints') return { type: 'pass-checkpoint', amount: target } as const
-  throw new Error(`No stage-one/two event for ${id}`)
-}
-
-function completeQuest(state: ReturnType<typeof createMissionState>, quest: MissionQuest, elapsed: number) {
-  if (quest.id === 'pass-mystery-circles') {
-    for (let index = 0; index < quest.target; index += 1) {
-      recordMissionEvent(state, { type: 'pass-mystery-circle', id: `test-circle:${state.stage}:${index}` }, elapsed)
-    }
+/** Fills the active gauge to the brim in one event. */
+function clear(state: MissionState, elapsed: number) {
+  const quest = state.quest!
+  if (quest.id === 'visit-mystery-circle') {
+    recordMissionEvent(state, { type: 'pass-mystery-circle', id: `circle:${elapsed}` }, elapsed)
     return
   }
-  recordMissionEvent(state, completeEvent(quest.id, quest.target), elapsed)
+  if (quest.id === 'absorb-water') {
+    recordMissionEvent(state, { type: 'absorb-water', litres: quest.target }, elapsed)
+    return
+  }
+  if (quest.id === 'absorb-samples') {
+    recordMissionEvent(state, { type: 'absorb-score', score: quest.target }, elapsed)
+    return
+  }
+  if (quest.id === 'wreck-city') {
+    recordMissionEvent(state, { type: 'destroy-score', score: quest.target }, elapsed)
+    return
+  }
+  closeRecon(state, MISSION_RUN_SECONDS)
 }
 
-describe('three-stage reconnaissance missions', () => {
-  it('counts an air checkpoint as soon as the craft passes through its ring', () => {
-    const checkpoint = { x: 10, y: 20, z: 30 }
-    expect(isInsideAirCheckpoint({ x: 10, y: 20, z: 34.99 }, checkpoint)).toBe(true)
-    expect(isInsideAirCheckpoint({ x: 10, y: 20, z: 35.01 }, checkpoint)).toBe(false)
-  })
+/** A run that has reached the given rung with nothing banked past it. */
+function atStage(stage: number, elapsed = 10) {
+  const state = createMissionState()
+  startMissionOne(state, 0)
+  while (state.stage < stage) {
+    clear(state, elapsed)
+    takeMissionDebrief(state)
+  }
+  return state
+}
 
-  it('completes the mission-two checkpoint objective after three fly-throughs', () => {
-    let selectedState: ReturnType<typeof createMissionState> | null = null
-    for (let seed = 1; seed <= 100 && !selectedState; seed += 1) {
-      const state = createMissionState(seed)
-      startMissionOne(state, 0)
-      for (const quest of [...state.quests]) completeQuest(state, quest, 20)
-      if (state.quests.some((quest) => quest.id === 'air-checkpoints')) selectedState = state
-    }
-
-    const quest = selectedState!.quests.find((candidate) => candidate.id === 'air-checkpoints')!
-    expect(quest.target).toBe(3)
-    for (let pass = 1; pass <= 3; pass += 1) {
-      recordMissionEvent(selectedState!, { type: 'pass-checkpoint' }, 20 + pass)
-      expect(quest.progress).toBe(pass)
-    }
-    expect(quest.complete).toBe(true)
-  })
-
-  it('waits for the tutorial cat before assigning three distinct quests', () => {
-    const state = createMissionState(17)
+describe('the five-mission ladder', () => {
+  it('waits for the tutorial cat before opening the first rung', () => {
+    const state = createMissionState()
     expect(state.stage).toBe(0)
-    expect(state.quests).toEqual([])
+    expect(state.quest).toBeNull()
+    // Nothing banks during the tutorial: there is no board to bank into.
+    expect(recordMissionEvent(state, { type: 'absorb-score', score: 999 }, 0)).toBe(false)
     startMissionOne(state, 0)
     expect(state.stage).toBe(1)
-    expect(state.quests).toHaveLength(3)
-    expect(new Set(state.quests.map((quest) => quest.id)).size).toBe(3)
-    for (const quest of state.quests) expect(MISSION_ONE_POOL).toContain(quest.id)
-    expect(state.quests.filter((quest) => quest.id === 'pass-mystery-circles')).toHaveLength(1)
+    expect(state.quest?.id).toBe('visit-mystery-circle')
+    expect(state.quest?.progress).toBe(0)
   })
 
-  it('runs all three quests in parallel and gates the next mission on all three', () => {
-    const state = createMissionState(23)
+  it('runs the same five rungs in the same order every time', () => {
+    expect(MISSION_ORDER).toHaveLength(MISSION_COUNT)
+    const state = createMissionState()
     startMissionOne(state, 0)
-    const [first, second, third] = [...state.quests]
-    completeQuest(state, second!, 20)
-    expect(state.stage).toBe(1)
-    expect(second!.complete).toBe(true)
-    completeQuest(state, first!, 30)
-    expect(state.stage).toBe(1)
-    completeQuest(state, third!, 40)
+    const seen = [state.quest!.id]
+    for (let step = 1; step < MISSION_COUNT; step += 1) {
+      clear(state, 10 * step)
+      takeMissionDebrief(state)
+      seen.push(state.quest!.id)
+    }
+    expect(seen).toEqual([...MISSION_ORDER])
+  })
+
+  it('shows one objective at a time and never a stale one', () => {
+    const state = atStage(3)
+    expect(state.quest?.id).toBe('absorb-samples')
+    expect(missionHasQuest(state, 'absorb-samples')).toBe(true)
+    expect(missionHasQuest(state, 'visit-mystery-circle')).toBe(false)
+    expect(missionHasQuest(state, 'wreck-city')).toBe(false)
+  })
+
+  it('counts one circle per id, however many laps are flown of it', () => {
+    const state = createMissionState()
+    startMissionOne(state, 0)
+    expect(MISSION_TARGETS['visit-mystery-circle']).toBe(1)
+    expect(recordMissionEvent(state, { type: 'pass-mystery-circle', id: 'circle:a' }, 4)).toBe(true)
     expect(state.stage).toBe(2)
-    expect(state.quests).toHaveLength(3)
-    expect(new Set(state.quests.map((quest) => quest.id)).size).toBe(3)
-    for (const quest of state.quests) expect(MISSION_TWO_POOL).toContain(quest.id)
-    expect(state.quests.some((quest) => quest.id === 'pass-mystery-circles')).toBe(false)
-    expect(MISSION_TWO_POOL).not.toContain('destroy-gas-station')
+    // A second lap of the same circle is not a second circle.
+    expect(recordMissionEvent(state, { type: 'pass-mystery-circle', id: 'circle:a' }, 6)).toBe(false)
   })
 
-  it('uses the fixed final trio and wins only when the clock and other goals are done', () => {
-    const state = createMissionState(31)
+  it('keeps the sample and wrecking gauges on separate verbs', () => {
+    const samples = atStage(3)
+    recordMissionEvent(samples, { type: 'destroy-score', score: 5000 }, 30)
+    // Blowing the city up does not collect a single sample.
+    expect(samples.quest!.progress).toBe(0)
+    recordMissionEvent(samples, { type: 'absorb-score', score: 120 }, 31)
+    expect(samples.quest!.progress).toBe(120)
+
+    const wrecking = atStage(4)
+    recordMissionEvent(wrecking, { type: 'absorb-score', score: 5000 }, 40)
+    expect(wrecking.quest!.progress).toBe(0)
+    recordMissionEvent(wrecking, { type: 'destroy-score', score: 90 }, 41)
+    expect(wrecking.quest!.progress).toBe(90)
+  })
+
+  it('credits what the pilot already did rather than restarting the meter', () => {
+    const state = createMissionState()
     startMissionOne(state, 0)
-    for (const quest of [...state.quests]) completeQuest(state, quest, 60)
-    for (const quest of [...state.quests]) completeQuest(state, quest, 150)
+    // Eating the city through missions one and two still counts toward three.
+    recordMissionEvent(state, { type: 'absorb-score', score: 1500 }, 5)
+    clear(state, 6)
+    takeMissionDebrief(state)
+    clear(state, 7)
+    takeMissionDebrief(state)
     expect(state.stage).toBe(3)
-    expect(state.quests.map((quest) => quest.id)).toEqual(MISSION_THREE_QUESTS)
-    recordMissionEvent(state, { type: 'destroy-enemy', kind: 'boss' }, 220)
-    expect(syncMissionState(state, 299, 99999)).toBe(false)
-    expect(state.stage).toBe(3)
-    expect(syncMissionState(state, 300, 99999)).toBe(true)
+    expect(state.quest!.progress).toBe(1500)
+  })
+
+  it('opens and closes a rung on the same frame when the totals are already past it', () => {
+    const state = createMissionState()
+    startMissionOne(state, 0)
+    recordMissionEvent(state, { type: 'absorb-score', score: MISSION_TARGETS['absorb-samples'] }, 5)
+    recordMissionEvent(state, { type: 'destroy-score', score: MISSION_TARGETS['wreck-city'] }, 5)
+    recordMissionEvent(state, { type: 'absorb-water', litres: MISSION_TARGETS['absorb-water'] }, 5)
+    // One circle now clears missions one through four in a single step.
+    recordMissionEvent(state, { type: 'pass-mystery-circle', id: 'circle:a' }, 5)
+    expect(state.stage).toBe(MISSION_COUNT)
+    expect(state.quest?.id).toBe('final-sweep')
+    // And no debrief is lost on the way through.
+    expect(state.debriefs).toEqual([...MISSION_DEBRIEF_IDS])
+  })
+
+  it('does not close the recon a hair early when the two clocks disagree', () => {
+    // sessionTime is counted up while remainingTime is counted down, so the
+    // frame the run ends on can land a float epsilon short of the full window.
+    const state = atStage(MISSION_COUNT, 60)
+    expect(closeRecon(state, MISSION_RUN_SECONDS - 1e-9)).toBe(true)
+  })
+
+  it('sizes the last rung to whatever is left on the clock', () => {
+    const state = atStage(MISSION_COUNT, 60)
+    expect(state.quest!.id).toBe('final-sweep')
+    expect(state.quest!.target).toBe(MISSION_RUN_SECONDS - 60)
+    expect(syncMissionState(state, 200)).toBe(false)
+    expect(state.quest!.progress).toBe(140)
+    // The gauge reads full a frame before the runtime says the clock is out,
+    // and reading full is not the same as being finished.
+    expect(syncMissionState(state, MISSION_RUN_SECONDS)).toBe(false)
+    expect(closeRecon(state, MISSION_RUN_SECONDS)).toBe(true)
+    expect(isReconComplete(state)).toBe(true)
+    expect(state.stage).toBe(MISSION_COUNT + 1)
+  })
+
+  it('fails the recon when the clock runs out on any earlier rung', () => {
+    const state = atStage(4)
+    expect(closeRecon(state, MISSION_RUN_SECONDS)).toBe(false)
+    expect(isReconComplete(state)).toBe(false)
     expect(state.stage).toBe(4)
   })
 
-  it('counts only different circles in mission one and removes the objective from mission two', () => {
-    const state = createMissionState(41)
+  it('queues a debrief for the first four rungs and none for the last', () => {
+    expect(MISSION_DEBRIEF_IDS).toEqual(MISSION_ORDER.slice(0, MISSION_COUNT - 1))
+    const state = createMissionState()
     startMissionOne(state, 0)
-    const first = state.quests.find((quest) => quest.id === 'pass-mystery-circles')!
-    expect(first.target).toBe(3)
-    recordMissionEvent(state, { type: 'pass-mystery-circle', id: 'circle:a' }, 3)
-    recordMissionEvent(state, { type: 'pass-mystery-circle', id: 'circle:a' }, 6)
-    expect(first.progress).toBe(1)
-    recordMissionEvent(state, { type: 'pass-mystery-circle', id: 'circle:b' }, 9)
-    recordMissionEvent(state, { type: 'pass-mystery-circle', id: 'circle:c' }, 12)
-    expect(first.progress).toBe(3)
+    clear(state, 10)
+    expect(peekMissionDebrief(state)).toBe('visit-mystery-circle')
+    expect(takeMissionDebrief(state)).toBe('visit-mystery-circle')
+    expect(peekMissionDebrief(state)).toBeNull()
 
-    // Complete the other two stage-one quests to open mission two.
-    for (const quest of [...state.quests]) if (!quest.complete) completeQuest(state, quest, 20)
-    expect(state.stage).toBe(2)
-    expect(state.quests.some((quest) => quest.id === 'pass-mystery-circles')).toBe(false)
+    const last = atStage(MISSION_COUNT, 60)
+    closeRecon(last, MISSION_RUN_SECONDS)
+    // Finishing the run is the results screen's to report, not the general's
+    // to freeze the game over.
+    expect(peekMissionDebrief(last)).toBeNull()
   })
 
-  it('randomizes the quest order in missions one and two', () => {
-    const firstStageSlots = new Set<MissionQuestId>()
-    const secondStageSlots = new Set<MissionQuestId>()
-
-    for (let seed = 1; seed <= 12; seed += 1) {
-      const state = createMissionState(seed)
-      startMissionOne(state, 0)
-      expect(state.quests.some((quest) => quest.id === 'pass-mystery-circles')).toBe(true)
-      firstStageSlots.add(state.quests[0]!.id)
-
-      for (const quest of [...state.quests]) completeQuest(state, quest, 20)
-      expect(state.stage).toBe(2)
-      expect(state.quests.some((quest) => quest.id === 'pass-mystery-circles')).toBe(false)
-      secondStageSlots.add(state.quests[0]!.id)
-    }
-
-    expect(firstStageSlots.size).toBeGreaterThan(1)
-    expect(secondStageSlots.size).toBeGreaterThan(1)
-  })
-
-  it('asks for ten human samples and offers the tanker hunt in mission one', () => {
-    expect(MISSION_ONE_POOL).toContain('destroy-tankers')
-    let peopleState: ReturnType<typeof createMissionState> | null = null
-    let tankerState: ReturnType<typeof createMissionState> | null = null
-    for (let seed = 1; seed <= 200 && (!peopleState || !tankerState); seed += 1) {
-      const state = createMissionState(seed)
-      startMissionOne(state, 0)
-      if (!peopleState && state.quests.some((quest) => quest.id === 'capture-people')) peopleState = state
-      if (!tankerState && state.quests.some((quest) => quest.id === 'destroy-tankers')) tankerState = state
-    }
-    expect(peopleState!.quests.find((quest) => quest.id === 'capture-people')!.target).toBe(10)
-    const tankers = tankerState!.quests.find((quest) => quest.id === 'destroy-tankers')!
-    expect(tankers.target).toBe(3)
-    recordMissionEvent(tankerState!, { type: 'destroy-tanker' }, 30)
-    expect(tankers.progress).toBe(1)
-    recordMissionEvent(tankerState!, { type: 'destroy-tanker', amount: 2 }, 40)
-    expect(tankers.complete).toBe(true)
-  })
-
-  it('offers tree and streetlight absorption in mission two instead of the gas station', () => {
-    expect(MISSION_TWO_POOL).toContain('absorb-trees')
-    expect(MISSION_TWO_POOL).toContain('absorb-streetlights')
-    let selectedState: ReturnType<typeof createMissionState> | null = null
-    for (let seed = 1; seed <= 200 && !selectedState; seed += 1) {
-      const state = createMissionState(seed)
-      startMissionOne(state, 0)
-      for (const quest of [...state.quests]) completeQuest(state, quest, 20)
-      if (
-        state.quests.some((quest) => quest.id === 'absorb-trees')
-        && state.quests.some((quest) => quest.id === 'absorb-streetlights')
-      ) selectedState = state
-    }
-    expect(selectedState).not.toBeNull()
-    const trees = selectedState!.quests.find((quest) => quest.id === 'absorb-trees')!
-    const lights = selectedState!.quests.find((quest) => quest.id === 'absorb-streetlights')!
-    expect(trees.target).toBe(5)
-    expect(lights.target).toBe(4)
-    recordMissionEvent(selectedState!, { type: 'absorb-tree', amount: 5 }, 30)
-    expect(trees.complete).toBe(true)
-    recordMissionEvent(selectedState!, { type: 'absorb-streetlight', amount: 4 }, 31)
-    expect(lights.complete).toBe(true)
-  })
-
-  it('offers and tracks absorption of five rooftop structures in mission two', () => {
-    let selectedState: ReturnType<typeof createMissionState> | null = null
-    for (let seed = 1; seed <= 100 && !selectedState; seed += 1) {
-      const state = createMissionState(seed)
-      startMissionOne(state, 0)
-      for (const quest of [...state.quests]) completeQuest(state, quest, 20)
-      if (state.quests.some((quest) => quest.id === 'absorb-rooftop-structures')) selectedState = state
-    }
-
-    expect(MISSION_TWO_POOL).toContain('absorb-rooftop-structures')
-    expect(selectedState).not.toBeNull()
-    const quest = selectedState!.quests.find((candidate) => candidate.id === 'absorb-rooftop-structures')!
-    expect(quest.target).toBe(5)
-    recordMissionEvent(selectedState!, { type: 'absorb-rooftop-structure', amount: 4 }, 30)
-    expect(quest.progress).toBe(4)
-    expect(quest.complete).toBe(false)
-    recordMissionEvent(selectedState!, { type: 'absorb-rooftop-structure' }, 31)
-    expect(quest.progress).toBe(5)
-    expect(quest.complete).toBe(true)
+  it('banks nothing once the recon has closed', () => {
+    const state = atStage(MISSION_COUNT, 60)
+    closeRecon(state, MISSION_RUN_SECONDS)
+    const banked = state.totals.absorbScore
+    expect(recordMissionEvent(state, { type: 'absorb-score', score: 500 }, 305)).toBe(false)
+    expect(state.totals.absorbScore).toBe(banked)
   })
 })

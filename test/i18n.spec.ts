@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_LANGUAGE, LANGUAGES, LANGUAGE_LABELS, STRINGS } from '../src/i18n'
+import { MISSION_DEBRIEF_IDS, MISSION_ORDER } from '../src/core/missions'
 
 describe('interface languages', () => {
   it('defaults to Korean', () => {
@@ -54,9 +55,30 @@ describe('interface languages', () => {
 
   it('translates mission objectives and tutorial briefing copy', () => {
     expect(STRINGS.ja.mission).not.toBe(STRINGS.en.mission)
-    expect(STRINGS.ja.missionCopy['pass-mystery-circles']).not.toBe(STRINGS.en.missionCopy['pass-mystery-circles'])
+    expect(STRINGS.ja.missionCopy['visit-mystery-circle']).not.toBe(STRINGS.en.missionCopy['visit-mystery-circle'])
     expect(STRINGS.ja.tutorialMissionLead).not.toBe(STRINGS.ko.tutorialMissionLead)
     expect(STRINGS.en.tutorialBriefing[0]?.lines[0]).not.toBe(STRINGS.ko.tutorialBriefing[0]?.lines[0])
     expect(STRINGS.en.missionStageComplete(1, 2)).not.toBe(STRINGS.ko.missionStageComplete(1, 2))
+  })
+
+  it('gives every debriefed mission the general\'s words, in every language', () => {
+    // A debrief freezes the game, so a missing one would freeze it over an
+    // empty box with nothing to click but the same empty box.
+    for (const language of LANGUAGES) {
+      for (const id of MISSION_DEBRIEF_IDS) {
+        const lines = STRINGS[language].missionDebrief[id]
+        expect(lines.length, `${language}.${id}`).toBeGreaterThan(0)
+        for (const line of lines) expect(line.trim(), `${language}.${id}`).toBeTruthy()
+      }
+    }
+    expect(STRINGS.ko.missionDebrief['absorb-water'][0]).not.toBe(STRINGS.en.missionDebrief['absorb-water'][0])
+  })
+
+  it('names every objective on the ladder, in every language', () => {
+    for (const language of LANGUAGES) {
+      for (const id of MISSION_ORDER) {
+        expect(STRINGS[language].missionCopy[id].trim(), `${language}.${id}`).toBeTruthy()
+      }
+    }
   })
 })

@@ -1,45 +1,95 @@
 /**
- * The three-stage reconnaissance assignment.
+ * The five-mission reconnaissance assignment.
+ *
+ * The board used to be three stages of three randomly drawn errands, scored
+ * in parallel. That shape had two problems the general could never talk
+ * around: nine objectives is a list to audit rather than an order to follow,
+ * and a random draw cannot teach anything, because the briefing does not know
+ * what it drew.
+ *
+ * So the run is one fixed ladder now, five rungs long, one objective at a
+ * time. Each rung is a thing the pilot has not been made to do yet - fly
+ * through a circle, hold the beam on water, feed, burn, survive - and the
+ * four that can be finished early end with the general explaining what the
+ * pilot just discovered. The mission is the tutorial's second half.
+ *
+ * Two rules hold the whole thing together:
+ *
+ * - **The gauges are run totals, not stage totals.** A pilot who has been
+ *   eating the city since the first minute does not get told to start over
+ *   when the "absorb samples" rung comes up; the meter is already part full,
+ *   which reads as credit for what they were already doing. It also means a
+ *   rung can open already finished, so advancement loops rather than steps.
+ * - **Only the beam feeds the sample meter, and only destruction feeds the
+ *   wrecking meter.** Shooting a pedestrian is not a sample and swallowing a
+ *   car is not an air raid; the two meters ask for two different verbs, which
+ *   is the only reason having both is interesting.
  *
  * This module deliberately knows nothing about React or Three.js. The runtime
- * reports things that happened, and this state machine owns selection,
- * parallel progress, stage gates and the only victory condition.
+ * reports what happened, and this state machine owns the ladder, the gauges,
+ * the debrief queue and the only victory condition.
  */
 
 export const MISSION_RUN_SECONDS = 300
-export const MISSION_SCORE_TARGET = 7200
-export const AIR_CHECKPOINT_RADIUS = 5
-
-type Point3 = { x: number; y: number; z: number }
-
-/** Crossing the ring is enough; checkpoint missions never require hovering. */
-export function isInsideAirCheckpoint(position: Point3, checkpoint: Point3) {
-  return Math.hypot(
-    position.x - checkpoint.x,
-    position.y - checkpoint.y,
-    position.z - checkpoint.z,
-  ) <= AIR_CHECKPOINT_RADIUS
-}
+/** Rungs on the ladder. Stage 0 is the tutorial, stage 6 is "recon done". */
+export const MISSION_COUNT = 5
 
 export type MissionQuestId =
-  | 'capture-cats'
-  | 'capture-people'
-  | 'destroy-cars'
-  | 'destroy-trucks'
-  | 'destroy-tankers'
+  | 'visit-mystery-circle'
   | 'absorb-water'
-  | 'ruin-buildings'
-  | 'destroy-comms'
-  | 'destroy-drones'
-  | 'destroy-fighters'
-  | 'absorb-rooftop-structures'
-  | 'absorb-trees'
-  | 'absorb-streetlights'
-  | 'pass-mystery-circles'
-  | 'air-checkpoints'
-  | 'destroy-battleship'
-  | 'reach-score'
-  | 'survive-final'
+  | 'absorb-samples'
+  | 'wreck-city'
+  | 'final-sweep'
+
+/** The order is the design: discover, learn a cost, feed, burn, hold on. */
+export const MISSION_ORDER: readonly MissionQuestId[] = [
+  'visit-mystery-circle',
+  'absorb-water',
+  'absorb-samples',
+  'wreck-city',
+  'final-sweep',
+]
+
+export type MissionDebriefId = Exclude<MissionQuestId, 'final-sweep'>
+
+/**
+ * The four missions the general debriefs.
+ *
+ * The last one is not on the list because finishing it *is* the end of the
+ * run - the results screen has the general's closing word instead, and
+ * freezing the game to talk over a clock that has already stopped would be
+ * two endings in a row.
+ *
+ * Written out rather than sliced off MISSION_ORDER so the element type is
+ * checked here instead of asserted; the test holds it to the same four.
+ */
+export const MISSION_DEBRIEF_IDS: readonly MissionDebriefId[] = [
+  'visit-mystery-circle',
+  'absorb-water',
+  'absorb-samples',
+  'wreck-city',
+]
+
+export const MISSION_TARGETS: Record<MissionQuestId, number> = {
+  // One circle. The point of the rung is that the pilot goes to look at one,
+  // not that they farm them; the general's debrief does the rest of the work.
+  'visit-mystery-circle': 1,
+  // Eight seconds of held beam over open water at 50 L/s - long enough that
+  // the drag is felt and complained about, short enough that finding the lake
+  // is the hard part rather than sitting in it.
+  'absorb-water': 400,
+  // Sized so a pilot who clears it is visibly a different craft than the one
+  // that started. Absorption pays out with the size multiplier and size
+  // compounds as it feeds, so the meter accelerates: about a hundred seconds
+  // of steady eating, ending several times wider than the opening saucer.
+  // The four gauges all run from the first second of the flight, so the run
+  // is priced against the longest of them rather than against their sum.
+  'absorb-samples': 3000,
+  // Four to seven towers, or a mixed diet of blocks, traffic and aircraft.
+  'wreck-city': 1800,
+  // Replaced at stage start with whatever is left on the clock.
+  'final-sweep': 0,
+}
 
 export type MissionQuest = {
   id: MissionQuestId
@@ -48,253 +98,193 @@ export type MissionQuest = {
   complete: boolean
 }
 
+/**
+ * Run totals, banked for the whole flight rather than per stage.
+ *
+ * Circles are kept by id because flying a lap of the same one is one circle
+ * visited, not two.
+ */
+export type MissionTotals = {
+  circles: string[]
+  water: number
+  absorbScore: number
+  destroyScore: number
+}
+
 export type MissionState = {
-  /** 0 is the cat tutorial, 1..3 are missions, 4 is reconnaissance complete. */
-  stage: 0 | 1 | 2 | 3 | 4
-  quests: MissionQuest[]
-  randomState: number
+  /** 0 is the cat tutorial, 1..5 are the missions, 6 is recon complete. */
+  stage: number
+  quest: MissionQuest | null
   stageStartedAt: number
-  completedQuest: MissionQuestId | null
+  totals: MissionTotals
+  /** Missions finished and still owing the pilot a word from the general.
+   *  A queue rather than a slot: a rung can open already full and close on
+   *  the same frame, and neither debrief should be lost. */
+  debriefs: MissionDebriefId[]
+  /** Bumped whenever the board changes shape, so the HUD can pulse without
+   *  diffing quests. */
   revision: number
-  /** Circle IDs already counted for the active mission stage. */
-  mysteryCircleIds: string[]
 }
 
 export type MissionEvent =
-  | { type: 'capture-cat'; amount?: number }
-  | { type: 'capture-person'; amount?: number }
-  | { type: 'destroy-car'; amount?: number }
-  | { type: 'destroy-truck'; amount?: number }
-  | { type: 'destroy-tanker'; amount?: number }
-  | { type: 'absorb-water'; litres: number }
-  | { type: 'ruin-building'; amount?: number }
-  | { type: 'destroy-comms'; amount?: number }
-  | { type: 'destroy-enemy'; kind: 'drone' | 'fighter' | 'boss' | string; amount?: number }
-  | { type: 'absorb-rooftop-structure'; amount?: number }
-  | { type: 'absorb-tree'; amount?: number }
-  | { type: 'absorb-streetlight'; amount?: number }
   | { type: 'pass-mystery-circle'; id: string }
-  | { type: 'pass-checkpoint'; amount?: number }
+  | { type: 'absorb-water'; litres: number }
+  /** Points banked by the tractor beam. Laser kills never come through here. */
+  | { type: 'absorb-score'; score: number }
+  /** Points banked by blowing something up, city or aircraft alike. */
+  | { type: 'destroy-score'; score: number }
 
-export const MISSION_ONE_POOL: readonly MissionQuestId[] = [
-  'capture-cats',
-  'capture-people',
-  'destroy-cars',
-  'destroy-trucks',
-  'destroy-tankers',
-  'absorb-water',
-  'pass-mystery-circles',
-]
-
-export const MISSION_TWO_POOL: readonly MissionQuestId[] = [
-  'ruin-buildings',
-  'destroy-comms',
-  'destroy-drones',
-  'destroy-fighters',
-  'absorb-rooftop-structures',
-  'absorb-trees',
-  'absorb-streetlights',
-  'air-checkpoints',
-]
-
-/** Only one rare landmark hunt may be drawn into a single mission. The gas
- *  station hunt left the pool, so comms is the group's lone member - kept as a
- *  group so the next rare hunt slots in beside it. */
-export const MISSION_QUEST_GROUPS: Partial<Record<MissionQuestId, string>> = {
-  'destroy-comms': 'rare-landmark',
-}
-
-export const MISSION_THREE_QUESTS: readonly MissionQuestId[] = [
-  'destroy-battleship',
-  'reach-score',
-  'survive-final',
-]
-
-export const MISSION_TARGETS: Record<MissionQuestId, number> = {
-  'capture-cats': 6,
-  'capture-people': 10,
-  'destroy-cars': 8,
-  'destroy-trucks': 5,
-  // Tankers are the rare heavy vehicle - they only start rolling at 25s and
-  // cap out at a handful on the map - so the hunt asks for fewer of them.
-  'destroy-tankers': 3,
-  'absorb-water': 300,
-  'ruin-buildings': 3,
-  'destroy-comms': 1,
-  'destroy-drones': 10,
-  'destroy-fighters': 5,
-  'absorb-rooftop-structures': 5,
-  'absorb-trees': 5,
-  'absorb-streetlights': 4,
-  'pass-mystery-circles': 3,
-  'air-checkpoints': 3,
-  'destroy-battleship': 1,
-  'reach-score': MISSION_SCORE_TARGET,
-  // Replaced with the time left in the run when mission three opens.
-  'survive-final': 120,
-}
-
-function random(state: MissionState) {
-  let value = state.randomState || 1
-  value ^= value << 13
-  value ^= value >>> 17
-  value ^= value << 5
-  state.randomState = value >>> 0 || 1
-  return state.randomState / 0xffffffff
-}
-
-export function pickDistinctMissionQuests(
-  state: MissionState,
-  pool: readonly MissionQuestId[],
-  count = 3,
-) {
-  const available = [...pool]
-  const picked: MissionQuestId[] = []
-  while (picked.length < count && available.length > 0) {
-    const index = Math.floor(random(state) * available.length) % available.length
-    const candidate = available.splice(index, 1)[0]!
-    const group = MISSION_QUEST_GROUPS[candidate]
-    if (group && picked.some((id) => MISSION_QUEST_GROUPS[id] === group)) continue
-    picked.push(candidate)
-  }
-  return picked
+function targetFor(id: MissionQuestId, stageStartedAt: number) {
+  return id === 'final-sweep'
+    ? Math.max(1, MISSION_RUN_SECONDS - stageStartedAt)
+    : MISSION_TARGETS[id]
 }
 
 function makeQuest(id: MissionQuestId, stageStartedAt: number): MissionQuest {
-  const target = id === 'survive-final'
-    ? Math.max(0, MISSION_RUN_SECONDS - stageStartedAt)
-    : MISSION_TARGETS[id]
-  return { id, progress: 0, target, complete: false }
+  return { id, progress: 0, target: targetFor(id, stageStartedAt), complete: false }
 }
 
-export function createMissionState(seed = 1): MissionState {
+export function createMissionState(): MissionState {
   return {
     stage: 0,
-    quests: [],
-    randomState: seed >>> 0 || 1,
+    quest: null,
     stageStartedAt: 0,
-    completedQuest: null,
+    totals: { circles: [], water: 0, absorbScore: 0, destroyScore: 0 },
+    debriefs: [],
     revision: 0,
-    mysteryCircleIds: [],
   }
 }
 
-function assignStage(state: MissionState, stage: 1 | 2 | 3, elapsed: number) {
-  state.stage = stage
-  state.stageStartedAt = elapsed
-  const pool = stage === 1 ? MISSION_ONE_POOL : MISSION_TWO_POOL
-  const ids = stage === 3
-    ? [...MISSION_THREE_QUESTS]
-    : stage === 1
-      ? [
-          'pass-mystery-circles' as const,
-          ...pickDistinctMissionQuests(state, pool.filter((id) => id !== 'pass-mystery-circles'), 2),
-        ]
-      : pickDistinctMissionQuests(state, pool, 3)
+/** What the active gauge reads, straight off the run totals. */
+function rawProgress(state: MissionState, id: MissionQuestId, elapsed: number) {
+  if (id === 'visit-mystery-circle') return state.totals.circles.length
+  if (id === 'absorb-water') return state.totals.water
+  if (id === 'absorb-samples') return state.totals.absorbScore
+  if (id === 'wreck-city') return state.totals.destroyScore
+  return Math.max(0, elapsed - state.stageStartedAt)
+}
 
-  // Mission one always contains the circle objective, but its HUD position
-  // changes so the first slot does not always show the same quest.
-  if (stage === 1) {
-    for (let index = ids.length - 1; index > 0; index -= 1) {
-      const swapIndex = Math.floor(random(state) * (index + 1))
-      const current = ids[index]!
-      ids[index] = ids[swapIndex]!
-      ids[swapIndex] = current
-    }
-  }
-  state.quests = ids.map((id) => makeQuest(id, elapsed))
-  state.mysteryCircleIds = []
-  state.completedQuest = null
+function openNextMission(state: MissionState, finished: MissionQuestId, elapsed: number) {
   state.revision += 1
-  return state
+  if (state.stage >= MISSION_COUNT) {
+    // The last rung is the clock itself, so clearing it ends the run rather
+    // than opening anything. The results screen speaks for the general here.
+    state.stage = MISSION_COUNT + 1
+    state.quest = null
+    return
+  }
+  // Anything that reaches here is one of the first four rungs, and those are
+  // exactly the debriefed ones - the last is handled by the branch above.
+  if (finished !== 'final-sweep') state.debriefs.push(finished)
+  state.stage += 1
+  state.stageStartedAt = elapsed
+  state.quest = makeQuest(MISSION_ORDER[state.stage - 1]!, elapsed)
+}
+
+/**
+ * Re-reads the active gauge and advances as far as the totals allow.
+ *
+ * The loop is not defensive coding: because the meters run for the whole
+ * flight, a rung really can open with its gauge already past the target, and
+ * a single step would leave the board one mission behind what the pilot has
+ * actually done.
+ */
+function refresh(state: MissionState, elapsed: number) {
+  let changed = false
+  for (let guard = 0; guard <= MISSION_COUNT; guard += 1) {
+    const quest = state.quest
+    if (!quest || state.stage < 1 || state.stage > MISSION_COUNT) break
+    const next = Math.min(quest.target, rawProgress(state, quest.id, elapsed))
+    if (next !== quest.progress) {
+      quest.progress = next
+      changed = true
+    }
+    // The last rung is never finished from in here: only the runtime, which
+    // owns the clock, can say the clock is out. See closeRecon.
+    if (quest.id === 'final-sweep' || quest.progress < quest.target) break
+    quest.complete = true
+    changed = true
+    openNextMission(state, quest.id, elapsed)
+  }
+  return changed
 }
 
 /** The tutorial cat is the gate into the timed run. */
 export function startMissionOne(state: MissionState, elapsed = 0) {
   if (state.stage !== 0) return state
-  return assignStage(state, 1, elapsed)
-}
-
-function finishCompletedStage(state: MissionState, elapsed: number) {
-  if (state.quests.length !== 3 || !state.quests.every((quest) => quest.complete)) return false
-  if (state.stage === 1) assignStage(state, 2, elapsed)
-  else if (state.stage === 2) assignStage(state, 3, elapsed)
-  else if (state.stage === 3) {
-    state.stage = 4
-    state.revision += 1
-  }
-  return true
-}
-
-function addProgress(state: MissionState, id: MissionQuestId, amount: number) {
-  const quest = state.quests.find((candidate) => candidate.id === id)
-  if (!quest || quest.complete || amount <= 0) return false
-  quest.progress = Math.min(quest.target, quest.progress + amount)
-  if (quest.progress >= quest.target) {
-    quest.complete = true
-    state.completedQuest = id
-    state.revision += 1
-  }
-  return true
+  state.stage = 1
+  state.stageStartedAt = elapsed
+  state.quest = makeQuest(MISSION_ORDER[0]!, elapsed)
+  state.revision += 1
+  refresh(state, elapsed)
+  return state
 }
 
 export function recordMissionEvent(state: MissionState, event: MissionEvent, elapsed: number) {
-  if (state.stage < 1 || state.stage > 3) return false
-  const amount = 'amount' in event ? event.amount ?? 1 : 1
-  let changed = false
-  if (event.type === 'capture-cat') changed = addProgress(state, 'capture-cats', amount)
-  else if (event.type === 'capture-person') changed = addProgress(state, 'capture-people', amount)
-  else if (event.type === 'destroy-car') changed = addProgress(state, 'destroy-cars', amount)
-  else if (event.type === 'destroy-truck') changed = addProgress(state, 'destroy-trucks', amount)
-  else if (event.type === 'destroy-tanker') changed = addProgress(state, 'destroy-tankers', amount)
-  else if (event.type === 'absorb-water') changed = addProgress(state, 'absorb-water', event.litres)
-  else if (event.type === 'ruin-building') changed = addProgress(state, 'ruin-buildings', amount)
-  else if (event.type === 'destroy-comms') changed = addProgress(state, 'destroy-comms', amount)
-  else if (event.type === 'absorb-rooftop-structure') changed = addProgress(state, 'absorb-rooftop-structures', amount)
-  else if (event.type === 'absorb-tree') changed = addProgress(state, 'absorb-trees', amount)
-  else if (event.type === 'absorb-streetlight') changed = addProgress(state, 'absorb-streetlights', amount)
-  else if (event.type === 'pass-mystery-circle') {
-    const quest = state.quests.find((candidate) => candidate.id === 'pass-mystery-circles')
-    if (quest && !quest.complete && !state.mysteryCircleIds.includes(event.id)) {
-      state.mysteryCircleIds.push(event.id)
-      changed = addProgress(state, 'pass-mystery-circles', 1)
-    }
-  }
-  else if (event.type === 'pass-checkpoint') changed = addProgress(state, 'air-checkpoints', amount)
-  else if (event.type === 'destroy-enemy') {
-    if (event.kind === 'drone') changed = addProgress(state, 'destroy-drones', amount)
-    else if (event.kind === 'fighter') changed = addProgress(state, 'destroy-fighters', amount)
-    else if (event.kind === 'boss') changed = addProgress(state, 'destroy-battleship', amount)
-  }
-  finishCompletedStage(state, elapsed)
-  return changed
+  // Nothing banks during the tutorial (there is no board yet) or after the
+  // recon closes (there is no run left to bank into).
+  if (state.stage < 1 || state.stage > MISSION_COUNT) return false
+  const totals = state.totals
+  if (event.type === 'pass-mystery-circle') {
+    if (totals.circles.includes(event.id)) return false
+    totals.circles.push(event.id)
+  } else if (event.type === 'absorb-water') {
+    if (event.litres <= 0) return false
+    totals.water += event.litres
+  } else if (event.type === 'absorb-score') {
+    if (event.score <= 0) return false
+    totals.absorbScore += event.score
+  } else if (event.type === 'destroy-score') {
+    if (event.score <= 0) return false
+    totals.destroyScore += event.score
+  } else return false
+  refresh(state, elapsed)
+  return true
 }
 
-/** Score and survival are values, not one-shot events, so they synchronize. */
-export function syncMissionState(state: MissionState, elapsed: number, score: number) {
-  if (state.stage !== 3) return state.stage === 4
-  const scoreQuest = state.quests.find((quest) => quest.id === 'reach-score')
-  if (scoreQuest && !scoreQuest.complete) {
-    scoreQuest.progress = Math.min(scoreQuest.target, Math.max(0, score))
-    if (scoreQuest.progress >= scoreQuest.target) {
-      scoreQuest.complete = true
-      state.completedQuest = scoreQuest.id
-      state.revision += 1
-    }
+/** Time is a value, not an event, so the final rung's gauge synchronizes
+ *  instead. This never ends the run - closeRecon does. */
+export function syncMissionState(state: MissionState, elapsed: number) {
+  refresh(state, elapsed)
+  return isReconComplete(state)
+}
+
+/**
+ * The clock has run out. Returns whether the recon came home finished.
+ *
+ * Only the runtime may call this, because only the runtime owns the clock.
+ * Deriving "the clock is out" in here from an elapsed value counted *up*,
+ * while the runtime counts a separate remaining value *down*, leaves the two
+ * disagreeing by a float epsilon on the exact frame it matters - and that
+ * frame decides whether a pilot who flew the whole window is told they
+ * finished the job or failed it.
+ */
+export function closeRecon(state: MissionState, elapsed: number) {
+  const quest = state.quest
+  if (state.stage === MISSION_COUNT && quest) {
+    quest.progress = quest.target
+    quest.complete = true
+    openNextMission(state, quest.id, elapsed)
   }
-  const survival = state.quests.find((quest) => quest.id === 'survive-final')
-  if (survival && !survival.complete) {
-    survival.progress = Math.min(survival.target, Math.max(0, elapsed - state.stageStartedAt))
-    if (elapsed >= MISSION_RUN_SECONDS) {
-      survival.progress = survival.target
-      survival.complete = true
-      state.completedQuest = survival.id
-      state.revision += 1
-    }
-  }
-  return finishCompletedStage(state, elapsed)
+  return isReconComplete(state)
+}
+
+/** The one victory condition: the last rung cleared, which only the clock can
+ *  do. Everything else the run can end as is a failure or a shoot-down. */
+export function isReconComplete(state: MissionState) {
+  return state.stage > MISSION_COUNT
 }
 
 export function missionHasQuest(state: MissionState, id: MissionQuestId) {
-  return state.stage >= 1 && state.stage <= 3 && state.quests.some((quest) => quest.id === id && !quest.complete)
+  return state.quest?.id === id && !state.quest.complete
+}
+
+/** The debrief the general still owes, without consuming it. */
+export function peekMissionDebrief(state: MissionState): MissionDebriefId | null {
+  return state.debriefs[0] ?? null
+}
+
+/** Consumes one debrief. Called when the pilot clicks the general away. */
+export function takeMissionDebrief(state: MissionState): MissionDebriefId | null {
+  return state.debriefs.shift() ?? null
 }

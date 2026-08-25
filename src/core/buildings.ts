@@ -18,8 +18,28 @@ export type BuildingRuin = {
   color: string
 }
 
+/**
+ * What bringing a block down is worth.
+ *
+ * Keyed to the same tiers as the hit points, so the tower that took the most
+ * shooting pays the most: a flat rate made a supertall the worst target on
+ * the map, since it soaked nearly twice a low block's fire for the same
+ * money. Mission four's wrecking gauge reads these, so "shoot the big one"
+ * has to be the right answer there too.
+ */
+export const BUILDING_SCORE: Record<BuildingHeightTier, number> = {
+  low: 260,
+  mid: 380,
+  high: 520,
+  supertall: 700,
+}
+
 export function buildingMaxHealth(building: ProceduralBuilding) {
   return BUILDING_HITS[buildingHeightTier(building)]
+}
+
+export function buildingDestructionScore(building: ProceduralBuilding) {
+  return BUILDING_SCORE[buildingHeightTier(building)]
 }
 
 export function damageBuilding(

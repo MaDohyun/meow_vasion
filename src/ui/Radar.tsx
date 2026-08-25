@@ -23,13 +23,15 @@ import { projectToRadar } from './radarProjection'
  * far more detail than a dot could give.
  *
  * Two things that are not contacts also stay. The objective marker is the
- * arrow that says where the mission is, and without it a checkpoint run has no
- * heading at all. Mystery circles are painted on the ground and cannot be seen
+ * arrow that says where mission one is sending you - the same circle the
+ * arrow over the hull points at, read off the same runtime field so the two
+ * can never disagree. Mystery circles are painted on the ground and cannot be seen
  * from above the rooftops at all, so the dial is the only place a player can
  * learn one is nearby - which is the whole point of flying through them. One
- * already flown through is greyed rather than dropped: the mission counts
- * distinct circles, so "I have had this one" is the thing worth showing, and
- * removing it outright would just make the player fly back to check.
+ * whose pickup is spent is greyed rather than dropped: what is left there is
+ * still a surge, a turbo refill and a full hull, so "I have had the item off
+ * this one" is the thing worth showing, and removing it outright would just
+ * make the player fly back to check.
  *
  * Oriented to the craft's heading rather than north. The question being asked
  * is "what is in front of me", and a north-up radar makes the player do the
@@ -58,7 +60,6 @@ const COLORS = {
   hostile: '#ff4d6d',
   mine: '#ff2f5a',
   mission: '#fff06d',
-  checkpoint: '#b7ff63',
   boon: '#ffb347',
 }
 
@@ -144,7 +145,7 @@ export function Radar() {
         )
       }
 
-      const missionMarker = game.checkpoint ?? game.missionTarget
+      const missionMarker = game.missionTarget
       if (missionMarker) {
         const dx = missionMarker.x - player.x
         const dz = missionMarker.z - player.z
@@ -156,8 +157,7 @@ export function Radar() {
         const factor = length > edge ? edge / length : 1
         const px = center + offsetX * factor
         const py = center + offsetY * factor
-        const color = game.checkpoint ? COLORS.checkpoint : COLORS.mission
-        context.fillStyle = color
+        context.fillStyle = COLORS.mission
         context.strokeStyle = '#fff5c7'
         context.lineWidth = 1
         context.beginPath()
@@ -167,7 +167,7 @@ export function Radar() {
           context.lineTo(px + Math.cos(angle + 2.45) * 4, py + Math.sin(angle + 2.45) * 4)
           context.lineTo(px + Math.cos(angle - 2.45) * 4, py + Math.sin(angle - 2.45) * 4)
           context.closePath()
-        } else context.arc(px, py, game.checkpoint ? 4 : 3.5, 0, Math.PI * 2)
+        } else context.arc(px, py, 3.5, 0, Math.PI * 2)
         context.fill()
         context.stroke()
       }

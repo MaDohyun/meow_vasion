@@ -416,6 +416,12 @@ declare global {
       beamReachScale: number
       height: number
       missionStage: number
+      /** The mission the general is waiting to talk about, or null. While it
+       *  is set the whole simulation is frozen. */
+      missionDebrief: string | null
+      /** Where mission one is sending the craft, for a scripted flight to
+       *  steer at. Null on every other rung. */
+      missionTarget: { x: number; z: number } | null
       remainingTime: number
       tutorialCats: number
       visibleMeshPools: number
@@ -2079,6 +2085,12 @@ function PerformanceProbe() {
       beamReachScale: 1,
       height: runtime.current.drone.position.y,
       missionStage: runtime.current.mission.stage,
+      // The debrief freezes the world, so a smoke run needs to see it as a
+      // state rather than infer it from a stalled clock.
+      missionDebrief: runtime.current.mission.debriefs[0] ?? null,
+      missionTarget: runtime.current.missionTarget
+        ? { x: runtime.current.missionTarget.x, z: runtime.current.missionTarget.z }
+        : null,
       remainingTime: runtime.current.remainingTime,
       tutorialCats: runtime.current.crowds.objects.filter((object) => object.active && object.kind === 'cat').length,
       visibleMeshPools,
@@ -2378,29 +2390,55 @@ function Sky() {
   )
 }
 
-function MissionCheckpoint() {
+/**
+ * The arrow that rides over the hull during mission one, pointing at the
+ * nearest mystery circle.
+ *
+ * A circle is paint on the ground: it is invisible from any altitude worth
+ * flying at, and the radar only reaches 170m, so "go and find one" was a
+ * mission whose first minute was flying in a guessed direction. The arrow is
+ * the fix - it names a heading rather than a distance, so it teaches the
+ * routing habit the circles are meant to build without handing over the map.
+ *
+ * It goes out the moment mission one is cleared, because after that the
+ * pilot knows what a circle is worth and choosing when to detour is the
+ * decision worth leaving to them.
+ *
+ * Read straight off the runtime instead of the snapshot: this rotates every
+ * frame with the craft, and a sixteen-hertz snapshot would make it stutter.
+ */
+function MysteryCircleArrow() {
   const { runtime } = useGame()
-  const ref = useRef<THREE.Group>(null)
+  const group = useRef<THREE.Group>(null)
   useFrame(({ clock }) => {
-    const group = ref.current
-    if (!group) return
-    const checkpoint = runtime.current.checkpoint
-    group.visible = Boolean(checkpoint)
-    if (!checkpoint) return
-    group.position.set(checkpoint.x, checkpoint.y, checkpoint.z)
-    group.lookAt(runtime.current.drone.position.x, checkpoint.y, runtime.current.drone.position.z)
-    const pulse = 1 + Math.sin(clock.elapsedTime * 5) * 0.08
-    group.scale.setScalar(pulse)
+    const node = group.current
+    if (!node) return
+    const game = runtime.current
+    const target = game.missionTarget
+    node.visible = Boolean(target) && game.mission.stage === 1
+    if (!target) return
+    const drone = game.drone.position
+    // Just clear of the hull. It was nearly twice this, and the chase camera
+    // sits close and low behind a small saucer - four metres of lift put the
+    // arrow in the top corner of the screen with the craft in the middle.
+    const lift = game.sizeProfile.hitRadius * 1.2 + 1.9 + Math.sin(clock.elapsedTime * 3) * 0.22
+    node.position.set(drone.x, drone.y + lift, drone.z)
+    node.rotation.y = Math.atan2(target.x - drone.x, target.z - drone.z)
+    node.scale.setScalar(Math.min(2.4, Math.max(0.85, game.sizeProfile.size)))
   })
   return (
-    <group ref={ref} visible={false}>
-      <mesh>
-        <torusGeometry args={[4.2, 0.42, 8, 28]} />
-        <meshBasicMaterial color="#b7ff63" transparent opacity={0.9} toneMapped={false} />
+    <group ref={group} visible={false}>
+      {/* Built along +Z and swung by the group, so the cone tip is the
+          heading and the shaft trails behind it. */}
+      <mesh rotation-x={Math.PI / 2} position={[0, 0, 1.75]}>
+        <coneGeometry args={[0.72, 1.7, 4]} />
+        <meshBasicMaterial color="#ffe05f" toneMapped={false} />
+        <Edges threshold={15} color="#2b243f" />
       </mesh>
-      <mesh scale={0.83}>
-        <torusGeometry args={[4.2, 0.12, 6, 28]} />
-        <meshBasicMaterial color="#fff5c7" transparent opacity={0.78} toneMapped={false} />
+      <mesh position={[0, 0, 0.2]} scale={[0.5, 0.5, 1.7]}>
+        <boxGeometry args={[1, 1, 1]} />
+        <meshBasicMaterial color="#ffb347" toneMapped={false} />
+        <Edges threshold={15} color="#2b243f" />
       </mesh>
     </group>
   )
@@ -2417,12 +2455,12 @@ export function DroneScene() {
       <FixedEffectLights />
       <PerformanceProbe />
       <City />
-      <MissionCheckpoint />
       <PullableCars />
       <BeamTargetRings />
       <DrivingTraffic />
       <CrowdPools />
       <TutorialCatMarker />
+      <MysteryCircleArrow />
       <HazardPool />
       <EnemyPools />
       <EnemyWarnings />
