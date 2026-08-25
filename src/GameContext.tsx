@@ -2067,7 +2067,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       syncBeamObjects(game)
       updateMissionTarget(game)
     }
-    const collision = collideDrone(stepped, game.worldColliders)
+    const collision = collideDrone(stepped, game.worldColliders, d)
     game.drone = collision.state
     // One sample per tick, written into the runtime's own object so the render
     // layer can read it without sampling again or allocating.
