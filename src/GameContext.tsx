@@ -79,7 +79,7 @@ import {
   type BoonState,
 } from './core/boons'
 import { buildingDestructionScore, createBuildingRuin, damageBuilding, ruinCollider, type BuildingRuin } from './core/buildings'
-import { stepLakeAbsorption } from './core/lakes'
+import { lakeScorePayout, stepLakeAbsorption } from './core/lakes'
 import {
   MISSION_COUNT,
   closeRecon,
@@ -1955,9 +1955,18 @@ export function GameProvider({ children }: { children: ReactNode }) {
     if (beamStarted) startBeamSound()
     if (beamStopped) stopBeamSound()
     const lake = stepLakeAbsorption(game.waterAbsorbed, d, game.beamActive, lakeDepthAt(game.drone.position))
+    // Read off the running litre total before it advances, so the payout is
+    // the whole points the crossing owes rather than a fraction of a point
+    // that would round away every frame.
+    const lakeReward = lakeScorePayout(game.waterAbsorbed, lake.litres)
     game.waterAbsorbed = lake.litres
     game.waterAnchored = lake.anchored
     if (lake.absorbed > 0) reportMissionEvent(game, { type: 'absorb-water', litres: lake.absorbed })
+    // Water is a sample like anything else the beam swallows, so it pays into
+    // the sample gauge rather than plain into the score - the split the two
+    // banking helpers exist to enforce is between beam and destruction, and a
+    // lake is unambiguously the beam.
+    if (lakeReward > 0) bankAbsorbScore(game, lakeReward)
     // Scaling the throttle scales the top speed the flight model aims for, so
     // the craft still accelerates, steers and strafes - it just tops out at
     // half. This used to also multiply the stepped velocity every frame, and

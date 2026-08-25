@@ -107,15 +107,20 @@ button { font: inherit; }
 
 .mission-panel { width:100%; padding:11px 15px 12px; }
 .mission-panel .eyebrow { display:block; margin-bottom:8px; padding-bottom:7px; color:var(--yellow); border-bottom:1px solid var(--hud-rule); font-size:15px; letter-spacing:2.4px; opacity:1; }
-.mission-panel > div { display:grid; grid-template-columns:24px minmax(0,1fr) auto; align-items:center; gap:9px; min-height:33px; color:var(--cream); font-size:15px; font-weight:900; line-height:1.4; word-break:keep-all; }
-.mission-panel > div + div { border-top:1px solid var(--hud-rule); }
+/* Scoped to the objective row rather than to every direct div, because the
+   gauge underneath is a direct div too: it used to inherit this three-column
+   grid, which dropped the fill bar into the fixed 24px glyph column. A gauge
+   reading "full" was a 24px stub, and every partial reading was a fraction of
+   that stub rather than of the bar. */
+.mission-panel > .mission-row { display:grid; grid-template-columns:24px minmax(0,1fr) auto; align-items:center; gap:9px; min-height:33px; color:var(--cream); font-size:15px; font-weight:900; line-height:1.4; word-break:keep-all; }
+.mission-panel > .mission-row + .mission-row { border-top:1px solid var(--hud-rule); }
 /* The glyph column. Emoji ignore the monospace face the rest of the HUD is
    set in, so the width is pinned here rather than left to the font. */
-.mission-panel > div i { font-style:normal; font-size:17px; line-height:1; text-align:center; }
-.mission-panel > div b { color:var(--cyan); font-size:16px; font-variant-numeric:tabular-nums; }
-.mission-panel > div[data-complete="true"] { color:rgba(183,255,99,.72); text-decoration:line-through; }
-.mission-panel > div[data-complete="true"] i { opacity:.5; }
-.mission-panel > div[data-complete="true"] b { color:var(--green); }
+.mission-panel > .mission-row i { font-style:normal; font-size:17px; line-height:1; text-align:center; }
+.mission-panel > .mission-row b { color:var(--cyan); font-size:16px; font-variant-numeric:tabular-nums; }
+.mission-panel > .mission-row[data-complete="true"] { color:rgba(183,255,99,.72); text-decoration:line-through; }
+.mission-panel > .mission-row[data-complete="true"] i { opacity:.5; }
+.mission-panel > .mission-row[data-complete="true"] b { color:var(--green); }
 .mission-panel.mission-pulse { animation:mission-pop .28s steps(3); }
 /* Three of the five objectives are counted in points or litres, where the
    raw pair of numbers says nothing about how close the bar is to full. */
@@ -540,9 +545,9 @@ button { font: inherit; }
   .boss-bar, .hud-alerts, .mission-banner { align-self:center; }
   .mission-panel { padding:8px 9px; }
   .mission-panel .eyebrow { margin-bottom:6px; font-size:13px; }
-  .mission-panel > div { grid-template-columns:16px minmax(0,1fr) auto; min-height:25px; font-size:12px; }
-  .mission-panel > div i { font-size:15px; }
-  .mission-panel > div b { font-size:13px; }
+  .mission-panel > .mission-row { grid-template-columns:16px minmax(0,1fr) auto; min-height:25px; font-size:12px; }
+  .mission-panel > .mission-row i { font-size:15px; }
+  .mission-panel > .mission-row b { font-size:13px; }
   .tutorial-mission strong { font-size:13px; }
   .tutorial-mission p { font-size:12px; }
   .tutorial-mission p b { font-size:15px; }

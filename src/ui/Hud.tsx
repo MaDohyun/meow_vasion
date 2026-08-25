@@ -45,7 +45,7 @@ function MissionPanel() {
   return (
     <section className={`mission-panel panel ${snapshot.missionPulse > 0 ? 'mission-pulse' : ''}`}>
       <span className="eyebrow">{t.mission} {Math.min(snapshot.missionCount, snapshot.missionStage)}/{snapshot.missionCount}</span>
-      <div data-complete={quest.complete}>
+      <div className="mission-row" data-complete={quest.complete}>
         {/* The glyph is what the eye finds the row by; a tick would only ever
             appear once the row no longer mattered. A finished objective is
             struck through instead, which says the same thing without spending

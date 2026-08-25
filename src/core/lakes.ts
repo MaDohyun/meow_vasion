@@ -24,3 +24,38 @@ export function stepLakeAbsorption(totalLitres: number, dt: number, beamActive: 
     anchored: active,
   }
 }
+
+/**
+ * Points per litre pumped.
+ *
+ * Water paid nothing at all before this: the beam ran, the meter for mission
+ * two climbed, and the score sat still. That reads as the one beam use in the
+ * game that is not worth doing, which is a strange thing to build a rung of
+ * the ladder out of.
+ *
+ * A tenth of a point per litre is five a second - about one pedestrian every
+ * second and a half at the opening size, and a rounding error by the time the
+ * craft is eating towers. That is the whole intent: the number moves while the
+ * pilot holds the beam on water, and never enough to make sitting in a lake a
+ * better plan than eating the city.
+ *
+ * Deliberately NOT scaled by the size multiplier, unlike every other beam
+ * payout. Water comes in at a flat 50 L/s whatever the craft weighs, so the
+ * multiplier would be pure profit with no extra work behind it - at the size
+ * cap it would pay 75 a second and turn the sample rung into a swim.
+ */
+export const LAKE_SCORE_PER_LITRE = 0.1
+
+/**
+ * Whole points owed for crossing from one running litre total to the next.
+ *
+ * Floors on both sides rather than paying `litres * rate` per frame, because
+ * the score is an integer and a fraction of a point per frame either rounds
+ * away to nothing or, rounded up, pays a point every frame. The remainder
+ * lives in the litre total itself, so nothing extra has to be carried.
+ */
+export function lakeScorePayout(previousLitres: number, nextLitres: number) {
+  const before = Math.floor(Math.max(0, previousLitres) * LAKE_SCORE_PER_LITRE)
+  const after = Math.floor(Math.max(0, nextLitres) * LAKE_SCORE_PER_LITRE)
+  return Math.max(0, after - before)
+}

@@ -74,10 +74,11 @@ export const MISSION_TARGETS: Record<MissionQuestId, number> = {
   // One circle. The point of the rung is that the pilot goes to look at one,
   // not that they farm them; the general's debrief does the rest of the work.
   'visit-mystery-circle': 1,
-  // Eight seconds of held beam over open water at 50 L/s - long enough that
-  // the drag is felt and complained about, short enough that finding the lake
-  // is the hard part rather than sitting in it.
-  'absorb-water': 400,
+  // Four seconds of held beam over open water at 50 L/s. It was eight, and
+  // that was twice as long as the rung needs: the lesson is the drag, and the
+  // drag is felt in the first second. The rest was the pilot sitting still in
+  // the one place the craft cannot run from, waiting for a meter.
+  'absorb-water': 200,
   // Sized so a pilot who clears it is visibly a different craft than the one
   // that started. Absorption pays out with the size multiplier and size
   // compounds as it feeds, so the meter accelerates: about a hundred seconds
