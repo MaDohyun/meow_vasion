@@ -42,10 +42,20 @@ export type EnemyProjectileKind = 'orb'
  * now instead of forty, and the helicopters get forty on their own before the
  * fighters arrive.
  *
- * The same two are also a fifth thinner - helicopters 8/11/14 and fighters
- * 4/6 became 6/9/11 and 3/5 - while the mines keep every number they had.
- * Difficulty was being read off the things that hunt you, not off how full the
- * sky is, so the cut lands on those and the sky stays as busy as it looked.
+ * The helicopters are also a fifth thinner - 8/11/14 became 6/9/11 - while the
+ * mines keep every number they had. Difficulty was being read off the things
+ * that hunt you, not off how full the sky is, so the cut lands on those and
+ * the sky stays as busy as it looked.
+ *
+ * The fighters were cut with them and then put back at 4/6, because their
+ * shots were halved in the same pass (see FIGHTER_ORB_INTERVAL) and cutting
+ * both was paying twice for one complaint. A fighter is a shape crossing the
+ * sky as much as it is a gun: thinning the squadron takes away the crossings
+ * too, and those are what make the fighter wave read as a scramble rather than
+ * as a slightly louder helicopter wave. Rate is the knob that answers "too
+ * much incoming"; population is the knob that answers "too much in the sky",
+ * and nobody said the second one.
+ *
  * See WAVE_RAMP_SECONDS for the third change in the same direction: none of
  * these numbers arrives all at once any more.
  */
@@ -53,8 +63,8 @@ export const ENEMY_WAVE_STAGES = [
   { at: 0, tempo: 0, label: 'UFO SIGHTED', targets: {} },
   { at: 30, tempo: 1, label: 'DRONE MINES', targets: { drone: 14 } },
   { at: 85, tempo: 2, label: 'HELICOPTERS UP', targets: { drone: 20, helicopter: 6 } },
-  { at: 125, tempo: 3, label: 'FIGHTERS SCRAMBLED', targets: { drone: 25, helicopter: 9, fighter: 3 } },
-  { at: 160, tempo: 4, label: 'SKY BATTLESHIP', targets: { drone: 34, helicopter: 11, fighter: 5, boss: 1 } },
+  { at: 125, tempo: 3, label: 'FIGHTERS SCRAMBLED', targets: { drone: 25, helicopter: 9, fighter: 4 } },
+  { at: 160, tempo: 4, label: 'SKY BATTLESHIP', targets: { drone: 34, helicopter: 11, fighter: 6, boss: 1 } },
 ] as const
 
 /**
