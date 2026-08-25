@@ -449,7 +449,11 @@ button { font: inherit; }
 .joystick { position:absolute; left:26px; bottom:26px; width:112px; height:112px; border-radius:50%; border:4px solid rgba(255,245,199,.78); background:rgba(41,35,63,.48); pointer-events:auto; touch-action:none; }
 .joystick-knob { position:absolute; left:31px; top:31px; width:44px; height:44px; border-radius:50%; background:var(--yellow); border:4px solid var(--ink); box-shadow:3px 3px 0 rgba(0,0,0,.2); }
 .mobile-actions { position:absolute; right:20px; bottom:24px; display:flex; align-items:flex-end; gap:8px; pointer-events:auto; }
-.round-button { width:58px; height:58px; padding:0; color:var(--ink); background:var(--yellow); border:4px solid var(--cream); border-radius:50%; box-shadow:4px 4px 0 var(--ink); font-size:8px; font-weight:1000; }
+/* 10px, not 8px: these labels are translated now, and a CJK glyph at 8px is a
+   smudge where a Latin word at 8px is still a word. The widest label is
+   `レーザー` at 4 full-width glyphs = 40px, inside a 58px button with 4px
+   borders, so 50px of room - it still fits without wrapping. */
+.round-button { width:58px; height:58px; padding:0; color:var(--ink); background:var(--yellow); border:4px solid var(--cream); border-radius:50%; box-shadow:4px 4px 0 var(--ink); font-size:10px; font-weight:1000; }
 .beam-button { width:72px; height:72px; background:var(--green); }
 .laser-button { background:var(--coral); }
 .boost-button { background:var(--yellow); }
