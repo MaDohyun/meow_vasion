@@ -2208,7 +2208,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
       syncBeamObjects(game)
       updateMissionTarget(game)
     }
-    const collision = collideDrone(stepped, game.worldColliders, d)
+    // The same hull the enemies are resolved against. Buildings used to use a
+    // fixed half-metre ball, so the craft the player was flying and the craft
+    // the city could feel were different objects.
+    const collision = collideDrone(stepped, game.worldColliders, d, game.sizeProfile.hitRadius)
     game.drone = collision.state
     // One sample per tick, written into the runtime's own object so the render
     // layer can read it without sampling again or allocating.
