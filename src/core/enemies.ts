@@ -297,9 +297,9 @@ export const HELICOPTER_PEEL_RANGE = 58
  * and under its slowest useful throttle.
  *
  * This is the number the whole design rests on. A round the player can outfly
- * is a round they can read, and reading it is the game: at fourteen metres a
- * second an orb crosses the gap from a fighter's nose to where you are hanging
- * over a rooftop in about four seconds, which is long enough to see it leave,
+ * is a round they can read, and reading it is the game: at just under fifteen
+ * metres a second an orb crosses the gap from a fighter's nose to where you
+ * are hanging over a rooftop in a few seconds, which is long enough to see it leave,
  * decide, and be somewhere else. Nothing about a hit should ever be a surprise
  * - if the player is where the orb is, they had seconds to not be.
  *
@@ -308,7 +308,7 @@ export const HELICOPTER_PEEL_RANGE = 58
  * it is there to price hovering, beam work, and flying into a nest of guns
  * without looking.
  */
-export const ORB_SPEED = 14
+export const ORB_SPEED = 14.9
 export const ORB_HIT_RADIUS = 0.7
 /** Long enough to cross the fighter's whole range and no further, so a missed
  *  round dies in the air rather than sailing on across the city. */
@@ -1551,7 +1551,13 @@ export function resolveEnemyContacts(state: EnemyState, player: Vec3, playerRadi
   state.contactKills = 0
   state.helicopterRams = 0
   for (const enemy of state.slots) {
-    if (!enemy.active || enemy.absorbing || enemy.inBeam || enemy.tether > 0.02) continue
+    if (!enemy.active || enemy.absorbing) continue
+    // Being caught by the beam suppresses ordinary enemy behaviour while the
+    // object is being hauled, but it cannot make a solid fighter or the
+    // battleship hull harmless. Both still damage the craft if their bodies
+    // overlap it; only lighter contact attackers are disabled while tethered.
+    const solidInBeam = enemy.kind === 'fighter' || enemy.kind === 'boss'
+    if (!solidInBeam && (enemy.inBeam || enemy.tether > 0.02)) continue
     if (distanceToPlayer(enemy, player) > enemy.hitRadius + playerRadius) continue
     const contact = ENEMY_CONTACT_DAMAGE[enemy.kind]
     if (contact > damage) damage = contact
