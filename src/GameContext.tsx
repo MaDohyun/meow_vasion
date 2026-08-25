@@ -465,10 +465,6 @@ type GameContextValue = {
   skipTutorial: () => void
   /** Dismisses the general's mission debrief and unfreezes the run. */
   dismissMissionDebrief: () => void
-  /** Jumps straight to a results screen for one ending, so the general's
-   *  sign-off can be read without flying five minutes a particular way first.
-   *  Reached only from the developer entrance - see previewEnding. */
-  previewEnding: (ending: RunEnding) => void
   quality: RenderQuality
   setQuality: (quality: RenderQuality) => void
   language: Language
@@ -2580,29 +2576,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
     publish()
   }, [publish])
 
-  /**
-   * Opens the results screen on a chosen ending, from the lobby.
-   *
-   * Each of the four endings otherwise needs the whole five minutes flown a
-   * particular way to be seen once, and two of them need the run deliberately
-   * lost - which makes proof-reading the general's sign-off, or the layout at
-   * that length of text, a half-hour job per edit.
-   *
-   * Unguarded here on purpose: the lobby button is the gate (`devToolsEnabled`
-   * in the HUD), exactly as it is for the dreadnought drill. A second check in
-   * here would only mean the `?dev=1` entrance silently did nothing on a
-   * deployed build, which is the one place the endings actually get looked at.
-   */
-  const previewEnding = useCallback((ending: RunEnding) => {
-    const game = runtime.current
-    game.phase = 'results'
-    game.ending = ending
-    game.victory = isVictory(ending)
-    game.resultTitle = ending
-    game.devRun = true
-    publish()
-  }, [publish])
-
   const unlockTutorialControl = useCallback((control: TutorialControl) => {
     const game = runtime.current
     if (control === 'beam') game.tutorialBriefingReady = true
@@ -2703,7 +2676,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   }, [publish])
 
   const setMobileInput = useCallback((input: Partial<MobileInput>) => { Object.assign(mobile.current, input) }, [])
-  const value = useMemo<GameContextValue>(() => ({ runtime, snapshot, readInput, advance, start, startBattleshipDrill, restart, unlockTutorialControl, skipTutorial, dismissMissionDebrief, previewEnding, setMobileInput, quality, setQuality, language, setLanguage, t: STRINGS[language] }), [advance, dismissMissionDebrief, previewEnding, quality, readInput, restart, startBattleshipDrill, unlockTutorialControl, skipTutorial, setMobileInput, setQuality, snapshot, start, language, setLanguage])
+  const value = useMemo<GameContextValue>(() => ({ runtime, snapshot, readInput, advance, start, startBattleshipDrill, restart, unlockTutorialControl, skipTutorial, dismissMissionDebrief, setMobileInput, quality, setQuality, language, setLanguage, t: STRINGS[language] }), [advance, dismissMissionDebrief, quality, readInput, restart, startBattleshipDrill, unlockTutorialControl, skipTutorial, setMobileInput, setQuality, snapshot, start, language, setLanguage])
   return <GameContext.Provider value={value}>{children}</GameContext.Provider>
 }
 

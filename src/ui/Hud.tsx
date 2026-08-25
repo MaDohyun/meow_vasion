@@ -444,30 +444,6 @@ export function devToolsEnabled() {
   return /(?:^|[?&])dev=1(?:&|$)/.test(window.location.search) || window.location.hash === '#dev'
 }
 
-/**
- * The lobby's ending previewer, behind the same developer gate as the drill.
- *
- * Three endings, each of which otherwise costs a full five-minute run flown a
- * particular way to look at once - and one of them cannot be reached at all
- * without deliberately losing. Reading what the general says on each, and
- * whether the sign-off still fits the card at that length, is a thing to do
- * in a few seconds rather than in half an hour.
- */
-function EndingPreview() {
-  const { previewEnding, t } = useGame()
-  if (!devToolsEnabled()) return null
-  const endings: RunEnding[] = ['recon', 'missionFailed', 'downed']
-  return (
-    <div className="lobby-ending-preview" role="group" aria-label={t.devEndings}>
-      {endings.map((ending) => (
-        <button key={ending} className="dev-button" type="button" onMouseEnter={playMenuHoverSound} onClick={() => previewEnding(ending)}>
-          <span aria-hidden="true">⚙</span>{ending}
-        </button>
-      ))}
-    </div>
-  )
-}
-
 function Intro() {
   const { start, startBattleshipDrill, t, language, setLanguage } = useGame()
   const [optionsOpen, setOptionsOpen] = useState(false)
@@ -561,7 +537,6 @@ function Intro() {
             <span aria-hidden="true">🔊</span>{t.soundBlocked}
           </button>
         )}
-        <EndingPreview />
       </section>
     </div>
   )

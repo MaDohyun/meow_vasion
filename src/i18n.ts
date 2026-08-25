@@ -74,8 +74,6 @@ export type Strings = {
    *  Translated like everything else: whoever is testing the game reads the
    *  lobby in their own language too. */
   devDrill: string
-  /** Label on the developer ending previewer's button row. */
-  devEndings: string
   devRunNote: string
   howToTitle: string
   howToMove: string
@@ -308,9 +306,8 @@ export const STRINGS: Record<Language, Strings> = {
     options: '옵션',
     close: '닫기',
     howTo: '하는 방법',
-    devDrill: '개발자 모드 · 공중전함으로',
-    devEndings: '개발자 모드 · 엔딩 확인',
-    devRunNote: '개발자 모드로 시작한 판은 랭킹에 올리지 않습니다.',
+    devDrill: '공중전함 모드',
+    devRunNote: '공중전함 모드로 시작한 판은 랭킹에 올리지 않습니다.',
     howToTitle: 'UFO 조작법',
     howToMove: '자동 전진',
     howToAim: '마우스로 방향 조종',
@@ -502,9 +499,8 @@ export const STRINGS: Record<Language, Strings> = {
     options: 'オプション',
     close: '閉じる',
     howTo: '遊び方',
-    devDrill: '開発者モード · 空中戦艦へ',
-    devEndings: '開発者モード · エンディング確認',
-    devRunNote: '開発者モードで始めたプレイはランキングに登録されません。',
+    devDrill: '空中戦艦モード',
+    devRunNote: '空中戦艦モードで始めたプレイはランキングに登録されません。',
     howToTitle: 'UFO操作方法',
     howToMove: '自動前進',
     howToAim: 'マウスで方向転換',
@@ -696,9 +692,8 @@ export const STRINGS: Record<Language, Strings> = {
     options: 'OPTIONS',
     close: 'CLOSE',
     howTo: 'HOW TO PLAY',
-    devDrill: 'DEV · JUMP TO SKY BATTLESHIP',
-    devEndings: 'DEV · PREVIEW ENDINGS',
-    devRunNote: 'A developer drill run is not ranked.',
+    devDrill: 'SKY BATTLESHIP MODE',
+    devRunNote: 'A sky battleship mode run is not ranked.',
     howToTitle: 'UFO CONTROLS',
     howToMove: 'AUTO FORWARD',
     howToAim: 'STEER WITH THE MOUSE',
