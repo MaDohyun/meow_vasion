@@ -92,7 +92,19 @@ const CHASE_RIG_DROP = 0.6
  */
 const IMPACT_BLINK_RATE = 32
 
-const BEAM_TARGET_RING_CAPACITY = WORLD_MAX_CARS + TRAFFIC_MAX_CARS + 8 + PEDESTRIAN_MAX + CAT_MAX + HAZARD_MAX + Object.values(ENEMY_CAPS).reduce((sum, count) => sum + count, 0)
+/**
+ * City dressing's share of the ring pool.
+ *
+ * Every other term below is a real pool cap; props are not capped at all -
+ * `syncBeamObjects` appends whatever the district holds - so this is the one
+ * term that has to be measured. The densest district the generator produces is
+ * a lakeside one at just under four hundred pieces, most of them boulders and
+ * reed clumps, and rings are only drawn for what is inside the cone and
+ * liftable. Rounded up from that, with the slack the old bare `+ 8` was
+ * quietly relying on made explicit.
+ */
+const WORLD_PROP_RING_ALLOWANCE = 512
+const BEAM_TARGET_RING_CAPACITY = WORLD_MAX_CARS + TRAFFIC_MAX_CARS + WORLD_PROP_RING_ALLOWANCE + PEDESTRIAN_MAX + CAT_MAX + HAZARD_MAX + Object.values(ENEMY_CAPS).reduce((sum, count) => sum + count, 0)
 const beamTargetRingMaterial = new THREE.MeshBasicMaterial({
   color: '#a7fff0',
   transparent: true,

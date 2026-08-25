@@ -568,6 +568,10 @@ const WORLD_PROP_COLORS: Record<BeamWorldProp['kind'], string> = {
   'park-bench': '#c58b68',
   'bus-stop': '#78aebc',
   subway: '#78aebc',
+  // GROUND.SHORE_ROCK and GROUND.SHORE_REED, written out like every other
+  // entry here: a boulder must not change colour on its way up the beam.
+  'shore-rock': '#b4b1ac',
+  'shore-reed': '#7fbe7d',
 }
 
 const WORLD_PROP_DIAMETERS: Record<BeamWorldProp['kind'], number> = {
@@ -580,6 +584,10 @@ const WORLD_PROP_DIAMETERS: Record<BeamWorldProp['kind'], number> = {
   'park-bench': 3.4,
   'bus-stop': 7.2,
   subway: 8.6,
+  // Both clear the opening saucer's 2.48m hull, so weight and bulk open
+  // together and a pond is food from the first second of a run.
+  'shore-rock': 1.6,
+  'shore-reed': 1.4,
 }
 
 const WORLD_PROP_SCORES: Record<BeamWorldProp['kind'], number> = {
@@ -592,6 +600,10 @@ const WORLD_PROP_SCORES: Record<BeamWorldProp['kind'], number> = {
   'park-bench': 35,
   'bus-stop': 140,
   subway: 220,
+  // Under a bin. They are the cheapest thing in the city and there are
+  // hundreds of them around one lake; a pond must not out-score a street.
+  'shore-rock': 18,
+  'shore-reed': 12,
 }
 
 function makeWorldPropBeamObject(worldProp: BeamWorldProp): BeamObject {

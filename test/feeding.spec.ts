@@ -100,7 +100,11 @@ describe('feeding is the core loop', () => {
     const moving = averageFeed(25)
     expect(parked).toBeLessThan(moving / 3)
     expect(parked).toBeLessThan(2)
-  })
+    // Twelve twenty-five-second flights, and the only one of these that runs
+    // two full sets. It sat a hair under the five-second default and went over
+    // the moment the lakeside props joined the beam list, which is a fact about
+    // how much city this simulates rather than anything the test asserts.
+  }, 20_000)
 
   it('feeds any heading in the populated city without punishing steering', () => {
     const blind = averageFeed(25)

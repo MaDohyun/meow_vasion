@@ -1,9 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { beamLiftScale } from '../src/core/beam'
+import { beamLiftScale, beamProfile, isAbsorbable } from '../src/core/beam'
+import { DRONE_CEILING, SIZE_MAX, SIZE_START, sizeProfile, ufoDiameter } from '../src/core/size'
 import { busStopAnchor } from '../src/core/cityLandmarks'
 import {
   busStopsAround,
   isWorldPropDisplaced,
+  lakeShorePropsAround,
+  LAKE_SHORE_PROP_RADIUS_CELLS,
+  LANDMARK_RADIUS_CELLS,
+  SHORE_ROCK_SINK,
   PARK_BENCH_CLEARANCE,
   PARK_TREE_SPACING,
   TREE_VARIANT_ROUND,
@@ -30,6 +35,20 @@ function buildingFootprintDistance(x: number, z: number) {
   return Math.max(dx, dz)
 }
 
+/** Lakes are a landmark, not a fixture: walk out until one is in range rather
+ *  than pinning a coordinate that a world-gen tweak would invalidate. */
+function shoreCentre() {
+  for (let step = 0; step < 60; step += 1) {
+    const centre = { x: step * WORLD_CELL_SIZE * 3, z: step * WORLD_CELL_SIZE }
+    if (lakeShorePropsAround(centre, LAKE_SHORE_PROP_RADIUS_CELLS).length > 0) return centre
+  }
+  throw new Error('no lake shore found')
+}
+
+function findShore() {
+  return lakeShorePropsAround(shoreCentre(), LAKE_SHORE_PROP_RADIUS_CELLS)
+}
+
 describe('beam-capable city dressing', () => {
   it('keeps the requested weight ladder', () => {
     expect(WORLD_PROP_MASS['rooftop-structure']).toBe(5)
@@ -40,6 +59,8 @@ describe('beam-capable city dressing', () => {
     expect(WORLD_PROP_MASS['power-pylon']).toBe(6)
     expect(WORLD_PROP_MASS.communications).toBe(11)
     expect(WORLD_PROP_MASS.subway).toBe(7)
+    expect(WORLD_PROP_MASS['shore-rock']).toBe(1)
+    expect(WORLD_PROP_MASS['shore-reed']).toBe(1)
     // A medium craft can lift the roof kit while the heavier host building
     // remains in place, which is the intended separate-object behaviour.
     expect(beamLiftScale(WORLD_PROP_MASS['rooftop-structure'], 5)).toBeGreaterThan(0)
@@ -168,6 +189,74 @@ describe('beam-capable city dressing', () => {
     }
     const props = worldPropsAround(createActiveWorld({ x: 0, z: 0 }), { x: 0, z: 0 })
     expect(props.some((prop) => prop.kind === 'trash-bin')).toBe(true)
+  })
+
+  it('makes the lakeside boulders and reeds the opening craft\'s first scenery', () => {
+    // A pond at weight one is the one place a brand-new saucer can practise
+    // the verb on something that is not a body. Both gates have to open at
+    // once for that to be true: the weight ladder and the hull.
+    const shore = findShore()
+    expect(shore.length).toBeGreaterThan(0)
+    const opening = sizeProfile(SIZE_START)
+    for (const piece of shore) {
+      expect(worldPropMass(piece)).toBe(1)
+      expect(beamLiftScale(worldPropMass(piece), opening.beamStrength), piece.id).toBeGreaterThan(0)
+      expect(isAbsorbable(piece.kind, undefined, ufoDiameter(SIZE_START)), piece.id).toBe(true)
+    }
+    expect(shore.some((piece) => piece.kind === 'shore-rock')).toBe(true)
+    expect(shore.some((piece) => piece.kind === 'shore-reed')).toBe(true)
+  })
+
+  it('hands the shore the same transforms to the beam and to both render pools', () => {
+    // Two pools draw each piece - the static one where the world put it, the
+    // lifted one once the beam has it - so a piece whose id or transform moved
+    // between the lists would visibly change shape at the hand-off.
+    const centre = shoreCentre()
+    const first = lakeShorePropsAround(centre)
+    const second = lakeShorePropsAround(centre)
+    expect(first.length).toBeGreaterThan(0)
+    expect(first).toEqual(second)
+    expect(new Set(first.map((piece) => piece.id)).size).toBe(first.length)
+    for (const piece of first) {
+      // Nothing is left at a default: the generator bakes the whole transform.
+      expect(piece.scale.x).toBeGreaterThan(0)
+      expect(piece.scale.y).toBeGreaterThan(0)
+      expect(piece.scale.z).toBeGreaterThan(0)
+      // A boulder is sunk to the waist, a reed clump stands on the mud.
+      if (piece.kind === 'shore-rock') expect(piece.position.y).toBeCloseTo(piece.scale.x * SHORE_ROCK_SINK)
+      else expect(piece.position.y).toBeCloseTo(0.02)
+    }
+  })
+
+  it('simulates the shore nearer than it draws it, and never inside the beam', () => {
+    // Every piece that becomes a beam object is stepped every frame, and one
+    // lake district has hundreds of them. The near list is what the beam can
+    // actually reach; the far list is what the eye can see.
+    const centre = shoreCentre()
+    expect(LAKE_SHORE_PROP_RADIUS_CELLS).toBeLessThan(LANDMARK_RADIUS_CELLS)
+    const near = lakeShorePropsAround(centre, LAKE_SHORE_PROP_RADIUS_CELLS)
+    const far = lakeShorePropsAround(centre)
+    // The near list is always a subset of what is drawn - never a piece the
+    // eye cannot see - and a district with lakes at its edge really does hold
+    // pieces back.
+    const drawn = new Set(far.map((piece) => piece.id))
+    for (const piece of near) expect(drawn.has(piece.id), piece.id).toBe(true)
+    let held = 0
+    for (let step = 0; step < 30; step += 1) {
+      const spot = { x: step * WORLD_CELL_SIZE * 2, z: step * WORLD_CELL_SIZE * 5 }
+      held += lakeShorePropsAround(spot).length - lakeShorePropsAround(spot, LAKE_SHORE_PROP_RADIUS_CELLS).length
+    }
+    expect(held).toBeGreaterThan(0)
+
+    // The gap has to sit outside the widest cone the game can produce: the
+    // boosted beam at the craft's absolute ceiling, which is the one case
+    // where the cone reaches furthest sideways at ground level.
+    const profile = beamProfile(true, sizeProfile(SIZE_MAX).beamScale, sizeProfile(SIZE_MAX).beamReach)
+    const widest = profile.baseRadius + Math.min(profile.maxDrop, DRONE_CEILING) * profile.coneSpread
+    expect(LAKE_SHORE_PROP_RADIUS_CELLS * WORLD_CELL_SIZE).toBeGreaterThan(widest)
+
+    const props = worldPropsAround(createActiveWorld(centre), centre)
+    expect(props.filter((prop) => prop.kind === 'shore-rock' || prop.kind === 'shore-reed')).toEqual(near)
   })
 
   it('keeps street furniture out of buildings, shelters and parked cars', () => {

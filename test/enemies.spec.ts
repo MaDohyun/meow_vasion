@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   DRONE_MINE_HIT_RADIUS,
   ENEMY_CAPS,
+  ENEMY_DIAMETER,
   ENEMY_MAX_HP,
   ENEMY_WAVE_STAGES,
   activeEnemyCount,
@@ -14,7 +15,8 @@ import {
   waveStageForTime,
   type EnemyKind,
 } from '../src/core/enemies'
-import { isAbsorbable } from '../src/core/beam'
+import { beamLiftScale, isAbsorbable } from '../src/core/beam'
+import { BEAM_STRENGTH_MAX, SIZE_MAX, SIZE_START, sizeProfile } from '../src/core/size'
 
 function fillWave(time: number) {
   const state = createEnemyState()
@@ -31,18 +33,50 @@ const FIGHTER_WAVE_AT = ENEMY_WAVE_STAGES[3]!.at
 const LAST_WAVE_AT = ENEMY_WAVE_STAGES[ENEMY_WAVE_STAGES.length - 1]!.at
 
 describe('time-based enemy waves', () => {
-  it('leaves only the drone mine grabbable by tractor physics', () => {
+  it('puts the whole sky on the beam, and banks all of it but the mine', () => {
     const state = createEnemyState()
-    // The mine can be caught and dragged; a caught bomb is still a bomb, so
-    // the swallow path may never bank it as food.
-    const drone = state.slots.find((candidate) => candidate.kind === 'drone')!
-    expect(drone.beamImmune).toBe(false)
+    // Nothing is immune any more: what the beam can shift is the weight
+    // ladder's answer and what it can swallow is the hull's, exactly as for a
+    // car or a bus shelter.
+    for (const enemy of state.slots) expect(enemy.beamImmune).toBe(false)
+    // The mine is still never banked as food. It can be caught and dragged;
+    // a caught bomb is still a bomb, so the swallow path may never defuse it.
     expect(isAbsorbable('drone', 1.6, Number.POSITIVE_INFINITY)).toBe(false)
-    for (const kind of ['helicopter', 'fighter'] as const) {
-      const enemy = state.slots.find((candidate) => candidate.kind === kind)!
-      expect(enemy.beamImmune).toBe(true)
+    for (const kind of ['helicopter', 'fighter', 'boss'] as const) {
+      expect(isAbsorbable(kind, ENEMY_DIAMETER[kind], Number.POSITIVE_INFINITY)).toBe(true)
     }
     expect(ENEMY_WAVE_STAGES.at(-1)!.at).toBe(180)
+  })
+
+  it('prices the sky on the same weight ladder as the city', () => {
+    // The three numbers a player actually feels, and the size each one asks
+    // for. A helicopter is the first machine a growing craft can pluck out of
+    // the air, a fighter is a supertall block's weight, and the dreadnought is
+    // the top of the ladder - only a craft within a whisker of the size cap
+    // can shift it.
+    const state = createEnemyState()
+    const weightOf = (kind: EnemyKind) => state.slots.find((enemy) => enemy.kind === kind)!.mass
+    expect(weightOf('helicopter')).toBe(6)
+    expect(weightOf('fighter')).toBe(10)
+    expect(weightOf('boss')).toBe(BEAM_STRENGTH_MAX)
+
+    const liftableAt = (weight: number) => {
+      for (let size = SIZE_START; size <= SIZE_MAX; size += 0.01) {
+        if (beamLiftScale(weight, sizeProfile(size).beamStrength) > 0) return size
+      }
+      return Number.POSITIVE_INFINITY
+    }
+    expect(liftableAt(weightOf('helicopter'))).toBeLessThan(liftableAt(weightOf('fighter')))
+    expect(liftableAt(weightOf('fighter'))).toBeLessThan(liftableAt(weightOf('boss')))
+    // The opening saucer can move none of them, and a craft at the ceiling
+    // can move all three.
+    for (const kind of ['helicopter', 'fighter', 'boss'] as const) {
+      expect(beamLiftScale(weightOf(kind), sizeProfile(SIZE_START).beamStrength), kind).toBe(0)
+      expect(beamLiftScale(weightOf(kind), sizeProfile(SIZE_MAX).beamStrength), kind).toBeGreaterThan(0)
+    }
+    // The ship is the last thing on the menu, not something a run passes on
+    // the way: it opens inside the top few percent of the size range.
+    expect(liftableAt(weightOf('boss'))).toBeGreaterThan(SIZE_START + (SIZE_MAX - SIZE_START) * 0.95)
   })
 
   it('detonates a beam-held mine that is drawn onto the hull', () => {

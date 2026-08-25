@@ -3,6 +3,7 @@ import type { BeamObject, BeamWorldProp } from './beam'
 import {
   busStopAnchor,
   groundLandmarkForCell,
+  lakeShoreDecorAround,
   lakeShoreTreesAround,
   landmarkId,
 } from './cityLandmarks'
@@ -31,6 +32,15 @@ export const WORLD_PROP_MASS = {
   // A whole station mouth: a rung above the pylon, below the gas-station
   // demolition, so tearing one out is late-run beam work.
   subway: 7,
+  // The lakeside pair, and the lightest things in the city that are not alive.
+  //
+  // One apiece, which is the opening saucer's whole strength: a pond is the
+  // one place a brand-new craft can feed on scenery instead of on bodies, and
+  // that is worth more than the realism of a boulder outweighing a bin. They
+  // are small enough to clear the opening hull as well, so both gates open at
+  // the same moment rather than one of them teasing the other.
+  'shore-rock': 1,
+  'shore-reed': 1,
 } as const
 
 export function worldPropMass(worldProp: Pick<BeamWorldProp, 'kind'>) {
@@ -272,6 +282,68 @@ export function trashBinsAround(position: Pick<Vec3, 'x' | 'z'>, radius = STREET
   return bins
 }
 
+/**
+ * The boulders and reed clumps along every waterline, as beam objects.
+ *
+ * They were scenery drawn straight from `lakeShoreDecorAround` by two
+ * instanced pools and nothing else - a rock the beam swept over was a texture.
+ * A pond full of things a saucer two metres wide can actually lift is the one
+ * place the opening craft gets to practise the verb on something that is not a
+ * pedestrian, so they are ordinary props now, at weight 1.
+ *
+ * Every transform a piece needs is baked here rather than in the render layer,
+ * because two pools draw each piece - the static one where the world put it,
+ * the lifted one once the beam has it - and a rock that changed shape on the
+ * way up would give the swap away. The one thing left to the render layer is
+ * the boulder's tilt and shade, both of which it derives from `rotation`.
+ */
+export function lakeShorePropsAround(position: Pick<Vec3, 'x' | 'z'>, radius = LANDMARK_RADIUS_CELLS) {
+  const props: BeamWorldProp[] = []
+  for (const item of lakeShoreDecorAround(position, radius)) {
+    const rock = item.kind === 'rock'
+    // The same 0..1 roll the shore has always used for per-piece variety.
+    const spread = item.angle / (Math.PI * 2)
+    props.push(prop({
+      // Rounded coordinates, matching the lake trees: the shore list is
+      // deterministic, so the spot a piece stands on is its identity.
+      id: `shore:${item.kind}:${Math.round(item.x * 10)}:${Math.round(item.z * 10)}`,
+      kind: rock ? 'shore-rock' : 'shore-reed',
+      // A boulder sits sunk to the waist so the waterline cuts across it; a
+      // reed clump stands on the mud.
+      position: { x: item.x, y: rock ? item.size * SHORE_ROCK_SINK : 0.02, z: item.z },
+      rotation: item.angle,
+      variant: 0,
+      scale: rock
+        ? { x: item.size, y: item.size * (0.54 + spread * 0.2), z: item.size * 0.88 }
+        : { x: item.size, y: item.size * (0.85 + spread * 0.6), z: item.size },
+    }))
+  }
+  return props
+}
+
+/** How far into the ground a boulder is planted, as a fraction of its width.
+ *  Shared with the render layer so the lifted copy leaves the same hole. */
+export const SHORE_ROCK_SINK = 0.2
+
+/**
+ * How far out the shore is simulated, which is nearer than it is drawn.
+ *
+ * One lake district puts a couple of hundred pieces on the bank, and every one
+ * of them that becomes a beam object is stepped on every frame for the whole
+ * time the player is in the district. The beam cannot possibly reach most of
+ * them: at the craft's absolute ceiling the boosted cone is about 91m wide
+ * where it meets the ground, and four cells is 136m of guaranteed coverage in
+ * the worst direction, so nothing inside the beam's reach is ever missing.
+ *
+ * The render pools still sweep the full landmark radius, because a shore that
+ * only grew its boulders once you were three cells away would be obvious. The
+ * two lists agree on identity - a piece is named by where it stands - so a
+ * piece streams in as an object under exactly the id the static pool is
+ * already drawing, and a piece eaten at the near radius stays eaten when the
+ * far pool takes it back.
+ */
+export const LAKE_SHORE_PROP_RADIUS_CELLS = 4
+
 /** All beam-capable dressing in the active district. */
 export function worldPropsAround(world: ActiveWorld, position: Pick<Vec3, 'x' | 'z'>) {
   const props: BeamWorldProp[] = []
@@ -313,6 +385,7 @@ export function worldPropsAround(world: ActiveWorld, position: Pick<Vec3, 'x' | 
   }
   props.push(...utilityPolesAround(position))
   props.push(...trashBinsAround(position))
+  props.push(...lakeShorePropsAround(position, LAKE_SHORE_PROP_RADIUS_CELLS))
   props.push(...busStopsAround(world))
   for (const cell of groundCellsAround(position, LANDMARK_RADIUS_CELLS)) {
     const landmark = groundLandmarkForCell(cell)
@@ -378,6 +451,24 @@ export function isWorldPropHidden(
 ) {
   if (destroyed.has(id)) return true
   return objects.some((object) => object.id === id && isWorldPropDisplaced(object))
+}
+
+/**
+ * Every prop id the world must not draw at home, as a set.
+ *
+ * Same answer as calling `isWorldPropHidden` per prop, in one pass instead of
+ * one pass per prop. The lakeside pools need it: a single lake district puts
+ * a couple of hundred boulders and reed clumps on screen, and asking each of
+ * them to scan the whole beam list is the one place that quadratic actually
+ * costs something.
+ */
+export function hiddenWorldPropIds(
+  destroyed: ReadonlySet<string>,
+  objects: ReadonlyArray<Pick<BeamObject, 'id' | 'active' | 'absorbing' | 'position' | 'worldProp'>>,
+) {
+  const hidden = new Set(destroyed)
+  for (const object of objects) if (isWorldPropDisplaced(object)) hidden.add(object.id)
+  return hidden
 }
 
 export function worldPropVisibilityKey(
