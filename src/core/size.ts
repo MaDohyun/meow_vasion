@@ -171,11 +171,20 @@ export const CAMERA_REST_DISTANCE = 12
  */
 export const BEAM_STRENGTH_MAX = 12
 /**
- * One. The opening saucer carries one unit of hanging weight and not a gram
- * more - a single trash bin is a full load, which is exactly the "barely a
- * predator" the start of the run is selling.
+ * Two: exactly one body.
+ *
+ * A pedestrian weighs 2 (see PEDESTRIAN_MASS) and a bin weighs 2 as well, so
+ * this is the smallest rating at which the opening saucer's first catch is a
+ * full load rather than an overload. It sat at 1, which meant the very first
+ * thing a new player picked up put them over the line - alarm on, sinking,
+ * top speed falling - before they had done anything wrong. A limit that is
+ * breached by the tutorial's own lesson is not teaching a limit, it is just
+ * noise.
+ *
+ * Still "barely a predator": one body at a time, and a second one is already
+ * twice the rating.
  */
-export const LIFT_CAPACITY_MIN = 1
+export const LIFT_CAPACITY_MIN = 2
 /** Forty by the ceiling. Self-limiting long before that: ballast drag prices
  *  a full hold at well under half speed, so the cap is ambition, not power. */
 export const LIFT_CAPACITY_MAX = 40

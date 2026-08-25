@@ -7,16 +7,19 @@
  * one they got - a run that outlasted the clock and still failed the mission
  * used to be told it had been shot down.
  *
- * Two more stop the run early, and they are not the same as each other. Being
- * shot down is the city winning the fight. Going down under the load is the
- * player's own haul winning one: nothing hit the craft, it simply hung more
- * weight off the beam than the engines could hold and rode it into the
- * ground. Filing that as a shoot-down hid the only thing the player could
- * have done about it - let go.
+ * One ending stops the run early, and it is the city's: being shot down.
  *
- * Neither early ending has a mission verdict to give.
+ * There used to be a second early ending - going down under the weight on the
+ * beam - and it is gone. The sinking that led to it is not: an overloaded
+ * craft still loses its climb and rides down toward the street, and the alarm
+ * still says so. What was removed is the floor it hit. A player who can see
+ * the craft sinking and can stop it at any moment by letting go does not also
+ * need to be killed for it, and being killed for it taught nothing the sinking
+ * had not already said.
+ *
+ * Being shot down has no mission verdict to give.
  */
-export type RunEnding = 'recon' | 'missionFailed' | 'downed' | 'crushed'
+export type RunEnding = 'recon' | 'missionFailed' | 'downed'
 
 /** The clock reached zero with the craft still flying. Whether that is a win
  * is entirely the mission's answer to give. */

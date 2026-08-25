@@ -22,15 +22,62 @@ export type EnemyProjectileKind = 'orb'
  * already been dodging for half a minute.
  *
  * Spaced across the run rather than packed into its front half: the last wave
- * lands with two minutes still on the clock, which is the boss fight.
+ * lands with two minutes and twenty seconds still on the clock, which is the
+ * boss fight.
+ *
+ * The dreadnought used to launch at a hundred and eighty and now launches
+ * twenty seconds earlier. The fighter wave before it was holding the sky on
+ * its own for seventy seconds - long enough for the stage to stop introducing
+ * anything and start repeating itself - while the fight everyone waits for was
+ * the shortest thing in the run. Moving the launch spends those twenty seconds
+ * where they read: the ship arrives while the fighter wave is still new, and
+ * the fight it opens is a fifth longer.
+ *
+ * The two units that chase - the helicopter and the fighter - then went back
+ * fifteen seconds each, because the run was reading as hard rather than as
+ * fast. The mines are the one wave a new player can be in the sky with and
+ * still be learning the beam: they do not follow, so the only skill they ask
+ * for is not flying into one. Everything after them asks for evasion, so the
+ * unhurried stretch is the one worth lengthening - it runs fifty-five seconds
+ * now instead of forty, and the helicopters get forty on their own before the
+ * fighters arrive.
+ *
+ * The helicopters are also a fifth thinner - 8/11/14 became 6/9/11 - while the
+ * mines keep every number they had. Difficulty was being read off the things
+ * that hunt you, not off how full the sky is, so the cut lands on those and
+ * the sky stays as busy as it looked.
+ *
+ * The fighters were cut with them and then put back at 4/6, because their
+ * shots were halved in the same pass (see FIGHTER_ORB_INTERVAL) and cutting
+ * both was paying twice for one complaint. A fighter is a shape crossing the
+ * sky as much as it is a gun: thinning the squadron takes away the crossings
+ * too, and those are what make the fighter wave read as a scramble rather than
+ * as a slightly louder helicopter wave. Rate is the knob that answers "too
+ * much incoming"; population is the knob that answers "too much in the sky",
+ * and nobody said the second one.
+ *
+ * See WAVE_RAMP_SECONDS for the third change in the same direction: none of
+ * these numbers arrives all at once any more.
  */
 export const ENEMY_WAVE_STAGES = [
   { at: 0, tempo: 0, label: 'UFO SIGHTED', targets: {} },
   { at: 30, tempo: 1, label: 'DRONE MINES', targets: { drone: 14 } },
-  { at: 70, tempo: 2, label: 'HELICOPTERS UP', targets: { drone: 20, helicopter: 8 } },
-  { at: 110, tempo: 3, label: 'FIGHTERS SCRAMBLED', targets: { drone: 25, helicopter: 11, fighter: 4 } },
-  { at: 180, tempo: 4, label: 'SKY BATTLESHIP', targets: { drone: 34, helicopter: 14, fighter: 6, boss: 1 } },
+  { at: 85, tempo: 2, label: 'HELICOPTERS UP', targets: { drone: 20, helicopter: 6 } },
+  { at: 125, tempo: 3, label: 'FIGHTERS SCRAMBLED', targets: { drone: 25, helicopter: 9, fighter: 4 } },
+  { at: 160, tempo: 4, label: 'SKY BATTLESHIP', targets: { drone: 34, helicopter: 11, fighter: 6, boss: 1 } },
 ] as const
+
+/**
+ * When the dreadnought's wave lands, read off the table above.
+ *
+ * Exported because the sky is on the same clock as the waves - see
+ * `daylight.ts`, where nightfall is pinned to this second rather than written
+ * out again as a number that has to be remembered when the wave moves.
+ */
+export const BATTLESHIP_LAUNCH_SECONDS = ENEMY_WAVE_STAGES.reduce(
+  (found, stage) => ((stage.targets as Partial<Record<EnemyKind, number>>).boss ?? 0) > 0 ? stage.at : found,
+  ENEMY_WAVE_STAGES[ENEMY_WAVE_STAGES.length - 1]!.at,
+)
 
 export const ENEMY_TIER: Record<EnemyKind, number> = {
   drone: 0,
@@ -275,8 +322,15 @@ export const FIGHTER_ORB_LIFE = 5.4
  * see. One orb on a shorter cooldown, from any bearing, spends the same
  * ammunition as a steady drizzle: a single fighter is a nuisance you fly past
  * and a squadron is weather.
+ *
+ * Doubled from 1.4 with the rest of the difficulty pass. The drizzle was the
+ * right shape and there was simply too much of it once several fighters were
+ * up: the gate is range, not aim, so a squadron's shots all land in the same
+ * few seconds a player spends inside it. Halving each fighter's rate halves
+ * that without touching the thing that makes the shots readable - one slow orb
+ * per fighter, no lead, no warning line.
  */
-export const FIGHTER_ORB_INTERVAL = 1.4
+export const FIGHTER_ORB_INTERVAL = 2.8
 export const FIGHTER_ORB_RANGE = 70
 /** A fighter crosses the sky in one straight line, well above cruise: the
  *  pass is the manoeuvre, the orb is the attack. */
@@ -573,10 +627,55 @@ function random(state: EnemyState) {
   return state.randomState / 0xffffffff
 }
 
+/**
+ * How long a wave takes to reach the population its table entry names.
+ *
+ * A wave used to be a step: the stage boundary moved the target, and the
+ * spawner - which can hand out eight units in a single tick - had the whole
+ * squadron in the sky about three seconds later. Eight helicopters appearing
+ * at once is the moment the run was being called hard, and it is a different
+ * complaint from the one the wave times answer: pushing a wave back buys time
+ * before it, not time inside it.
+ *
+ * So a wave now arrives at half strength and fills to its table entry over
+ * this window. The bulletin still announces something that is actually in the
+ * sky - the half that lands on the boundary is the news - and the rest joins
+ * while the player is already flying against it.
+ *
+ * Shorter than the tightest gap in the wave table, so one wave always finishes
+ * arriving before the next one starts.
+ */
+export const WAVE_RAMP_SECONDS = 20
+
+/** What share of a wave lands on its own boundary. The rest is the ramp. */
+export const WAVE_RAMP_OPENING = 0.5
+
+/**
+ * The population a kind should hold right now, ramp included.
+ *
+ * Read per kind rather than per stage: a wave that adds helicopters usually
+ * raises the mine count too, and there is no reason for the mines to step
+ * while the helicopters ease in. Every kind fills from where the previous
+ * stage left it to where this one wants it.
+ *
+ * The dreadnought is exempt in practice rather than by a branch: half of one
+ * ship rounds to one, so the ship is whole on the second it launches. Nothing
+ * else in the table is small enough for that to matter.
+ */
+export function waveTargetForKind(kind: EnemyKind, elapsed: number) {
+  const index = waveStageForTime(elapsed)
+  const stage = ENEMY_WAVE_STAGES[index]!
+  const previous = index > 0 ? ENEMY_WAVE_STAGES[index - 1]! : null
+  const full = (stage.targets as Partial<Record<EnemyKind, number>>)[kind] ?? 0
+  const held = previous ? ((previous.targets as Partial<Record<EnemyKind, number>>)[kind] ?? 0) : 0
+  if (full <= held) return Math.min(ENEMY_CAPS[kind], full)
+  const opening = held + (full - held) * WAVE_RAMP_OPENING
+  const progress = Math.max(0, Math.min(1, (elapsed - stage.at) / WAVE_RAMP_SECONDS))
+  return Math.min(ENEMY_CAPS[kind], Math.round(opening + (full - opening) * progress))
+}
+
 function targetForKind(kind: EnemyKind, elapsed: number) {
-  const stage = ENEMY_WAVE_STAGES[waveStageForTime(elapsed)]!
-  const targets = stage.targets as Partial<Record<EnemyKind, number>>
-  return Math.min(ENEMY_CAPS[kind], targets[kind] ?? 0)
+  return waveTargetForKind(kind, elapsed)
 }
 
 function activeCount(state: EnemyState, kind: EnemyKind) {

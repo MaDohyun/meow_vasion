@@ -4,6 +4,7 @@ import {
   ENEMY_CAPS,
   ENEMY_MAX_HP,
   ENEMY_WAVE_STAGES,
+  WAVE_RAMP_SECONDS,
   activeEnemyCount,
   createEnemyState,
   helicopterBandForSlot,
@@ -12,6 +13,7 @@ import {
   stepEnemies,
   syncEnemyTiers,
   waveStageForTime,
+  waveTargetForKind,
   type EnemyKind,
 } from '../src/core/enemies'
 import { isAbsorbable } from '../src/core/beam'
@@ -42,7 +44,7 @@ describe('time-based enemy waves', () => {
       const enemy = state.slots.find((candidate) => candidate.kind === kind)!
       expect(enemy.beamImmune).toBe(true)
     }
-    expect(ENEMY_WAVE_STAGES.at(-1)!.at).toBe(180)
+    expect(ENEMY_WAVE_STAGES.at(-1)!.at).toBe(160)
   })
 
   it('detonates a beam-held mine that is drawn onto the hull', () => {
@@ -96,8 +98,39 @@ describe('time-based enemy waves', () => {
     expect(activeEnemyCount(state, 'drone')).toBe(2)
   })
 
+  it('lets a wave in over time rather than all at once', () => {
+    // The complaint this answers was about the moment of arrival, not the
+    // population: eight helicopters materialising inside three seconds reads
+    // as harder than the same eight already being there.
+    for (const [stage, kind] of [[2, 'helicopter'], [3, 'fighter']] as const) {
+      const at = ENEMY_WAVE_STAGES[stage]!.at
+      const full = (ENEMY_WAVE_STAGES[stage]!.targets as Partial<Record<EnemyKind, number>>)[kind]!
+      const held = (ENEMY_WAVE_STAGES[stage - 1]!.targets as Partial<Record<EnemyKind, number>>)[kind] ?? 0
+      // Something arrives on the boundary - the bulletin has to be announcing
+      // a sky the player can see - but not the whole squadron.
+      expect(waveTargetForKind(kind, at), kind).toBeGreaterThan(held)
+      expect(waveTargetForKind(kind, at), kind).toBeLessThan(full)
+      // And it is filling the whole way, not stepping again at the end. Only
+      // non-decreasing: a three-unit wave is two whole fighters for the first
+      // half of its ramp, because a wave is people rather than a fraction.
+      expect(waveTargetForKind(kind, at + WAVE_RAMP_SECONDS * 0.5), kind)
+        .toBeGreaterThanOrEqual(waveTargetForKind(kind, at))
+      expect(waveTargetForKind(kind, at + WAVE_RAMP_SECONDS), kind).toBe(full)
+    }
+    // The ship is the exception, and by arithmetic rather than by a branch:
+    // half of one ship rounds back up to one on the second it launches.
+    expect(waveTargetForKind('boss', LAST_WAVE_AT)).toBe(1)
+    // No wave may still be arriving when the next one starts.
+    for (let stage = 1; stage < ENEMY_WAVE_STAGES.length; stage += 1) {
+      expect(ENEMY_WAVE_STAGES[stage]!.at - ENEMY_WAVE_STAGES[stage - 1]!.at)
+        .toBeGreaterThanOrEqual(WAVE_RAMP_SECONDS)
+    }
+  })
+
   it('escalates to a bounded mixed army and a single boss', () => {
-    const { state } = fillWave(LAST_WAVE_AT)
+    // Sampled once the last wave has finished arriving: the table is the floor
+    // the ramp climbs to, not the number the boundary second holds.
+    const { state } = fillWave(LAST_WAVE_AT + WAVE_RAMP_SECONDS)
     // The wave table is the floor rather than the whole population now: the
     // dreadnought launches escorts of its own on top of what the spawner
     // fills, and the caps are the ceiling that keeps that bounded.

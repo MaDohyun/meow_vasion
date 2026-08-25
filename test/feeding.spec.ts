@@ -23,7 +23,7 @@ function flyAndFeed(seconds: number, startSize = SIZE_START, seed = 4242, steer 
   stepCrowds(crowds, { position: drone.position, heading: 0 }, 0)
   let size = startSize
   let absorbed = 0
-  const input: DroneInput = { throttle: park ? 0 : 1, steer: 0, strafe: 0, lookPitch: 0, vertical: 0, special: false }
+  const input: DroneInput = { throttle: park ? 0 : 1, steer: 0, lookPitch: 0, vertical: 0, special: false }
   // A steering pilot points at the nearest target ahead, the way a player
   // reading the radar would. The city is populated in every direction now, so
   // greedily chasing the nearest body regardless of bearing degenerates into

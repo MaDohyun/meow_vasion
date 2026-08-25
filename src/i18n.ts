@@ -80,10 +80,9 @@ export type Strings = {
   bgmVolume: string
   sfxVolume: string
   soundBlocked: string
+  /** The craft flies itself; these name what the player still decides. */
   controlFly: string
-  controlStrafe: string
   controlAim: string
-  controlMove: string
   controlBeam: string
   controlLaser: string
   controlBoost: string
@@ -122,7 +121,8 @@ export type Strings = {
   beamAmplified: string
   /** The ballast gauge. It reads as weight rather than as drag because that
    *  is what fills it and what the overload warning names - the slowdown is
-   *  the symptom, not the thing on the bar. */
+   *  the symptom, not the thing on the bar. Past full the craft both slows and
+   *  sinks; what it no longer does is end the run when it reaches the road. */
   weight: string
   turbo: string
   turboActive: string
@@ -171,8 +171,6 @@ export type Strings = {
   survivedLead: string
   missionFailedLead: string
   collapsedLead: string
-  crushedTitle: string
-  crushedLead: string
   finalScore: string
   statSurvived: string
   statMass: string
@@ -302,8 +300,8 @@ export const STRINGS: Record<Language, Strings> = {
     devEndings: '개발자 모드 · 엔딩 확인',
     devRunNote: '개발자 모드로 시작한 판은 랭킹에 올리지 않습니다.',
     howToTitle: 'UFO 조작법',
-    howToMove: '이동',
-    howToAim: '마우스 조준',
+    howToMove: '자동 전진',
+    howToAim: '마우스로 방향 조종',
     graphics: '그래픽',
     qualityHigh: '높음',
     qualityLow: '낮음',
@@ -311,10 +309,8 @@ export const STRINGS: Record<Language, Strings> = {
     bgmVolume: 'BGM',
     sfxVolume: '효과음',
     soundBlocked: '소리 켜기',
-    controlFly: '보는 방향으로 비행',
-    controlStrafe: '좌우 이동',
+    controlFly: '보는 방향으로 자동 비행',
     controlAim: '조종 · 조준',
-    controlMove: '이동',
     controlBeam: '빔 유지 · 흡수',
     controlLaser: '레이저',
     controlBoost: '터보',
@@ -328,12 +324,12 @@ export const STRINGS: Record<Language, Strings> = {
     collapseAt: '붕괴',
     life: '생명력',
     hazardBuildings: '건물에 부딪히면 [[생명력 감소]]',
-    overloadHint: '무게가 가득 차면 [[추락]]',
+    overloadHint: '무게가 가득 차면 [[느려지고 가라앉음]]',
     bossName: '공중전함',
     repairing: '수리 중',
     ceiling: '상승 한계',
     overloaded: '과적',
-    overloadAlarm: '[[무게 초과 · 추락 위험]] 빔을 놓아라!',
+    overloadAlarm: '[[무게 초과 · 감속 · 하강]]',
     waterAlarm: '호수 물을 빨아들이는 중 · 속도 저하',
     clock: '남은 시간',
     score: '점수',
@@ -390,7 +386,6 @@ export const STRINGS: Record<Language, Strings> = {
       recon: '완벽한 정찰이었다, 대원. 지구는 이제 우리 손안이다. 귀환을 허가한다!',
       missionFailed: '연료를 다 쓰고도 임무를 못 끝냈군, 대원. 다음 정찰에선 시간을 아껴 써라.',
       downed: '대원! 대원?! ……기체가 격추됐다. 표본은 됐으니 일단 살아서 돌아와라.',
-      crushed: '대원, 욕심이 화를 불렀군. 빔에 그만큼 매달고 날 수 있는 접시는 없다. 다음엔 놓을 줄도 알아라.',
     },
     tutorialMissionEyebrow: '장군의 첫 무전',
     tutorialMissionLead: '“대원, 공원에 남은 동포 고양이부터 구출해 봐.”',
@@ -422,8 +417,6 @@ export const STRINGS: Record<Language, Strings> = {
     survivedLead: '지구 정찰에 성공했습니다, 냐앗호!',
     missionFailedLead: '시간 내에 미션을 완수하지 못해서 지구 정찰 임무에 실패했습니다.',
     collapsedLead: '격추당해 정찰은 망했지만, 고양이 얘기는 건졌습니다',
-    crushedTitle: '무게에 눌려 추락',
-    crushedLead: '빔에 매단 짐이 출력을 이겼습니다. 끝내 무게를 감당하지 못한 접시는 짐과 함께 지면에 처박혔습니다.',
     finalScore: '최종 점수',
     statSurvived: '생존 시간',
     statMass: '최종 질량',
@@ -493,8 +486,8 @@ export const STRINGS: Record<Language, Strings> = {
     devEndings: '開発者モード · エンディング確認',
     devRunNote: '開発者モードで始めたプレイはランキングに登録されません。',
     howToTitle: 'UFO 操作方法',
-    howToMove: '移動',
-    howToAim: 'マウス照準',
+    howToMove: '自動前進',
+    howToAim: 'マウスで方向転換',
     graphics: 'グラフィック',
     qualityHigh: '高',
     qualityLow: '低',
@@ -502,10 +495,8 @@ export const STRINGS: Record<Language, Strings> = {
     bgmVolume: 'BGM',
     sfxVolume: '効果音',
     soundBlocked: 'サウンドをオン',
-    controlFly: '見ている方向へ飛行',
-    controlStrafe: '左右移動',
+    controlFly: '見ている方向へ自動飛行',
     controlAim: '操縦 · 照準',
-    controlMove: '移動',
     controlBeam: 'ビーム維持 · 吸収',
     controlLaser: 'レーザー',
     controlBoost: 'ターボ',
@@ -519,12 +510,12 @@ export const STRINGS: Record<Language, Strings> = {
     collapseAt: '崩壊',
     life: 'ライフ',
     hazardBuildings: '建物にぶつかると[[ライフが減る]]',
-    overloadHint: '積載オーバーで[[墜落]]',
+    overloadHint: '積載オーバーで[[減速 · 高度低下]]',
     bossName: '空中戦艦',
     repairing: '修理中',
     ceiling: '上昇限界',
     overloaded: '過積載',
-    overloadAlarm: '[[重量超過 · 墜落の危険]] ビームを離せ！',
+    overloadAlarm: '[[重量超過 · 減速 · 高度低下]]',
     waterAlarm: '湖の水を吸収中 · 速度低下',
     clock: '残り時間',
     score: 'スコア',
@@ -581,7 +572,6 @@ export const STRINGS: Record<Language, Strings> = {
       recon: '完璧な偵察だった、隊員。地球はもう我々のものだ。帰還を許可する！',
       missionFailed: '燃料を使い切って任務は未完了か、隊員。次の偵察では時間を大事に使え。',
       downed: '隊員！ 隊員？！ ……機体が撃墜された。標本はいい、まずは生きて帰ってこい。',
-      crushed: '隊員、欲が身を滅ぼしたな。あれだけ吊るして飛べる機体はない。次は手放すことも覚えろ。',
     },
     tutorialMissionEyebrow: '将軍の最初の通信',
     tutorialMissionLead: '「隊員、公園に残った仲間の猫から救出してみろ。」',
@@ -613,8 +603,6 @@ export const STRINGS: Record<Language, Strings> = {
     survivedLead: '地球偵察に成功しました、ニャッホー！',
     missionFailedLead: '時間内にミッションを達成できず、地球偵察任務は失敗しました。',
     collapsedLead: '撃墜されて偵察は失敗。でも猫の話は持ち帰れます',
-    crushedTitle: '重量に負けて墜落',
-    crushedLead: 'ビームに吊るした荷が出力を上回りました。重さに耐えきれず、機体は荷ごと地面に突っ込みました。',
     finalScore: '最終スコア',
     statSurvived: '生存時間',
     statMass: '最終質量',
@@ -684,8 +672,8 @@ export const STRINGS: Record<Language, Strings> = {
     devEndings: 'DEV · PREVIEW ENDINGS',
     devRunNote: 'A developer drill run is not ranked.',
     howToTitle: 'UFO CONTROLS',
-    howToMove: 'MOVE',
-    howToAim: 'MOUSE AIM',
+    howToMove: 'AUTO FORWARD',
+    howToAim: 'STEER WITH THE MOUSE',
     graphics: 'GRAPHICS',
     qualityHigh: 'HIGH',
     qualityLow: 'LOW',
@@ -693,10 +681,8 @@ export const STRINGS: Record<Language, Strings> = {
     bgmVolume: 'BGM',
     sfxVolume: 'SOUND EFFECTS',
     soundBlocked: 'TAP FOR SOUND',
-    controlFly: 'FLY WHERE YOU LOOK',
-    controlStrafe: 'LEFT / RIGHT',
+    controlFly: 'ALWAYS FLYING WHERE YOU LOOK',
     controlAim: 'STEER / AIM',
-    controlMove: 'MOVE',
     controlBeam: 'HOLD BEAM · ABSORB',
     controlLaser: 'LASER',
     controlBoost: 'TURBO',
@@ -710,12 +696,12 @@ export const STRINGS: Record<Language, Strings> = {
     collapseAt: 'COLLAPSE',
     life: 'LIFE',
     hazardBuildings: 'HITTING A BUILDING [[COSTS YOU LIFE]]',
-    overloadHint: 'WEIGHT FULL MEANS [[A CRASH]]',
+    overloadHint: 'WEIGHT FULL MEANS [[SLOW AND SINKING]]',
     bossName: 'SKY BATTLESHIP',
     repairing: 'REPAIRING',
     ceiling: 'CEILING',
     overloaded: 'OVERLOADED',
-    overloadAlarm: '[[OVERWEIGHT · ABOUT TO CRASH]] RELEASE THE BEAM!',
+    overloadAlarm: '[[OVERWEIGHT · SLOW AND SINKING]]',
     waterAlarm: 'DRAWING LAKE WATER · SLOWED',
     clock: 'CLOCK',
     score: 'SCORE',
@@ -772,7 +758,6 @@ export const STRINGS: Record<Language, Strings> = {
       recon: 'A flawless recon, pilot. Earth is ours now. You are cleared to return!',
       missionFailed: 'Out of fuel with the job half done, pilot. Spend the clock better next time.',
       downed: 'Pilot! Pilot?! ...The craft is down. Forget the samples - just get home alive.',
-      crushed: 'Greed brought you down, pilot. No saucer flies with that much on the beam. Next time, learn to let go.',
     },
     tutorialMissionEyebrow: "THE GENERAL'S FIRST TRANSMISSION",
     tutorialMissionLead: '“Pilot, start by rescuing the allied cat left in the park.”',
@@ -804,8 +789,6 @@ export const STRINGS: Record<Language, Strings> = {
     survivedLead: 'Earth recon successful. Meow-hoo!',
     missionFailedLead: 'The clock ran out with the mission unfinished. Earth recon failed.',
     collapsedLead: 'Shot down, so the recon failed - but at least you brought back the cat story',
-    crushedTitle: 'CRUSHED BY THE LOAD',
-    crushedLead: 'What hung off the beam outweighed the engines. The craft could not carry it, and rode the load into the ground.',
     finalScore: 'FINAL SCORE',
     statSurvived: 'SURVIVED',
     statMass: 'FINAL MASS',

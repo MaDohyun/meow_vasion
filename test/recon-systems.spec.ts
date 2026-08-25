@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { BUILDING_SCORE, buildingDestructionScore, buildingMaxHealth, createBuildingRuin, damageBuilding, ruinCollider } from '../src/core/buildings'
 import { LAKE_BEAM_SPEED_SCALE, stepLakeAbsorption } from '../src/core/lakes'
-import { shouldCrashFromOverload } from '../src/core/overload'
 import type { ProceduralBuilding } from '../src/core/world'
 
 const building = (height: number): ProceduralBuilding => ({
@@ -39,13 +38,6 @@ describe('recon overhaul support systems', () => {
     expect(mid.speedScale).toBeGreaterThan(LAKE_BEAM_SPEED_SCALE)
     const deep = stepLakeAbsorption(0, 1, true, 30)
     expect(deep.speedScale).toBeCloseTo(LAKE_BEAM_SPEED_SCALE)
-  })
-
-  it('crashes only with beam on, overload and ground contact together', () => {
-    expect(shouldCrashFromOverload(true, 12, 10, 1)).toBe(true)
-    expect(shouldCrashFromOverload(false, 12, 10, 1)).toBe(false)
-    expect(shouldCrashFromOverload(true, 10, 10, 1)).toBe(false)
-    expect(shouldCrashFromOverload(true, 12, 10, 2)).toBe(false)
   })
 
   it('pays more for the towers that take more shooting', () => {

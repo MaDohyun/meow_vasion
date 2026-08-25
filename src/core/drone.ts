@@ -1,9 +1,21 @@
 export type Vec3 = { x: number; y: number; z: number }
 
 export type DroneInput = {
+  /**
+   * The share of top speed the craft is aiming for, 0..1.
+   *
+   * Not a key any more. The saucer flies itself: the player points, the craft
+   * goes, and the only thing a beginner has to learn is where to look. WASD
+   * was the first wall in front of anyone who had never flown anything, and
+   * it was buying nothing the mouse was not already saying - the ship has
+   * always flown where it looks.
+   *
+   * What is left on this axis is the throttle the *world* holds: the beam's
+   * drag, a lake's grip, and the tutorial parking the craft while the general
+   * talks. Callers scale it, they do not set it from an input device.
+   */
   throttle: number
   steer: number
-  strafe?: number
   lookPitch?: number
   vertical: number
   special: boolean
@@ -121,9 +133,10 @@ export function stepDrone(
   const topSpeed = (isBoosting ? DRONE_DEFAULTS.boostSpeed : DRONE_DEFAULTS.maxSpeed) * speedUpgrade * cargoSpeed
   const speedMultiplier = Math.max(1, input.speedMultiplier ?? 1)
   const lowFlightBonus = next.position.y <= 1.5 ? 1.12 : 1
-  const targetSpeed = input.throttle >= 0
-    ? input.throttle * topSpeed * speedMultiplier * lowFlightBonus
-    : input.throttle * 4
+  // Clamped rather than signed: there is no reverse to ask for now that the
+  // throttle belongs to the world instead of to a key.
+  const cruise = clamp(input.throttle, 0, 1)
+  const targetSpeed = cruise * topSpeed * speedMultiplier * lowFlightBonus
   const accel = Math.abs(targetSpeed) < Math.abs(next.speed)
     ? DRONE_DEFAULTS.brakeDeceleration
     : DRONE_DEFAULTS.acceleration * cargoAcceleration
@@ -142,11 +155,8 @@ export function stepDrone(
   const forwardX = Math.sin(next.heading) * horizontalForward
   const forwardY = Math.sin(next.pitch)
   const forwardZ = Math.cos(next.heading) * horizontalForward
-  const rightX = Math.cos(next.heading)
-  const rightZ = -Math.sin(next.heading)
-  const strafeSpeed = (input.strafe ?? 0) * 14.5 * speedMultiplier
-  const desiredX = forwardX * next.speed + rightX * strafeSpeed
-  const desiredZ = forwardZ * next.speed + rightZ * strafeSpeed
+  const desiredX = forwardX * next.speed
+  const desiredZ = forwardZ * next.speed
   const lateralRetention = clamp(0.88 + load * 0.018, 0.88, 0.97)
   const steeringGrip = 1 - Math.pow(lateralRetention, d * 60)
   next.velocity.x += (desiredX - next.velocity.x) * steeringGrip
@@ -170,7 +180,7 @@ export function stepDrone(
     next.velocity.y = Math.min(next.velocity.y, -2)
   }
 
-  const targetTilt = -(input.steer + (input.strafe ?? 0) * 0.48) * DRONE_DEFAULTS.visualTiltMax * Math.min(1, speedRatio + 0.28)
+  const targetTilt = -input.steer * DRONE_DEFAULTS.visualTiltMax * Math.min(1, speedRatio + 0.28)
   next.visualTilt += (targetTilt - next.visualTilt) * (1 - Math.exp(-10 * d))
   return next
 }
