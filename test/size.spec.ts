@@ -122,24 +122,29 @@ describe('craft size as growth, not as health', () => {
     expect(secondsToReach(SIZE_MATURE)).toBeLessThan(340)
   })
 
-  it('has no ceiling a run can reach', () => {
-    // The clamp is a number, not a design. A player who fed at the bot's rate
-    // used to arrive at the top inside three minutes and then fly a fixed-size
-    // craft for the rest of the run, which stops the one thing the game is
-    // about. So growth carries on past SIZE_MATURE at the floor rate - slow,
-    // but never nothing, and never zero.
+  it('puts the ceiling past the end of a run, not inside it', () => {
+    // The ceiling is 150m of saucer - two and a half times the tallest tower in
+    // the city - and it sits out beyond where a five minute run finishes. A player who fed at the bot's rate used to
+    // arrive at the top inside three minutes and then fly a fixed-size craft
+    // for the rest of the run, which stops the one thing the game is about. So
+    // growth carries on past SIZE_MATURE at the floor rate - slow, but never
+    // nothing, and never zero.
+    expect(ufoDiameter(SIZE_MAX)).toBeCloseTo(150)
+    expect(ufoDiameter(SIZE_MATURE)).toBe(81)
     let size = SIZE_MATURE
     for (let meal = 0; meal < 50; meal += 1) {
       const next = growSize(size, 'pedestrian')
       expect(next).toBeGreaterThan(size)
       size = next
     }
-    // ...and the clamp is far enough out that no run meets it. Three hundred
-    // seconds at the steered bot's rate is about 330 bodies; eating nothing
-    // but cats for twice that long does not come close.
+    // A whole run's worth of eating - 300 seconds at the steered bot's rate is
+    // about 330 bodies - has to fall short of it, while still landing somewhere
+    // enormous. That is the band the ceiling is placed for: a great run gets a
+    // hull bigger than the skyline and can still see room above it.
     let fed = SIZE_START
-    for (let meal = 0; meal < 700; meal += 1) fed = growSize(fed, 'cat')
-    expect(fed).toBeLessThan(SIZE_MAX / 10)
+    for (let meal = 0; meal < 332; meal += 1) fed = growSize(fed, 'pedestrian')
+    expect(fed).toBeLessThan(SIZE_MAX * 0.8)
+    expect(ufoDiameter(fed)).toBeGreaterThan(100)
     // The stat ladders do not care what happens up there: they are spent by
     // SIZE_MATURE and hold their last rung for ever.
     const mature = sizeProfile(SIZE_MATURE)

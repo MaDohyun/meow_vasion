@@ -36,7 +36,7 @@ export const SIZE_MIN = 0.3
 /**
  * Fully grown: the top of every ladder size owns.
  *
- * This is **not** a ceiling - nothing stops here, see SIZE_MAX. It is the
+ * Not the ceiling - that is SIZE_MAX, and it sits a long way above. This is the
  * scale the progression is measured against: beam strength, lift, aperture,
  * reach, pull, bonus hearts, camera lift and the HUD ratio all reach their
  * maximum here and hold it. Growing past it is real growth - the hull, the
@@ -49,26 +49,36 @@ export const SIZE_MIN = 0.3
  * minutes run out.
  */
 export const SIZE_MATURE = 15
-/**
- * The hard clamp - and deliberately somewhere no run will ever see.
- *
- * There used to be a real ceiling at 15 and it was the wrong shape for the
- * game: a player who fed well hit it inside three minutes and spent the rest
- * of the run at a fixed size, which turns the one thing the game is about into
- * something you finish early and then stop doing. Growth now never ends. Past
- * SIZE_MATURE the falloff has bottomed out at GROWTH_FALLOFF_MIN, so each meal
- * is worth 7% of what it was worth at the opening - a visible crawl rather
- * than a wall, and the craft is still getting bigger on the last body of the
- * last second.
- *
- * At that rate reaching this number takes about 2300 more pedestrians, some
- * thirty-five minutes of uninterrupted perfect feeding. It exists so `size` is
- * always a finite number that the camera, the fog and the collision radius can
- * be derived from, not as something to reach.
- */
-export const SIZE_MAX = 1000
 /** Visible width of the saucer at size 1. */
 export const UFO_BASE_DIAMETER = 5.4
+/** The ceiling, written where it can be read: a saucer 150 metres across. */
+export const SIZE_MAX_DIAMETER = 150
+/**
+ * The ceiling - a real one, but placed past the end of a run rather than
+ * inside it.
+ *
+ * It used to sit on SIZE_MATURE, and there it was the wrong shape for the
+ * game: a player who fed well arrived inside three minutes and spent the rest
+ * of the run at a fixed size, which turns the one thing the game is about into
+ * something you finish early and then stop doing. So the two jobs are split.
+ * SIZE_MATURE is where the ladders end; this is where the hull stops, and the
+ * stretch between them is growth with no rungs left to hand out - the craft
+ * is still getting bigger on the last body of the last second.
+ *
+ * Past SIZE_MATURE the falloff has bottomed out at GROWTH_FALLOFF_MIN, so each
+ * meal there is worth 7% of what it was worth at the opening: a crawl rather
+ * than a wall. At that rate the 81m mature hull needs another 339 pedestrians
+ * to reach 150m - about eight minutes of uninterrupted perfect feeding against
+ * a five minute run, and fourteen for a beginner. A very strong run ends near
+ * 125m, so the ceiling is close enough to be something a great run is visibly
+ * climbing towards and far enough that meeting it is the story of that run
+ * rather than a thing that happens on a Tuesday.
+ *
+ * 150m is enormous in the terms the city sets. The tallest tower in the game
+ * stands 60m and a city cell is 34 units across, so a saucer at the ceiling is
+ * two and a half times the height of the skyline and covers four blocks of it.
+ */
+export const SIZE_MAX = SIZE_MAX_DIAMETER / UFO_BASE_DIAMETER
 /**
  * The normal beam's ground radius is 5.8m. Absorption must happen well inside
  * that cone, otherwise a large craft eats a load on the same frame it catches
