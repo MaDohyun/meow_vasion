@@ -448,7 +448,7 @@ export const STRINGS: Record<Language, Strings> = {
     tutorialBriefing: [
       { lines: ['대원, 작전에 들어간다. 대원의 임무는 지구라는 별의 정찰대 임무다.', '기체의 연료를 전부 쓰는 [[5분]] 동안, 지구에서 최대한 많은 임무를 수행하고 돌아오도록!'] },
       { lines: ['먼저 조종이다.', '[[마우스로 조준점을 움직이면 기체가 그쪽을 보고, 보는 방향 그대로 나아간다]].', '위를 보면 올라가고 아래를 보면 내려간다. 대원이 정할 것은 방향 하나뿐이다.'] },
-      { lines: ['W 버튼이나 마우스 우클릭으로 빔을 켜서 고양이 동무를 구출하거나 물체를 흡수할 수 있다.', '우리 기체는 물체를 흡수할수록 몸집이 커지니 가능한 한 많은 물체를 흡수하도록!', '그리고 [[몸집이 커질수록 빔의 힘도 세져서 더 크고 무거운 물체까지 흡수]]할 수 있게 된다.'] },
+      { lines: ['W 버튼이나 마우스 우클릭으로 빔을 켜서 고양이 동무를 구출하거나 물체를 흡수할 수 있다.', '우리 기체는 물체를 흡수할수록 몸집이 커지니 가능한 한 많은 물체를 흡수하도록!', '그리고 [[몸집이 커질수록 더 크고 강해진다]].'] },
       { lines: ['Q 버튼이나 마우스 좌클릭으로 레이저를 쏘아 적을 무찌를 수 있다!', '말로만 들어서는 모른다. 지금 한 번 눌러 봐.'], wait: 'laser' },
       { lines: ['좋다, 그게 레이저다. 위급할 때 쓰도록!', '다음은 터보다. 스페이스를 누르면 기체가 훨씬 빨라진다. 지금 눌러 봐.'], wait: 'turbo' },
       { lines: ['그거다! 터보는 쓸 수 있는 시간이 정해져 있으니 주의해서 쓰도록!', '그리고 터보를 켠 채로 빔을 켜면 더 굵고 멀리, 더 강하게 나간다. 기억해 둬라.'] },
@@ -661,7 +661,7 @@ export const STRINGS: Record<Language, Strings> = {
     tutorialBriefing: [
       { lines: ['隊員、作戦を開始する。君の任務は地球という星の偵察だ。', '機体の燃料を使い切る[[5分]]の間に、地球でできる限り多くの任務をこなして帰還しろ！'] },
       { lines: ['まずは操縦だ。', '[[マウスで照準を動かせば機体はそちらを向き、向いた方向へそのまま進む]]。', '上を見れば上がり、下を見れば下がる。決めるのは方向ひとつだけだ。'] },
-      { lines: ['Wボタンか右クリックでビームを操作し、仲間の猫を救出したり物体を吸収したりできる。', '物体を吸収するほど機体は大きくなる。できるだけ多く吸収しろ！', 'そして[[機体が大きくなるほどビームも強くなり、より大きく重い物体まで吸収できる]]ようになる。'] },
+      { lines: ['Wボタンか右クリックでビームを操作し、仲間の猫を救出したり物体を吸収したりできる。', '物体を吸収するほど機体は大きくなる。できるだけ多く吸収しろ！', 'そして[[大きくなるほど、機体はもっと大きく強くなる]]。'] },
       { lines: ['Qボタンか左クリックでレーザーを撃って敵を倒せる！', '言葉だけではわからん。今すぐ一度押してみろ。'], wait: 'laser' },
       { lines: ['よし、それがレーザーだ。緊急時に使え！', '次はターボだ。スペースを押せば機体が一気に速くなる。今、押してみろ。'], wait: 'turbo' },
       { lines: ['それだ！ ターボは使える時間に限りがある。慎重に使え！', 'そしてターボ中にビームを使うと、太く、遠く、強くなる。覚えておけ。'] },
@@ -874,7 +874,7 @@ export const STRINGS: Record<Language, Strings> = {
     tutorialBriefing: [
       { lines: ['Pilot, begin the operation. Your mission is to recon the planet called Earth.', 'You have [[five minutes]] - one full tank - so run as many missions on Earth as you can and come home!'] },
       { lines: ['Flying first.', '[[Move the reticle with the mouse and the craft looks that way, then flies that way]].', 'Look up to climb, look down to dive. All you ever choose is where to point.'] },
-      { lines: ['Press W, or right-click, to run the beam and rescue allied cats or absorb objects.', 'The craft grows as it absorbs objects, so absorb as many as possible!', 'And [[the bigger the craft, the stronger the beam - bigger, heavier things become food]].'] },
+      { lines: ['Press W, or right-click, to run the beam and rescue allied cats or absorb objects.', 'The craft grows as it absorbs objects, so absorb as many as possible!', 'And [[the more it grows, the bigger and stronger the craft becomes]].'] },
       { lines: ['Press Q, or left-click, to fire the laser and defeat enemies!', 'Being told is not the same as knowing. Press it once, right now.'], wait: 'laser' },
       { lines: ['Good, that is the laser. Save it for emergencies!', 'Turbo is next. SPACE makes the craft far faster. Press it now.'], wait: 'turbo' },
       { lines: ['That is it! Turbo time is limited, so use it carefully!', 'And running the beam while turbo is on makes it wider, longer and stronger. Remember that.'] },
