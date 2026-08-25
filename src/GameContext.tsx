@@ -5,6 +5,7 @@ import {
   type BeamField,
   type BeamObject,
   type BeamWorldProp,
+  BEAM_CRUISE_SCALE,
   CAR_MASS,
   absorptionScore,
   beamLiftScale,
@@ -97,7 +98,6 @@ import {
   type MissionState,
 } from './core/missions'
 import { MYSTERY_BOOST_DURATION, MYSTERY_BOOST_MAX_MULTIPLIER, mysteryBoostMultiplier } from './core/mysteryCircles'
-import { shouldCrashFromOverload } from './core/overload'
 import { DRONE_BLAST_TRAUMA, HELICOPTER_RAM_TRAUMA, HIT_TRAUMA, addShakeTrauma, createShakeState, stepShake, type ShakeState } from './core/shake'
 import { worldPropMass, worldPropsAround } from './core/worldProps'
 import { endingForTimeUp, isVictory, type RunEnding } from './core/ending'
@@ -506,13 +506,15 @@ const BALLAST_DRAG = 0.31
 /**
  * Hanging mass the craft can still hold altitude against.
  *
- * Past it the beam is carrying more than the engines can lift: climb dies, the
- * craft starts sinking, and touching down while still overloaded ends the run.
- * Weight only slowed you down before, which meant there was no ceiling on greed
- * - a decision needs a limit to be a decision.
+ * Past it the beam is carrying more than the engines can lift: climb dies and
+ * the craft starts sinking. Weight only slowed you down before, which meant
+ * there was no ceiling on greed - a decision needs a limit to be a decision.
  *
- * It is a countdown, not a dead end. Dropping the load with R or finishing the
- * meal both clear it, so the answer is always in the player's hands.
+ * What it no longer does is kill. Touching down while overloaded used to end
+ * the run, and a trapdoor the player finds by falling through it teaches
+ * nothing the sinking had not already said. Sinking is the whole penalty now:
+ * it is visible, it is survivable, and finishing the meal or cutting the beam
+ * clears it, so the answer is always in the player's hands.
  */
 /**
  * A detonation makes the craft sluggish; it never takes the controls away.
@@ -1629,7 +1631,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   // The finger that currently owns the reticle, and where it last was. Null
   // whenever no drag is in flight, which is most of the time on a phone.
   const touchAim = useRef<{ pointerId: number; x: number; y: number } | null>(null)
-  const mobile = useRef<MobileInput>({ throttle: 0, steer: 0, strafe: 0, lookPitch: 0, vertical: 0, special: false, beam: false, laser: false, active: false })
+  const mobile = useRef<MobileInput>({ throttle: 1, steer: 0, lookPitch: 0, vertical: 0, special: false, beam: false, laser: false, active: false })
   const publishAccumulator = useRef(0)
   const publish = useCallback(() => setSnapshot(snapshotOf(runtime.current)), [])
 
@@ -1718,9 +1720,15 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   const readInput = useCallback((): PlayerInput => {
     const keyboard: PlayerInput = {
-      throttle: (keys.current.KeyW || keys.current.ArrowUp ? 1 : 0) - (keys.current.KeyS || keys.current.ArrowDown ? 1 : 0),
+      // The craft is always going. WASD is gone: it was the one control a
+      // first-time player had to be taught before anything else in the game
+      // could happen, and it only ever repeated what the reticle was already
+      // saying - the ship flies where it looks. Now it just flies, and the
+      // mouse is the whole of steering. Whatever slows the craft down (the
+      // beam, a lake, the tutorial) scales this on the way to the flight
+      // model.
+      throttle: 1,
       steer: aimSteer(pointer.current.x),
-      strafe: (keys.current.KeyA || keys.current.ArrowLeft ? 1 : 0) - (keys.current.KeyD || keys.current.ArrowRight ? 1 : 0),
       lookPitch: -pointer.current.y,
       vertical: 0,
       special: Boolean(keys.current.Space),
@@ -1791,7 +1799,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
       ? {
           ...rawInput,
           throttle: 0,
-          strafe: 0,
           vertical: 0,
           special: turboUnlocked && rawInput.special,
           laser: laserUnlocked && rawInput.laser,
@@ -1972,15 +1979,15 @@ export function GameProvider({ children }: { children: ReactNode }) {
     game.waterAnchored = lake.anchored
     if (lake.absorbed > 0) reportMissionEvent(game, { type: 'absorb-water', litres: lake.absorbed })
     // Scaling the throttle scales the top speed the flight model aims for, so
-    // the craft still accelerates, steers and strafes - it just tops out at
-    // half. This used to also multiply the stepped velocity every frame, and
+    // the craft still accelerates and steers - it just tops out at half. This used to also multiply the stepped velocity every frame, and
     // that is a per-frame damping rather than a speed limit: at sixty hertz it
     // pinned the craft to the spot, which read as the beam being broken over
     // water rather than as water being heavy.
-    if (game.waterAnchored) {
-      flightInput.throttle *= lake.speedScale
-      flightInput.strafe = (flightInput.strafe ?? 0) * lake.speedScale
-    }
+    if (game.waterAnchored) flightInput.throttle *= lake.speedScale
+    // The beam is the brake. With no throttle key left, holding E is how a
+    // player slows down to line a cone up on one pedestrian - and it is the
+    // same press that then swallows them.
+    if (game.beamActive) flightInput.throttle *= BEAM_CRUISE_SCALE
     // Only ballast slows the craft. Size is deliberately absent: growth is what
     // the player is good at, and taxing it directly punishes them for winning.
     // Soft ceiling. The climb input fades out as the craft nears the height its
@@ -1994,22 +2001,20 @@ export function GameProvider({ children }: { children: ReactNode }) {
     // Overloaded: the engines lose the argument with the load and the craft
     // starts down. Climb is cut rather than reversed - the sinking comes from
     // the flight model's own gravity, so it eases in instead of snapping.
+    //
+    // Where it used to go is the part that is gone. Touching the street while
+    // still overloaded ended the run, and that was a trapdoor a player could
+    // only find by falling through it. The pressure stays, the death does not:
+    // an overloaded craft sinks, scrapes along the rooftops and the road, and
+    // flies badly until it eats the load or cuts the beam - all of which the
+    // player can see happening and undo.
     const capacity = liftLimit(game)
     const overload = Math.max(0, game.ballast - capacity)
-    if (overload > 0) {
-      flightInput.vertical = Math.min(flightInput.vertical, 0) - Math.min(1, overload / 12)
-      if (shouldCrashFromOverload(game.beamActive, game.ballast, capacity, game.drone.position.y)) {
-        endRun(game, 'CRUSHED BY THE LOAD', 'crushed')
-        updatePilotStatus(game)
-        publish()
-        return
-      }
-    }
+    if (overload > 0) flightInput.vertical = Math.min(flightInput.vertical, 0) - Math.min(1, overload / 12)
     const warningAt = capacity * 0.6
     game.overloadWarn = game.ballast <= warningAt
       ? 0
       : Math.min(1, (game.ballast - warningAt) / Math.max(1, capacity - warningAt))
-    // Keep the visual overload meter, but do not repeat an audio warning.
     const stepped = stepDrone(game.drone, flightInput, d, game.ballast * BALLAST_DRAG + (game.daze > 0 ? DAZE_DRAG : 0), {
       ...UFO_UPGRADES,
       // stepDrone's own speed coefficient is 0.12 per level; dividing the

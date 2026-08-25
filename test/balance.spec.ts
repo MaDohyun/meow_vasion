@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { BEAM_CRUISE_SCALE } from '../src/core/beam'
 import { collideDrone, createDroneState, DRONE_DEFAULTS, stepDrone } from '../src/core/drone'
 import { rewardForDelivery } from '../src/core/economy'
 
@@ -19,15 +20,35 @@ describe('balance', () => {
     expect(rewardForDelivery(3, 0.5, 'PERFECT')).toBeGreaterThanOrEqual(120)
   })
 
-  it('supports sideways WASD strafing without changing forward speed', () => {
+  it('flies where it is pointed with nothing held down', () => {
+    // The craft supplies its own forward now. Pointed due north with a full
+    // throttle nobody pressed, it leaves the spot it started on and it goes
+    // the way it is facing - which is the whole of the control scheme.
     let state = createDroneState()
     state.heading = 0
-    for (let i = 0; i < 30; i += 1) {
-      state = stepDrone(state, { throttle: 0, steer: 0, strafe: 1, vertical: 0, special: false }, 1 / 60, 0, upgrades)
+    for (let i = 0; i < 60; i += 1) {
+      state = stepDrone(state, { throttle: 1, steer: 0, vertical: 0, special: false }, 1 / 60, 0, upgrades)
     }
-    expect(state.position.x).toBeGreaterThan(-67)
-    expect(Math.abs(state.position.z - 60)).toBeLessThan(0.1)
-    expect(state.speed).toBe(0)
+    expect(state.speed).toBeGreaterThan(20)
+    expect(state.position.z).toBeGreaterThan(70)
+    expect(Math.abs(state.position.x - -68)).toBeLessThan(0.5)
+  })
+
+  it('makes the beam the brake, not a handbrake', () => {
+    // With no throttle key left, holding the beam is how a player slows down
+    // to line the cone up on one pedestrian. It has to be felt and it has to
+    // leave the craft flying.
+    const cruise = (throttle: number) => {
+      let state = createDroneState()
+      for (let i = 0; i < 120; i += 1) {
+        state = stepDrone(state, { throttle, steer: 0, vertical: 0, special: false }, 1 / 60, 0, upgrades)
+      }
+      return state.speed
+    }
+    const open = cruise(1)
+    const beaming = cruise(BEAM_CRUISE_SCALE)
+    expect(beaming).toBeLessThan(open * 0.85)
+    expect(beaming).toBeGreaterThan(open * 0.6)
   })
 
   it('moves vertically in the direction of mouse pitch', () => {

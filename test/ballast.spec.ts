@@ -5,7 +5,7 @@ import { createDroneState, stepDrone, type DroneInput } from '../src/core/drone'
 import { sizeProfile, SIZE_MAX, SIZE_START } from '../src/core/size'
 
 const UPGRADES = { speed: 0.45, stability: 0, rack: 0, special: 'none' as const }
-const INPUT: DroneInput = { throttle: 1, steer: 0, strafe: 0, lookPitch: 0, vertical: 0, special: false }
+const INPUT: DroneInput = { throttle: 1, steer: 0, lookPitch: 0, vertical: 0, special: false }
 
 function cruiseSpeed(load: number, seconds = 12) {
   let state = createDroneState()
