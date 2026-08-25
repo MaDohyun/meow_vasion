@@ -195,7 +195,7 @@ describe('craft size as growth, not as health', () => {
     expect('drag' in sizeProfile(SIZE_MAX)).toBe(false)
   })
 
-  it('pulls the camera back by half again per doubling, not by double', () => {
+  it('pulls the camera back by less than the craft grows, but far enough to frame it', () => {
     // The camera used to retreat faster than the craft grew, so growing changed
     // the picture without ever making the player feel bigger - which is the one
     // thing the run is about. Asserted as the ratio rather than as distances so
@@ -208,6 +208,11 @@ describe('craft size as growth, not as health', () => {
     // what puts more saucer on screen the bigger it gets.
     expect(sizeProfile(SIZE_MAX).cameraDistance).toBeGreaterThan(sizeProfile(SIZE_START).cameraDistance)
     expect(CAMERA_GROWTH_PULL_BACK).toBeLessThan(2)
+    // ...and the grown craft has to fit in its own picture. A hull that is
+    // wider than the rig stands back is a hull you cannot see past, so the
+    // ceiling-height saucer keeps its whole diameter inside the chase
+    // distance - the reason the pull-back was raised from 1.5.
+    expect(sizeProfile(SIZE_MAX).cameraDistance).toBeGreaterThan(ufoDiameter(SIZE_MAX))
     // The rest distance is the rig at size 1; the opening saucer is smaller
     // than that, so the camera starts in closer - which is the whole point of
     // starting small.
