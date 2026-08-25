@@ -408,11 +408,24 @@ export const BEAM_REACH_MAX = 2.75
  * rides up the beam. A craft the size of a block hauling a car at opening-
  * saucer speed read as weakness, not care.
  *
- * 1.55, not the ~2.4x the haul actually gains: gripScale feeds the beam
- * spring twice (once in the spring constant, once in the drive), so the felt
- * speed-up is roughly this number squared.
+ * 1.9, and the felt figure is roughly its square - gripScale feeds the beam
+ * spring twice, once in the spring constant and once in the drive - so a fully
+ * grown craft hauls its catch about three and a half times faster than the
+ * opening saucer does.
+ *
+ * Up from 1.55, on the one complaint the ladder could not answer: buildings
+ * would not come up. A block is mass 8 to 11 against a city ladder that tops
+ * out at 12, so most of the run meets them one rung short, and one rung short
+ * is the marginal band - the slowest haul in the game (see beamLiftScale). The
+ * craft that has grown big enough to be parked over a tower has earned the
+ * winch to match, and this is that winch.
+ *
+ * It stops at 1.9 because of the other end of the same rule: the drive squares
+ * this, so at 2.0 a fully grown craft swallows a mass-3 load inside three
+ * frames, and a catch that never visibly rides the beam reads as a bug rather
+ * than as power. test/beam.spec.ts guards that floor.
  */
-export const BEAM_PULL_MAX = 1.55
+export const BEAM_PULL_MAX = 1.9
 
 /**
  * 0 at the opening size, 1 at SIZE_MATURE - and 1 for everything above it.
