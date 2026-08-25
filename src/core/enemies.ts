@@ -32,12 +32,23 @@ export type EnemyProjectileKind = 'orb'
  * the shortest thing in the run. Moving the launch spends those twenty seconds
  * where they read: the ship arrives while the fighter wave is still new, and
  * the fight it opens is a fifth longer.
+ *
+ * The two units that chase - the helicopter and the fighter - then went back
+ * fifteen seconds each, because the run was reading as hard rather than as
+ * fast. The mines are the one wave a new player can be in the sky with and
+ * still be learning the beam: they do not follow, so the only skill they ask
+ * for is not flying into one. Everything after them asks for evasion, so the
+ * unhurried stretch is the one worth lengthening - it runs fifty-five seconds
+ * now instead of forty, and the helicopters get forty on their own before the
+ * fighters arrive. Only the arrival times moved; the populations each wave
+ * settles at are untouched, so the sky at any given stage is exactly as busy
+ * as it was, just reached later.
  */
 export const ENEMY_WAVE_STAGES = [
   { at: 0, tempo: 0, label: 'UFO SIGHTED', targets: {} },
   { at: 30, tempo: 1, label: 'DRONE MINES', targets: { drone: 14 } },
-  { at: 70, tempo: 2, label: 'HELICOPTERS UP', targets: { drone: 20, helicopter: 8 } },
-  { at: 110, tempo: 3, label: 'FIGHTERS SCRAMBLED', targets: { drone: 25, helicopter: 11, fighter: 4 } },
+  { at: 85, tempo: 2, label: 'HELICOPTERS UP', targets: { drone: 20, helicopter: 8 } },
+  { at: 125, tempo: 3, label: 'FIGHTERS SCRAMBLED', targets: { drone: 25, helicopter: 11, fighter: 4 } },
   { at: 160, tempo: 4, label: 'SKY BATTLESHIP', targets: { drone: 34, helicopter: 14, fighter: 6, boss: 1 } },
 ] as const
 
