@@ -656,7 +656,10 @@ button { font: inherit; }
 /* Named, not just coloured. Two swatches could be guessed from what is on
    screen; three is where a key stops being self-evident, and water in
    particular has to be told apart from "some dark block down there". */
-.radar-key { display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:2px 8px; width:var(--dial); margin-top:7px; padding:5px 3px; color:rgba(255,245,199,.82); border-color:var(--hud-edge-cool) !important; font-size:10px; font-weight:1000; letter-spacing:.4px; }
+/* Two columns rather than a wrapping row. Four named swatches in a dial-width
+   box wrap as three-then-one, which reads as a line that ran out rather than
+   as a key; a fixed pair of columns is a block whichever entries it holds. */
+.radar-key { display:grid; grid-template-columns:repeat(2,auto); justify-content:center; align-items:center; gap:3px 9px; width:var(--dial); margin-top:7px; padding:5px 3px; color:rgba(255,245,199,.82); border-color:var(--hud-edge-cool) !important; font-size:10px; font-weight:1000; letter-spacing:.4px; }
 .radar-key span { display:inline-flex; align-items:center; gap:4px; white-space:nowrap; }
 .radar-key i { flex:0 0 auto; width:7px; height:7px; border-radius:2px; box-shadow:0 0 0 1px rgba(20,16,34,.7); }
 .radar-key-mystery { width:8px; height:8px; background:url(/landmarks/mystery-circle.png) center/contain no-repeat; box-shadow:none; }
