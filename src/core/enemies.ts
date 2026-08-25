@@ -604,8 +604,20 @@ function neediestKind(state: EnemyState, elapsed: number) {
     if (target <= 0) continue
     const short = target - activeCount(state, kind)
     if (short <= 0) continue
-    // The boss is one unit and the fight does not start without it.
-    if (kind === 'boss') return kind
+    // The boss is one unit and the fight does not start without it - but only
+    // while there is actually a boss to put up.
+    //
+    // Killing it parks its slot on a 999s respawn, and the last wave still
+    // asks for one, so this short-circuit went on naming a kind that could
+    // never be spawned. The caller reads that as "nothing can spawn" and
+    // stops, which quietly emptied the sky for the rest of the run: drop the
+    // dreadnought and the mines, helicopters and fighters stopped coming back
+    // too. Beating the hardest thing in the game must not be what turns the
+    // game off.
+    if (kind === 'boss') {
+      if (canSpawn(state, kind)) return kind
+      continue
+    }
     const share = short / target
     if (share > bestShare || (share === bestShare && short > bestShort)) {
       best = kind
@@ -919,6 +931,11 @@ function resetSlot(enemy: EnemySlot, player: Vec3, heading: number, state: Enemy
   enemy.target.x = player.x + (random(state) - 0.5) * 24
   enemy.target.y = enemy.position.y
   enemy.target.z = player.z + (random(state) - 0.5) * 24
+}
+
+/** Whether a slot of this kind is free and off cooldown right now. */
+function canSpawn(state: EnemyState, kind: EnemyKind) {
+  return state.slots.some((item) => item.kind === kind && !item.active && item.respawn <= 0)
 }
 
 function spawnOne(state: EnemyState, kind: EnemyKind, player: Vec3, heading: number) {

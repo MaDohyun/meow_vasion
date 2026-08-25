@@ -71,6 +71,7 @@ import {
   BOON_FULL_SCORE,
   BOON_HEAL_PIPS,
   BOON_PICKUP_RADIUS,
+  BOON_PICKUP_SLACK,
   BOON_PICKUP_VERTICAL,
   boonBonus,
   boonHoverY,
@@ -2173,7 +2174,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     // height, so the surge is a drive-through and the boon is an approach.
     if (mysteryCircle && !tutorialAtStart && !game.boons.claimed.has(mysteryCircle.id)) {
       const itemY = boonHoverY(game.sessionTime, mysteryCircle.id)
-      const slack = game.sizeProfile.hitRadius * 0.4
+      const slack = game.sizeProfile.hitRadius * BOON_PICKUP_SLACK
       const horizontal = Math.hypot(game.drone.position.x - mysteryCircle.x, game.drone.position.z - mysteryCircle.z)
       if (horizontal <= BOON_PICKUP_RADIUS + slack && Math.abs(game.drone.position.y - itemY) <= BOON_PICKUP_VERTICAL + slack) {
         const granted = claimBoon(game.boons, mysteryCircle.id)

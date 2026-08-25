@@ -177,31 +177,16 @@ export function drawFromLakeCell(state: LakeDrainState, cellX: number, cellZ: nu
 }
 
 /**
- * Points per litre pumped.
+ * Doubled: a litre is worth two.
  *
- * Water paid nothing at all before this: the beam ran, the meter for mission
- * two climbed, and the score sat still. That reads as the one beam use in the
- * game that is not worth doing, which is a strange thing to build a rung of
- * the ladder out of.
- *
- * A point a litre is fifty a second: 300 to 400 for the one tile a lake gets
- * drunk from, in six to eight seconds of held beam. It was two a litre and that
- * was too much - the general sells water as research data worth diverting for,
- * and at double this a lake cleared most of the sample rung on its own. A
- * detour worth taking should not also be a rung worth skipping.
- *
- * The rate can be a real one rather than a trickle because the supply is not a
- * rate at all, it is a budget - and a small one. Draining a tile takes its
- * whole lake with it, so a body of water pays for the single tile the pilot
- * actually pumped and is a dry basin from then on. What they spend for it is
- * three fifths of their top speed in the one place the craft cannot run from.
- *
- * Deliberately NOT scaled by the size multiplier, unlike every other beam
- * payout. Water comes in at a flat 50 L/s whatever the craft weighs, so the
- * multiplier would be pure profit with no extra work behind it - at the size
- * cap it would pay 750 a second.
+ * Pumping a lake is the one objective that asks the player to stop flying and
+ * hold still over water with the beam open - which is also the state that
+ * halves their top speed (LAKE_BEAM_SPEED_SCALE) and leaves them a stationary
+ * target for a wave that is still arriving. At one point a litre, the mission
+ * paid less than simply carrying on eating the street, so the safe play was to
+ * do the minimum and leave. Two is what makes the standing still worth it.
  */
-export const LAKE_SCORE_PER_LITRE = 1
+export const LAKE_SCORE_PER_LITRE = 2
 
 /**
  * Whole points owed for crossing from one running litre total to the next.

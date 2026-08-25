@@ -60,17 +60,22 @@ describe('recon overhaul support systems', () => {
 
   it('pays whole points for pumped water without ever paying a frame twice', () => {
     // Fractions of a point never ship: the payout is what floor() crossed, so
-    // the split across frames always sums to the same total as one long step.
-    // At a point a litre a sixtieth of a second is 0.83 points, so most frames
-    // pay one and the rest pay nothing rather than every frame paying 0.83.
-    expect(lakeScorePayout(0, 0.83)).toBe(0)
-    expect(lakeScorePayout(0.83, 1.66)).toBe(1)
-    expect(lakeScorePayout(1.66, 2.49)).toBe(1)
-    expect(lakeScorePayout(2.49, 3.32)).toBe(1)
-    // Four frames, 3.32 litres: three points banked, the fourth still owed.
-    expect(lakeScorePayout(0, 3.32)).toBe(3)
-    // A tenth of a litre owes nothing at all on its own.
-    expect(lakeScorePayout(0, 0.1)).toBe(0)
+    // the split across frames always sums to the same total as one long step
+    // rather than every frame paying a fraction.
+    //
+    // Written against LAKE_SCORE_PER_LITRE rather than the numbers it happens
+    // to produce - the invariant is the splitting, not the rate, and hard
+    // figures here just break every time the rate is retuned.
+    const paid = (litres: number) => Math.floor(litres * LAKE_SCORE_PER_LITRE)
+    for (const [from, to] of [[0, 0.83], [0.83, 1.66], [1.66, 2.49], [2.49, 3.32]]) {
+      expect(lakeScorePayout(from!, to!)).toBe(paid(to!) - paid(from!))
+    }
+    // Four frames pay exactly what the one step covering them pays.
+    expect(lakeScorePayout(0, 0.83) + lakeScorePayout(0.83, 1.66)
+      + lakeScorePayout(1.66, 2.49) + lakeScorePayout(2.49, 3.32)).toBe(lakeScorePayout(0, 3.32))
+    // Always a whole number, and a sliver of a litre can still owe nothing.
+    expect(Number.isInteger(lakeScorePayout(0, 3.32))).toBe(true)
+    expect(lakeScorePayout(0, 0.4 / LAKE_SCORE_PER_LITRE)).toBe(0)
     // Sixty frames of pumping pay exactly what one long step of the same
     // duration pays - no drift, no free point at the seams.
     let litres = 0
@@ -82,8 +87,8 @@ describe('recon overhaul support systems', () => {
     }
     expect(litres).toBeCloseTo(LAKE_ABSORPTION_LITRES_PER_SECOND)
     expect(framed).toBe(lakeScorePayout(0, LAKE_ABSORPTION_LITRES_PER_SECOND))
-    // A point a litre, so a second of held beam is the 50 litres it pumped.
-    expect(LAKE_SCORE_PER_LITRE).toBe(1)
+    // Two points a litre, so a second of held beam is twice the 50 it pumped.
+    expect(LAKE_SCORE_PER_LITRE).toBe(2)
     expect(framed).toBe(LAKE_ABSORPTION_LITRES_PER_SECOND * LAKE_SCORE_PER_LITRE)
     // Never negative, and a still craft owes nothing.
     expect(lakeScorePayout(200, 200)).toBe(0)
@@ -184,12 +189,14 @@ describe('recon overhaul support systems', () => {
 
   it('prices a lake as a budget rather than a rate', () => {
     // Water pays well per second precisely because it runs out: the most any
-    // one tile can ever pay is fixed, however long anyone parks on it.
-    expect(LAKE_SCORE_PER_LITRE).toBe(1)
-    expect(LAKE_CELL_CAPACITY_MAX * LAKE_SCORE_PER_LITRE).toBe(400)
-    expect(LAKE_CELL_CAPACITY_MIN * LAKE_SCORE_PER_LITRE).toBe(300)
-    // And the richest lake the world can build stays under the sample rung,
-    // so water is a detour worth taking rather than a rung worth skipping.
+    // one tile can ever pay is fixed, however long anyone parks on it. At two
+    // points a litre that is 600-800 a tile.
+    expect(LAKE_SCORE_PER_LITRE).toBe(2)
+    expect(LAKE_CELL_CAPACITY_MAX * LAKE_SCORE_PER_LITRE).toBe(800)
+    expect(LAKE_CELL_CAPACITY_MIN * LAKE_SCORE_PER_LITRE).toBe(600)
+    // And the richest lake the world can build still stays under the sample
+    // rung, so water is a detour worth taking rather than a rung worth
+    // skipping - this is the guard that the doubling had to clear.
     expect(LAKE_CELL_CAPACITY_MAX * 4 * LAKE_SCORE_PER_LITRE).toBeLessThan(MISSION_TARGETS['absorb-samples'])
   })
 

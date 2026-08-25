@@ -282,4 +282,38 @@ describe('time-based enemy waves', () => {
     expect(resolveEnemyContacts(state, player)).toBe(ENEMY_CONTACT_DAMAGE[kind])
     expect(enemy.active).toBe(true)
   })
+
+  it('keeps the sky full after the dreadnought goes down', () => {
+    // The bug this pins: the boss short-circuit in the spawner named a kind
+    // that could never be spawned once the boss was dead and parked on its
+    // 999s respawn, so the spawn loop broke on it every tick and nothing else
+    // came back. Winning the hardest fight in the game turned the game off.
+    const state = createEnemyState(11)
+    const player = { x: 0, y: 30, z: 0 }
+    for (let tick = 0; tick < 600; tick += 1) syncEnemyTiers(state, LAST_WAVE_AT, player, 0, 0.05)
+
+    const boss = state.slots.find((enemy) => enemy.kind === 'boss' && enemy.active)!
+    expect(boss).toBeDefined()
+    const before = { drone: 0, helicopter: 0, fighter: 0 }
+    for (const kind of Object.keys(before) as (keyof typeof before)[]) {
+      before[kind] = state.slots.filter((enemy) => enemy.kind === kind && enemy.active).length
+      expect(before[kind]).toBeGreaterThan(0)
+    }
+
+    while (!hitEnemy(state, boss.id, 8).destroyed) { /* shoot it down */ }
+    expect(state.slots.some((enemy) => enemy.kind === 'boss' && enemy.active)).toBe(false)
+
+    // Clear the escorts out, then let the spawner run: it has to refill them.
+    for (const enemy of state.slots) {
+      if (enemy.kind !== 'boss' && enemy.active) { enemy.active = false; enemy.respawn = 0 }
+    }
+    for (let tick = 0; tick < 600; tick += 1) syncEnemyTiers(state, LAST_WAVE_AT, player, 0, 0.05)
+
+    for (const kind of ['drone', 'helicopter', 'fighter'] as const) {
+      const alive = state.slots.filter((enemy) => enemy.kind === kind && enemy.active).length
+      expect(alive, `${kind} after the boss died`).toBeGreaterThan(0)
+    }
+    // And the dreadnought itself stays dead - it is a one-time fight.
+    expect(state.slots.some((enemy) => enemy.kind === 'boss' && enemy.active)).toBe(false)
+  })
 })

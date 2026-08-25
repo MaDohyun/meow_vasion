@@ -187,11 +187,26 @@ export function boonHoverY(time: number, circleId: string) {
   return base + Math.sin(time * BOON_BOB_SPEED + (hash % 628) / 100) * BOON_BOB_AMPLITUDE
 }
 
-/** Generous on purpose: the approach is the skill being asked for, not the
- *  final half-metre. Both grow a little with the hull's hit radius, and both
- *  are sized to the box - a big target that reads big should catch big. */
-export const BOON_PICKUP_RADIUS = 8
-export const BOON_PICKUP_VERTICAL = 6
+/**
+ * Generous on purpose: the approach is the skill being asked for, not the
+ * final half-metre.
+ *
+ * These were 8 and 6, which is smaller than the box looks and much smaller
+ * than the craft carrying it. Flying visibly through a boon and not getting it
+ * does not read as a miss - it reads as the game not noticing - and the item
+ * sits 50-80m up, so a failed pass costs a whole climb to try again. Widened
+ * to something that matches what the player sees: come near it and it is
+ * yours.
+ *
+ * The slack now tracks the craft's full hit radius rather than a fraction of
+ * it, so a grown saucer that overlaps the box catches it. That matters most
+ * exactly where the old numbers were worst - a big craft could pass with the
+ * box inside its own silhouette and come away with nothing.
+ */
+export const BOON_PICKUP_RADIUS = 16
+export const BOON_PICKUP_VERTICAL = 13
+/** How much of the hull's hit radius is added to both. */
+export const BOON_PICKUP_SLACK = 1
 
 /** What a pickup is worth once every stat is capped: a meaningful patch, not
  *  a full repair. It costs a whole circle's item and only arrives once there
