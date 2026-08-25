@@ -76,6 +76,11 @@ export type Strings = {
   controlBeam: string
   controlLaser: string
   controlBoost: string
+  /** Labels on the three touch fire buttons. Short enough to sit inside a
+   *  thumb-sized circle, which is why they are not the control-card lines. */
+  touchTurbo: string
+  touchLaser: string
+  touchBeam: string
   /** The in-run control card: its heading, and the label on the button that
    *  calls it back once it has folded itself away. */
   tipTitle: string
@@ -197,7 +202,10 @@ export type Strings = {
   msgAbsorbedCat: (reward: number) => string
   msgAbsorbedObject: (reward: number) => string
   msgEnemyDown: (reward: number) => string
-  msgCarLaunched: string
+  /** Any road vehicle the laser kills - car, truck or tanker. They are not
+   *  worth the same, so the callout takes the score rather than quoting a
+   *  car's price at a tanker. */
+  msgVehicleDestroyed: (reward: number) => string
   msgTurbo: string
   msgTurboOverload: string
   /** The mystery-circle pickup callouts. One per stat, one for the heal a
@@ -297,6 +305,9 @@ export const STRINGS: Record<Language, Strings> = {
     controlBeam: '빔 유지 · 흡수',
     controlLaser: '레이저',
     controlBoost: '터보',
+    touchTurbo: '터보',
+    touchLaser: '레이저',
+    touchBeam: '빔',
     tipTitle: '조작법',
     tipToggle: '조작법 다시 보기',
     mass: '질량',
@@ -375,7 +386,7 @@ export const STRINGS: Record<Language, Strings> = {
     briefingTitle: '장군의 무전',
     briefingContinue: '화면을 클릭해서 계속',
     briefingSkip: '튜토리얼 건너뛰기',
-    briefingWaitHint: { beam: 'E 를 꾹 누르기', laser: 'Q 를 누르기', turbo: '스페이스 를 누르기' },
+    briefingWaitHint: { beam: 'E를 꾹 누르기', laser: 'Q를 누르기', turbo: '스페이스를 누르기' },
     tutorialBriefing: [
       { lines: ['대원, 작전에 들어간다. 대원의 임무는 지구라는 별의 정찰대 임무다.', 'UFO의 연료를 전부 쓰는 [[5분]] 동안, 지구에서 최대한 많은 임무를 수행하고 돌아오도록!'] },
       { lines: ['E 버튼을 누르면 빔 조작을 통해 고양이 동무를 구출하거나 물체를 흡수할 수 있다.', '우리 우주선은 물체를 흡수할수록 몸집이 커지니 가능한 한 많은 물체를 흡수하도록!', '그리고 [[몸집이 커질수록 빔의 힘도 세져서 더 크고 무거운 물체까지 흡수]]할 수 있게 된다.'] },
@@ -396,8 +407,8 @@ export const STRINGS: Record<Language, Strings> = {
     survivedTitle: '지구 정찰 완료',
     missionFailedTitle: '정찰 임무 실패',
     collapsedTitle: '지구가 좀 치네?',
-    survivedLead: '지구 정찰에 성공했습니다 냐앗호!',
-    missionFailedLead: '시간내에 미션을 완수하지 못해서 지구 정찰 임무에 실패했습니다.',
+    survivedLead: '지구 정찰에 성공했습니다, 냐앗호!',
+    missionFailedLead: '시간 내에 미션을 완수하지 못해서 지구 정찰 임무에 실패했습니다.',
     collapsedLead: '정찰은 망했지만 고양이 얘기는 건졌습니다',
     crushedTitle: '무게에 눌려 추락',
     crushedLead: '빔에 매단 짐이 출력을 이겼습니다. 끝내 무게를 감당하지 못한 접시는 짐과 함께 지면에 처박혔습니다.',
@@ -439,7 +450,7 @@ export const STRINGS: Record<Language, Strings> = {
     msgAbsorbedCat: (reward) => `고양이 구출 · +${reward}`,
     msgAbsorbedObject: (reward) => `대형 오브젝트 흡수 · +${reward}`,
     msgEnemyDown: (reward) => `적 격추 · +${reward}`,
-    msgCarLaunched: '자동차 파괴 · +50',
+    msgVehicleDestroyed: (reward) => `차량 파괴 · +${reward}`,
     msgTurbo: '터보 가동',
     msgTurboOverload: '터보 과부하 · 잠시 사용 불가',
     msgBoonLaser: (level) => `레이저 위력 Lv.${level}`,
@@ -463,7 +474,7 @@ export const STRINGS: Record<Language, Strings> = {
     titleKicker: 'MEOWVASION',
     titleLine1: 'しんりゃく',
     titleLine2: 'するにゃん',
-    tagline: 'できるだけ長く生き延びて街を破壊しよう',
+    tagline: '5分で地球の偵察を終えて、悠々と逃げ帰ろう',
     lobbyOrdersTag: '作戦命令',
     lobbyOrders: '5分間で偵察隊の任務を完遂せよ！',
     start: 'ゲーム開始',
@@ -485,11 +496,14 @@ export const STRINGS: Record<Language, Strings> = {
     soundBlocked: 'サウンドをオン',
     controlFly: '見ている方向へ飛行',
     controlStrafe: '左右移動',
-    controlAim: '操縦・照準',
+    controlAim: '操縦 · 照準',
     controlMove: '移動',
-    controlBeam: 'ビーム維持・吸収',
+    controlBeam: 'ビーム維持 · 吸収',
     controlLaser: 'レーザー',
     controlBoost: 'ターボ',
+    touchTurbo: 'ターボ',
+    touchLaser: 'レーザー',
+    touchBeam: 'ビーム',
     tipTitle: '操作方法',
     tipToggle: '操作方法をもう一度見る',
     mass: '質量',
@@ -498,12 +512,12 @@ export const STRINGS: Record<Language, Strings> = {
     hull: '船体',
     life: 'ライフ',
     hazardBuildings: '建物にぶつかると[[船体が損傷]]',
-    overloadHint: '重さが満タンで[[墜落]]',
+    overloadHint: '積載オーバーで[[墜落]]',
     bossName: '空中戦艦',
     repairing: '修理中',
     ceiling: '上昇限界',
     overloaded: '過積載',
-    overloadAlarm: '[[重量超過・墜落の危険]] 重量を減らせ！',
+    overloadAlarm: '[[重量超過 · 墜落の危険]] 重量を減らせ！',
     waterAlarm: '湖の水を吸収中 · 速度低下',
     clock: '残り時間',
     score: 'スコア',
@@ -559,7 +573,7 @@ export const STRINGS: Record<Language, Strings> = {
     endingRemark: {
       recon: '完璧な偵察だった、隊員。地球はもう我々のものだ。帰還を許可する！',
       missionFailed: '燃料を使い切って任務は未完了か、隊員。次の偵察では時間を大事に使え。',
-      downed: '隊員！ 隊員？！ ...機体が撃墜された。標本はいい、まずは生きて帰ってこい。',
+      downed: '隊員！ 隊員？！ ……機体が撃墜された。標本はいい、まずは生きて帰ってこい。',
       crushed: '隊員、欲が身を滅ぼしたな。あれだけ吊るして飛べる機体はない。次は手放すことも覚えろ。',
     },
     tutorialMissionEyebrow: '将軍の最初の通信',
@@ -581,7 +595,7 @@ export const STRINGS: Record<Language, Strings> = {
     ],
     missionStageComplete: (previous, next) => `ミッション${previous}完了 · 次はミッション${next}！`,
     reconComplete: '地球偵察完了 · 将軍も帰宅準備完了！',
-    radar: '周辺探知・リアルタイム',
+    radar: '周辺探知 · リアルタイム',
     radarKeyHostile: '敵',
     radarKeyBoss: '空中戦艦',
     radarKeyWater: '湖',
@@ -601,7 +615,7 @@ export const STRINGS: Record<Language, Strings> = {
     statWave: 'ウェーブ',
     retry: 'もう一度',
     rankingOpen: 'ランキング登録',
-    rankingTitle: '殿堂',
+    rankingTitle: '名誉の殿堂',
     rankingLead: '名前を残すと、今回の記録がランキングに載ります',
     rankingNameLabel: '名前',
     rankingNamePlaceholder: '名前 (12文字まで)',
@@ -610,11 +624,11 @@ export const STRINGS: Record<Language, Strings> = {
     rankingClose: '閉じる',
     rankingTryAgain: '再試行',
     rankingLoading: 'ランキング読み込み中...',
-    rankingEmpty: 'まだ記録がありません。最初の一人になりましょう!',
+    rankingEmpty: 'まだ記録がありません。最初の一人になりましょう！',
     rankingFailed: '記録を送信できませんでした。もう一度お試しください。',
     rankingLocalNote: 'シート未接続のため、このブラウザにのみ保存しました',
-    rankingSaved: (rank: number) => `${rank}位で登録しました!`,
-    rankingSavedOffBoard: '登録しました! 今回はランク圏外です。',
+    rankingSaved: (rank: number) => `${rank}位で登録しました！`,
+    rankingSavedOffBoard: '登録しました！ 今回はランク圏外です。',
     rankingNameRequired: '名前を1文字以上入力してください',
     rankingColRank: '順位',
     rankingColName: '名前',
@@ -632,7 +646,7 @@ export const STRINGS: Record<Language, Strings> = {
     msgAbsorbedCat: (reward) => `猫を救出 · +${reward}`,
     msgAbsorbedObject: (reward) => `大型オブジェクト吸収 · +${reward}`,
     msgEnemyDown: (reward) => `敵を撃破 · +${reward}`,
-    msgCarLaunched: '車を破壊 · +50',
+    msgVehicleDestroyed: (reward) => `車両を破壊 · +${reward}`,
     msgTurbo: 'ターボ作動',
     msgTurboOverload: 'ターボ過負荷 · 一時使用不可',
     msgBoonLaser: (level) => `レーザー威力 Lv.${level}`,
@@ -656,10 +670,10 @@ export const STRINGS: Record<Language, Strings> = {
     titleKicker: 'ALIEN RECON CAT-BOT',
     titleLine1: 'MEOW',
     titleLine2: 'VASION',
-    tagline: 'Survive as long as you can and tear the city apart',
+    tagline: 'Finish the Earth recon inside five minutes, then slip away',
     lobbyOrdersTag: 'STANDING ORDERS',
     lobbyOrders: 'Complete the recon squad mission within 5 minutes!',
-    start: 'START SURVIVAL',
+    start: 'START RECON',
     options: 'OPTIONS',
     close: 'CLOSE',
     howTo: 'HOW TO PLAY',
@@ -677,12 +691,15 @@ export const STRINGS: Record<Language, Strings> = {
     sfxVolume: 'SOUND EFFECTS',
     soundBlocked: 'TAP FOR SOUND',
     controlFly: 'FLY WHERE YOU LOOK',
-    controlStrafe: 'RIGHT / LEFT',
+    controlStrafe: 'LEFT / RIGHT',
     controlAim: 'STEER / AIM',
     controlMove: 'MOVE',
     controlBeam: 'HOLD BEAM · ABSORB',
     controlLaser: 'LASER',
     controlBoost: 'TURBO BOOST',
+    touchTurbo: 'TURBO',
+    touchLaser: 'LASER',
+    touchBeam: 'BEAM',
     tipTitle: 'CONTROLS',
     tipToggle: 'Show the controls again',
     mass: 'MASS',
@@ -792,7 +809,7 @@ export const STRINGS: Record<Language, Strings> = {
     statMass: 'FINAL MASS',
     statAbsorbed: 'ABSORBED',
     statWave: 'WAVE',
-    retry: 'RAID AGAIN',
+    retry: 'FLY AGAIN',
     rankingOpen: 'SUBMIT SCORE',
     rankingTitle: 'HALL OF FAME',
     rankingLead: 'Sign this run and it goes on the board',
@@ -825,7 +842,7 @@ export const STRINGS: Record<Language, Strings> = {
     msgAbsorbedCat: (reward) => `CAT RESCUED · +${reward}`,
     msgAbsorbedObject: (reward) => `LARGE OBJECT ABSORBED · +${reward}`,
     msgEnemyDown: (reward) => `ENEMY DOWN · +${reward}`,
-    msgCarLaunched: 'CAR LAUNCHED · +50',
+    msgVehicleDestroyed: (reward) => `VEHICLE DESTROYED · +${reward}`,
     msgTurbo: 'TURBO ENGAGED',
     msgTurboOverload: 'TURBO OVERLOAD · OFFLINE BRIEFLY',
     msgBoonLaser: (level) => `LASER POWER LV.${level}`,

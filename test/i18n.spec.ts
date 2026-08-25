@@ -50,7 +50,7 @@ describe('interface languages', () => {
     expect(STRINGS.ko.start).not.toBe(STRINGS.en.start)
     expect(STRINGS.ja.start).not.toBe(STRINGS.en.start)
     expect(STRINGS.ko.collapsedTitle).not.toBe(STRINGS.en.collapsedTitle)
-    expect(STRINGS.ko.msgCarLaunched).not.toBe(STRINGS.en.msgCarLaunched)
+    expect(STRINGS.ko.msgVehicleDestroyed(50)).not.toBe(STRINGS.en.msgVehicleDestroyed(50))
   })
 
   it('states the lobby standing order in every language, and states it truthfully', () => {

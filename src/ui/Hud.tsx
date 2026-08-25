@@ -333,7 +333,7 @@ function PilotComms() {
 }
 
 function MobileControls() {
-  const { setMobileInput } = useGame()
+  const { setMobileInput, t } = useGame()
   const altitude = (value: number) => ({
     onPointerDown: () => setMobileInput({ active: true, vertical: value }),
     onPointerUp: () => setMobileInput({ vertical: 0 }),
@@ -348,9 +348,12 @@ function MobileControls() {
         <button className="alt-button" {...altitude(-1)}>▼</button>
       </div>
       <div className="mobile-actions">
-        <HoldButton className="boost-button" label="BOOST" field="special" />
-        <HoldButton className="laser-button" label="LASER" field="laser" />
-        <HoldButton className="beam-button" label="BEAM" field="beam" />
+        {/* Translated like every other label. A player who picked Korean or
+            Japanese in the lobby should not meet three English words the
+            moment they put a thumb on the screen. */}
+        <HoldButton className="boost-button" label={t.touchTurbo} field="special" />
+        <HoldButton className="laser-button" label={t.touchLaser} field="laser" />
+        <HoldButton className="beam-button" label={t.touchBeam} field="beam" />
       </div>
     </div>
   )

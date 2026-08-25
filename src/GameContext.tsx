@@ -594,6 +594,17 @@ const WORLD_PROP_SCORES: Record<BeamWorldProp['kind'], number> = {
   subway: 220,
 }
 
+/**
+ * What the three road vehicles are worth to the laser.
+ *
+ * Named rather than inlined because the mid-run callout quotes the figure, and
+ * a callout that says "+50" while the tanker banked 140 is worse than no
+ * callout at all - it teaches the player the wrong price for the target.
+ */
+const CAR_DESTROY_SCORE = 50
+const TRUCK_DESTROY_SCORE = 90
+const TANKER_DESTROY_SCORE = 140
+
 function makeWorldPropBeamObject(worldProp: BeamWorldProp): BeamObject {
   return {
     id: worldProp.id,
@@ -1157,6 +1168,8 @@ function registerEnemyLaserHit(game: GameRuntime, id: string) {
   registerEnemyHit(game, id, boonMultiplier(game.boons, 'laser-power'))
 }
 
+/** Returns the score banked, or 0 if nothing was destroyed - the callout
+ *  quotes the figure, so it has to come back from whoever awarded it. */
 function destroyCar(game: GameRuntime, id: string, direction: Vec3) {
   let target: BeamObject | null = null
   for (const object of game.beamObjects) if (object.id === id && object.active) { target = object; break }
@@ -1164,31 +1177,33 @@ function destroyCar(game: GameRuntime, id: string, direction: Vec3) {
     const captured = captureTrafficCar(game.traffic, id)
     if (captured) { target = makeTrafficBeamObject(captured); game.beamObjects.unshift(target) }
   }
-  if (!target || !beginCarDestruction(target, direction, game.drone.velocity)) return false
+  if (!target || !beginCarDestruction(target, direction, game.drone.velocity)) return 0
   game.destroyedCars.add(id)
-  bankDestroyScore(game, 50)
-  return true
+  bankDestroyScore(game, CAR_DESTROY_SCORE)
+  return CAR_DESTROY_SCORE
 }
 
 /**
  * A laser hit on a truck or tanker, run like a building hit: every shot lands
  * with a blast off the bodywork, and the vehicle only goes up once its hit
- * points are spent. Returns true on the killing hit.
+ * points are spent. Returns the score banked on the killing hit, 0 otherwise -
+ * a truck and a tanker are worth several times a car, and the callout says so.
  */
 function registerHeavyVehicleLaserHit(game: GameRuntime, id: string) {
   const result = damageHazard(game.hazards, id, boonMultiplier(game.boons, 'laser-power'))
-  if (!result) return false
+  if (!result) return 0
   triggerLaserBurst(game.laserBursts, 'impact', result.hazard.position)
   if (!result.destroyed) {
     triggerFireball(game.fireballs, 'strike', result.hazard.position, undefined, blastSeed(game))
-    return false
+    return 0
   }
-  bankDestroyScore(game, result.hazard.kind === 'truck' ? 90 : 140)
+  const reward = result.hazard.kind === 'truck' ? TRUCK_DESTROY_SCORE : TANKER_DESTROY_SCORE
+  bankDestroyScore(game, reward)
   // Both heavies share the road-vehicle blast; the tanker is the one carrying
   // fuel, so it is the one that is heard over the rest of the street.
   playVehicleExplosionSound(result.hazard.kind === 'truck' ? 1 : TANKER_EXPLOSION_SCALE)
   triggerFireball(game.fireballs, 'vehicle', result.hazard.position, undefined, blastSeed(game))
-  return true
+  return reward
 }
 
 /**
@@ -2249,10 +2264,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
         }
       }
       if (aim.targetKind === 'car' && aim.targetId) {
-        const destroyed = aim.targetId.startsWith('hazard:')
+        const reward = aim.targetId.startsWith('hazard:')
           ? registerHeavyVehicleLaserHit(game, aim.targetId)
           : destroyCar(game, aim.targetId, direction)
-        if (destroyed) setMessage(game, 'msgCarLaunched', 0.9)
+        if (reward > 0) setMessage(game, 'msgVehicleDestroyed', 0.9, reward)
       }
       game.laserShotsFired += 1
       if (tutorialAtStart) game.tutorialLaserFired = true
