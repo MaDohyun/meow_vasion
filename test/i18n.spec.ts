@@ -88,6 +88,51 @@ describe('interface languages', () => {
     expect(STRINGS.ko.missionDebrief['absorb-water'][0]).not.toBe(STRINGS.en.missionDebrief['absorb-water'][0])
   })
 
+  /** Every rendered string in one language, flattened - the term guards below
+   *  have to see the debriefs and bulletins too, not just the flat labels. */
+  function everyString(language: (typeof LANGUAGES)[number]) {
+    const out: string[] = []
+    const walk = (value: unknown) => {
+      if (typeof value === 'string') out.push(value)
+      else if (typeof value === 'function') out.push(String((value as (n: number) => string)(1)))
+      else if (Array.isArray(value)) value.forEach(walk)
+      else if (value && typeof value === 'object') Object.values(value).forEach(walk)
+    }
+    walk(STRINGS[language])
+    return out
+  }
+
+  it('calls the five hearts life, and never the hull', () => {
+    // The gauge had two names - 선체/船体/HULL on the hazard lines and the heal
+    // callouts, 생명력/ライフ/life in the general's debrief - so the same pickup
+    // read as repairing one thing and refilling another. "Hull" is retired:
+    // the craft's body only ever grows, and growth is not what a heart shows.
+    const retired: Record<string, RegExp> = { ko: /선체/, ja: /船体/, en: /\bhull\b/i }
+    for (const language of LANGUAGES) {
+      for (const line of everyString(language)) {
+        expect(line, `${language}: "${line}"`).not.toMatch(retired[language]!)
+      }
+    }
+    expect(STRINGS.ko.life).toBe('생명력')
+    expect(STRINGS.ja.life).toBe('ライフ')
+    expect(STRINGS.en.life).toBe('LIFE')
+  })
+
+  it('gives the final wave one ship name in each language', () => {
+    // English had four: SKY DREADNOUGHT, Dreadnought, BATTLESHIP and "a flying
+    // battleship" - two of them inside the same bulletin card.
+    const named: Record<string, RegExp> = { ko: /공중전함/, ja: /空中戦艦/, en: /battleship/i }
+    for (const language of LANGUAGES) {
+      const strings = STRINGS[language]
+      const boss = named[language]!
+      for (const line of [strings.bossName, strings.radarKeyBoss, strings.devDrill, strings.broadcast[4].headline, strings.broadcast[4].line]) {
+        expect(line, `${language}: "${line}"`).toMatch(boss)
+      }
+      // The one word that must not come back, in any string of any language.
+      for (const line of everyString(language)) expect(line).not.toMatch(/dreadnought/i)
+    }
+  })
+
   it('names every objective on the ladder, in every language', () => {
     for (const language of LANGUAGES) {
       for (const id of MISSION_ORDER) {

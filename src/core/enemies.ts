@@ -29,7 +29,7 @@ export const ENEMY_WAVE_STAGES = [
   { at: 30, tempo: 1, label: 'DRONE MINES', targets: { drone: 14 } },
   { at: 70, tempo: 2, label: 'HELICOPTERS UP', targets: { drone: 20, helicopter: 8 } },
   { at: 110, tempo: 3, label: 'FIGHTERS SCRAMBLED', targets: { drone: 25, helicopter: 11, fighter: 4 } },
-  { at: 180, tempo: 4, label: 'SKY DREADNOUGHT', targets: { drone: 34, helicopter: 14, fighter: 6, boss: 1 } },
+  { at: 180, tempo: 4, label: 'SKY BATTLESHIP', targets: { drone: 34, helicopter: 14, fighter: 6, boss: 1 } },
 ] as const
 
 export const ENEMY_TIER: Record<EnemyKind, number> = {
