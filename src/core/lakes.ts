@@ -147,22 +147,24 @@ export function drawFromLakeCell(state: LakeDrainState, cellX: number, cellZ: nu
  * game that is not worth doing, which is a strange thing to build a rung of
  * the ladder out of.
  *
- * Two a litre is a hundred a second. The general sells water as research data
- * worth diverting for, so it has to actually be worth the detour: an average
- * tile pays about 800 and an average lake about 2500, for eight and twenty-six
- * seconds of held beam.
+ * A point a litre is fifty a second: an average tile pays about 400 and an
+ * average lake about 1200, for eight and twenty-six seconds of held beam. It
+ * was two a litre and that was too much - the general sells water as research
+ * data worth diverting for, and at double this the richest lake in the world
+ * cleared the whole sample rung on its own. A detour worth taking should not
+ * also be a rung worth skipping.
  *
- * The rate can be this high because the supply is not a rate at all, it is a
- * budget. Tiles do not refill, so a body of water pays what it pays once and
- * is a dry basin from then on. What the pilot spends for it is half their top
- * speed in the one place the craft cannot run from.
+ * The rate can be a real one rather than a trickle because the supply is not a
+ * rate at all, it is a budget. Tiles do not refill, so a body of water pays
+ * what it pays once and is a dry basin from then on. What the pilot spends for
+ * it is half their top speed in the one place the craft cannot run from.
  *
  * Deliberately NOT scaled by the size multiplier, unlike every other beam
  * payout. Water comes in at a flat 50 L/s whatever the craft weighs, so the
  * multiplier would be pure profit with no extra work behind it - at the size
- * cap it would pay 1500 a second.
+ * cap it would pay 750 a second.
  */
-export const LAKE_SCORE_PER_LITRE = 2
+export const LAKE_SCORE_PER_LITRE = 1
 
 /**
  * Whole points owed for crossing from one running litre total to the next.
