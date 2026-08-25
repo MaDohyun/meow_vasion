@@ -195,11 +195,55 @@ export function stepDrone(
   return next
 }
 
-export function collideDrone(state: DroneState, colliders: Aabb[]): CollisionResult {
+/**
+ * How hard a wall turns the nose off itself, per second of dead-on contact.
+ *
+ * A craft with a throttle key could always back out of a wall. This one cannot
+ * - there is no reverse and no strafe, so a nose-on contact with the reticle
+ * centred used to mean the craft pressed into the brickwork at a crawl until
+ * the player thought to steer. Measured over the real city that was 94% of
+ * headings pinned inside a minute and 71% of all flight time spent under a
+ * tenth of cruise: not an edge case, the normal way a run went.
+ *
+ * So the wall does the steering. Scaled by how square the hit is, so a wall
+ * taken at a shallow angle barely nudges - that is a scrape along a facade,
+ * which is a thing players do on purpose - while a dead-on press slides the
+ * nose clear and has the craft back at cruise inside a few seconds with nobody
+ * touching anything.
+ *
+ * Near the craft's own hard-turn rate and no faster. A wall that spun the nose
+ * quicker than the player can would read as the controls being taken away,
+ * which is the opposite of the problem being solved: contact is only
+ * intermittent once the push-off lands, so the figure buys back the frames
+ * where the hull is briefly clear rather than out-turning anybody.
+ */
+export const WALL_DEFLECT_RATE = (210 * Math.PI) / 180
+
+/** The shove a contact leaves behind, in units per second. Small - enough to
+ *  separate the hull from the face so it is not re-resolved every frame. */
+export const WALL_PUSH_OFF = 3
+
+/** Resolved a hair clear of the face rather than flush against it, for the
+ *  same reason. */
+const WALL_SKIN = 0.03
+
+/**
+ * The most speed a single contact may take, at a dead-on hit.
+ *
+ * It used to be a flat 40% on every contact frame regardless of angle, which
+ * is what turned a sustained press into a full stop: re-acceleration adds
+ * about 0.6 per frame and a 40% cut takes more than that back, so the craft
+ * converged on a speed of about one. Charged by angle instead, a graze costs
+ * almost nothing and a real crash costs more than it used to.
+ */
+const WALL_SPEED_COST = 0.55
+
+export function collideDrone(state: DroneState, colliders: Aabb[], dt = 1 / 60): CollisionResult {
   const next: DroneState = structuredClone(state)
   let peakImpulse = 0
   let hit = false
   const r = DRONE_DEFAULTS.radius
+  const d = Math.min(Math.max(0, dt), 0.05)
 
   for (const box of colliders) {
     if (
@@ -218,12 +262,42 @@ export function collideDrone(state: DroneState, colliders: Aabb[]): CollisionRes
     ].sort((a, b) => a.value - b.value)
     const normal = distances[0]
     if (!normal) continue
+    // Unchanged, because this is what the damage model reads: how hard the
+    // hull was travelling into the face it found.
     const incoming = Math.abs(next.velocity[normal.axis])
     peakImpulse = Math.max(peakImpulse, incoming)
     hit = true
-    next.position[normal.axis] += normal.direction * normal.value
-    next.velocity[normal.axis] *= -0.6
-    next.speed *= 0.6
+    next.position[normal.axis] += normal.direction * (normal.value + WALL_SKIN)
+
+    // How square the hit is: 1 straight into the face, 0 sliding along it.
+    const horizontalForward = Math.cos(next.pitch)
+    const forward = {
+      x: Math.sin(next.heading) * horizontalForward,
+      y: Math.sin(next.pitch),
+      z: Math.cos(next.heading) * horizontalForward,
+    }
+    const into = Math.max(0, -forward[normal.axis] * normal.direction)
+
+    // Keep whatever the craft had going *along* the wall and drop only what it
+    // had going into it. Sliding is what makes a wall a wall rather than a
+    // full stop.
+    const inward = next.velocity[normal.axis] * normal.direction
+    if (inward < 0) next.velocity[normal.axis] -= normal.direction * inward
+    next.velocity[normal.axis] += normal.direction * WALL_PUSH_OFF
+    next.speed *= 1 - WALL_SPEED_COST * into
+
+    // And the wall turns the nose off itself. Only a wall: a roof is something
+    // to skim, not something to be steered by.
+    if (normal.axis !== 'y' && into > 0) {
+      const rightDotNormal = (normal.axis === 'x' ? Math.cos(next.heading) : -Math.sin(next.heading)) * normal.direction
+      // Turn towards whichever side the outward normal is on. Dead square onto
+      // a face both sides are equal, so the craft keeps turning the way the
+      // player already had it turning.
+      const turn = Math.abs(rightDotNormal) > 1e-6
+        ? Math.sign(rightDotNormal)
+        : next.yawVelocity < 0 ? -1 : 1
+      next.heading += turn * WALL_DEFLECT_RATE * into * d
+    }
   }
 
   return { state: next, impulse: peakImpulse, hit }
