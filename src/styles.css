@@ -400,8 +400,8 @@ button { font: inherit; }
 .intro-actions .primary-button { display:flex; align-items:center; gap:20px; min-width:188px; margin-top:0; padding:13px 15px 13px 21px; background:linear-gradient(135deg,#ffe674,#ffc857); border:2px solid var(--cream); box-shadow:4px 4px 0 #031326,0 0 18px rgba(255,224,95,.12); }
 .intro-actions .primary-button b { margin-left:auto; color:var(--coral); font-size:13px; }
 .intro-actions .secondary-button { min-width:110px; padding:13px 18px; color:var(--cream); background:rgba(3,17,37,.78); border:2px solid rgba(100,241,238,.8); box-shadow:4px 4px 0 #031326; }
-/* The developer drill. Dashed, muted and on a line of its own under the three
-   real entrances: it is a workshop door, not a fourth way to play, and it must
+/* The developer drill. Dashed, muted and on a line of its own under the four
+   real entrances: it is a workshop door, not another way to play, and it must
    never be mistaken for one at a glance. */
 .intro-actions .dev-button { flex-basis:100%; display:flex; align-items:center; justify-content:center; gap:8px; padding:9px 14px; color:rgba(226,238,255,.82); background:rgba(3,17,37,.88); border:2px dashed rgba(226,238,255,.42); font-family:inherit; font-size:9px; font-weight:1000; letter-spacing:2px; cursor:pointer; }
 .intro-actions .dev-button:hover { color:var(--cream); border-color:rgba(255,224,95,.7); }
@@ -456,6 +456,43 @@ button { font: inherit; }
 .howto-hazards span { display:flex; align-items:center; gap:8px; padding:8px 11px; color:var(--cream); background:rgba(60,12,26,.5); border:1px solid rgba(255,95,124,.55); font-size:12px; font-weight:900; letter-spacing:.6px; line-height:1.4; }
 .howto-hazards i { flex:0 0 auto; display:flex; align-items:center; justify-content:center; width:19px; height:19px; color:var(--ink); background:var(--yellow); border:2px solid var(--cream); font-size:13px; font-style:normal; font-weight:1000; }
 .howto-card > .primary-button { margin-top:0; padding:11px 32px; background:linear-gradient(135deg,#ffe674,#ffc857); border:2px solid var(--cream); box-shadow:3px 3px 0 #031326; font-size:13px; }
+
+/* The lobby threat file. Like the control manual, every illustration is drawn
+   in the interface instead of adding another image payload. The cards are
+   horizontal on purpose: the silhouette and the behaviour need to be read as
+   one entry, while a 2x2 grid keeps all four first-sighting times on screen. */
+.enemy-intel-overlay { overflow:hidden; background:#031426 url('/lobby/meowvasion-lobby-abduction.png') center/cover no-repeat; isolation:isolate; }
+.enemy-intel-overlay::before { content:""; position:absolute; inset:0; z-index:-1; background:linear-gradient(135deg,rgba(1,8,20,.9),rgba(3,19,39,.8)); backdrop-filter:blur(6px); }
+.enemy-intel-overlay::after { content:""; position:absolute; inset:0; z-index:-1; background:repeating-linear-gradient(0deg,rgba(255,255,255,.022) 0 1px,transparent 1px 4px); box-shadow:inset 0 0 120px rgba(0,5,16,.82); }
+.enemy-intel-shell { position:relative; width:min(95vw,1120px); max-height:calc(100vh - 32px); overflow:hidden; color:var(--cream); background:linear-gradient(145deg,rgba(3,18,38,.98),rgba(5,27,49,.94)); border:1px solid rgba(100,241,238,.72); box-shadow:0 0 0 5px rgba(2,13,29,.72),12px 12px 0 rgba(0,6,18,.56),0 0 54px rgba(31,226,222,.09); }
+.enemy-intel-shell::before,.enemy-intel-shell::after { content:""; position:absolute; z-index:4; width:24px; height:24px; border-color:var(--yellow); pointer-events:none; }
+.enemy-intel-shell::before { top:-1px; left:-1px; border-top:3px solid; border-left:3px solid; }
+.enemy-intel-shell::after { right:-1px; bottom:-1px; border-right:3px solid; border-bottom:3px solid; }
+.enemy-intel-body { display:flex; align-items:center; flex-direction:column; gap:8px; width:100%; max-height:calc(100vh - 34px); padding:20px 30px 19px 22px; overflow-y:scroll; scrollbar-width:none; }
+.enemy-intel-body::-webkit-scrollbar { width:0; height:0; }
+.enemy-intel-eyebrow { color:var(--cyan); font-size:9px; font-weight:1000; letter-spacing:3px; }
+.enemy-intel-body > h2 { margin:0; color:var(--cream); font-family:Impact,"Arial Black",sans-serif; font-size:clamp(30px,4vw,45px); letter-spacing:2px; line-height:1; text-align:center; text-shadow:3px 3px 0 rgba(255,103,81,.82); }
+.enemy-intel-lead { margin:0 0 4px; color:rgba(255,245,199,.65); font-size:11px; font-weight:900; letter-spacing:.5px; line-height:1.45; text-align:center; }
+.enemy-intel-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; width:100%; }
+.enemy-intel-entry { position:relative; display:grid; grid-template-columns:minmax(168px,.9fr) minmax(0,1.1fr); min-height:188px; overflow:hidden; background:linear-gradient(145deg,rgba(5,24,45,.98),rgba(8,34,54,.9)); border:1px solid rgba(100,241,238,.34); box-shadow:inset 0 1px 0 rgba(255,245,199,.07); }
+.enemy-intel-entry::after { content:""; position:absolute; top:0; left:0; width:42%; height:2px; background:linear-gradient(90deg,var(--yellow),transparent); pointer-events:none; }
+.enemy-intel-visual { position:relative; display:flex; align-items:center; min-width:0; background:radial-gradient(circle at 50% 50%,rgba(100,241,238,.08),rgba(1,11,25,.55) 70%); border-right:1px solid rgba(100,241,238,.22); }
+.enemy-intel-index { position:absolute; top:8px; left:8px; z-index:1; color:rgba(100,241,238,.58); font-size:8px; font-weight:1000; letter-spacing:1px; }
+.enemy-intel-art { display:block; width:100%; height:auto; max-height:174px; filter:drop-shadow(4px 5px 0 rgba(0,4,14,.32)); }
+.enemy-intel-art-unknown { filter:none; }
+.enemy-intel-shadow { filter:drop-shadow(0 8px 11px rgba(0,0,0,.9)); }
+.enemy-intel-copy { display:flex; flex-direction:column; justify-content:center; min-width:0; padding:15px 15px 14px; }
+.enemy-intel-heading { display:flex; align-items:flex-start; flex-direction:column; gap:8px; }
+.enemy-intel-heading h3 { margin:0; color:var(--cream); font-family:Impact,"Arial Black",sans-serif; font-size:20px; letter-spacing:1.2px; line-height:1; }
+.enemy-intel-heading span { display:inline-flex; align-items:center; gap:5px; padding:4px 7px; color:rgba(255,245,199,.65); background:rgba(1,11,25,.76); border:1px solid rgba(100,241,238,.32); font-size:7px; font-weight:1000; letter-spacing:1px; }
+.enemy-intel-heading span i { width:5px; height:5px; background:var(--coral); box-shadow:0 0 7px rgba(255,95,124,.76); }
+.enemy-intel-heading span b { color:var(--yellow); font-size:10px; letter-spacing:.8px; }
+.enemy-intel-copy > p { margin:10px 0 0; color:rgba(255,245,199,.8); font-size:11px; font-weight:900; letter-spacing:.35px; line-height:1.55; }
+.enemy-intel-entry[data-kind="boss"] { border-color:rgba(255,224,95,.36); }
+.enemy-intel-entry[data-kind="boss"] .enemy-intel-heading h3 { color:var(--yellow); }
+.enemy-intel-body > .primary-button { margin-top:4px; padding:10px 32px; background:linear-gradient(135deg,#ffe674,#ffc857); border:2px solid var(--cream); box-shadow:3px 3px 0 #031326; font-size:12px; }
+.enemy-intel-scrollbar { position:absolute; top:7px; right:5px; bottom:7px; z-index:3; width:11px; padding:1px; background:rgba(2,13,29,.9); border:1px solid rgba(100,241,238,.48); pointer-events:none; }
+.enemy-intel-scrollbar i { position:absolute; left:1px; right:1px; min-height:28px; background:var(--cyan); box-shadow:0 0 8px rgba(100,241,238,.35); }
 
 .results-overlay { color:var(--cream); background:linear-gradient(145deg,rgba(41,35,63,.98),rgba(15,24,42,.98)); }
 .results-overlay.victory { background:linear-gradient(145deg,rgba(40,47,74,.98),rgba(22,89,94,.98)); }
@@ -643,6 +680,21 @@ button { font: inherit; }
   .howto-keys b { font-size:12px; }
   .howto-hazards { grid-template-columns:minmax(0,1fr); }
   .howto-hazards span { font-size:11px; }
+  .enemy-intel-overlay { background-image:url('/lobby/meowvasion-lobby-mobile-abduction.png'); }
+  .enemy-intel-shell { width:calc(100vw - 20px); max-height:calc(100vh - 20px); }
+  .enemy-intel-body { gap:7px; max-height:calc(100vh - 22px); padding:15px 21px 13px 12px; }
+  .enemy-intel-eyebrow { font-size:6px; letter-spacing:1.7px; }
+  .enemy-intel-body > h2 { font-size:27px; }
+  .enemy-intel-lead { max-width:92%; font-size:9px; }
+  .enemy-intel-grid { grid-template-columns:minmax(0,1fr); gap:8px; }
+  .enemy-intel-entry { grid-template-columns:minmax(120px,.8fr) minmax(0,1.2fr); min-height:154px; }
+  .enemy-intel-art { max-height:148px; }
+  .enemy-intel-copy { padding:11px 10px; }
+  .enemy-intel-heading { gap:6px; }
+  .enemy-intel-heading h3 { font-size:17px; }
+  .enemy-intel-heading span { padding:3px 5px; font-size:6px; letter-spacing:.5px; }
+  .enemy-intel-heading span b { font-size:8px; }
+  .enemy-intel-copy > p { margin-top:7px; font-size:10px; line-height:1.42; }
   .intro-overlay { --lobby-edge:10px; background-image:url('/lobby/meowvasion-lobby-mobile-abduction.png'); background-position:center; }
   .intro-overlay::before { background:linear-gradient(180deg,rgba(1,8,18,.28) 0%,transparent 24%,rgba(1,8,18,.6) 34%,rgba(1,8,18,.26) 59%,rgba(1,8,18,.2) 100%); }
   .lobby-command-bar { top:8px; height:30px; padding:0 8px; font-size:6px; letter-spacing:1.4px; }
@@ -663,7 +715,7 @@ button { font: inherit; }
   .lobby-orders-tag .paw-sigil { margin:-2px; transform:rotate(-8deg) scale(.52); }
   .lobby-orders p { order:2; flex:1 0 100%; font-size:10px; line-height:1.3; }
   .lobby-orders-clock { order:1; margin-left:auto; padding:4px 7px; font-size:8px; letter-spacing:1.2px; }
-  .intro-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px; width:min(88vw,330px); margin-top:12px; }
+  .intro-actions { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; width:min(88vw,330px); margin-top:12px; }
   .intro-actions .primary-button { grid-column:1/-1; min-width:0; width:100%; padding:10px 12px 10px 16px; border-width:2px; box-shadow:3px 3px 0 #031326; font-size:9px; }
   .intro-actions .secondary-button { min-width:0; padding:9px 8px; border-width:2px; box-shadow:3px 3px 0 #031326; font-size:8px; }
   .intro-actions .dev-button { grid-column:1/-1; padding:7px 8px; font-size:8px; letter-spacing:1px; }

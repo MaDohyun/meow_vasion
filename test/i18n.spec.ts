@@ -93,12 +93,13 @@ describe('interface languages', () => {
 
   it('tells the drone-mine warning the same way in all three languages', () => {
     // The warning exists to name the beam's one exception and the safe order
-    // around it: laser first, beam after. A translation that drops either half
-    // leaves the pilot with a hazard and no answer to it.
+    // around it: laser first, beam after. It must name the visible controls,
+    // and it must not resurrect the old behaviour where the beam pulled the
+    // mine into the craft instead of lighting its fuse in place.
     for (const language of LANGUAGES) {
       const lines = STRINGS[language].missionDebrief['drone-mine'].join(' ')
       expect(lines, `${language}: laser`).toMatch(/Q/)
-      expect(lines, `${language}: beam`).toMatch(/E/)
+      expect(lines, `${language}: beam`).toMatch(/W/)
       // And the part that must not be skimmed past is marked for RichText.
       expect(lines, `${language}: emphasis`).toMatch(/\[\[.+\]\]/)
     }

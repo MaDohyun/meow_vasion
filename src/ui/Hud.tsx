@@ -7,6 +7,7 @@ import { broadcastPhase, broadcastProgress } from '../core/broadcast'
 import { MISSION_RUN_SECONDS } from '../core/missions'
 import type { RunEnding } from '../core/ending'
 import { HowToPlay } from './HowToPlay'
+import { EnemyIntel } from './EnemyIntel'
 import { LifeHearts } from './LifeHearts'
 import { RichText } from './RichText'
 import { Radar } from './Radar'
@@ -470,6 +471,7 @@ function Intro() {
   const { start, startBattleshipDrill, t, language, setLanguage } = useGame()
   const [optionsOpen, setOptionsOpen] = useState(false)
   const [howToOpen, setHowToOpen] = useState(false)
+  const [enemyIntelOpen, setEnemyIntelOpen] = useState(false)
   // The browser will not let the lobby track be heard until it has seen a
   // gesture. Say so, rather than leaving the silence unexplained.
   const soundBlocked = useSyncExternalStore(onLobbyMusicBlockedChange, isLobbyMusicBlocked, () => false)
@@ -494,6 +496,7 @@ function Intro() {
   }, [])
   if (optionsOpen) return <Options onClose={() => setOptionsOpen(false)} />
   if (howToOpen) return <HowToPlay onClose={() => setHowToOpen(false)} />
+  if (enemyIntelOpen) return <EnemyIntel onClose={() => setEnemyIntelOpen(false)} />
   return (
     <div className="overlay intro-overlay" data-language={language}>
       <div className="intro-noise" aria-hidden="true" />
@@ -526,9 +529,10 @@ function Intro() {
         <div className="intro-actions">
           <button className="primary-button" onMouseEnter={playMenuHoverSound} onClick={start}><span>{t.start}</span><b aria-hidden="true">▶</b></button>
           <button className="secondary-button" onMouseEnter={playMenuHoverSound} onClick={() => setHowToOpen(true)}>{t.howTo}</button>
+          <button className="secondary-button" onMouseEnter={playMenuHoverSound} onClick={() => setEnemyIntelOpen(true)}>{t.enemyIntel}</button>
           <button className="secondary-button" onMouseEnter={playMenuHoverSound} onClick={() => setOptionsOpen(true)}>{t.options}</button>
-          {/* Below the three real entrances and styled as its own thing, so it
-              reads as a workshop door rather than a fourth way to play. */}
+          {/* Below the four real entrances and styled as its own thing, so it
+              reads as a workshop door rather than another way to play. */}
           {devToolsEnabled() && (
             <button className="dev-button" type="button" onMouseEnter={playMenuHoverSound} onClick={startBattleshipDrill}>
               <span aria-hidden="true">⚙</span>{t.devDrill}
