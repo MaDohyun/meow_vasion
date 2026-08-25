@@ -1436,6 +1436,60 @@ function LiftedCommunicationsPool({ paint }: { paint: 'red' | 'white' }) {
   return <instancedMesh ref={ref} args={[paint === 'red' ? communicationsRedGeometry : communicationsWhiteGeometry, paint === 'red' ? communicationsRedMaterial : communicationsWhiteMaterial, LANDMARK_CELL_COUNT]} frustumCulled={false} renderOrder={2} onUpdate={(mesh) => { mesh.count = 0 }} />
 }
 
+/**
+ * The forecourt the beam has hold of.
+ *
+ * Two meshes for one object, because the static pool draws it as two: the
+ * merged shop-canopy-pumps body and the red trim slab riding 5.35 above it.
+ * The band composes off the body's own matrix, so a station tumbling under a
+ * craft keeps its trim on rather than shedding it at the kerb.
+ */
+function LiftedGasStationPool() {
+  const { runtime } = useGame()
+  const body = useRef<THREE.InstancedMesh>(null)
+  const band = useRef<THREE.InstancedMesh>(null)
+  const matrix = useMemo(() => new THREE.Matrix4(), [])
+  const bandMatrix = useMemo(() => new THREE.Matrix4(), [])
+  const position = useMemo(() => new THREE.Vector3(), [])
+  const scale = useMemo(() => new THREE.Vector3(), [])
+  const rotation = useMemo(() => new THREE.Quaternion(), [])
+  const identity = useMemo(() => new THREE.Quaternion(), [])
+  const euler = useMemo(() => new THREE.Euler(), [])
+  useFrame(() => {
+    if (!body.current || !band.current) return
+    let count = 0
+    for (const object of runtime.current.beamObjects) {
+      // Displaced, not merely active: the static pool keeps drawing a station
+      // until the beam actually moves it, so drawing every live one here would
+      // put a second copy inside the first for every forecourt on screen.
+      if (!isWorldPropDisplaced(object) || object.kind !== 'gas-station') continue
+      if (count >= LANDMARK_CELL_COUNT) break
+      const swallow = object.absorbing ? Math.max(0.05, object.absorbTimer / BEAM_ABSORB_TIME) : 1
+      position.set(object.position.x, object.position.y, object.position.z)
+      euler.set(object.rotation.x, object.rotation.y, object.rotation.z)
+      rotation.setFromEuler(euler)
+      scale.set(object.scale?.x ?? 1, object.scale?.y ?? 1, object.scale?.z ?? 1).multiplyScalar(swallow)
+      matrix.compose(position, rotation, scale)
+      body.current.setMatrixAt(count, matrix)
+      position.set(0, 5.35, 0)
+      scale.setScalar(1)
+      bandMatrix.compose(position, identity, scale).premultiply(matrix)
+      band.current.setMatrixAt(count, bandMatrix)
+      count += 1
+    }
+    for (const mesh of [body.current, band.current]) {
+      mesh.count = count
+      mesh.instanceMatrix.needsUpdate = true
+    }
+  })
+  return (
+    <group>
+      <instancedMesh ref={body} args={[gasStationGeometry, gasStationMaterial, LANDMARK_CELL_COUNT]} frustumCulled={false} renderOrder={2} onUpdate={(mesh) => { mesh.count = 0 }} />
+      <instancedMesh ref={band} args={[gasStationBandGeometry, gasStationCanopyMaterial, LANDMARK_CELL_COUNT]} frustumCulled={false} renderOrder={2} onUpdate={(mesh) => { mesh.count = 0 }} />
+    </group>
+  )
+}
+
 function TransitUtilityPool() {
   const { runtime } = useGame()
   const subway = useRef<THREE.InstancedMesh>(null)
@@ -1539,6 +1593,9 @@ function TransitUtilityPool() {
         subwaySigns.current.setMatrixAt(subwayCount, partMatrix)
         subwayCount += 1
       } else if (landmark === 'gas-station') {
+        // A forecourt is a beam prop now, so it stands down the moment the
+        // beam owns it - or has eaten it - exactly like the mast beside it.
+        if (isWorldPropHidden(landmarkId(landmark, cell.cellX, cell.cellZ), runtime.current.destroyedWorldProps, runtime.current.beamObjects)) continue
         position.set(centerX, 0, centerZ)
         scale.setScalar(1)
         matrix.compose(position, rotation, scale)
@@ -1630,6 +1687,7 @@ function TransitUtilityPool() {
       <LiftedCommunicationsPool paint="white" />
       <LiftedBusStopPool />
       <LiftedSubwayPool />
+      <LiftedGasStationPool />
     </group>
   )
 }

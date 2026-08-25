@@ -2,6 +2,7 @@ import type { Vec3 } from './drone'
 import type { BeamObject, BeamWorldProp } from './beam'
 import {
   busStopAnchor,
+  GAS_STATION_BEAM_MASS,
   groundLandmarkForCell,
   lakeShoreDecorAround,
   lakeShoreTreesAround,
@@ -41,6 +42,10 @@ export const WORLD_PROP_MASS = {
   // the same moment rather than one of them teasing the other.
   'shore-rock': 1,
   'shore-reed': 1,
+  // A whole forecourt. Held in cityLandmarks rather than written out here
+  // because the laser knows the station as a landmark and the beam knows it
+  // as a prop, and one number has to serve both readings of the same thing.
+  'gas-station': GAS_STATION_BEAM_MASS,
 } as const
 
 export function worldPropMass(worldProp: Pick<BeamWorldProp, 'kind'>) {
@@ -397,6 +402,15 @@ export function worldPropsAround(world: ActiveWorld, position: Pick<Vec3, 'x' | 
       props.push(prop({ id: landmarkId('communications', cell.cellX, cell.cellZ), kind: 'communications', position: center, rotation: (seed % 4) * Math.PI / 2, variant: 0 }))
     } else if (landmark === 'subway') {
       props.push(prop({ id: `subway:${cell.cellX}:${cell.cellZ}`, kind: 'subway', position: center, rotation: (seed % 4) * Math.PI / 2, variant: 0 }))
+    } else if (landmark === 'gas-station') {
+      // The station's id is its landmark id, exactly as the comms mast's is.
+      // The beam and the laser are looking at one forecourt, so eating it and
+      // blowing it up have to be able to tell each other it is gone.
+      //
+      // Unrotated, unlike the masts and station mouths beside it: the
+      // forecourt's canopy, pumps and shopfront are authored to one heading
+      // and the render pools have always drawn it that way.
+      props.push(prop({ id: landmarkId('gas-station', cell.cellX, cell.cellZ), kind: 'gas-station', position: center, rotation: 0, variant: 0 }))
     }
   }
   return props

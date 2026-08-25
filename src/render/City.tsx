@@ -2475,6 +2475,62 @@ function LiftedLakeShorePool({ kind }: { kind: 'shore-rock' | 'shore-reed' }) {
   )
 }
 
+/**
+ * The rubble the beam has hold of.
+ *
+ * `grabRuins` takes a ruin out of `ruinedBuildings` the instant it is caught,
+ * so RuinPool below stops drawing it on the same frame and this is the only
+ * thing drawing it from then on. The geometry and the half-lit tint are that
+ * pool's own - a pile that changed shape or shade as it left the ground would
+ * read as one object being swapped for another.
+ *
+ * The static pool stands its geometry on y = 0 and scales it to the ruin's
+ * size, while the beam object carries the centre of that box. Hence the half
+ * height taken off here: the same pile, described from the middle instead of
+ * from the floor.
+ */
+function LiftedRuinPool({ tier }: { tier: number }) {
+  const { runtime } = useGame()
+  const ref = useRef<THREE.InstancedMesh>(null)
+  const matrix = useMemo(() => new THREE.Matrix4(), [])
+  const position = useMemo(() => new THREE.Vector3(), [])
+  const scale = useMemo(() => new THREE.Vector3(), [])
+  const rotation = useMemo(() => new THREE.Quaternion(), [])
+  const euler = useMemo(() => new THREE.Euler(), [])
+  const color = useMemo(() => new THREE.Color(), [])
+
+  useFrame(() => {
+    const mesh = ref.current
+    if (!mesh) return
+    let count = 0
+    for (const object of runtime.current.beamObjects) {
+      if (!object.active || object.kind !== 'ruin') continue
+      if (RUIN_TIERS.indexOf(object.ruin?.tier ?? 'low') !== tier) continue
+      if (count >= LIFTED_WORLD_PROP_CAPACITY) break
+      const swallow = object.absorbing ? Math.max(0.05, object.absorbTimer / BEAM_ABSORB_TIME) : 1
+      const height = object.scale?.y ?? 1
+      position.set(object.position.x, object.position.y - height / 2, object.position.z)
+      euler.set(object.rotation.x, object.rotation.y, object.rotation.z)
+      rotation.setFromEuler(euler)
+      scale.set(object.scale?.x ?? 1, height, object.scale?.z ?? 1).multiplyScalar(swallow)
+      matrix.compose(position, rotation, scale)
+      mesh.setMatrixAt(count, matrix)
+      mesh.setColorAt(count, color.set(object.color).multiplyScalar(0.52))
+      count += 1
+    }
+    mesh.count = count
+    mesh.instanceMatrix.needsUpdate = true
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
+  })
+
+  return (
+    <instancedMesh ref={ref} args={[ruinGeometries[tier], undefined, LIFTED_WORLD_PROP_CAPACITY]} frustumCulled={false} renderOrder={2} onUpdate={(mesh) => { mesh.count = 0 }}>
+      {/* No vertexColors, for the same reason RuinPool has none. */}
+      <meshToonMaterial gradientMap={toonGradient} />
+    </instancedMesh>
+  )
+}
+
 function RuinPool() {
   const { runtime } = useGame()
   const refs = [
@@ -2545,6 +2601,7 @@ export const City = memo(function City() {
       <SpecialBuildingPool specialty="department-store" />
       <FactorySmokePool />
       <RuinPool />
+      {RUIN_TIERS.map((tier, index) => <LiftedRuinPool key={`lifted-ruin-${tier}`} tier={index} />)}
       <LiftedBuildingPool />
       <MassingPool form="podium" />
       <MassingPool form="setback" />

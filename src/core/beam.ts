@@ -1,16 +1,17 @@
+import type { BuildingRuin } from './buildings'
 import type { Aabb, Vec3 } from './drone'
 
 export type BeamObjectKind =
   | 'car' | 'truck' | 'pedestrian' | 'cat' | 'explosive' | 'building'
   | 'rooftop-structure' | 'tree' | 'utility-pole' | 'power-pylon' | 'communications'
   | 'trash-bin' | 'park-bench' | 'bus-stop' | 'subway'
-  | 'shore-rock' | 'shore-reed'
+  | 'shore-rock' | 'shore-reed' | 'gas-station' | 'ruin'
   | 'drone' | 'helicopter'
   | 'fighter' | 'boss'
 
 export type BeamWorldProp = {
   id: string
-  kind: 'rooftop-structure' | 'tree' | 'utility-pole' | 'power-pylon' | 'communications' | 'trash-bin' | 'park-bench' | 'bus-stop' | 'subway' | 'shore-rock' | 'shore-reed'
+  kind: 'rooftop-structure' | 'tree' | 'utility-pole' | 'power-pylon' | 'communications' | 'trash-bin' | 'park-bench' | 'bus-stop' | 'subway' | 'shore-rock' | 'shore-reed' | 'gas-station'
   position: Vec3
   rotation: number
   scale: Vec3
@@ -76,6 +77,13 @@ const DEFAULT_DIAMETER: Record<BeamObjectKind, number> = {
   'power-pylon': 7.2,
   subway: 8.6,
   communications: 12,
+  // A whole forecourt, canopy and pumps included - the widest thing in the
+  // city that is not a building. Only a fallback; the live prop carries the
+  // same figure from WORLD_PROP_DIAMETERS.
+  'gas-station': 18,
+  // Rubble keeps ninety percent of the block's footprint. Only a fallback -
+  // a live ruin measures its own, see ruinBulk.
+  ruin: 18,
   // The battleship's beam width. Only a fallback - the live ship carries its
   // own measured hull in `ENEMY_DIAMETER`.
   boss: 16,
@@ -152,6 +160,10 @@ export type BeamObject = {
   freePhysics?: boolean
   /** Procedural city prop metadata used by the static and lifted render pools. */
   worldProp?: BeamWorldProp
+  /** The rubble this object was, for the lifted ruin pool. Ruins are runtime
+   *  state rather than world generation, so they cannot be world props - a
+   *  ruin only exists because the player brought a building down. */
+  ruin?: BuildingRuin
 }
 
 export type BeamField = {
