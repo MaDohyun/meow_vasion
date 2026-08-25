@@ -106,7 +106,7 @@ describe('the blast a mine leaves behind', () => {
     // the ladder between them is what keeps either from reading wrong: a wall
     // scorch the size of a bus is a bug, a depot going up with a puff is
     // nothing happening.
-    const order: BlastKind[] = ['strike', 'aircraft', 'vehicle', 'ruin', 'mine', 'landmark']
+    const order: BlastKind[] = ['strike', 'aircraft', 'vehicle', 'ruin', 'mine', 'landmark', 'battleship']
     for (let index = 1; index < order.length; index += 1) {
       const smaller = BLAST_PROFILE[order[index - 1]!]
       const bigger = BLAST_PROFILE[order[index]!]
@@ -116,6 +116,7 @@ describe('the blast a mine leaves behind', () => {
     // A wall hit has to be gone before the next shot can land, or holding the
     // trigger on a tower buries it in fire.
     expect(BLAST_PROFILE.strike.duration).toBeLessThan(0.27)
+    expect(BLAST_PROFILE.battleship.radius).toBeGreaterThan(BLAST_PROFILE.landmark.radius * 1.5)
 
     const pool = createFireballPool()
     const strike = triggerFireball(pool, 'strike', ORIGIN)

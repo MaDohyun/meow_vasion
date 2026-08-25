@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
+  DRONE_DEFAULTS,
+  WALL_BOUNCE,
+  WALL_CLIMB_SPEED,
   WALL_DEFLECT_RATE,
   collideDrone,
   createDroneState,
@@ -95,6 +98,48 @@ describe('a wall steers the craft instead of parking it', () => {
     expect(state.speed).toBeGreaterThan(25)
     // And it left along the wall rather than sitting on it.
     expect(Math.abs(state.position.z)).toBeGreaterThan(35)
+  })
+
+  it('throws the craft back harder the harder it arrives', () => {
+    const arriveAt = (speed: number) => {
+      let state = createDroneState()
+      state.heading = Math.PI / 2
+      state.position = { x: -0.2, y: 8, z: 0 }
+      state.velocity = { x: speed, y: 0, z: 0 }
+      state.speed = speed
+      return collideDrone(state, [wall()], 1 / 60).state.velocity.x
+    }
+    // A wall gives back a share of what it was hit with, so brushing one is a
+    // nudge and flying into one at cruise throws you off it.
+    expect(arriveAt(30)).toBeCloseTo(-30 * WALL_BOUNCE, 3)
+    expect(arriveAt(30)).toBeLessThan(arriveAt(8))
+    // ...but never further than it arrived from.
+    expect(Math.abs(arriveAt(30))).toBeLessThan(30)
+  })
+
+  it('lifts a craft that touches a wall in whatever direction it is looking', () => {
+    // Altitude comes from forward speed through the pitch, so a contact that
+    // takes the speed also takes the climb - which is how a craft ends up
+    // pressed against a facade with the nose up and going nowhere. Touching a
+    // wall therefore drives the craft vertically on its own, with no forward
+    // speed asked for.
+    const touch = (pitch: number, speed: number) => {
+      let state = createDroneState()
+      state.heading = Math.PI / 2
+      state.pitch = pitch
+      state.position = { x: -0.2, y: 8, z: 0 }
+      state.velocity = { x: speed, y: 0, z: 0 }
+      state.speed = speed
+      return collideDrone(state, [wall()], 1 / 60).state.velocity.y
+    }
+    // Nose up against the wall: rising, even from a dead stop.
+    expect(touch(DRONE_DEFAULTS.pitchMax, 0)).toBeCloseTo(Math.sin(DRONE_DEFAULTS.pitchMax) * WALL_CLIMB_SPEED, 5)
+    expect(touch(DRONE_DEFAULTS.pitchMax, 0)).toBeGreaterThan(10)
+    // Nose down: the same, downwards - a craft wanting out of a gap the other
+    // way has exactly the same problem.
+    expect(touch(-DRONE_DEFAULTS.pitchMax, 0)).toBeLessThan(-10)
+    // Level: the wall is not a lift, it only follows the nose.
+    expect(touch(0, 20)).toBe(0)
   })
 
   it('crosses the real city on any heading without parking on a building', () => {

@@ -1328,7 +1328,12 @@ export function stepEnemies(state: EnemyState, player: Vec3, dt: number, playerV
       // One arming rule, on the beam or off it. A mine reeled in by the beam
       // crosses the blast field like any other approach, arms there, and
       // the fuse does the rest - catching a bomb does not make it politer.
-      if (!enemy.mineArmed && (struck || distance <= DRONE_MINE_BLAST_RADIUS)) {
+      //
+      // Measured to the hull, not to the centre of the craft. The blast field
+      // is ten metres of air around the mine and a grown saucer is wider than
+      // that on its own, so a centre-to-centre test had the field being
+      // entered by a hull that was already through it.
+      if (!enemy.mineArmed && (struck || distance <= DRONE_MINE_BLAST_RADIUS + playerRadius)) {
         enemy.mineArmed = true
         enemy.mineFuse = DRONE_MINE_FUSE
       }

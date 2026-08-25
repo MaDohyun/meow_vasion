@@ -233,9 +233,33 @@ export function stepDrone(
  */
 export const WALL_DEFLECT_RATE = (210 * Math.PI) / 180
 
-/** The shove a contact leaves behind, in units per second. Small - enough to
- *  separate the hull from the face so it is not re-resolved every frame. */
-export const WALL_PUSH_OFF = 3
+/**
+ * The share of the speed it drove in with that a wall gives back outwards.
+ *
+ * A real bounce rather than a shove, so how hard you come off a facade is how
+ * hard you went into it: brush one and you are nudged clear, fly into one at
+ * cruise and it throws you back out. Under a half so it never launches the
+ * craft further than it arrived from.
+ */
+export const WALL_BOUNCE = 0.55
+
+/** The floor under that bounce, in units per second - what a contact with
+ *  almost no inward speed still gives, so the hull always separates from the
+ *  face instead of being re-resolved against it every frame. */
+export const WALL_PUSH_OFF = 8
+
+/**
+ * How fast a wall lifts a craft that is pointing up, in units per second.
+ *
+ * Altitude comes from forward speed through the pitch, and that is the whole
+ * problem for a big craft down among the towers: the same contact that stops
+ * it also takes away the only thing it climbs with, so looking up does
+ * nothing and the way out of a gap is closed. A wall being touched therefore
+ * gives lift directly - point the nose up and you go up it, whatever the
+ * craft is doing horizontally. It works downwards too, because a craft that
+ * wants to drop out of a gap has exactly the same problem.
+ */
+export const WALL_CLIMB_SPEED = 16
 
 /** Resolved a hair clear of the face rather than flush against it, for the
  *  same reason. */
@@ -294,11 +318,23 @@ export function collideDrone(state: DroneState, colliders: Aabb[], dt = 1 / 60):
 
     // Keep whatever the craft had going *along* the wall and drop only what it
     // had going into it. Sliding is what makes a wall a wall rather than a
-    // full stop.
+    // full stop - and what replaces the inward part is a bounce scaled to it,
+    // so the harder the arrival the further it is thrown back.
     const inward = next.velocity[normal.axis] * normal.direction
+    const rebound = Math.max(WALL_PUSH_OFF, Math.abs(Math.min(0, inward)) * WALL_BOUNCE)
     if (inward < 0) next.velocity[normal.axis] -= normal.direction * inward
-    next.velocity[normal.axis] += normal.direction * WALL_PUSH_OFF
+    next.velocity[normal.axis] += normal.direction * rebound
     next.speed *= 1 - WALL_SPEED_COST * into
+
+    // A wall is also a ladder. Whichever way the nose is pointing vertically,
+    // touching one drives the craft that way without asking for the forward
+    // speed the contact just took - which is the only way a craft wedged in a
+    // gap between two towers gets out of it.
+    if (normal.axis !== 'y') {
+      const climb = forward.y * WALL_CLIMB_SPEED
+      if (climb > 0) next.velocity.y = Math.max(next.velocity.y, climb)
+      else if (climb < 0) next.velocity.y = Math.min(next.velocity.y, climb)
+    }
 
     // And the wall turns the nose off itself. Only a wall: a roof is something
     // to skim, not something to be steered by.
