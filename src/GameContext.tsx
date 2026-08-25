@@ -1831,14 +1831,12 @@ export function GameProvider({ children }: { children: ReactNode }) {
       // with the other.
       if (touchAim.current?.pointerId === event.pointerId) touchAim.current = null
     }
-    const leave = () => { pointer.current = { x: 0, y: 0 } }
     window.addEventListener('keydown', down, { passive: false })
     window.addEventListener('keyup', up)
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerdown', press)
     window.addEventListener('pointerup', lift)
     window.addEventListener('pointercancel', lift)
-    document.documentElement.addEventListener('mouseleave', leave)
     return () => {
       window.removeEventListener('keydown', down)
       window.removeEventListener('keyup', up)
@@ -1846,7 +1844,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
       window.removeEventListener('pointerdown', press)
       window.removeEventListener('pointerup', lift)
       window.removeEventListener('pointercancel', lift)
-      document.documentElement.removeEventListener('mouseleave', leave)
     }
   }, [])
 

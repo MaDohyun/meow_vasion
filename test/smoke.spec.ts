@@ -192,6 +192,24 @@ test('switches language from the lobby without opening options', async ({ page }
   await expect(page.locator('.intro-actions .primary-button')).toBeVisible()
 })
 
+test('keeps the reticle at its last position when the mouse leaves the page', async ({ page }) => {
+  await page.goto('/')
+  await page.locator('.intro-actions .primary-button').click()
+  await expect(page.locator('canvas').first()).toBeVisible()
+
+  const view = page.viewportSize()!
+  await page.mouse.move(view.width * 0.77, view.height * 0.28)
+  const reticle = page.locator('.reticle')
+  await expect(reticle).toHaveAttribute('style', /left:\s*77(?:\.\d+)?%;\s*top:\s*28(?:\.\d+)?%/)
+  const lastPosition = await reticle.getAttribute('style')
+
+  // Browsers report this when the pointer crosses out through their content
+  // edge. The custom cursor should park where its last pointermove left it.
+  await page.evaluate(() => document.documentElement.dispatchEvent(new MouseEvent('mouseleave')))
+  await page.waitForTimeout(120)
+  await expect(reticle).toHaveAttribute('style', lastPosition ?? '')
+})
+
 /**
  * A finger aims by dragging, not by pointing: see src/core/aim. The maths is
  * unit tested; what only a browser can show is the wiring - that a drag on the
