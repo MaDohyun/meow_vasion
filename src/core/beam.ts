@@ -428,9 +428,23 @@ export function beamLiftBand(weight: number, strength: number): BeamLiftBand {
   return 'blocked'
 }
 
+/**
+ * How fast each band actually hauls, as a multiplier on the beam's grip.
+ *
+ * The drive squares this (see stepBeamObjects), so the gaps between bands are
+ * wider than they read: at 0.58 against 1.55, a strained load rides seven
+ * times slower than a comfortable one.
+ *
+ * `marginal` went 0.12 -> 0.3 for the same reason BEAM_PULL_MAX went up. One
+ * rung short is where the whole city ladder meets a block - masses 8 to 11
+ * against a ladder that tops out at 12 - and at 0.12 a tower took sixteen
+ * seconds of held beam to come up, which does not read as straining. It reads
+ * as broken, because nothing visibly moves. It is still by far the slowest
+ * band, and still the sign that the craft wants another rung of growth.
+ */
 export function beamLiftScale(weight: number, strength: number) {
   const band = beamLiftBand(weight, strength)
-  return band === 'fast' ? 1.55 : band === 'strained' ? 0.58 : band === 'marginal' ? 0.12 : 0
+  return band === 'fast' ? 1.55 : band === 'strained' ? 0.58 : band === 'marginal' ? 0.3 : 0
 }
 
 /**
