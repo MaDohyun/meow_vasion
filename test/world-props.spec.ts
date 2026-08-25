@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { beamLiftScale, beamProfile, isAbsorbable } from '../src/core/beam'
-import { DRONE_CEILING, SIZE_MAX, SIZE_START, sizeProfile, ufoDiameter } from '../src/core/size'
+import { DRONE_CEILING, SIZE_MATURE, SIZE_START, sizeProfile, ufoDiameter } from '../src/core/size'
 import { busStopAnchor } from '../src/core/cityLandmarks'
 import {
   busStopsAround,
@@ -286,7 +286,7 @@ describe('beam-capable city dressing', () => {
     // The gap has to sit outside the widest cone the game can produce: the
     // boosted beam at the craft's absolute ceiling, which is the one case
     // where the cone reaches furthest sideways at ground level.
-    const profile = beamProfile(true, sizeProfile(SIZE_MAX).beamScale, sizeProfile(SIZE_MAX).beamReach)
+    const profile = beamProfile(true, sizeProfile(SIZE_MATURE).beamScale, sizeProfile(SIZE_MATURE).beamReach)
     const widest = profile.baseRadius + Math.min(profile.maxDrop, DRONE_CEILING) * profile.coneSpread
     expect(LAKE_SHORE_PROP_RADIUS_CELLS * WORLD_CELL_SIZE).toBeGreaterThan(widest)
 

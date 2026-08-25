@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { stepBeamObjects, type BeamField } from '../src/core/beam'
 import { beginNearbyCrowdAbsorption, createCrowdState, stepCrowds } from '../src/core/crowds'
 import { createDroneState, stepDrone, type DroneInput } from '../src/core/drone'
-import { SIZE_GAIN, SIZE_MAX, growSize, sizeProfile, SIZE_START } from '../src/core/size'
+import { SIZE_GAIN, SIZE_MATURE, growSize, sizeProfile, SIZE_START } from '../src/core/size'
 
 const UPGRADES = { speed: 0.45, stability: 0, rack: 0, special: 'none' as const }
 
@@ -146,8 +146,8 @@ describe('feeding is the core loop', { timeout: 30_000 }, () => {
     // craft for four minutes.
     const perTwentyFive = averageFeed(25, SIZE_START, true)
     const overFiveMinutes = perTwentyFive * (300 / 25) * SIZE_GAIN.pedestrian
-    expect(overFiveMinutes).toBeGreaterThan(SIZE_MAX * 0.25)
-    expect(SIZE_MAX - SIZE_START).toBeGreaterThan(overFiveMinutes * 0.3)
+    expect(overFiveMinutes).toBeGreaterThan(SIZE_MATURE * 0.25)
+    expect(SIZE_MATURE - SIZE_START).toBeGreaterThan(overFiveMinutes * 0.3)
   })
 
   it('keeps a bigger craft competitive while the preloaded city stays dispersed', () => {

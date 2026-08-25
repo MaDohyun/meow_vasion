@@ -12,7 +12,7 @@ import {
 } from '../src/core/world'
 import { beamLiftScale, isAbsorbable } from '../src/core/beam'
 import { WORLD_PROP_MASS, worldPropMass, worldPropsAround } from '../src/core/worldProps'
-import { SIZE_MAX, SIZE_START, sizeProfile, ufoDiameter } from '../src/core/size'
+import { SIZE_MATURE, SIZE_START, sizeProfile, ufoDiameter } from '../src/core/size'
 import {
   GAS_STATION_BEAM_MASS,
   LANDMARK_LASER_HITS,
@@ -148,7 +148,7 @@ describe('render-only city landmarks', () => {
       beamLiftScale(worldPropMass(prop!), sizeProfile(size).beamStrength) > 0
       && isAbsorbable('gas-station', undefined, ufoDiameter(size))
     expect(takes(SIZE_START)).toBe(false)
-    expect(takes(SIZE_MAX)).toBe(true)
+    expect(takes(SIZE_MATURE)).toBe(true)
 
     // The laser keeps its demolition: two hits, exactly as before.
     expect(damageLandmark(new Map(), station!.id, LANDMARK_LASER_HITS).destroyed).toBe(true)

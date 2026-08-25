@@ -18,7 +18,7 @@ import {
   type EnemyKind,
 } from '../src/core/enemies'
 import { beamLiftScale, isAbsorbable } from '../src/core/beam'
-import { BEAM_STRENGTH_MAX, SIZE_MAX, SIZE_START, sizeProfile } from '../src/core/size'
+import { BEAM_STRENGTH_MAX, SIZE_MATURE, SIZE_START, sizeProfile } from '../src/core/size'
 
 function fillWave(time: number) {
   const state = createEnemyState()
@@ -70,7 +70,7 @@ describe('time-based enemy waves', () => {
     expect(weightOf('boss')).toBe(BEAM_STRENGTH_MAX)
 
     const liftableAt = (weight: number) => {
-      for (let size = SIZE_START; size <= SIZE_MAX; size += 0.01) {
+      for (let size = SIZE_START; size <= SIZE_MATURE; size += 0.01) {
         if (beamLiftScale(weight, sizeProfile(size).beamStrength) > 0) return size
       }
       return Number.POSITIVE_INFINITY
@@ -81,11 +81,11 @@ describe('time-based enemy waves', () => {
     // can move all three.
     for (const kind of ['helicopter', 'fighter', 'boss'] as const) {
       expect(beamLiftScale(weightOf(kind), sizeProfile(SIZE_START).beamStrength), kind).toBe(0)
-      expect(beamLiftScale(weightOf(kind), sizeProfile(SIZE_MAX).beamStrength), kind).toBeGreaterThan(0)
+      expect(beamLiftScale(weightOf(kind), sizeProfile(SIZE_MATURE).beamStrength), kind).toBeGreaterThan(0)
     }
     // The ship is the last thing on the menu, not something a run passes on
     // the way: it opens inside the top few percent of the size range.
-    expect(liftableAt(weightOf('boss'))).toBeGreaterThan(SIZE_START + (SIZE_MAX - SIZE_START) * 0.95)
+    expect(liftableAt(weightOf('boss'))).toBeGreaterThan(SIZE_START + (SIZE_MATURE - SIZE_START) * 0.95)
   })
 
   it('detonates a beam-held mine that is drawn onto the hull', () => {

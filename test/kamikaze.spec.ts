@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { DRONE_DEFAULTS } from '../src/core/drone'
 import { isInsideBeam, stepBeamObjects, type BeamField } from '../src/core/beam'
-import { SIZE_MAX, sizeProfile } from '../src/core/size'
+import { SIZE_MATURE, sizeProfile } from '../src/core/size'
 import {
   DRONE_MINE_BLAST_RADIUS,
   DRONE_MINE_FUSE,
@@ -115,7 +115,7 @@ describe('suicide drones', () => {
     // So the cone is a fuse instead. The mine still goes off, on the same
     // three tenths of a second, and it goes off where it was: how close that
     // is to the hull is the altitude the player chose.
-    const profile = sizeProfile(SIZE_MAX)
+    const profile = sizeProfile(SIZE_MATURE)
     const state = createEnemyState()
     const mine = state.slots.find((enemy) => enemy.kind === 'drone')!
     mine.active = true
@@ -177,7 +177,7 @@ describe('suicide drones', () => {
     // centre then found nothing there. Mines could not hurt a grown craft at
     // all, which is the half of the run where they matter least and the half
     // where the player has most to lose.
-    const hull = sizeProfile(SIZE_MAX).hitRadius
+    const hull = sizeProfile(SIZE_MATURE).hitRadius
     expect(hull).toBeGreaterThan(DRONE_MINE_BLAST_RADIUS)
     const state = createEnemyState()
     const mine = state.slots.find((enemy) => enemy.kind === 'drone')!

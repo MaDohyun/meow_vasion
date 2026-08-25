@@ -10,7 +10,7 @@ import {
   type Aabb,
   type DroneInput,
 } from '../src/core/drone'
-import { SIZE_MAX, SIZE_START, sizeProfile } from '../src/core/size'
+import { SIZE_MATURE, SIZE_START, sizeProfile } from '../src/core/size'
 import { activeWorldColliders, updateActiveWorld } from '../src/core/world'
 
 const upgrades = { speed: 0, stability: 0, rack: 0, special: 'none' as const }
@@ -161,9 +161,9 @@ describe('a wall steers the craft instead of parking it', () => {
     }
     expect(grazes(DRONE_DEFAULTS.radius)).toBe(false)
     expect(grazes(sizeProfile(SIZE_START).hitRadius)).toBe(false)
-    expect(grazes(sizeProfile(SIZE_MAX).hitRadius)).toBe(true)
+    expect(grazes(sizeProfile(SIZE_MATURE).hitRadius)).toBe(true)
     // And the hull it is given is the same one the enemies measure against.
-    expect(sizeProfile(SIZE_MAX).hitRadius).toBeGreaterThan(10)
+    expect(sizeProfile(SIZE_MATURE).hitRadius).toBeGreaterThan(10)
   })
 
   it('crosses the real city on any heading without parking on a building', () => {

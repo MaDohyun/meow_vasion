@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { beamLiftScale, beginNearbyBeamObjectAbsorption, isAbsorbable } from '../src/core/beam'
 import { BOON_DEFINITIONS } from '../src/core/boons'
 import { DRONE_DEFAULTS } from '../src/core/drone'
-import { BEAM_STRENGTH_MAX, SIZE_MAX, SIZE_START, maxAltitude, sizeProfile, ufoDiameter } from '../src/core/size'
+import { BEAM_STRENGTH_MAX, SIZE_MATURE, SIZE_START, maxAltitude, sizeProfile, ufoDiameter } from '../src/core/size'
 import {
   BATTLESHIP_ALTITUDE,
   BATTLESHIP_ESCORT_FIGHTERS,
@@ -64,8 +64,8 @@ describe("earth's last resort", () => {
         && beamLiftScale(ship.mass, profile.beamStrength) > 0
     }
     expect(swallows(SIZE_START)).toBe(false)
-    expect(swallows(SIZE_START + (SIZE_MAX - SIZE_START) * 0.9)).toBe(false)
-    expect(swallows(SIZE_MAX)).toBe(true)
+    expect(swallows(SIZE_START + (SIZE_MATURE - SIZE_START) * 0.9)).toBe(false)
+    expect(swallows(SIZE_MATURE)).toBe(true)
   })
 
   it('goes up the beam of the craft that can lift it, and stays down', () => {
@@ -74,13 +74,13 @@ describe("earth's last resort", () => {
     // other meal - and the slot is marked so the wave spawner never sends a
     // second one.
     const { state, ship } = launch()
-    const profile = sizeProfile(SIZE_MAX)
+    const profile = sizeProfile(SIZE_MATURE)
     ship.position.x = 0
     ship.position.y = 90
     ship.position.z = 0
     ship.inBeam = true
     const hull = { x: 0, y: 90 + profile.absorbDistance * 0.5, z: 0 }
-    const eaten = beginNearbyBeamObjectAbsorption([ship], hull, ufoDiameter(SIZE_MAX), profile.absorbDistance, profile.beamStrength)
+    const eaten = beginNearbyBeamObjectAbsorption([ship], hull, ufoDiameter(SIZE_MATURE), profile.absorbDistance, profile.beamStrength)
     expect(eaten).toBe(ship)
     expect(ship.absorbing).toBe(true)
 

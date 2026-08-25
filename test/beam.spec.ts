@@ -16,7 +16,7 @@ import {
   stepBeamObjects,
 } from '../src/core/beam'
 import { CAT_MASS, PEDESTRIAN_MASS } from '../src/core/crowds'
-import { SIZE_MAX, SIZE_MIN, SIZE_START, UFO_BASE_DIAMETER, maxAltitude, sizeProfile, ufoDiameter } from '../src/core/size'
+import { SIZE_MATURE, SIZE_MIN, SIZE_START, UFO_BASE_DIAMETER, maxAltitude, sizeProfile, ufoDiameter } from '../src/core/size'
 
 const makeCar = (id = 'car-1', x = 0, y = 0.65, z = 0): BeamObject => ({
   id,
@@ -83,7 +83,7 @@ describe('tractor beam physics', () => {
     // Aperture rides on size now that the radius cards are gone; reach stays
     // put, so a bigger craft sweeps a wider cone, not a longer one.
     const small = sizeProfile(SIZE_MIN)
-    const large = sizeProfile(SIZE_MAX)
+    const large = sizeProfile(SIZE_MATURE)
     expect(large.beamScale).toBeGreaterThan(small.beamScale)
     expect(beamProfile(false, large.beamScale).baseRadius)
       .toBeGreaterThan(beamProfile(false, small.beamScale).baseRadius)
@@ -445,7 +445,7 @@ describe('integer lifting ladder', () => {
   })
 
   it('leaves a readable haul window instead of instant-eating heavy loads', () => {
-    for (const size of [SIZE_MIN, 1, 2, 4, 8, SIZE_MAX]) {
+    for (const size of [SIZE_MIN, 1, 2, 4, 8, SIZE_MATURE]) {
       const profile = sizeProfile(size)
       for (const mass of [1, 2, 3, 4, 5, 6, 7, 8, 11]) {
         const object = makeCar(`lift-${size}-${mass}`)

@@ -14,7 +14,7 @@ import {
   raiseHealthMax,
   stepHealth,
 } from '../src/core/health'
-import { HEALTH_BONUS_HEARTS_MAX, SIZE_GAIN, SIZE_MAX, SIZE_MIN, SIZE_START, bonusHeartsForSize, clampSize, growSize } from '../src/core/size'
+import { HEALTH_BONUS_HEARTS_MAX, SIZE_GAIN, SIZE_MATURE, SIZE_MIN, SIZE_START, bonusHeartsForSize, clampSize, growSize } from '../src/core/size'
 
 describe('health as the survival resource', () => {
   it('starts full and ends the run only at zero', () => {
@@ -104,7 +104,7 @@ describe('health as the survival resource', () => {
   it('leaves the growth ceiling reachable', () => {
     // Sanity on the other resource: proportional growth has to be able to span
     // the range, or the ceiling is decoration.
-    const absorptions = Math.log(SIZE_MAX / SIZE_START) / Math.log(1 + SIZE_GAIN.pedestrian)
+    const absorptions = Math.log(SIZE_MATURE / SIZE_START) / Math.log(1 + SIZE_GAIN.pedestrian)
     expect(absorptions).toBeGreaterThan(60)
     expect(absorptions).toBeLessThan(180)
   })
@@ -141,10 +141,10 @@ describe('hearts earned by growing', () => {
 
   it('reaches seven hearts at the size ceiling and five at the start', () => {
     expect(MAX_HEALTH + bonusHeartsForSize(SIZE_START)).toBe(5)
-    expect(MAX_HEALTH + bonusHeartsForSize(SIZE_MAX)).toBe(5 + HEALTH_BONUS_HEARTS_MAX)
+    expect(MAX_HEALTH + bonusHeartsForSize(SIZE_MATURE)).toBe(5 + HEALTH_BONUS_HEARTS_MAX)
     // Whole hearts only, and never backwards on the way up.
     let previous = 0
-    for (let size = SIZE_START; size <= SIZE_MAX; size += 0.1) {
+    for (let size = SIZE_START; size <= SIZE_MATURE; size += 0.1) {
       const bonus = bonusHeartsForSize(size)
       expect(Number.isInteger(bonus)).toBe(true)
       expect(bonus).toBeGreaterThanOrEqual(previous)

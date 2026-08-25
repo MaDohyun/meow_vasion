@@ -10,7 +10,7 @@ import {
 import { NEWS_TOWER_MIN_HEIGHT, buildingNeonSignLayout, canAbsorbBuilding, hasBuildingNeonSign, isNewsTower, isSpecialBuilding } from '../src/core/cityLandmarks'
 import { RUIN_BEAM_MASS, createBuildingRuin, ruinBulk } from '../src/core/buildings'
 import { beamLiftScale, isAbsorbable } from '../src/core/beam'
-import { BEAM_STRENGTH_MAX, SIZE_MAX, SIZE_START, sizeProfile, ufoDiameter } from '../src/core/size'
+import { BEAM_STRENGTH_MAX, SIZE_MATURE, SIZE_START, sizeProfile, ufoDiameter } from '../src/core/size'
 
 const canEat = (building: ProceduralBuilding, strength: number) =>
   canAbsorbBuilding(building, strength)
@@ -111,7 +111,7 @@ describe('eating buildings', () => {
       beamLiftScale(RUIN_BEAM_MASS, sizeProfile(size).beamStrength) > 0
       && isAbsorbable('ruin', ruinBulk(widest), ufoDiameter(size))
     expect(clears(SIZE_START)).toBe(false)
-    expect(clears(SIZE_START + (SIZE_MAX - SIZE_START) * 0.3)).toBe(true)
+    expect(clears(SIZE_START + (SIZE_MATURE - SIZE_START) * 0.3)).toBe(true)
   })
 
   it('keeps an eaten building gone as the city streams', () => {

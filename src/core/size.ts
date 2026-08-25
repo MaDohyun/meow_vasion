@@ -34,14 +34,39 @@ export const SIZE_START = 0.46
  *  fall at all; it exists so callers can clamp safely. */
 export const SIZE_MIN = 0.3
 /**
- * The ceiling, opened up by a factor of five.
+ * Fully grown: the top of every ladder size owns.
  *
- * Raising the growth rate without raising this just means capping out in the
- * first ninety seconds and spending the rest of the run at a fixed size, which
- * is the opposite of the point. Five minutes of growing means five minutes of
- * room to grow.
+ * This is **not** a ceiling - nothing stops here, see SIZE_MAX. It is the
+ * scale the progression is measured against: beam strength, lift, aperture,
+ * reach, pull, bonus hearts, camera lift and the HUD ratio all reach their
+ * maximum here and hold it. Growing past it is real growth - the hull, the
+ * score multiplier, the swallow radius and the view all keep going - it simply
+ * has no further rungs to hand out, because there is nothing left in the world
+ * heavier than a dreadnought to open.
+ *
+ * 15, which is a saucer 81m across. The pacing anchor in SIZE_GAIN is written
+ * against this number: a beginner who is trying arrives here as the five
+ * minutes run out.
  */
-export const SIZE_MAX = 15
+export const SIZE_MATURE = 15
+/**
+ * The hard clamp - and deliberately somewhere no run will ever see.
+ *
+ * There used to be a real ceiling at 15 and it was the wrong shape for the
+ * game: a player who fed well hit it inside three minutes and spent the rest
+ * of the run at a fixed size, which turns the one thing the game is about into
+ * something you finish early and then stop doing. Growth now never ends. Past
+ * SIZE_MATURE the falloff has bottomed out at GROWTH_FALLOFF_MIN, so each meal
+ * is worth 7% of what it was worth at the opening - a visible crawl rather
+ * than a wall, and the craft is still getting bigger on the last body of the
+ * last second.
+ *
+ * At that rate reaching this number takes about 2300 more pedestrians, some
+ * thirty-five minutes of uninterrupted perfect feeding. It exists so `size` is
+ * always a finite number that the camera, the fog and the collision radius can
+ * be derived from, not as something to reach.
+ */
+export const SIZE_MAX = 1000
 /** Visible width of the saucer at size 1. */
 export const UFO_BASE_DIAMETER = 5.4
 /**
@@ -274,8 +299,17 @@ export const BEAM_REACH_MAX = 2.75
  */
 export const BEAM_PULL_MAX = 1.55
 
+/**
+ * 0 at the opening size, 1 at SIZE_MATURE - and 1 for everything above it.
+ *
+ * Every ladder in this file rides on this, which is exactly why it normalises
+ * against SIZE_MATURE rather than against the clamp: the rungs have to be
+ * spent over the size range a run actually covers. Measured against SIZE_MAX
+ * the whole progression would be squeezed into the first percent of the curve
+ * and no run would ever leave beam strength 1.
+ */
 function sizeGrowthProgress(size: number) {
-  return Math.max(0, Math.min(1, (clampSize(size) - SIZE_START) / (SIZE_MAX - SIZE_START)))
+  return Math.max(0, Math.min(1, (clampSize(size) - SIZE_START) / (SIZE_MATURE - SIZE_START)))
 }
 
 export function beamReachForSize(size: number) {
@@ -346,7 +380,11 @@ export function clampSize(size: number) {
 
 export function sizeProfile(size: number): SizeProfile {
   const clamped = clampSize(size)
-  const ratio = Math.min(1, Math.max(0, (clamped - SIZE_MIN) / (SIZE_MAX - SIZE_MIN)))
+  // Reads full at SIZE_MATURE and stays there. The HUD bar and the audio that
+  // rides on it are showing "how far along the ladder", and past the last rung
+  // the honest answer is "all the way" rather than a fraction of a clamp no
+  // run will approach.
+  const ratio = Math.min(1, Math.max(0, (clamped - SIZE_MIN) / (SIZE_MATURE - SIZE_MIN)))
   const beamScale = beamApertureForSize(clamped)
   const beamStrength = beamStrengthForSize(clamped)
   return {
@@ -373,7 +411,7 @@ export function sizeProfile(size: number): SizeProfile {
  * of the run, where the saucer would otherwise cover the aiming point.
  */
 export function sizeCameraLift(size: number) {
-  const progress = Math.max(0, Math.min(1, (clampSize(size) - SIZE_START) / (SIZE_MAX - SIZE_START)))
+  const progress = Math.max(0, Math.min(1, (clampSize(size) - SIZE_START) / (SIZE_MATURE - SIZE_START)))
   return SIZE_CAMERA_LIFT_MAX * Math.pow(progress, 0.6)
 }
 

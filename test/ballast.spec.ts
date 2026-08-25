@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { beamLiftScale, beamProfile, isInsideBeam, stepBeamObjects, type BeamField, type BeamObject } from '../src/core/beam'
 import { WORLD_PROP_MASS } from '../src/core/worldProps'
 import { createDroneState, stepDrone, type DroneInput } from '../src/core/drone'
-import { sizeProfile, SIZE_MAX, SIZE_START } from '../src/core/size'
+import { sizeProfile, SIZE_MATURE, SIZE_START } from '../src/core/size'
 
 const UPGRADES = { speed: 0.45, stability: 0, rack: 0, special: 'none' as const }
 const INPUT: DroneInput = { throttle: 1, steer: 0, lookPitch: 0, vertical: 0, special: false }
@@ -118,8 +118,8 @@ describe('beam ballast is where the speed penalty lives', () => {
     })
     const junk = objectAt(7.4, 0)
     expect(isInsideBeam(junk, field(SIZE_START))).toBe(false)
-    expect(isInsideBeam(junk, field(SIZE_MAX))).toBe(true)
-    expect(beamProfile(false, sizeProfile(SIZE_MAX).beamScale).baseRadius)
+    expect(isInsideBeam(junk, field(SIZE_MATURE))).toBe(true)
+    expect(beamProfile(false, sizeProfile(SIZE_MATURE).beamScale).baseRadius)
       .toBeGreaterThan(beamProfile(false, sizeProfile(SIZE_START).beamScale).baseRadius)
   })
 })

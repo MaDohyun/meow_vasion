@@ -13,6 +13,7 @@ import {
   GROWTH_FALLOFF_MIN,
   HEALTH_BONUS_HEARTS_MAX,
   LIFT_CAPACITY_MIN,
+  SIZE_MATURE,
   SIZE_MAX,
   SIZE_MIN,
   SIZE_START,
@@ -37,7 +38,7 @@ describe('craft size as growth, not as health', () => {
     expect(ufoDiameter(SIZE_START)).toBeLessThan(3)
     expect(ufoDiameter(SIZE_START)).toBeGreaterThan(1.5)
     // And there is a whole run's worth of room above it.
-    expect(SIZE_MAX / SIZE_START).toBeGreaterThan(20)
+    expect(SIZE_MATURE / SIZE_START).toBeGreaterThan(20)
   })
 
   it('never falls, whatever happens', () => {
@@ -64,9 +65,9 @@ describe('craft size as growth, not as health', () => {
       }
       return meals
     }
-    const span = SIZE_MAX - SIZE_START
+    const span = SIZE_MATURE - SIZE_START
     const firstThird = mealsToReach(SIZE_START, SIZE_START + span * 0.3)
-    const lastThird = mealsToReach(SIZE_START + span * 0.7, SIZE_MAX)
+    const lastThird = mealsToReach(SIZE_START + span * 0.7, SIZE_MATURE)
     // The opening is the generous end now, but the taper has to bite hard
     // enough that the last stretch is not a formality. Both bounds moved out
     // when the curve was pinned to a beginner's five minutes rather than to a
@@ -74,15 +75,15 @@ describe('craft size as growth, not as health', () => {
     // again as many meals.
     expect(lastThird).toBeGreaterThan(30)
     expect(firstThird).toBeLessThan(110)
-    // Still a reachable ceiling inside one run's worth of eating - a run is
-    // about 330 bodies at the rate test/feeding.spec.ts measures, and the
-    // ceiling has to sit inside that or it is decoration.
-    expect(mealsToReach(SIZE_START, SIZE_MAX)).toBeLessThan(230)
+    // Full growth still sits inside one run's worth of eating - a run is about
+    // 330 bodies at the rate test/feeding.spec.ts measures, and the last rung
+    // has to sit inside that or it is decoration.
+    expect(mealsToReach(SIZE_START, SIZE_MATURE)).toBeLessThan(230)
     // Growth never stops, it only slows - and it slows monotonically.
     expect(growthFalloff(SIZE_START)).toBeCloseTo(1, 5)
-    expect(growthFalloff(SIZE_MAX)).toBeCloseTo(GROWTH_FALLOFF_MIN, 5)
+    expect(growthFalloff(SIZE_MATURE)).toBeCloseTo(GROWTH_FALLOFF_MIN, 5)
     let previous = Infinity
-    for (let size = SIZE_START; size <= SIZE_MAX; size += 0.25) {
+    for (let size = SIZE_START; size <= SIZE_MATURE; size += 0.25) {
       const falloff = growthFalloff(size)
       expect(falloff).toBeLessThanOrEqual(previous)
       expect(falloff).toBeGreaterThan(0)
@@ -90,7 +91,7 @@ describe('craft size as growth, not as health', () => {
     }
     // A grown craft still gains more absolute metres per meal than a small one
     // does; the taper trims the curve, it does not invert it.
-    expect(growSize(SIZE_MAX * 0.5, 'pedestrian') - SIZE_MAX * 0.5).toBeGreaterThan(
+    expect(growSize(SIZE_MATURE * 0.5, 'pedestrian') - SIZE_MATURE * 0.5).toBeGreaterThan(
       growSize(SIZE_START, 'pedestrian') - SIZE_START,
     )
   })
@@ -101,7 +102,7 @@ describe('craft size as growth, not as health', () => {
     // over half the steered bot in test/feeding.spec.ts, because a person is
     // also dodging, aiming and reading the mission - and the curve is set so
     // that player is around sixty percent of the range three and a half
-    // minutes in and touches the ceiling as the five minutes run out.
+    // minutes in and reaches full growth as the five minutes run out.
     const BEGINNER_BODIES_PER_SECOND = 0.6
     const secondsToReach = (target: number) => {
       let size = SIZE_START
@@ -112,13 +113,49 @@ describe('craft size as growth, not as health', () => {
       }
       return meals / BEGINNER_BODIES_PER_SECOND
     }
-    const sixtyPercent = SIZE_START + (SIZE_MAX - SIZE_START) * 0.6
+    const sixtyPercent = SIZE_START + (SIZE_MATURE - SIZE_START) * 0.6
     expect(secondsToReach(sixtyPercent)).toBeGreaterThan(180)
     expect(secondsToReach(sixtyPercent)).toBeLessThan(240)
-    // And the ceiling is the end of the run rather than a thing passed on the
-    // way to it: inside the five minutes, but only just.
-    expect(secondsToReach(SIZE_MAX)).toBeGreaterThan(270)
-    expect(secondsToReach(SIZE_MAX)).toBeLessThan(340)
+    // And the last rung is the end of the run rather than a thing passed on
+    // the way to it: inside the five minutes, but only just.
+    expect(secondsToReach(SIZE_MATURE)).toBeGreaterThan(270)
+    expect(secondsToReach(SIZE_MATURE)).toBeLessThan(340)
+  })
+
+  it('has no ceiling a run can reach', () => {
+    // The clamp is a number, not a design. A player who fed at the bot's rate
+    // used to arrive at the top inside three minutes and then fly a fixed-size
+    // craft for the rest of the run, which stops the one thing the game is
+    // about. So growth carries on past SIZE_MATURE at the floor rate - slow,
+    // but never nothing, and never zero.
+    let size = SIZE_MATURE
+    for (let meal = 0; meal < 50; meal += 1) {
+      const next = growSize(size, 'pedestrian')
+      expect(next).toBeGreaterThan(size)
+      size = next
+    }
+    // ...and the clamp is far enough out that no run meets it. Three hundred
+    // seconds at the steered bot's rate is about 330 bodies; eating nothing
+    // but cats for twice that long does not come close.
+    let fed = SIZE_START
+    for (let meal = 0; meal < 700; meal += 1) fed = growSize(fed, 'cat')
+    expect(fed).toBeLessThan(SIZE_MAX / 10)
+    // The stat ladders do not care what happens up there: they are spent by
+    // SIZE_MATURE and hold their last rung for ever.
+    const mature = sizeProfile(SIZE_MATURE)
+    const vast = sizeProfile(SIZE_MAX)
+    expect(vast.beamStrength).toBe(mature.beamStrength)
+    expect(vast.liftCapacity).toBeCloseTo(mature.liftCapacity)
+    expect(vast.beamScale).toBeCloseTo(mature.beamScale)
+    expect(vast.beamReach).toBeCloseTo(mature.beamReach)
+    expect(vast.ratio).toBe(1)
+    expect(bonusHeartsForSize(SIZE_MAX)).toBe(bonusHeartsForSize(SIZE_MATURE))
+    // What does keep going is the hull itself, and the score for being it.
+    expect(vast.scoreMultiplier).toBeGreaterThan(mature.scoreMultiplier)
+    expect(ufoDiameter(SIZE_MAX)).toBeGreaterThan(ufoDiameter(SIZE_MATURE))
+    // Growth is clamped, never NaN, and never falls off the end.
+    expect(clampSize(SIZE_MAX * 2)).toBe(SIZE_MAX)
+    expect(growSize(SIZE_MAX, 'pedestrian')).toBe(SIZE_MAX)
   })
 
   it('opens the world up as it grows', () => {
@@ -127,7 +164,7 @@ describe('craft size as growth, not as health', () => {
     // change of scenery - and it needs to see further because it is up there
     // covering ground faster.
     const start = sizeProfile(SIZE_START)
-    const big = sizeProfile(SIZE_MAX)
+    const big = sizeProfile(SIZE_MATURE)
     expect(big.maxAltitude).toBeGreaterThan(start.maxAltitude)
     expect(big.viewDistance).toBeGreaterThan(start.viewDistance)
     // Even the smallest craft has to clear the low-rise band, or it cannot
@@ -135,7 +172,7 @@ describe('craft size as growth, not as health', () => {
     expect(start.maxAltitude).toBeGreaterThan(20)
     // Altitude rises with size at every step, never dips.
     let previous = 0
-    for (let size = SIZE_START; size <= SIZE_MAX; size += 0.2) {
+    for (let size = SIZE_START; size <= SIZE_MATURE; size += 0.2) {
       const altitude = maxAltitude(size)
       expect(altitude).toBeGreaterThanOrEqual(previous)
       previous = altitude
@@ -147,7 +184,7 @@ describe('craft size as growth, not as health', () => {
     // growing buys rungs 1..12 - the street, the park and the skyline - and
     // the last fifteen buys 12..30, which is nothing but the dreadnought and
     // its escorts.
-    const at = (progress: number) => beamStrengthForSize(SIZE_START + (SIZE_MAX - SIZE_START) * progress)
+    const at = (progress: number) => beamStrengthForSize(SIZE_START + (SIZE_MATURE - SIZE_START) * progress)
     expect(at(0)).toBe(1)
     expect(at(BEAM_STRENGTH_CITY_PROGRESS)).toBe(BEAM_STRENGTH_CITY_RUNG)
     expect(at(1)).toBe(BEAM_STRENGTH_MAX)
@@ -172,7 +209,7 @@ describe('craft size as growth, not as health', () => {
     // The card deck is gone: every beam number the player can grow now reads
     // straight off size, spanning the whole range the cards used to add.
     const start = sizeProfile(SIZE_START)
-    const big = sizeProfile(SIZE_MAX)
+    const big = sizeProfile(SIZE_MATURE)
     expect(start.beamScale).toBe(1)
     expect(big.beamScale).toBeCloseTo(BEAM_APERTURE_MAX)
     expect(start.beamStrength).toBe(1)
@@ -197,8 +234,8 @@ describe('craft size as growth, not as health', () => {
     expect(big.absorbDistance).toBeCloseTo(ABSORB_DISTANCE_MAX + ABSORB_DISTANCE_GROWN_BONUS)
     // And growing buys hearts: none at the start, the full +2 at the ceiling.
     expect(bonusHeartsForSize(SIZE_START)).toBe(0)
-    expect(bonusHeartsForSize(SIZE_MAX)).toBe(HEALTH_BONUS_HEARTS_MAX)
-    expect(bonusHeartsForSize(SIZE_START + (SIZE_MAX - SIZE_START) * 0.5)).toBe(1)
+    expect(bonusHeartsForSize(SIZE_MATURE)).toBe(HEALTH_BONUS_HEARTS_MAX)
+    expect(bonusHeartsForSize(SIZE_START + (SIZE_MATURE - SIZE_START) * 0.5)).toBe(1)
     expect(big.scoreMultiplier).toBeGreaterThan(start.scoreMultiplier)
     // ...and pays only by being a bigger target. Speed is deliberately not a
     // cost of growth; that tax belongs to beam ballast instead.
@@ -208,11 +245,11 @@ describe('craft size as growth, not as health', () => {
   it('front-loads lift so the opening craft escapes one-body capacity quickly', () => {
     // The curve's exponent sits below 1: early growth buys proportionally
     // more capacity than late growth, but the endpoints are exact.
-    const quarter = SIZE_START + (SIZE_MAX - SIZE_START) * 0.25
+    const quarter = SIZE_START + (SIZE_MATURE - SIZE_START) * 0.25
     const linearQuarter = LIFT_CAPACITY_MIN + 0.25 * (40 - LIFT_CAPACITY_MIN)
     expect(liftCapacityForSize(quarter)).toBeGreaterThan(linearQuarter)
     let previous = 0
-    for (let size = SIZE_START; size <= SIZE_MAX; size += 0.2) {
+    for (let size = SIZE_START; size <= SIZE_MATURE; size += 0.2) {
       const capacity = liftCapacityForSize(size)
       expect(capacity).toBeGreaterThanOrEqual(previous)
       previous = capacity
@@ -223,7 +260,7 @@ describe('craft size as growth, not as health', () => {
     // Growth is what the player is good at. Taxing it directly punishes them
     // for succeeding, on a curve they cannot influence; the speed penalty lives
     // on hanging ballast, which is answerable with beam discipline.
-    expect('drag' in sizeProfile(SIZE_MAX)).toBe(false)
+    expect('drag' in sizeProfile(SIZE_MATURE)).toBe(false)
   })
 
   it('pulls the camera back by half again per doubling, not by double', () => {
@@ -237,26 +274,26 @@ describe('craft size as growth, not as health', () => {
     }
     // Growing still pulls back - it just loses the race with the hull, which is
     // what puts more saucer on screen the bigger it gets.
-    expect(sizeProfile(SIZE_MAX).cameraDistance).toBeGreaterThan(sizeProfile(SIZE_START).cameraDistance)
+    expect(sizeProfile(SIZE_MATURE).cameraDistance).toBeGreaterThan(sizeProfile(SIZE_START).cameraDistance)
     expect(CAMERA_GROWTH_PULL_BACK).toBeLessThan(2)
     // The rest distance is the rig at size 1; the opening saucer is smaller
     // than that, so the camera starts in closer - which is the whole point of
     // starting small.
     expect(sizeProfile(1).cameraDistance).toBeCloseTo(CAMERA_REST_DISTANCE)
     expect(sizeProfile(SIZE_START).cameraDistance).toBeLessThan(CAMERA_REST_DISTANCE)
-    expect(ufoDiameter(SIZE_MAX) / 3).toBeGreaterThan(5)
+    expect(ufoDiameter(SIZE_MATURE) / 3).toBeGreaterThan(5)
   })
 
   it('raises the camera gently at first and more at the largest hull', () => {
     expect(sizeCameraLift(SIZE_START)).toBe(0)
     expect(sizeCameraLift(4)).toBeGreaterThan(sizeCameraLift(1))
-    expect(sizeCameraLift(SIZE_MAX)).toBeGreaterThan(sizeCameraLift(4))
-    expect(sizeCameraLift(SIZE_MAX)).toBeLessThan(8)
+    expect(sizeCameraLift(SIZE_MATURE)).toBeGreaterThan(sizeCameraLift(4))
+    expect(sizeCameraLift(SIZE_MATURE)).toBeLessThan(8)
   })
 
   it('keeps the absorption window monotonic and inside its grown ceiling', () => {
     let previous = 0
-    for (let size = SIZE_START; size <= SIZE_MAX; size += 0.2) {
+    for (let size = SIZE_START; size <= SIZE_MATURE; size += 0.2) {
       const distance = sizeProfile(size).absorbDistance
       expect(distance).toBeGreaterThan(0)
       expect(distance).toBeLessThanOrEqual(ABSORB_DISTANCE_MAX + ABSORB_DISTANCE_GROWN_BONUS)
@@ -269,6 +306,6 @@ describe('craft size as growth, not as health', () => {
 
   it('reports ratio from the death threshold, not from zero', () => {
     expect(sizeProfile(SIZE_MIN).ratio).toBe(0)
-    expect(sizeProfile(SIZE_MAX).ratio).toBe(1)
+    expect(sizeProfile(SIZE_MATURE).ratio).toBe(1)
   })
 })
