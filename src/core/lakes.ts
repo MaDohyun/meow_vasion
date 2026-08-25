@@ -13,16 +13,100 @@ export const LAKE_BEAM_SPEED_SCALE = 0.5
 // edge, long enough that stepping just past the shoreline barely slows you.
 export const LAKE_SLOWDOWN_RAMP_DISTANCE = 12
 
-export function stepLakeAbsorption(totalLitres: number, dt: number, beamActive: boolean, depthIntoLake: number) {
+/**
+ * One frame of pumping.
+ *
+ * `cellRemaining` is what the tile underneath still holds. It only ever bites
+ * on the last frame of a tile - the runtime hands a depth of 0 for a tile
+ * already dry, so an empty lake bed is simply not water as far as the beam,
+ * the drag and the mission are concerned. Defaulting it to Infinity keeps the
+ * function readable as "how much would flow" for anyone calling it without a
+ * tile in hand.
+ */
+export function stepLakeAbsorption(
+  totalLitres: number,
+  dt: number,
+  beamActive: boolean,
+  depthIntoLake: number,
+  cellRemaining = Infinity,
+) {
   const overLake = depthIntoLake > 0
   const active = beamActive && overLake
   const depthFactor = Math.min(1, Math.max(0, depthIntoLake) / LAKE_SLOWDOWN_RAMP_DISTANCE)
+  const wanted = active ? Math.max(0, dt) * LAKE_ABSORPTION_LITRES_PER_SECOND : 0
+  const absorbed = Math.min(wanted, Math.max(0, cellRemaining))
   return {
-    litres: Math.max(0, totalLitres) + (active ? Math.max(0, dt) * LAKE_ABSORPTION_LITRES_PER_SECOND : 0),
-    absorbed: active ? Math.max(0, dt) * LAKE_ABSORPTION_LITRES_PER_SECOND : 0,
+    litres: Math.max(0, totalLitres) + absorbed,
+    absorbed,
     speedScale: active ? 1 - (1 - LAKE_BEAM_SPEED_SCALE) * depthFactor : 1,
     anchored: active,
   }
+}
+
+/**
+ * Litres one lake tile holds before its water is gone for the rest of the run.
+ *
+ * Five seconds of held beam at 50 L/s. Two things are priced into that number.
+ * The water rung asks for 300 litres, so it cannot be finished standing on one
+ * tile - the pilot drains one, moves, and finishes on the next, which is the
+ * house rule about sitting still applied to the one surface that most invites
+ * it. And a tile is a bounded meal: a lake is 2-4 tiles, so the best a body of
+ * water can ever pay is 500-1000 points, however long anyone parks on it.
+ *
+ * No refill. A drained tile stays drained for the run, which is what makes
+ * the number a budget rather than a rate limit.
+ */
+export const LAKE_CELL_CAPACITY = 250
+
+/**
+ * Hull growth for draining one tile dry, as a fraction of current size.
+ *
+ * Paid on the tile, not on the litre. Water is the one thing the beam takes in
+ * continuously, and growing continuously would mean a size pulse on every
+ * frame of a five-second pump - the readout would strobe rather than react.
+ * Draining a tile is the swallow, and it lands the way swallowing anything
+ * else does: once, with a pop.
+ *
+ * Sized between the two ends of the existing ladder. A cat is +5.8% and the
+ * largest tower `absorbBeamObject` can grow you by is +20%, so a tile sits
+ * nearer the tower - it costs five seconds pinned at half speed in the one
+ * place the craft cannot run from. An average three-tile lake compounds to
+ * about +40%, which is still under what fifteen seconds of eating the city
+ * pays; the lake is the safer-looking, slower option, not the better one.
+ */
+export const LAKE_DRAIN_SIZE_GAIN = 0.12
+
+/** Litres drawn per lake tile, keyed by cell. Absent means untouched. */
+export type LakeDrainState = { drawn: Map<string, number> }
+
+export function createLakeDrainState(): LakeDrainState {
+  return { drawn: new Map() }
+}
+
+export function lakeCellKey(cellX: number, cellZ: number) {
+  return `${cellX}:${cellZ}`
+}
+
+/** What the tile still holds. Zero once it is dry. */
+export function lakeCellRemaining(state: LakeDrainState, key: string) {
+  return Math.max(0, LAKE_CELL_CAPACITY - (state.drawn.get(key) ?? 0))
+}
+
+export function lakeCellDrained(state: LakeDrainState, key: string) {
+  return lakeCellRemaining(state, key) <= 0
+}
+
+/**
+ * Banks litres against a tile. Returns true only on the draw that empties it,
+ * so the caller can pay the growth once rather than every frame after.
+ */
+export function drawFromLakeCell(state: LakeDrainState, key: string, litres: number) {
+  if (!(litres > 0)) return false
+  const before = state.drawn.get(key) ?? 0
+  if (before >= LAKE_CELL_CAPACITY) return false
+  const after = Math.min(LAKE_CELL_CAPACITY, before + litres)
+  state.drawn.set(key, after)
+  return after >= LAKE_CELL_CAPACITY
 }
 
 /**

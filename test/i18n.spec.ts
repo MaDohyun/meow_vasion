@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_LANGUAGE, LANGUAGES, LANGUAGE_LABELS, STRINGS } from '../src/i18n'
 import { MISSION_DEBRIEF_IDS, MISSION_ORDER, MISSION_RUN_SECONDS } from '../src/core/missions'
+import { LAKE_CELL_CAPACITY } from '../src/core/lakes'
 
 describe('interface languages', () => {
   it('defaults to Korean', () => {
@@ -86,6 +87,16 @@ describe('interface languages', () => {
       }
     }
     expect(STRINGS.ko.missionDebrief['absorb-water'][0]).not.toBe(STRINGS.en.missionDebrief['absorb-water'][0])
+  })
+
+  it('quotes the real tile capacity in the water debrief, in every language', () => {
+    // The general tells the pilot how much a tile holds, which is the one
+    // number in the script that is also a balance constant. Retuning the
+    // constant without the line would leave him quoting the old lake.
+    for (const language of LANGUAGES) {
+      const lines = STRINGS[language].missionDebrief['absorb-water'].join(' ')
+      expect(lines, language).toContain(String(LAKE_CELL_CAPACITY))
+    }
   })
 
   it('names every objective on the ladder, in every language', () => {

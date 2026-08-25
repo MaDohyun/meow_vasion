@@ -62,6 +62,7 @@ import {
   TUTORIAL_CAT,
   TUTORIAL_SPAWN,
   updateActiveWorld,
+  worldCellCoord,
 } from './core/world'
 import { captureTrafficCar, createTrafficState, primeTraffic, releaseTrafficSlot, stepTraffic, TRAFFIC_MAX_CARS, type TrafficCar, type TrafficState } from './core/traffic'
 import { BROADCAST_OPENING_AT, BROADCAST_SECONDS } from './core/broadcast'
@@ -79,7 +80,16 @@ import {
   type BoonState,
 } from './core/boons'
 import { buildingDestructionScore, createBuildingRuin, damageBuilding, ruinCollider, type BuildingRuin } from './core/buildings'
-import { lakeScorePayout, stepLakeAbsorption } from './core/lakes'
+import {
+  createLakeDrainState,
+  drawFromLakeCell,
+  lakeCellKey,
+  lakeCellRemaining,
+  lakeScorePayout,
+  stepLakeAbsorption,
+  LAKE_DRAIN_SIZE_GAIN,
+  type LakeDrainState,
+} from './core/lakes'
 import {
   MISSION_COUNT,
   closeRecon,
@@ -281,6 +291,12 @@ export type GameRuntime = {
   ballast: number
   waterAbsorbed: number
   waterAnchored: boolean
+  /** Litres taken out of each lake tile. A tile that has given up its whole
+   *  capacity is dry for the rest of the run - see LAKE_CELL_CAPACITY. */
+  lakes: LakeDrainState
+  /** Bumped when a tile runs dry, so the water mesh and the radar know to
+   *  rebuild without diffing the map every frame. */
+  lakesRevision: number
   mission: MissionState
   missionPulse: number
   missionBanner: MissionBanner | null
@@ -755,6 +771,8 @@ function makeRuntime(): GameRuntime {
     ballast: 0,
     waterAbsorbed: 0,
     waterAnchored: false,
+    lakes: createLakeDrainState(),
+    lakesRevision: 0,
     mission: createMissionState(),
     missionPulse: 0,
     missionBanner: null,
@@ -1954,11 +1972,21 @@ export function GameProvider({ children }: { children: ReactNode }) {
     game.beamActive = input.beam
     if (beamStarted) startBeamSound()
     if (beamStopped) stopBeamSound()
-    const lake = stepLakeAbsorption(game.waterAbsorbed, d, game.beamActive, lakeDepthAt(game.drone.position))
+    // The tile under the craft, not the lake: water is spent a cell at a time
+    // so a drained tile is a hole the pilot has to fly out of, rather than a
+    // whole body of water blinking out from under them at once.
+    const lakeKey = lakeCellKey(worldCellCoord(game.drone.position.x), worldCellCoord(game.drone.position.z))
+    const lakeRemaining = lakeCellRemaining(game.lakes, lakeKey)
+    // A dry tile is simply not water. Zeroing the depth rather than special
+    // casing further down means the beam takes nothing, the drag lets go and
+    // the mission stops counting, all from the one fact.
+    const lakeDepth = lakeRemaining > 0 ? lakeDepthAt(game.drone.position) : 0
+    const lake = stepLakeAbsorption(game.waterAbsorbed, d, game.beamActive, lakeDepth, lakeRemaining)
     // Read off the running litre total before it advances, so the payout is
     // the whole points the crossing owes rather than a fraction of a point
     // that would round away every frame.
     const lakeReward = lakeScorePayout(game.waterAbsorbed, lake.litres)
+    const lakeDrained = drawFromLakeCell(game.lakes, lakeKey, lake.absorbed)
     game.waterAbsorbed = lake.litres
     game.waterAnchored = lake.anchored
     if (lake.absorbed > 0) reportMissionEvent(game, { type: 'absorb-water', litres: lake.absorbed })
@@ -1967,6 +1995,16 @@ export function GameProvider({ children }: { children: ReactNode }) {
     // banking helpers exist to enforce is between beam and destruction, and a
     // lake is unambiguously the beam.
     if (lakeReward > 0) bankAbsorbScore(game, lakeReward)
+    if (lakeDrained) {
+      // The tile is the meal, so the growth lands here and not on the litre.
+      // Paying per litre would pulse the size readout on every frame of a
+      // five-second pump; paying on the swallow reads like every other one.
+      growBy(game, LAKE_DRAIN_SIZE_GAIN)
+      game.lakesRevision += 1
+      game.pickupPulse = 1
+      setMessage(game, 'msgLakeDrained', 1.6)
+      tone('pickup')
+    }
     // Scaling the throttle scales the top speed the flight model aims for, so
     // the craft still accelerates, steers and strafes - it just tops out at
     // half. This used to also multiply the stepped velocity every frame, and

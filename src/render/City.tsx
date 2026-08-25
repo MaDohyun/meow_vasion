@@ -1,4 +1,5 @@
 import { BEAM_ABSORB_TIME } from '../core/beam'
+import { lakeCellDrained, lakeCellKey } from '../core/lakes'
 import { useFrame } from '@react-three/fiber'
 import { memo, useMemo, useRef } from 'react'
 import * as THREE from 'three'
@@ -896,7 +897,11 @@ function WaterPool() {
     waterTexture.offset.x = (waterTexture.offset.x + dt * 0.035) % 1
     waterTexture.offset.y = (waterTexture.offset.y + dt * 0.018) % 1
     const world = runtime.current.world
-    const key = `${world.cellX}:${world.cellZ}`
+    // The drain revision is part of the key, not a second check: a tile that
+    // has just run dry changes what this mesh draws without the craft having
+    // moved a cell, and the rebuild is cheap enough to spend on the frame the
+    // water actually disappears.
+    const key = `${world.cellX}:${world.cellZ}:${runtime.current.lakesRevision}`
     if (lastKey.current === key) return
     lastKey.current = key
     let slot = 0
@@ -908,6 +913,10 @@ function WaterPool() {
     for (const cell of groundCellsAround(runtime.current.drone.position)) {
       const rect = lakeWaterRect(cell.cellX, cell.cellZ)
       if (!rect) continue
+      // Pumped dry. The cell stays a lake cell everywhere else - no buildings
+      // grow in the basin and the shore dressing keeps its waterline - so
+      // what is left reads as the bed the water used to sit in.
+      if (lakeCellDrained(runtime.current.lakes, lakeCellKey(cell.cellX, cell.cellZ))) continue
       if (slot >= GROUND_CELL_COUNT) break
       const { minX, maxX, minZ, maxZ } = rect
       position.set((minX + maxX) * 0.5, 0.055, (minZ + maxZ) * 0.5)

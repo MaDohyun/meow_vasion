@@ -90,6 +90,12 @@ function averageFeed(seconds: number, startSize = SIZE_START, steer = false, alt
   return total / seeds.length
 }
 
+// Each case drives the real runtime for hundreds of simulated seconds, and
+// the two slowest sit close enough to vitest's 5s default that a loaded
+// machine trips them. The assertions are about game balance, not speed, so
+// they get room rather than a stopwatch.
+const SIMULATION_TIMEOUT = 20_000
+
 describe('feeding is the core loop', () => {
   it('starves a player who sits still', () => {
     // Hovering with the beam on used to be the strongest play in the game:
@@ -100,7 +106,7 @@ describe('feeding is the core loop', () => {
     const moving = averageFeed(25)
     expect(parked).toBeLessThan(moving / 3)
     expect(parked).toBeLessThan(2)
-  })
+  }, SIMULATION_TIMEOUT)
 
   it('feeds any heading in the populated city without punishing steering', () => {
     const blind = averageFeed(25)
@@ -114,7 +120,7 @@ describe('feeding is the core loop', () => {
     // through uniform density, but steering must stay competitive rather than
     // becoming a trap.
     expect(steered).toBeGreaterThan(blind * 0.55)
-  })
+  }, SIMULATION_TIMEOUT)
 
   it('keeps even a blind pass above starvation', () => {
     // The floor matters: a player busy dodging must not starve outright. Growth

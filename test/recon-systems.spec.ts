@@ -1,6 +1,21 @@
 import { describe, expect, it } from 'vitest'
 import { BUILDING_SCORE, buildingDestructionScore, buildingMaxHealth, createBuildingRuin, damageBuilding, ruinCollider } from '../src/core/buildings'
-import { LAKE_ABSORPTION_LITRES_PER_SECOND, LAKE_BEAM_SPEED_SCALE, LAKE_SCORE_PER_LITRE, lakeScorePayout, stepLakeAbsorption } from '../src/core/lakes'
+import {
+  LAKE_ABSORPTION_LITRES_PER_SECOND,
+  LAKE_BEAM_SPEED_SCALE,
+  LAKE_CELL_CAPACITY,
+  LAKE_DRAIN_SIZE_GAIN,
+  LAKE_SCORE_PER_LITRE,
+  createLakeDrainState,
+  drawFromLakeCell,
+  lakeCellDrained,
+  lakeCellKey,
+  lakeCellRemaining,
+  lakeScorePayout,
+  stepLakeAbsorption,
+} from '../src/core/lakes'
+import { MISSION_TARGETS } from '../src/core/missions'
+import { SIZE_GAIN, growSizeBy } from '../src/core/size'
 import { shouldCrashFromOverload } from '../src/core/overload'
 import type { ProceduralBuilding } from '../src/core/world'
 
@@ -68,6 +83,68 @@ describe('recon overhaul support systems', () => {
     // Never negative, and a still craft owes nothing.
     expect(lakeScorePayout(200, 200)).toBe(0)
     expect(lakeScorePayout(200, 0)).toBe(0)
+  })
+
+  it('empties a lake tile after its capacity and never refills it', () => {
+    const lakes = createLakeDrainState()
+    const key = lakeCellKey(3, -7)
+    expect(lakeCellRemaining(lakes, key)).toBe(LAKE_CELL_CAPACITY)
+    expect(lakeCellDrained(lakes, key)).toBe(false)
+
+    // Five seconds of held beam at 50 L/s is exactly one tile.
+    let litres = 0
+    let drained = false
+    let seconds = 0
+    while (!drained && seconds < 60) {
+      const remaining = lakeCellRemaining(lakes, key)
+      const step = stepLakeAbsorption(litres, 1 / 60, true, 20, remaining)
+      drained = drawFromLakeCell(lakes, key, step.absorbed)
+      litres = step.litres
+      seconds += 1 / 60
+    }
+    expect(drained).toBe(true)
+    expect(seconds).toBeCloseTo(LAKE_CELL_CAPACITY / LAKE_ABSORPTION_LITRES_PER_SECOND, 1)
+    // Never over-draws: the last frame is clipped to what the tile had left.
+    expect(litres).toBe(LAKE_CELL_CAPACITY)
+    expect(lakeCellRemaining(lakes, key)).toBe(0)
+    expect(lakeCellDrained(lakes, key)).toBe(true)
+
+    // Dry for the rest of the run. Holding the beam over it takes nothing,
+    // and the drain never reports a second time - the growth is paid once.
+    expect(stepLakeAbsorption(litres, 1, true, 20, lakeCellRemaining(lakes, key)).absorbed).toBe(0)
+    expect(drawFromLakeCell(lakes, key, 500)).toBe(false)
+    expect(lakeCellRemaining(lakes, key)).toBe(0)
+
+    // A neighbouring tile is untouched: the lake drains a cell at a time.
+    expect(lakeCellDrained(lakes, lakeCellKey(4, -7))).toBe(false)
+  })
+
+  it('prices a lake tile so the water rung cannot be finished standing still', () => {
+    // The rung asks for more than one tile holds, so the pilot has to drain
+    // one and move to the next. This is the whole reason for the capacity.
+    expect(MISSION_TARGETS['absorb-water']).toBeGreaterThan(LAKE_CELL_CAPACITY)
+    // ...but not so much more that it needs a third tile, which would be a
+    // fetch quest rather than a lesson about drag.
+    expect(MISSION_TARGETS['absorb-water']).toBeLessThanOrEqual(LAKE_CELL_CAPACITY * 2)
+    // A tile is a bounded meal however long anyone parks on it.
+    expect(LAKE_CELL_CAPACITY * LAKE_SCORE_PER_LITRE).toBe(250)
+  })
+
+  it('grows the hull for a drained tile at a rate the city still beats', () => {
+    // Bigger than a cat, smaller than the largest tower absorbBeamObject can
+    // pay - a tile costs five seconds pinned at half speed.
+    expect(LAKE_DRAIN_SIZE_GAIN).toBeGreaterThan(SIZE_GAIN.cat)
+    expect(LAKE_DRAIN_SIZE_GAIN).toBeLessThan(0.2)
+
+    // Fifteen seconds of pumping is an average three-tile lake. Fifteen
+    // seconds of eating the city at the rate test/feeding.spec.ts measures
+    // (about 0.8 pedestrians a second) has to stay ahead of it, or the lake
+    // becomes the better way to grow and the core loop moves into the water.
+    const lakeSize = growSizeBy(growSizeBy(growSizeBy(1, LAKE_DRAIN_SIZE_GAIN), LAKE_DRAIN_SIZE_GAIN), LAKE_DRAIN_SIZE_GAIN)
+    let citySize = 1
+    for (let bite = 0; bite < 12; bite += 1) citySize = growSizeBy(citySize, SIZE_GAIN.pedestrian)
+    expect(lakeSize).toBeGreaterThan(1.3)
+    expect(citySize).toBeGreaterThan(lakeSize)
   })
 
   it('crashes only with beam on, overload and ground contact together', () => {
