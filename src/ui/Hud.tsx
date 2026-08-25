@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent as Re
 import { NAME_MAX_LENGTH, isNameAcceptable, makeEntry, type RankedEntry } from '../core/leaderboard'
 import { leaderboard, type LeaderboardSource } from '../net/leaderboard'
 import { useGame } from '../GameContext'
-import { LANGUAGES, LANGUAGE_LABELS, bulletinFor, formatMessage, type Strings } from '../i18n'
+import { LANGUAGES, LANGUAGE_LABELS, bulletinFor, formatMessage, type MessageKey, type Strings } from '../i18n'
 import { broadcastPhase, broadcastProgress } from '../core/broadcast'
 import { MISSION_RUN_SECONDS } from '../core/missions'
 import type { RunEnding } from '../core/ending'
@@ -259,6 +259,36 @@ function Alerts() {
   )
 }
 
+/** Mystery-circle rewards are earned infrequently and change the rest of the
+ * run, so they get the upper-centre announcement slot instead of reading like
+ * another line of pilot chatter in the instrument corner. */
+const BOON_MESSAGE_KEYS = new Set<MessageKey>([
+  'msgBoonLaser',
+  'msgBoonSpeed',
+  'msgBoonTurnRate',
+  'msgBoonBeamRadius',
+  'msgBoonBeamReach',
+  'msgBoonBeamPull',
+  'msgBoonTurboRecharge',
+  'msgBoonTurboCapacity',
+  'msgBoonHeal',
+  'msgBoonScore',
+])
+
+function isBoonMessage(key: MessageKey | null): key is MessageKey {
+  return key !== null && BOON_MESSAGE_KEYS.has(key)
+}
+
+function BoonCallout() {
+  const { snapshot, t } = useGame()
+  if (!isBoonMessage(snapshot.messageKey)) return null
+  return (
+    <p className="boon-callout" role="status" aria-live="polite">
+      {formatMessage(t, snapshot.messageKey, snapshot.messageArg)}
+    </p>
+  )
+}
+
 /**
  * Everything the craft is doing, in one card along the bottom.
  *
@@ -310,11 +340,11 @@ function FlightBar() {
  * saying - the expressions are the readout, and a caption under a face is
  * just a caption. So the card is the portrait, on screen for the whole run.
  *
- * The callouts - what was just absorbed, what a pickup upgraded, that the
- * turbo has overheated - used to be a card in the middle of the screen, over
- * the city the player is flying through. They are a speech bubble under the
- * pilot instead: it is the one place on the HUD that is already a voice, and
- * an empty bubble simply is not drawn, so nothing sits there saying nothing.
+ * Routine callouts - what was just absorbed, that the turbo has overheated -
+ * are a speech bubble under the pilot: it is the one place on the HUD that is
+ * already a voice, and an empty bubble simply is not drawn, so nothing sits
+ * there saying nothing. The rarer mystery-circle rewards are announced in the
+ * upper centre instead, where the player can see a permanent upgrade land.
  *
  * The bubble hangs below the portrait in a slot that is always there, empty
  * or not. A bubble that took its space from the layout when it arrived pushed
@@ -324,9 +354,9 @@ function FlightBar() {
  */
 function PilotComms() {
   const { snapshot, t } = useGame()
-  const line = snapshot.messageKey
+  const line = snapshot.messageKey && !isBoonMessage(snapshot.messageKey)
     ? formatMessage(t, snapshot.messageKey, snapshot.messageArg)
-    : snapshot.message
+    : snapshot.messageKey ? '' : snapshot.message
   return (
     <section
       className="pilot-card"
@@ -973,6 +1003,8 @@ export function Hud() {
             In a column they push each other down instead. */}
         <div className="hud-top">
           <StatusBar />
+
+          <BoonCallout />
 
           {/* The battleship's health. Sixty-four laser hits is a long time to
               shoot at something with no sign of progress - without this the
