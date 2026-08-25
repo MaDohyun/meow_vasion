@@ -90,7 +90,14 @@ function averageFeed(seconds: number, startSize = SIZE_START, steer = false, alt
   return total / seeds.length
 }
 
-describe('feeding is the core loop', () => {
+/**
+ * Each case here flies six seeded runs of a live city for 25 simulated
+ * seconds, which is seconds of real work, not milliseconds - two of them land
+ * within a whisker of vitest's 5s default and tip over it whenever the suite
+ * runs them alongside everything else. The work is the point of the test, so
+ * the limit is what gives.
+ */
+describe('feeding is the core loop', { timeout: 30_000 }, () => {
   it('starves a player who sits still', () => {
     // Hovering with the beam on used to be the strongest play in the game:
     // park zones were chosen without looking at how close they were, so a

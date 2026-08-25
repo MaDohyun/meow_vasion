@@ -65,8 +65,18 @@ export const DRONE_DEFAULTS = {
   boostSpeed: 54,
   acceleration: 38,
   brakeDeceleration: 42,
-  turnRateLow: (185 * Math.PI) / 180,
-  turnRateHigh: (105 * Math.PI) / 180,
+  /**
+   * Yaw, lerped from Low at a standstill to High at top speed.
+   *
+   * High is the one actually flown. Throttle is pinned at 1 now that the
+   * craft flies itself forward (see GameContext), so the speed ratio sits at
+   * the top of this range for the whole run and Low is only reached where the
+   * world takes the throttle away - a lake, an overloaded beam, the tutorial.
+   * That is also where turning matters most, so both ends went up, the top by
+   * more.
+   */
+  turnRateLow: (200 * Math.PI) / 180,
+  turnRateHigh: (120 * Math.PI) / 180,
   verticalSpeed: 9,
   minHeight: 0.4,
   maxHeight: 130,
