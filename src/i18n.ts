@@ -211,17 +211,15 @@ export type Strings = {
   msgVehicleDestroyed: (reward: number) => string
   msgTurbo: string
   msgTurboOverload: string
-  /** The mystery-circle pickup callouts. One per stat, one for the heal a
-   *  fully-upgraded craft gets instead, one for the score fallback. */
+  /** The mystery-circle pickup callouts. One per stat, one for the score a
+   *  fully-upgraded craft gets instead. */
   msgBoonLaser: (level: number) => string
   msgBoonSpeed: (level: number) => string
   msgBoonTurboRecharge: (level: number) => string
   msgBoonTurboCapacity: (level: number) => string
-  msgBoonHeal: string
   msgBoonScore: (reward: number) => string
-  /** Flying through a circle, with and without life to patch up. */
+  /** Flying through a circle: surge and a turbo refill, never a repair. */
   msgMysteryCircle: string
-  msgMysteryHeal: string
   breakingFlag: string
   broadcast: BulletinSet
 }
@@ -356,7 +354,7 @@ export const STRINGS: Record<Language, Strings> = {
     missionDebrief: {
       'visit-mystery-circle': [
         '잘 찾았다, 대원. 그게 우리 동지들이 지구에 남겨 둔 미스터리 서클이다.',
-        '서클을 통과하면 기체가 순간적으로 [[가속]]하고 [[터보 게이지가 가득]] 찬다. 게다가 [[생명력까지 전부 회복]]된다.',
+        '서클을 통과하면 기체가 순간적으로 [[가속]]하고 [[터보 게이지가 가득]] 찬다.',
         '서클 위에는 능력치를 올려 주는 부품 아이템도 떠 있으니 반드시 챙겨라.',
         '정찰 내내 서클을 경유해서 날아라. 그게 살아 돌아오는 길이다.',
       ],
@@ -452,10 +450,8 @@ export const STRINGS: Record<Language, Strings> = {
     msgBoonSpeed: (level) => `속도 Lv.${level}`,
     msgBoonTurboRecharge: (level) => `터보 게이지 충전 Lv.${level}`,
     msgBoonTurboCapacity: (level) => `터보 양 Lv.${level}`,
-    msgBoonHeal: '생명력 회복',
     msgBoonScore: (reward) => `보너스 +${reward}`,
     msgMysteryCircle: '미스터리 서클 · 가속 · 터보 충전',
-    msgMysteryHeal: '미스터리 서클 · 가속 · 터보 충전 · 생명력 완전 회복',
     breakingFlag: '속보',
     broadcast: [
       { headline: '미확인 비행체 도심 상공 출현', line: '속보입니다. 미확인 비행체가 도심 상공에 나타났습니다.\n시민 여러분은 각별히 주의하시기 바랍니다.' },
@@ -544,7 +540,7 @@ export const STRINGS: Record<Language, Strings> = {
     missionDebrief: {
       'visit-mystery-circle': [
         'よく見つけた、隊員。それが仲間たちが地球に残したミステリーサークルだ。',
-        'サークルを通過すると機体が一瞬[[加速]]し、[[ターボゲージが満タン]]になる。さらに[[ライフも全回復]]する。',
+        'サークルを通過すると機体が一瞬[[加速]]し、[[ターボゲージが満タン]]になる。',
         'サークルの上には能力を上げる部品アイテムも浮いている。必ず回収しろ。',
         '偵察の間はサークルを経由して飛べ。それが生きて帰る道だ。',
       ],
@@ -640,10 +636,8 @@ export const STRINGS: Record<Language, Strings> = {
     msgBoonSpeed: (level) => `速度 Lv.${level}`,
     msgBoonTurboRecharge: (level) => `ターボ充填 Lv.${level}`,
     msgBoonTurboCapacity: (level) => `ターボ容量 Lv.${level}`,
-    msgBoonHeal: 'ライフを回復',
     msgBoonScore: (reward) => `ボーナス +${reward}`,
     msgMysteryCircle: 'ミステリーサークル · 加速 · ターボ満タン',
-    msgMysteryHeal: 'ミステリーサークル · 加速 · ターボ満タン · ライフ全回復',
     breakingFlag: '速報',
     broadcast: [
       { headline: '未確認飛行物体が都心上空に出現', line: '速報です。未確認飛行物体が都心の上空に現れました。\n市民の皆さまは十分ご注意ください。' },
@@ -732,7 +726,7 @@ export const STRINGS: Record<Language, Strings> = {
     missionDebrief: {
       'visit-mystery-circle': [
         'Good find, pilot. That is a mystery circle our comrades left on Earth.',
-        'Fly through one and the craft [[surges forward]] and the [[turbo gauge refills]]. It also [[restores your life completely]].',
+        'Fly through one and the craft [[surges forward]] and the [[turbo gauge refills]].',
         'A parts item that raises your stats hovers over every circle. Always take it.',
         'Route the whole recon through the circles. That is how you get home.',
       ],
@@ -828,10 +822,8 @@ export const STRINGS: Record<Language, Strings> = {
     msgBoonSpeed: (level) => `SPEED LV.${level}`,
     msgBoonTurboRecharge: (level) => `TURBO RECHARGE LV.${level}`,
     msgBoonTurboCapacity: (level) => `TURBO CAPACITY LV.${level}`,
-    msgBoonHeal: 'LIFE RESTORED',
     msgBoonScore: (reward) => `BONUS +${reward}`,
     msgMysteryCircle: 'MYSTERY CIRCLE · SURGE · TURBO REFILLED',
-    msgMysteryHeal: 'MYSTERY CIRCLE · SURGE · TURBO REFILLED · LIFE RESTORED',
     breakingFlag: 'BREAKING',
     broadcast: [
       { headline: 'UFO SIGHTED OVER THE CITY', line: 'Breaking news. An unidentified craft has appeared over the city.\nResidents are urged to take care.' },

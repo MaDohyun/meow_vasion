@@ -14,8 +14,8 @@
  * distance, and the circle's own turbo refill makes the trip toward the next
  * one partly self-funding.
  *
- * Once every stat is capped a pickup patches the hull instead, and with the
- * hull full it pays score - a late-run circle is never a dead landmark.
+ * Once every stat is capped a pickup pays score instead - a late-run circle is
+ * never a dead landmark.
  *
  * Pure data and arithmetic - no React, no Three.js. Wording lives in
  * `src/i18n.ts`; the bob math lives here so the simulation eats the item at
@@ -32,7 +32,7 @@ export type BoonDefinition = {
   /**
    * Where the stat stops. Without a cap the correct play is to farm circles
    * forever; with one, a run that clears all fourteen levels has actually
-   * finished something and the pickups move on to healing.
+   * finished something and the pickups move on to paying score.
    */
   maxLevel: number
 }
@@ -90,7 +90,7 @@ function hashCircleId(id: string) {
 
 /**
  * Which stat the item over a circle grants, or null when everything is capped
- * and the pickup falls through to healing.
+ * and the pickup falls through to score.
  *
  * Hashed from the circle's id rather than rolled at claim time, so the render
  * layer can colour the item before it is eaten and a player can read "that
@@ -104,14 +104,14 @@ export function boonForCircle(state: BoonState, circleId: string): BoonId | null
   return open[hashCircleId(circleId) % open.length]!
 }
 
-export type BoonClaim = { kind: 'stat'; id: BoonId; level: number } | { kind: 'heal' }
+export type BoonClaim = { kind: 'stat'; id: BoonId; level: number } | { kind: 'score' }
 
 /** Eats the item over a circle. Null when this circle already gave its item. */
 export function claimBoon(state: BoonState, circleId: string): BoonClaim | null {
   if (state.claimed.has(circleId)) return null
   state.claimed.add(circleId)
   const id = boonForCircle(state, circleId)
-  if (!id) return { kind: 'heal' }
+  if (!id) return { kind: 'score' }
   state.levels[id] += 1
   return { kind: 'stat', id, level: state.levels[id] }
 }
@@ -145,11 +145,10 @@ export function boonHoverY(time: number, circleId: string) {
 export const BOON_PICKUP_RADIUS = 8
 export const BOON_PICKUP_VERTICAL = 6
 
-/** What a pickup is worth once every stat is capped: a meaningful patch, not
- *  a full repair - free full heals would defang the late waves. */
-export const BOON_HEAL_PIPS = 1.5
-/** And with the hull already full, score - scaled by size like every other
- *  reward - so no circle is ever worth nothing. */
+/** What a pickup is worth once every stat is capped: score, scaled by size
+ *  like every other reward, so no circle is ever worth nothing. Circles do not
+ *  repair the craft - a free heal on a landmark you can park next to would
+ *  defang the late waves. */
 export const BOON_FULL_SCORE = 150
 
 /** Item colours, shared by the pickup mesh and anything else that wants to
@@ -160,4 +159,3 @@ export const BOON_COLORS: Record<BoonId, string> = {
   'turbo-recharge': '#ffd24d',
   'turbo-capacity': '#ff8a45',
 }
-export const BOON_HEAL_COLOR = '#63ff8f'

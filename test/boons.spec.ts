@@ -57,11 +57,13 @@ describe('mystery-circle boon pickups', () => {
     expect(boonForCircle(state, id)).not.toBe(dealt)
   })
 
-  it('heals once every stat is capped', () => {
+  it('pays score once every stat is capped, and never life', () => {
+    // Circles are a speed pit stop, not a repair bay. A capped run's pickup
+    // falls through to score - there is no claim that hands back a pip.
     const state = maxOut()
     expect(allBoonsMaxed(state)).toBe(true)
     expect(boonForCircle(state, 'mystery:0:0')).toBeNull()
-    expect(claimBoon(state, 'mystery:0:0')).toEqual({ kind: 'heal' })
+    expect(claimBoon(state, 'mystery:0:0')).toEqual({ kind: 'score' })
   })
 
   it('reports multipliers and bonuses off the level times the step', () => {

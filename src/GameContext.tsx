@@ -27,7 +27,7 @@ import {
   type HazardState,
 } from './core/hazards'
 import { SIZE_MIN, SIZE_START, type SizeGainKind, type SizeProfile, bonusHeartsForSize, clampSize, growSize, growSizeBy, sizeProfile, ufoDiameter } from './core/size'
-import { MAX_HEALTH, createHealthState, damageHealth, healHealth, healthRatio, isDead, isRegenerating, raiseHealthMax, stepHealth, type HealthLossKind, type HealthState } from './core/health'
+import { MAX_HEALTH, createHealthState, damageHealth, healthRatio, isDead, isRegenerating, raiseHealthMax, stepHealth, type HealthLossKind, type HealthState } from './core/health'
 import { BATTLESHIP_ALTITUDE, BATTLESHIP_TURRETS, ENEMY_WAVE_STAGES, activeEnemyCount, battleshipTurretPoint, createEnemyState, hitEnemy, resolveEnemyContacts, stepEnemies, stepEnemyProjectiles, syncEnemyTiers, waveLabelForTime, waveStageForTime, type EnemyKind, type EnemyState } from './core/enemies'
 import {
   createLaserPool,
@@ -67,7 +67,6 @@ import { captureTrafficCar, createTrafficState, primeTraffic, releaseTrafficSlot
 import { BROADCAST_OPENING_AT, BROADCAST_SECONDS } from './core/broadcast'
 import {
   BOON_FULL_SCORE,
-  BOON_HEAL_PIPS,
   BOON_PICKUP_RADIUS,
   BOON_PICKUP_VERTICAL,
   boonBonus,
@@ -1904,15 +1903,13 @@ export function GameProvider({ children }: { children: ReactNode }) {
         game.mysteryFlash = 0.65
         game.turbo = 1
         game.turboLockout = 0
-        // The circle is a full pit stop, not a speed strip: surge, a fresh
-        // turbo gauge and every pip of hull back. Reading a circle as "the
-        // place you go when you are hurt" is what makes the detour worth
-        // planning a route around, and it is the first thing the general
-        // explains once mission one is cleared.
-        const hurt = game.health.current < game.health.max
-        if (hurt) healHealth(game.health, game.health.max)
+        // The circle is a speed pit stop: a surge and a fresh turbo gauge. It
+        // does not repair the craft - a landmark that healed you turned every
+        // fight into "go stand on a circle", so life comes back only from the
+        // slow regen, and the detour is worth planning for the speed and the
+        // item overhead.
         playMysteryCircleSound()
-        setMessage(game, hurt ? 'msgMysteryHeal' : 'msgMysteryCircle', 1.8)
+        setMessage(game, 'msgMysteryCircle', 1.8)
         // Reported after the pit-stop effects land, because clearing mission
         // one freezes the game for the general's word about them.
         reportMissionEvent(game, { type: 'pass-mystery-circle', id: mysteryCircle.id })
@@ -1947,13 +1944,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
           if (granted.kind === 'stat') {
             setMessage(game, BOON_MESSAGE_KEY[granted.id], 2.2, granted.level)
             tone('upgrade')
-          } else if (game.health.current < game.health.max) {
-            // Every stat is capped, so the item patches the hull instead.
-            healHealth(game.health, BOON_HEAL_PIPS)
-            setMessage(game, 'msgBoonHeal', 2.2)
-            tone('upgrade')
           } else {
-            // Capped and healthy: the pickup pays out like a meal would.
+            // Every stat is capped, so the pickup pays out like a meal would.
             const reward = Math.round(BOON_FULL_SCORE * game.sizeProfile.scoreMultiplier)
             game.score += reward
             setMessage(game, 'msgBoonScore', 2.2, reward)
