@@ -117,10 +117,12 @@ describe('feeding is the core loop', { timeout: 30_000 }, () => {
     // the city is a real meal on its own - that is the point of the change:
     // resources are the game, and leaving the spawn must not mean starving.
     expect(blind).toBeGreaterThan(12)
-    // Chasing individual fleeing bodies is allowed to trail a straight sweep
-    // through uniform density, but steering must stay competitive rather than
-    // becoming a trap.
-    expect(steered).toBeGreaterThan(blind * 0.55)
+    // Steering must not merely stay competitive - it must pay. With WASD gone
+    // it is the only control the player has, so a rate at which pointing at
+    // food ate less than holding a straight line made the game's one verb a
+    // losing play. That was the case until the yaw went to 160 deg/s (see
+    // DRONE_DEFAULTS); this is the guard that keeps it paid for.
+    expect(steered).toBeGreaterThan(blind)
   })
 
   it('keeps even a blind pass above starvation', () => {
