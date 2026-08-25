@@ -877,7 +877,7 @@ function grabBuildings(game: GameRuntime, field: BeamField) {
       absorbTimer: 0,
       scoreValue: Math.round(240 + buildingMass(building) * 14),
     })
-    triggerLaserBurst(game.laserBursts, 'impact', building.position, '#ffd27a')
+    triggerLaserBurst(game.laserBursts, 'impact', building.position)
     tone('impact')
     taken = true
   }
@@ -1054,7 +1054,7 @@ function registerEnemyHit(game: GameRuntime, id: string, damage: number) {
   if (result.hit && result.enemy && result.enemy.kind === 'boss') {
     // Sparks where the shot landed, so a hull that takes sixty-four hits still
     // answers each one.
-    triggerLaserBurst(game.laserBursts, 'impact', result.enemy.position, '#ffd27a')
+    triggerLaserBurst(game.laserBursts, 'impact', result.enemy.position)
   }
   if (!result.destroyed || !result.kind) return
   if (result.kind === 'drone') playDroneExplosionSound()
@@ -1108,7 +1108,7 @@ function destroyCar(game: GameRuntime, id: string, direction: Vec3) {
 function registerHeavyVehicleLaserHit(game: GameRuntime, id: string) {
   const result = damageHazard(game.hazards, id, boonMultiplier(game.boons, 'laser-power'))
   if (!result) return false
-  triggerLaserBurst(game.laserBursts, 'impact', result.hazard.position, '#ff8a45')
+  triggerLaserBurst(game.laserBursts, 'impact', result.hazard.position)
   if (!result.destroyed) {
     triggerFireball(game.fireballs, 'strike', result.hazard.position, undefined, blastSeed(game))
     return false
@@ -1134,7 +1134,7 @@ function registerPersonLaserHit(game: GameRuntime, id: string) {
   person.inBeam = false
   person.tether = 0
   game.score += 15
-  triggerLaserBurst(game.laserBursts, 'impact', person.position, '#fff06d')
+  triggerLaserBurst(game.laserBursts, 'impact', person.position)
   return true
 }
 
@@ -1152,7 +1152,7 @@ function registerPropLaserHit(game: GameRuntime, id: string, direction: Vec3) {
   if (object.worldProp.kind === 'trash-bin' && beginTrashBinLaunch(object, direction, game.drone.velocity)) {
     game.destroyedWorldProps.add(object.worldProp.id)
     game.score += 30
-    triggerLaserBurst(game.laserBursts, 'impact', object.position, '#c9d18a')
+    triggerLaserBurst(game.laserBursts, 'impact', object.position)
     return true
   }
   object.active = false
@@ -1161,7 +1161,7 @@ function registerPropLaserHit(game: GameRuntime, id: string, direction: Vec3) {
   game.destroyedWorldProps.add(object.worldProp.id)
   game.score += 20
   const blastPoint = { x: object.position.x, y: object.position.y + 0.9, z: object.position.z }
-  triggerLaserBurst(game.laserBursts, 'impact', blastPoint, '#9be8ff')
+  triggerLaserBurst(game.laserBursts, 'impact', blastPoint)
   triggerFireball(game.fireballs, 'vehicle', blastPoint, undefined, blastSeed(game))
   return true
 }
@@ -1171,7 +1171,7 @@ function registerBuildingLaserHit(game: GameRuntime, id: string) {
   if (!building || game.destroyedBuildings.has(id)) return false
   const result = damageBuilding(game.buildingHealth, building, boonMultiplier(game.boons, 'laser-power'))
   game.buildingHitFlash.set(building.id, 1)
-  triggerLaserBurst(game.laserBursts, 'impact', building.position, '#ffca63')
+  triggerLaserBurst(game.laserBursts, 'impact', building.position)
   if (!result.destroyed) return true
   playBuildingCollapseSound()
   // A tower's own blast is centred on the tower, not on the point that was
@@ -2081,7 +2081,11 @@ export function GameProvider({ children }: { children: ReactNode }) {
     const absorbFrom = (objects: BeamObject[]) => {
       let object = beginNearbyBeamObjectAbsorption(objects, game.drone.position, maxAbsorbDiameter, game.sizeProfile.absorbDistance, absorbStrength)
       while (object) {
-        triggerLaserBurst(game.laserBursts, 'impact', object.position, object.kind === 'cat' || object.kind === 'pedestrian' ? '#fff06d' : '#6deeff')
+        // No impact burst here. Swallowing something is the beam finishing its
+        // work, not a hit: the ring-and-spark flash is the laser's punctuation
+        // and firing it at the mouth of the beam put a hit marker - and, for a
+        // body, a warm yellow one - inside a cold cone that is already saying
+        // the same thing. The object shrinking up the beam is the effect.
         if (object.kind === 'cat' || object.kind === 'pedestrian') absorbCrowd(game, object.kind)
         else absorbBeamObject(game, object)
         object = beginNearbyBeamObjectAbsorption(objects, game.drone.position, maxAbsorbDiameter, game.sizeProfile.absorbDistance, absorbStrength)
@@ -2150,7 +2154,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       const direction = directionToLaserAim(game.drone.position, aim)
       const projectile = fireLaserBeam(game.laserProjectiles, game.drone.position, aim.point)
       triggerLaserBurst(game.laserBursts, 'muzzle', projectile.position)
-      if (aim.targetKind) triggerLaserBurst(game.laserBursts, 'impact', aim.point, aim.targetKind === 'car' ? '#ffb24d' : aim.targetKind === 'fighter' ? '#ff557f' : aim.targetKind === 'building' ? '#6deeff' : aim.targetKind === 'person' ? '#fff06d' : aim.targetKind === 'prop' ? '#9be8ff' : '#fff0a1')
+      if (aim.targetKind) triggerLaserBurst(game.laserBursts, 'impact', aim.point)
       // Every shot that lands spits a little fire off the surface, right where
       // it hit. It is over inside the 0.27s between shots, so holding the
       // trigger on a tower burns along the wall rather than piling up.
