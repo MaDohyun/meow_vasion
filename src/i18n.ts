@@ -309,7 +309,7 @@ export const STRINGS: Record<Language, Strings> = {
     titleLine2: '거냥',
     tagline: '5분 안에 지구 정찰을 끝내고 유유히 튀세요',
     lobbyOrdersTag: '작전 명령',
-    lobbyOrders: '5분 동안 정찰대 임무를 완수하라!',
+    lobbyOrders: '5분 동안 지구 정찰 임무를 완수하라!',
     start: '게임 시작',
     options: '옵션',
     close: '닫기',
