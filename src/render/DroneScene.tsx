@@ -52,6 +52,7 @@ import {
   LASER_MAX_PROJECTILES,
   LASER_MAX_BURSTS,
 } from '../core/laser'
+import { collectAutoTargets, pickAutoTarget, type AutoTargetCandidate } from '../core/autoTarget'
 import {
   FIREBALL_MAX,
   FIREBALL_PUFFS,
@@ -2091,13 +2092,54 @@ function LaserBursts() {
   )
 }
 
+/**
+ * Where the shot goes, and what the reticle has hold of.
+ *
+ * The lock is decided here rather than in the simulation because it is a
+ * question about the screen - which is to say about the camera, and the camera
+ * only exists in the render tree. `core/autoTarget` owns every rule; this is
+ * the projection it asked for and the one write-back that follows from it.
+ */
 function LaserAimController() {
   const { runtime } = useGame()
   const raycaster = useMemo(() => new THREE.Raycaster(), [])
   const pointer = useMemo(() => new THREE.Vector2(), [])
+  const candidates = useMemo<AutoTargetCandidate[]>(() => [], [])
+  const view = useMemo(() => new THREE.Vector3(), [])
+  const aim = useMemo(() => ({ x: 0, y: 0 }), [])
   useFrame(({ camera }) => {
     const game = runtime.current
     pointer.set(game.aimX, -game.aimY)
+    aim.x = game.aimX
+    aim.y = game.aimY
+    if (camera instanceof THREE.PerspectiveCamera) {
+      // The eye's half-height in radians, which is what turns a radius in
+      // metres into a radius on screen. Read every frame because the FOV
+      // itself moves - see the speed-linked lerp in the chase rig.
+      const tangent = Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2)
+      const projected = collectAutoTargets(game.enemies.slots, (point, radius) => {
+        view.set(point.x, point.y, point.z).applyMatrix4(camera.matrixWorldInverse)
+        const depth = -view.z
+        if (depth <= 0.5) return null
+        // Vector3.applyMatrix4 divides through by w, so this lands in
+        // normalised device coordinates. Its y grows upward and the reticle's
+        // grows downward, hence the flip.
+        view.applyMatrix4(camera.projectionMatrix)
+        return { x: view.x, y: -view.y, radius: radius / (depth * tangent), depth }
+      }, candidates)
+      const lock = pickAutoTarget(projected, aim, camera.aspect, game.autoTargetId)
+      game.autoTargetId = lock?.id ?? null
+      game.autoTargetKind = lock?.kind ?? null
+      if (lock) {
+        game.autoTargetX = lock.x
+        game.autoTargetY = lock.y
+        // The whole of the assist: the ray is cast at the contact instead of
+        // at the cursor, so the shot is aimed where the gold reticle is - a
+        // tower in the way still stops it, exactly as it stops a hand-aimed
+        // one.
+        pointer.set(lock.x, -lock.y)
+      }
+    }
     raycaster.setFromCamera(pointer, camera)
     game.laserAimOrigin.x = raycaster.ray.origin.x
     game.laserAimOrigin.y = raycaster.ray.origin.y

@@ -227,9 +227,14 @@ export function HowToPlay({ onClose }: { onClose: () => void }) {
             <figure className="howto-panel">
               <i className="howto-step">2</i>
               <LaserArt />
+              {/* The magnet gets a line of its own: nothing in the picture can
+                  show a reticle stepping onto a fighter, and a player who never
+                  points at one never finds out it happens. */}
               <figcaption>
                 <span className="keycap-set"><b className="keycap keycap-wide">{t.keyLeftClick}</b><b className="keycap">Q</b></span>
                 <span>{t.controlLaser}</span>
+                <em className="howto-divider" />
+                <span>{t.controlAutoAim}</span>
               </figcaption>
             </figure>
             <figure className="howto-panel">

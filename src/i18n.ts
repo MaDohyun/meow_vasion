@@ -95,6 +95,9 @@ export type Strings = {
   controlAim: string
   controlBeam: string
   controlLaser: string
+  /** The laser's one piece of help, which the manual has to say out loud
+   *  because the player only meets it by happening to point at a fighter. */
+  controlAutoAim: string
   controlBoost: string
   /** Labels on the three touch fire buttons. Short enough to sit inside a
    *  thumb-sized circle, which is why they are not the control-card lines. */
@@ -329,6 +332,7 @@ export const STRINGS: Record<Language, Strings> = {
     controlAim: '조종 · 조준',
     controlBeam: '빔 유지 · 흡수',
     controlLaser: '레이저',
+    controlAutoAim: '적에 가까이 대면 자동 조준',
     controlBoost: '터보',
     touchTurbo: '터보',
     touchLaser: '레이저',
@@ -524,6 +528,7 @@ export const STRINGS: Record<Language, Strings> = {
     controlAim: '操縦 · 照準',
     controlBeam: 'ビーム維持 · 吸収',
     controlLaser: 'レーザー',
+    controlAutoAim: '敵に近づけると自動照準',
     controlBoost: 'ターボ',
     touchTurbo: 'ターボ',
     touchLaser: 'レーザー',
@@ -719,6 +724,7 @@ export const STRINGS: Record<Language, Strings> = {
     controlAim: 'STEER / AIM',
     controlBeam: 'HOLD BEAM · ABSORB',
     controlLaser: 'LASER',
+    controlAutoAim: 'AUTO-AIM NEAR A TARGET',
     controlBoost: 'TURBO',
     touchTurbo: 'TURBO',
     touchLaser: 'LASER',

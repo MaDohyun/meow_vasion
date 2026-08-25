@@ -202,6 +202,21 @@ export type GameRuntime = {
   mysteryFlash: number
   aimX: number
   aimY: number
+  /**
+   * What the reticle's magnet has hold of, if anything - see
+   * `core/autoTarget`. The lock is decided in the render pass, because it is
+   * the only place that knows where the camera is pointing, and it is read
+   * back here by the laser and by the HUD.
+   *
+   * `autoTargetX`/`Y` are the contact's own place on screen in the same frame
+   * as `aimX`/`aimY`, so the gold reticle sits on the target rather than on
+   * the cursor. The raw pointer is left untouched: steering reads that, and a
+   * magnet that moved the craft would be an autopilot.
+   */
+  autoTargetId: string | null
+  autoTargetKind: EnemyKind | null
+  autoTargetX: number
+  autoTargetY: number
   laserAimOrigin: Vec3
   laserAimDirection: Vec3
   beamActive: boolean
@@ -396,6 +411,9 @@ export type GameSnapshot = {
   boostActive: boolean
   aimX: number
   aimY: number
+  /** Where the reticle's magnet has landed, or null while the cursor is free.
+   *  The HUD draws the reticle here instead of under the pointer, in gold. */
+  autoTarget: { x: number; y: number; kind: EnemyKind } | null
   beamActive: boolean
   beamAvailable: boolean
   beamTargetId: string | null
@@ -753,6 +771,10 @@ function makeRuntime(): GameRuntime {
     mysteryFlash: 0,
     aimX: 0,
     aimY: 0,
+    autoTargetId: null,
+    autoTargetKind: null,
+    autoTargetX: 0,
+    autoTargetY: 0,
     laserAimOrigin: { ...drone.position },
     laserAimDirection: laserDirection(drone.heading, drone.pitch),
     beamActive: false,
@@ -1677,6 +1699,9 @@ function snapshotOf(game: GameRuntime): GameSnapshot {
     boostActive: game.drone.boostRemaining > 0,
     aimX: game.aimX,
     aimY: game.aimY,
+    autoTarget: game.autoTargetId !== null && game.autoTargetKind !== null
+      ? { x: game.autoTargetX, y: game.autoTargetY, kind: game.autoTargetKind }
+      : null,
     beamActive: game.beamActive,
     beamAvailable: true,
     beamTargetId: game.beamTargetId,

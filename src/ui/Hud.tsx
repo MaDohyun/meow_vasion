@@ -1035,9 +1035,17 @@ export function Hud() {
 
         <BreakingNews />
         {snapshot.timeBonusPulse > 0 && <div className="time-bonus">+{snapshot.timeBonusAmount}s</div>}
+        {/* Gold, and standing on the contact rather than under the cursor,
+            whenever the magnet in core/autoTarget has hold of something in the
+            sky. The cream cross under the hand is the resting state, so the
+            colour change is the whole readout: the laser is pointed at that,
+            and no longer at wherever the hand happens to be. */}
         <div
-          className="reticle"
-          style={{ left: `${50 + snapshot.aimX * 50}%`, top: `${50 + snapshot.aimY * 50}%` }}
+          className={snapshot.autoTarget ? 'reticle locked' : 'reticle'}
+          style={{
+            left: `${50 + (snapshot.autoTarget?.x ?? snapshot.aimX) * 50}%`,
+            top: `${50 + (snapshot.autoTarget?.y ?? snapshot.aimY) * 50}%`,
+          }}
         ><i /><i /></div>
         {/* Flight, laser, turbo and drop are all inert during the tutorial -
             this is the one thing left to try, so it has to name itself.
