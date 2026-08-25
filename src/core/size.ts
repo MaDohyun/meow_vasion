@@ -75,10 +75,17 @@ export const SIZE_CAMERA_LIFT_MAX = 7.5
  *
  * These are the rates a *small* craft eats at. They are the top of the curve,
  * not the whole of it - growthFalloff below tapers them as the hull fills out.
+ *
+ * Trimmed by roughly a quarter from the rates the run shipped with: the saucer
+ * was outgrowing the city it was eating, so the first minute handed over a
+ * hull that no longer had anything to reach for. The ceiling and the falloff
+ * are untouched - a full run still reaches SIZE_MAX - it simply takes about a
+ * hundred and twenty meals rather than ninety-five, which is the difference
+ * between growing through a run and growing past it.
  */
 export const SIZE_GAIN = {
-  pedestrian: 0.046,
-  cat: 0.076,
+  pedestrian: 0.035,
+  cat: 0.058,
 } as const
 
 export type SizeGainKind = keyof typeof SIZE_GAIN
@@ -106,8 +113,8 @@ export const GROWTH_FALLOFF_EXPONENT = 2
  * Purely proportional growth means each meal is worth more in absolute metres
  * than the last, so the back half of the run used to rush past: ten pedestrians
  * covered the top third of the range while the opening third took seventy. This
- * flips that around - roughly fifty meals for the first third and twenty for
- * the last - without changing how long a whole run to the ceiling takes.
+ * flips that around - roughly seventy meals for the first third and twenty-five
+ * for the last - without changing how long a whole run to the ceiling takes.
  */
 export function growthFalloff(size: number) {
   const progress = sizeGrowthProgress(size)

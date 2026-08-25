@@ -68,11 +68,13 @@ describe('craft size as growth, not as health', () => {
     const firstThird = mealsToReach(SIZE_START, SIZE_START + span * 0.3)
     const lastThird = mealsToReach(SIZE_START + span * 0.7, SIZE_MAX)
     // The opening is the generous end now, but the taper has to bite hard
-    // enough that the last stretch is not a formality.
+    // enough that the last stretch is not a formality. The bounds moved out
+    // with the SIZE_GAIN trim: the shape of the curve is the same, it just
+    // buys the same range with about a quarter more meals.
     expect(lastThird).toBeGreaterThan(15)
-    expect(firstThird).toBeLessThan(60)
+    expect(firstThird).toBeLessThan(80)
     // Still a reachable ceiling inside one run's worth of eating.
-    expect(mealsToReach(SIZE_START, SIZE_MAX)).toBeLessThan(120)
+    expect(mealsToReach(SIZE_START, SIZE_MAX)).toBeLessThan(140)
     // Growth never stops, it only slows - and it slows monotonically.
     expect(growthFalloff(SIZE_START)).toBeCloseTo(1, 5)
     expect(growthFalloff(SIZE_MAX)).toBeCloseTo(GROWTH_FALLOFF_MIN, 5)
