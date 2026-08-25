@@ -11,8 +11,10 @@ import { ENEMY_WAVE_STAGES, waveStageForTime } from './enemies'
  * So each wave step also fires a bulletin: the anchor already on the city's
  * news towers reports what the government just did. One step per unit means
  * one bulletin per unit - sighting, drones, helicopters, fighters, the air
- * defence network, and finally the ship. The text itself
- * lives in `src/i18n.ts`, one pair per stage per language; this module owns
+ * defence network, and finally the ship. The ship's destruction gets one
+ * unscheduled after-action bulletin as well: Earth reports its final defence
+ * line breached while the general calls the resistance crushed and orders the
+ * raid to continue. The text itself lives in `src/i18n.ts`; this module owns
  * only the timing, which the HUD band and the building screen both read so
  * they stay on air together.
  */
@@ -44,8 +46,12 @@ export const BROADCAST_SECONDS = 6
 export const BROADCAST_OPEN_SECONDS = 0.45
 export const BROADCAST_CLOSE_SECONDS = 0.55
 
-/** One bulletin per wave stage, so a missing entry is a build error. */
-export const BROADCAST_COUNT = ENEMY_WAVE_STAGES.length
+/** Wave cards occupy their wave indices. The one field event follows them so
+ *  it cannot collide with an index the deterministic clock owns. */
+export const BATTLESHIP_DOWN_BROADCAST_STAGE = ENEMY_WAVE_STAGES.length
+
+/** One bulletin per wave stage, plus the battleship after-action report. */
+export const BROADCAST_COUNT = ENEMY_WAVE_STAGES.length + 1
 
 export type BroadcastPhase = 'opening' | 'holding' | 'closing' | 'off'
 

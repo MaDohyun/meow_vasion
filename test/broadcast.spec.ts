@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  BATTLESHIP_DOWN_BROADCAST_STAGE,
   BROADCAST_CLOSE_SECONDS,
   BROADCAST_COUNT,
   BROADCAST_OPENING_AT,
@@ -13,8 +14,9 @@ import { ENEMY_WAVE_STAGES } from '../src/core/enemies'
 import { LANGUAGES, STRINGS, bulletinFor } from '../src/i18n'
 
 describe('wave bulletins', () => {
-  it('has one bulletin per wave stage in every language', () => {
-    expect(BROADCAST_COUNT).toBe(ENEMY_WAVE_STAGES.length)
+  it('has one bulletin per wave stage and one battleship result in every language', () => {
+    expect(BATTLESHIP_DOWN_BROADCAST_STAGE).toBe(ENEMY_WAVE_STAGES.length)
+    expect(BROADCAST_COUNT).toBe(ENEMY_WAVE_STAGES.length + 1)
     for (const language of LANGUAGES) {
       expect(STRINGS[language].broadcast).toHaveLength(BROADCAST_COUNT)
       expect(STRINGS[language].breakingFlag).toBeTruthy()
@@ -26,8 +28,21 @@ describe('wave bulletins', () => {
     }
   })
 
+  it('reports the battleship down and Earth\'s final defence collapsed', () => {
+    const korean = bulletinFor(STRINGS.ko, BATTLESHIP_DOWN_BROADCAST_STAGE)
+    const japanese = bulletinFor(STRINGS.ja, BATTLESHIP_DOWN_BROADCAST_STAGE)
+    const english = bulletinFor(STRINGS.en, BATTLESHIP_DOWN_BROADCAST_STAGE)
+    expect(korean.headline).toBe('공중전함 격추 · 최종 방어선 붕괴')
+    expect(korean.line).toContain('공중전함이 격추됐습니다')
+    expect(korean.line).toContain('막을 수단은… 남아 있지 않습니다')
+    expect(japanese.line).toContain('最後の盾')
+    expect(japanese.line).toContain('空中戦艦')
+    expect(english.headline).toContain('FINAL DEFENCE COLLAPSES')
+    expect(english.line.toLowerCase()).toContain('nothing left')
+  })
+
   it('says something different at every stage', () => {
-    // Eight bulletins that all read the same would be worse than none: the
+    // Six bulletins that all read the same would be worse than none: the
     // player would learn to stop reading the band after the second one.
     for (const language of LANGUAGES) {
       const headlines = STRINGS[language].broadcast.map((bulletin) => bulletin.headline)

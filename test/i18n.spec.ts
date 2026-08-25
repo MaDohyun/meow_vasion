@@ -80,6 +80,7 @@ describe('interface languages', () => {
     // Either one freezes the game, so a missing one would freeze it over an
     // empty box with nothing to click but the same empty box.
     expect(GENERAL_WORD_IDS).toContain('drone-mine')
+    expect(GENERAL_WORD_IDS).toContain('battleship-down')
     for (const language of LANGUAGES) {
       for (const id of GENERAL_WORD_IDS) {
         const lines = STRINGS[language].missionDebrief[id]
@@ -89,6 +90,21 @@ describe('interface languages', () => {
     }
     expect(STRINGS.ko.missionDebrief['absorb-water'][0]).not.toBe(STRINGS.en.missionDebrief['absorb-water'][0])
     expect(STRINGS.ko.missionDebrief['drone-mine'][0]).not.toBe(STRINGS.ja.missionDebrief['drone-mine'][0])
+  })
+
+  it('gives the fleet a victory order and Earth a breaking loss report', () => {
+    for (const language of LANGUAGES) {
+      const fleet = STRINGS[language].missionDebrief['battleship-down'].join(' ')
+      const earth = STRINGS[language].broadcast.at(-1)!
+      expect(fleet, `${language}: fleet report`).toBeTruthy()
+      expect(earth.headline, `${language}: Earth headline`).toBeTruthy()
+    }
+    expect(STRINGS.ko.missionDebrief['battleship-down'].join(' ')).toContain('지구의 마지막 저항이 꺾였다')
+    expect(STRINGS.ko.missionDebrief['battleship-down'].join(' ')).toContain('남은 연료를 다 쓸 때까지')
+    expect(STRINGS.ko.broadcast.at(-1)!.headline).toBe('공중전함 격추 · 최종 방어선 붕괴')
+    expect(STRINGS.ko.broadcast.at(-1)!.line).toContain('막을 수단은… 남아 있지 않습니다')
+    expect(STRINGS.en.missionDebrief['battleship-down'].join(' ').toLowerCase()).toContain('last resistance')
+    expect(STRINGS.en.broadcast.at(-1)!.headline).toContain('COLLAPSES')
   })
 
   it('tells the drone-mine warning the same way in all three languages', () => {

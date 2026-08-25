@@ -43,6 +43,13 @@ import {
 const anchorImage = new Image()
 anchorImage.src = '/broadcast/anchor.png'
 
+// The same broadcast after Earth's final defence falls. This is a state, not
+// a six-second reaction: once the battleship is gone every tower keeps the
+// shaken anchor for the rest of the run, even after the breaking caption has
+// cleared.
+const defeatedAnchorImage = new Image()
+defeatedAnchorImage.src = '/broadcast/anchor-defeated.png'
+
 // The sighting footage in the inset - also the player-supplied art, not
 // code-drawn. A still frame rather than the old animated saucer, same
 // reasoning as the anchor photo: it cannot be redrawn into new poses, so it
@@ -132,6 +139,7 @@ function drawUfoNewsFrame(
   time: number,
   headline: string | null = null,
   flag = '',
+  battleshipDown = false,
 ) {
   // Studio backdrop, lit rather than dark. A screen on the side of a building
   // has to be brighter than the building for the eye to read it as a screen;
@@ -168,7 +176,7 @@ function drawUfoNewsFrame(
   context.lineWidth = 5
   context.strokeRect(insetX, insetY, insetW, insetH)
 
-  drawAnchor(context, width, height, time, headline !== null)
+  drawAnchor(context, width, height, time, headline !== null, battleshipDown)
 
   // Lower third: the caption bar, plus a blank ticker beneath. The bar grows a
   // little while a bulletin runs so the screen visibly switches to breaking
@@ -242,16 +250,24 @@ function drawUfoFootage(
  * reads as live video rather than a poster, without inventing motion the
  * source art does not have.
  */
-function drawAnchor(context: CanvasRenderingContext2D, width: number, height: number, time: number, _talking = false) {
-  if (!anchorImage.complete || anchorImage.naturalWidth === 0) return
+function drawAnchor(
+  context: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  time: number,
+  _talking = false,
+  battleshipDown = false,
+) {
+  const image = battleshipDown ? defeatedAnchorImage : anchorImage
+  if (!image.complete || image.naturalWidth === 0) return
   const sway = Math.sin(time * 0.9) * width * 0.006
   const cx = width * 0.3 + sway
   // Shoulders have to clear the caption bar - 0.74 normally, 0.715 while a
   // bulletin is on air - or the figure gets swallowed by it.
   const shoulderY = height * 0.72
   const bustW = width * 0.46
-  const bustH = bustW * (anchorImage.naturalHeight / anchorImage.naturalWidth)
-  context.drawImage(anchorImage, cx - bustW / 2, shoulderY - bustH * 0.94, bustW, bustH)
+  const bustH = bustW * (image.naturalHeight / image.naturalWidth)
+  context.drawImage(image, cx - bustW / 2, shoulderY - bustH * 0.94, bustW, bustH)
 }
 
 const ufoWarningTexture = canvasTexture((context, width, height) => drawUfoNewsFrame(context, width, height, 0), 512, 512)
@@ -687,6 +703,7 @@ function BuildingFeaturePool() {
           clock.elapsedTime,
           onAir ? bulletinFor(t, game.broadcastStage).headline : null,
           t.breakingFlag,
+          game.bossDestroyed,
         )
         ufoWarningTexture.needsUpdate = true
       }

@@ -536,6 +536,7 @@ button { font: inherit; }
 /* The same anchor as the one on the city's news screens, so the words on the
    HUD and the face on the buildings read as one broadcast. */
 .breaking-anchor { flex:0 0 74px; align-self:stretch; background:#1b2450 url(/broadcast/anchor.png) center/cover; border-right:1px solid var(--hud-rule); }
+.breaking-anchor.defeated { background-image:url(/broadcast/anchor-defeated.png); }
 
 .breaking-body { display:flex; flex:1; flex-direction:column; justify-content:center; min-width:0; padding:11px 15px 13px; }
 .breaking-head { display:flex; align-items:center; gap:9px; }

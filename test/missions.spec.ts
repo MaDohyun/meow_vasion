@@ -212,6 +212,16 @@ describe('the five-mission ladder', () => {
     expect(queueMissionAdvisory(closed, 'drone-mine')).toBe(false)
   })
 
+  it('queues one battleship victory report inside a live run', () => {
+    const state = createMissionState()
+    expect(queueMissionAdvisory(state, 'battleship-down')).toBe(false)
+    startMissionOne(state, 0)
+    expect(queueMissionAdvisory(state, 'battleship-down')).toBe(true)
+    expect(missionAdvisoryGiven(state, 'battleship-down')).toBe(true)
+    expect(takeMissionDebrief(state)).toBe('battleship-down')
+    expect(queueMissionAdvisory(state, 'battleship-down')).toBe(false)
+  })
+
   it('keeps a warning in the queue behind the debrief it landed with', () => {
     // Both go through the same queue, so a mine spotted on the frame a rung
     // cleared cannot overwrite the general's word about the rung.

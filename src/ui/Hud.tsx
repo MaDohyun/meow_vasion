@@ -936,7 +936,7 @@ function BreakingNews() {
   const phase = broadcastPhase(snapshot.broadcastRemaining)
   return (
     <aside className="breaking-band" data-phase={phase} role="status" aria-live="polite">
-      <div className="breaking-anchor" aria-hidden="true" />
+      <div className={`breaking-anchor${snapshot.bossDestroyed ? ' defeated' : ''}`} aria-hidden="true" />
       <div className="breaking-body">
         <div className="breaking-head">
           <span className="breaking-flag">{t.breakingFlag}</span>

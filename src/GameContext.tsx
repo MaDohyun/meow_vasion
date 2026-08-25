@@ -66,7 +66,7 @@ import {
   worldCellCoord,
 } from './core/world'
 import { captureTrafficCar, createTrafficState, primeTraffic, releaseTrafficSlot, stepTraffic, TRAFFIC_MAX_CARS, type TrafficCar, type TrafficState } from './core/traffic'
-import { BROADCAST_OPENING_AT, BROADCAST_SECONDS } from './core/broadcast'
+import { BATTLESHIP_DOWN_BROADCAST_STAGE, BROADCAST_OPENING_AT, BROADCAST_SECONDS } from './core/broadcast'
 import {
   BOON_FULL_SCORE,
   BOON_HEAL_PIPS,
@@ -167,8 +167,8 @@ export type GameRuntime = {
    * leaderboard.
    */
   devRun: boolean
-  /** Which wave bulletin is on air, and for how much longer. The simulation
-   *  holds the stage number only - the words are chosen at render time, in
+  /** Which news bulletin is on air, and for how much longer. The simulation
+   *  holds the bulletin index only - the words are chosen at render time, in
    *  whatever language the player set. */
   broadcastStage: number
   broadcastTime: number
@@ -360,7 +360,7 @@ export type GameSnapshot = {
   /** True for a run opened by the developer drill, so the results screen can
    *  keep it off the leaderboard. */
   devRun: boolean
-  /** The wave bulletin currently on air, or null when nothing is. */
+  /** The news bulletin currently on air, or null when nothing is. */
   broadcastStage: number | null
   broadcastRemaining: number
   /** Pickup levels, published for the HUD and tests. */
@@ -426,6 +426,8 @@ export type GameSnapshot = {
   /** Battleship health as a fraction, or null when no ship is up. Nobody
    *  keeps shooting something with no visible progress. */
   bossHealth: number | null
+  /** Once true, Earth's news anchor stays shaken for the rest of the run. */
+  bossDestroyed: boolean
   beamObjectCount: number
   message: string
   messageKey: MessageKey | null
@@ -1336,6 +1338,15 @@ function registerEnemyHit(game: GameRuntime, id: string, damage: number) {
   if (result.kind === 'boss') {
     game.bossDestroyed = true
     playBattleshipExplosionSound()
+    // Both sides publish the same fireball in different voices. The general's
+    // victory order freezes the world long enough to read; Earth's report that
+    // its last defence fell is raised on that exact frame and remains on air
+    // after the player dismisses him.
+    if (queueMissionAdvisory(game.mission, 'battleship-down') && game.beamActive) {
+      game.beamActive = false
+      stopBeamSound()
+    }
+    raiseBroadcast(game, BATTLESHIP_DOWN_BROADCAST_STAGE)
   }
   if (result.kind === 'boss' && result.enemy) {
     // Seventy-four metres of ship does not go up in one puff. A burst at every
@@ -1754,6 +1765,7 @@ function snapshotOf(game: GameRuntime): GameSnapshot {
     activeEnemies: activeEnemyCount(game.enemies),
     enemiesDown: game.enemiesDown,
     bossHealth: battleshipHealth(game),
+    bossDestroyed: game.bossDestroyed,
     beamObjectCount: game.loadedCars,
     message: game.messageTime > 0 ? game.message : '',
     messageKey: game.messageTime > 0 ? game.messageKey : null,
@@ -1790,9 +1802,9 @@ function updatePilotStatus(game: GameRuntime) {
   game.pilotPreviousThreat = game.waveStage
 }
 
-/** Put one wave bulletin on air. There is only ever one band, so raising a
+/** Put one news bulletin on air. There is only ever one band, so raising a
  *  bulletin while another is running replaces it rather than queueing behind
- *  it - the newer wave is the one worth reading about. */
+ *  it - the newest event is the one worth reading about. */
 function raiseBroadcast(game: GameRuntime, stage: number) {
   game.broadcastStage = stage
   game.broadcastTime = BROADCAST_SECONDS

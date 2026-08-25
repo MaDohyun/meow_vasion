@@ -158,13 +158,15 @@ export type Strings = {
   missionCopy: Record<MissionQuestId, string>
   /**
    * The general's word after each of the first four missions, plus the field
-   * advisories he raises unprompted, one paragraph per line.
+   * words he raises unprompted, one paragraph per line.
    *
    * These freeze the game while they are on screen, so they are written to be
    * read once and remembered: each one names a rule the pilot has just met by
    * doing it rather than by being told about it in the opening briefing. The
    * one exception is `drone-mine`, which is said *before* the lesson can be
    * paid for - the mine teaches itself at the cost of five life otherwise.
+   * `battleship-down` is an after-action victory report, paired with Earth's
+   * breaking report that its final defence line fell on the same frozen frame.
    */
   missionDebrief: Record<GeneralWordId, readonly string[]>
   /** The general's closing word on the results screen, one per ending. */
@@ -292,9 +294,9 @@ export type Bulletin = {
   line: string
 }
 
-/** Exactly one bulletin per wave stage. A tuple rather than an array so a
- *  language that forgets a stage fails to compile. */
-type BulletinSet = readonly [Bulletin, Bulletin, Bulletin, Bulletin, Bulletin]
+/** Exactly one bulletin per wave stage plus the battleship after-action card.
+ *  A tuple rather than an array makes a missing translation a compile error. */
+type BulletinSet = readonly [Bulletin, Bulletin, Bulletin, Bulletin, Bulletin, Bulletin]
 
 /** Keys the simulation may raise as a mid-run callout. */
 export type MessageKey = {
@@ -432,6 +434,11 @@ export const STRINGS: Record<Language, Strings> = {
         '조심해라. 저건 가까이 가거나 빔에 닿으면 [[잠시 후 그 자리에서 폭발한다]]. 끌려오지는 않지만 가까이에 있다면 충분히 위험하다.',
         '안전한 순서는 하나다. 레이저(Q 또는 좌클릭)로 드론을 먼저 지우고, 그 다음에 빔(W 또는 우클릭)으로 그 일대를 훑어라.',
       ],
+      'battleship-down': [
+        '잘했다, 대원. 지구의 마지막 저항이 꺾였다.',
+        '남은 연료를 다 쓸 때까지 표본을 최대한 많이 흡수하고,',
+        '도시를 쑥대밭으로 만들도록!',
+      ],
     },
     endingRemark: {
       recon: '완벽한 정찰이었다, 대원. 지구는 이제 우리 손안이다. 귀환을 허가한다!',
@@ -522,6 +529,7 @@ export const STRINGS: Record<Language, Strings> = {
       { headline: '공격 헬기 투입', line: '속보입니다. 군이 공격 헬기를 상공에 투입했습니다.\n시민 여러분은 실내로 대피하십시오.' },
       { headline: '전투기 긴급 발진', line: '속보입니다. 공군이 미확인 비행체 격추를 위해\n전투기를 긴급 발진시켰습니다.' },
       { headline: '공중전함 출격', line: '속보입니다. 더는 두고 볼 수 없다며 군이\n최종 병기 공중전함을 출격시켰습니다.' },
+      { headline: '공중전함 격추 · 최종 방어선 붕괴', line: '속보입니다. 최후의 방패였던 공중전함이 격추됐습니다.\n이제 저 비행체를 막을 수단은… 남아 있지 않습니다.' },
     ],
   },
   ja: {
@@ -645,6 +653,11 @@ export const STRINGS: Record<Language, Strings> = {
         '気をつけろ。あれは近づくかビームに触れると、[[少ししてその場で爆発する]]。引き寄せられはしないが、近くにいれば十分危険だ。',
         '安全な手順はひとつだけだ。まずレーザー（Qまたは左クリック）でドローンを消し、それからビーム（Wまたは右クリック）でその一帯を吸い上げろ。',
       ],
+      'battleship-down': [
+        'よくやった、隊員。地球最後の抵抗は砕けた。',
+        '残りの燃料を使い切るまで、できる限り多くの標本を吸収し、',
+        '街をめちゃくちゃにしておけ！',
+      ],
     },
     endingRemark: {
       recon: '完璧な偵察だった、隊員。地球はもう我々のものだ。帰還を許可する！',
@@ -735,6 +748,7 @@ export const STRINGS: Record<Language, Strings> = {
       { headline: '攻撃ヘリを投入', line: '速報です。軍が攻撃ヘリを上空に投入しました。\n市民の皆さまは屋内に避難してください。' },
       { headline: '戦闘機が緊急発進', line: '速報です。空軍が未確認飛行物体の撃墜のため、\n戦闘機を緊急発進させました。' },
       { headline: '空中戦艦が出撃', line: '速報です。もはや看過できないとして、軍が\n最終兵器の空中戦艦を出撃させました。' },
+      { headline: '空中戦艦撃墜・最終防衛線崩壊', line: '速報です。最後の盾だった空中戦艦が撃墜されました。\nもはや、あの飛行物体を阻止する手段は…残されていません。' },
     ],
   },
   en: {
@@ -858,6 +872,11 @@ export const STRINGS: Record<Language, Strings> = {
         'Careful. Get close or touch it with the beam and it [[explodes in place a moment later]]. It will not be pulled in, but it is still dangerous if you are nearby.',
         'There is one safe order. Clear the drone with the laser (Q or left-click) first, then sweep the area with the beam (W or right-click).',
       ],
+      'battleship-down': [
+        "Well done, pilot. Earth's last resistance has broken.",
+        'Until every drop of fuel is gone, absorb as many samples as you can',
+        'and leave the city in ruins!',
+      ],
     },
     endingRemark: {
       recon: 'A flawless recon, pilot. Earth is ours now. You are cleared to return!',
@@ -948,6 +967,7 @@ export const STRINGS: Record<Language, Strings> = {
       { headline: 'ATTACK HELICOPTERS UP', line: 'Breaking news. The military has put attack helicopters\nin the air. Residents are urged to stay indoors.' },
       { headline: 'FIGHTERS SCRAMBLED', line: 'Breaking news. The air force has scrambled fighters\nto shoot the unidentified craft down.' },
       { headline: 'SKY BATTLESHIP LAUNCHED', line: 'Breaking news. Unwilling to stand by any longer, the military\nhas launched its last resort - the sky battleship.' },
+      { headline: 'BATTLESHIP DOWN · FINAL DEFENCE COLLAPSES', line: 'Breaking news. The sky battleship, our final shield, has been shot down.\nThere is now… nothing left that can stop that unidentified craft.' },
     ],
   },
 }

@@ -80,10 +80,14 @@ export const MISSION_DEBRIEF_IDS: readonly MissionDebriefId[] = [
  * while a mine is drawn in like a meal and detonates on arrival. A pilot who
  * learns that by doing it has already paid five life for the lesson, so the
  * general says it once, while the shell is still a dot ahead.
+ *
+ * `battleship-down` is the opposite kind of field word: not a warning but the
+ * fleet's victory report and follow-up order, raised on the same frame that
+ * Earth's news reports its final defence line breached.
  */
-export type MissionAdvisoryId = 'drone-mine'
+export type MissionAdvisoryId = 'drone-mine' | 'battleship-down'
 
-export const MISSION_ADVISORY_IDS: readonly MissionAdvisoryId[] = ['drone-mine']
+export const MISSION_ADVISORY_IDS: readonly MissionAdvisoryId[] = ['drone-mine', 'battleship-down']
 
 /** Everything the general can appear over a frozen world to say. The HUD box
  *  and the string table are shared, because the pilot is being talked to by
@@ -346,7 +350,7 @@ export function takeMissionDebrief(state: MissionState): GeneralWordId | null {
 }
 
 /**
- * Puts a field advisory in the general's queue, once per run.
+ * Puts an unscheduled field word in the general's queue, once per run.
  *
  * Returns whether it was actually queued, so the runtime can stop the beam
  * and force a publish on exactly the frame it happens - the same handling a
