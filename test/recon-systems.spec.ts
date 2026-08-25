@@ -42,13 +42,15 @@ describe('recon overhaul support systems', () => {
   })
 
   it('pays whole points for pumped water without ever paying a frame twice', () => {
-    // A sixtieth of a second of pumping is 0.83 litres, which is worth less
-    // than a tenth of a point. Paying per frame is the thing this guards: the
-    // first frames owe nothing and the tenth litre is where the first point
-    // lands, whatever the frame boundaries were on the way there.
+    // A sixtieth of a second of pumping is 0.83 litres, and a fraction of a
+    // litre never pays on its own: the payout waits for the whole litre to
+    // land, whatever the frame boundaries were on the way there.
     expect(lakeScorePayout(0, 0.83)).toBe(0)
-    expect(lakeScorePayout(0.83, 1.66)).toBe(0)
-    expect(lakeScorePayout(9.5, 10)).toBe(1)
+    expect(lakeScorePayout(0.83, 1.66)).toBe(1)
+    expect(lakeScorePayout(1.66, 2.49)).toBe(1)
+    expect(lakeScorePayout(2.49, 3.32)).toBe(1)
+    // Four frames, 3.32 litres, three points - the fourth is still owed.
+    expect(lakeScorePayout(0, 3.32)).toBe(3)
     // Sixty frames of pumping pay exactly what one long step of the same
     // duration pays - no drift, no free point at the seams.
     let litres = 0
@@ -60,10 +62,9 @@ describe('recon overhaul support systems', () => {
     }
     expect(litres).toBeCloseTo(LAKE_ABSORPTION_LITRES_PER_SECOND)
     expect(framed).toBe(lakeScorePayout(0, LAKE_ABSORPTION_LITRES_PER_SECOND))
-    // Five a second: a trickle beside a pedestrian, and nowhere near enough
-    // to make a lake a better place to farm than the city.
-    expect(framed).toBe(5)
-    expect(LAKE_SCORE_PER_LITRE).toBe(0.1)
+    // A point a litre, so a second of held beam is the 50 litres it pumped.
+    expect(LAKE_SCORE_PER_LITRE).toBe(1)
+    expect(framed).toBe(LAKE_ABSORPTION_LITRES_PER_SECOND)
     // Never negative, and a still craft owes nothing.
     expect(lakeScorePayout(200, 200)).toBe(0)
     expect(lakeScorePayout(200, 0)).toBe(0)

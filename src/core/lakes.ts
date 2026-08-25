@@ -33,18 +33,18 @@ export function stepLakeAbsorption(totalLitres: number, dt: number, beamActive: 
  * game that is not worth doing, which is a strange thing to build a rung of
  * the ladder out of.
  *
- * A tenth of a point per litre is five a second - about one pedestrian every
- * second and a half at the opening size, and a rounding error by the time the
- * craft is eating towers. That is the whole intent: the number moves while the
- * pilot holds the beam on water, and never enough to make sitting in a lake a
- * better plan than eating the city.
+ * A point a litre is fifty a second - the water rung pays 300 on its own, and
+ * the sample rung's 3000 is a minute of held beam over open water. That is a
+ * real rate rather than a trickle, and it is set deliberately: a lake is the
+ * one place the craft cannot run from, so the pilot is buying the score with
+ * half their top speed and whatever the sky sends while they sit there.
  *
  * Deliberately NOT scaled by the size multiplier, unlike every other beam
  * payout. Water comes in at a flat 50 L/s whatever the craft weighs, so the
  * multiplier would be pure profit with no extra work behind it - at the size
- * cap it would pay 75 a second and turn the sample rung into a swim.
+ * cap it would pay 750 a second, which is the whole run in twenty seconds.
  */
-export const LAKE_SCORE_PER_LITRE = 0.1
+export const LAKE_SCORE_PER_LITRE = 1
 
 /**
  * Whole points owed for crossing from one running litre total to the next.
