@@ -70,7 +70,12 @@ describe('fighter curtain fire', () => {
     const player = { x: 0, y: 20, z: 40 }
     const shots: number[] = []
     let previous = 0
-    for (let tick = 0; tick < 60 * 9; tick += 1) {
+    // Long enough for six rounds at whatever the cadence currently is. The
+    // window used to be a flat nine seconds, which counted rounds rather than
+    // measuring the cadence: halving the fire rate turned a passing test into
+    // a failing one without anything about the cadence having broken.
+    const window = FIGHTER_ORB_INTERVAL * 6
+    for (let tick = 0; tick < 60 * window; tick += 1) {
       // Ride along forty metres ahead, so range never lapses and the cadence
       // is the only thing being measured.
       player.z = fighter.position.z + 40

@@ -73,19 +73,23 @@ function Joystick() {
     const x = dx * scale
     const y = dy * scale
     setKnob({ x, y })
-    setMobileInput({ active: true, steer: -x / 44, throttle: -y / 44 })
+    // Yaw only. The craft supplies its own forward, so the stick's other axis
+    // has nothing left to say - and a stick that quietly halved the speed when
+    // a thumb rested low on it would be a throttle nobody knew they were
+    // holding.
+    setMobileInput({ active: true, steer: -x / 44 })
   }
 
   const release = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
     setKnob({ x: 0, y: 0 })
-    setMobileInput({ throttle: 0, steer: 0 })
+    setMobileInput({ steer: 0 })
   }
 
   return (
     <div
       className="joystick"
-      aria-label="movement joystick"
+      aria-label="steering joystick"
       onPointerDown={(event) => {
         event.currentTarget.setPointerCapture(event.pointerId)
         origin.current = { x: event.clientX, y: event.clientY }
@@ -163,7 +167,9 @@ function ControlTips() {
   }, [state])
 
   const rows: [readonly string[], string][] = [
-    [['W', 'A', 'S', 'D'], t.controlMove],
+    // The short label here, the long one in the manual: this card is a
+    // narrow column and "flies where you look" wraps onto two lines in it.
+    [['AUTO'], t.howToMove],
     [['MOUSE'], t.controlAim],
     [['E'], t.controlBeam],
     [['Q'], t.controlLaser],
@@ -190,10 +196,9 @@ function ControlTips() {
               <span>{label}</span>
             </div>
           ))}
-          {/* How to get bigger, and the one way the craft kills itself. Both
-              are advice rather than instrumentation, so they live here rather
-              than parked under the score and under the drag gauge for the
-              whole run. */}
+          {/* How to get bigger, and what it costs to carry. Both are advice
+              rather than instrumentation, so they live here rather than parked
+              under the score and under the weight gauge for the whole run. */}
           <p className="tip-note">{t.massHint}</p>
           <p className="tip-note tip-warn"><RichText text={t.overloadHint} /></p>
         </div>
@@ -333,7 +338,7 @@ function PilotComms() {
 }
 
 function MobileControls() {
-  const { setMobileInput } = useGame()
+  const { setMobileInput, t } = useGame()
   const altitude = (value: number) => ({
     onPointerDown: () => setMobileInput({ active: true, vertical: value }),
     onPointerUp: () => setMobileInput({ vertical: 0 }),
@@ -348,9 +353,12 @@ function MobileControls() {
         <button className="alt-button" {...altitude(-1)}>▼</button>
       </div>
       <div className="mobile-actions">
-        <HoldButton className="boost-button" label="BOOST" field="special" />
-        <HoldButton className="laser-button" label="LASER" field="laser" />
-        <HoldButton className="beam-button" label="BEAM" field="beam" />
+        {/* Translated like every other label. A player who picked Korean or
+            Japanese in the lobby should not meet three English words the
+            moment they put a thumb on the screen. */}
+        <HoldButton className="boost-button" label={t.touchTurbo} field="special" />
+        <HoldButton className="laser-button" label={t.touchLaser} field="laser" />
+        <HoldButton className="beam-button" label={t.touchBeam} field="beam" />
       </div>
     </div>
   )
@@ -439,8 +447,8 @@ export function devToolsEnabled() {
 /**
  * The lobby's ending previewer, behind the same developer gate as the drill.
  *
- * Four endings, each of which otherwise costs a full five-minute run flown a
- * particular way to look at once - and two of them cannot be reached at all
+ * Three endings, each of which otherwise costs a full five-minute run flown a
+ * particular way to look at once - and one of them cannot be reached at all
  * without deliberately losing. Reading what the general says on each, and
  * whether the sign-off still fits the card at that length, is a thing to do
  * in a few seconds rather than in half an hour.
@@ -448,7 +456,7 @@ export function devToolsEnabled() {
 function EndingPreview() {
   const { previewEnding, t } = useGame()
   if (!devToolsEnabled()) return null
-  const endings: RunEnding[] = ['recon', 'missionFailed', 'downed', 'crushed']
+  const endings: RunEnding[] = ['recon', 'missionFailed', 'downed']
   return (
     <div className="lobby-ending-preview" role="group" aria-label={t.devEndings}>
       {endings.map((ending) => (
@@ -851,19 +859,18 @@ function RankingPanel({ onClose }: { onClose: () => void }) {
 /**
  * What the run is told it was.
  *
- * Four endings, not two: outlasting the clock with the mission unfinished is
+ * Three endings, not two: outlasting the clock with the mission unfinished is
  * its own result, and reporting it as a shoot-down told the player they had
  * died when they had in fact flown the whole window and simply not finished
- * the job. Going down under the load is its own result for the same reason -
- * the city never touched the craft, the haul on the beam did, and the player
- * is owed that distinction because letting go was the answer.
+ * the job.
  *
- * Being shot down keeps the screen it always had, and stays the fallback.
+ * Being shot down keeps the screen it always had, and stays the fallback - and
+ * with the overload crash gone it is once again the only way the run ends
+ * early.
  */
 function resultCopy(t: Strings, ending: RunEnding | null) {
   if (ending === 'recon') return { title: t.survivedTitle, lead: t.survivedLead }
   if (ending === 'missionFailed') return { title: t.missionFailedTitle, lead: t.missionFailedLead }
-  if (ending === 'crushed') return { title: t.crushedTitle, lead: t.crushedLead }
   return { title: t.collapsedTitle, lead: t.collapsedLead }
 }
 

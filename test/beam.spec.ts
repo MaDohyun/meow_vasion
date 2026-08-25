@@ -16,7 +16,7 @@ import {
   stepBeamObjects,
 } from '../src/core/beam'
 import { CAT_MASS, PEDESTRIAN_MASS } from '../src/core/crowds'
-import { SIZE_MAX, SIZE_MIN, SIZE_START, UFO_BASE_DIAMETER, sizeProfile, ufoDiameter } from '../src/core/size'
+import { SIZE_MAX, SIZE_MIN, SIZE_START, UFO_BASE_DIAMETER, maxAltitude, sizeProfile, ufoDiameter } from '../src/core/size'
 
 const makeCar = (id = 'car-1', x = 0, y = 0.65, z = 0): BeamObject => ({
   id,
@@ -109,6 +109,19 @@ describe('tractor beam physics', () => {
     expect(beamVisualLength(80, beamProfile(true).maxDrop)).toBe(beamProfile(true).maxDrop)
   })
 
+  it('reaches the street from the opening craft\'s own ceiling', () => {
+    // These two numbers were 30 and 30.9, which meant a beginner who climbed
+    // to clear a mid-rise roof was flying at exactly the height where the beam
+    // stopped touching the ground. The one verb the game has must work
+    // anywhere the craft can actually be.
+    const opening = sizeProfile(SIZE_START)
+    const reach = beamProfile(false, opening.beamScale, opening.beamReach).maxDrop
+    expect(reach).toBeGreaterThan(maxAltitude(SIZE_START) + 6)
+    // Reach only. The haul from out there is as slow as it ever was - flying
+    // low is still how you eat quickly.
+    expect(beamGrip(maxAltitude(SIZE_START), reach)).toBeLessThan(0.2)
+  })
+
   it('still weakens toward the far end of whatever reach it has', () => {
     // Reach changed; falloff did not. The far end of the cone must stay weak,
     // or the beam becomes a rigid rod that happens to be shorter.
@@ -145,13 +158,16 @@ describe('tractor beam physics', () => {
     expect(car.inBeam).toBe(true)
 
     // Beam off: released, and it ends up back on the street. Asserted on where
-    // it finished rather than on its velocity, because it bounces on landing.
+    // it finished rather than on its velocity, because it bounces on landing -
+    // and run long enough for the bounce to settle rather than sampling a
+    // metre and a half into it, which made the assertion a reading of how high
+    // the car happened to be when the beam cut rather than of it coming down.
     const cut = field(true)
     cut.position.x = 50
     cut.active = false
-    for (let tick = 0; tick < 60; tick += 1) stepBeamObjects([car], cut, 1 / 60)
+    for (let tick = 0; tick < 120; tick += 1) stepBeamObjects([car], cut, 1 / 60)
     expect(car.inBeam).toBe(false)
-    expect(car.position.y).toBeLessThan(1.7)
+    expect(car.position.y).toBeLessThan(0.7)
   })
 
   it('applies gravity when the beam is off', () => {

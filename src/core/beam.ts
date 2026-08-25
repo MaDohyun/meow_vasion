@@ -209,6 +209,13 @@ export function surfaceHeightAt(x: number, z: number, colliders?: readonly Aabb[
 
 export type BeamProfile = {
   maxDrop: number
+  /**
+   * The cone the haul spring is tuned against, which is no longer the cone the
+   * beam actually has. See the vertical clamp in stepBeamObjects: the drive is
+   * scaled by this, so lengthening `maxDrop` moves where the beam stops
+   * without also making a deep catch fly up faster.
+   */
+  haulDrop: number
   baseRadius: number
   coneSpread: number
   spring: number
@@ -232,6 +239,19 @@ export const BEAM_GRIP_EXPONENT = 2.8
  * This is only about where the beam STOPS. The falloff within reach is
  * untouched: the far end still grips weakly, which is what produces "it's
  * caught but it barely moves".
+ *
+ * The base reach was 30m, and the opening saucer's ceiling is 30.9m. Those two
+ * numbers were never chosen against each other and the coincidence was doing
+ * real damage: a beginner who climbed to the top of their own altitude range -
+ * which is what you do to clear a mid-rise roof - was flying at exactly the
+ * height where the beam stopped touching the street. The city was visible and
+ * out of reach at the same time, on the one verb the game has. 40m (60
+ * boosted) covers the whole opening altitude range with room over a roof.
+ *
+ * Reach is all that moved. What the beam does inside that reach - the falloff,
+ * and the flat BEAM_HAUL_FLOOR under it - is untouched, so a catch from the
+ * new far end is exactly as slow as the old far end was: the change is that
+ * there is a catch at all. Descending is still how a beginner eats quickly.
  */
 export function beamProfile(boosting: boolean, radiusScale = 1, reachScale = 1): BeamProfile {
   const scale = Math.max(0.1, radiusScale)
@@ -239,11 +259,12 @@ export function beamProfile(boosting: boolean, radiusScale = 1, reachScale = 1):
   // Widened for the growth loop: the beam is the only verb, so a pass over a
   // street has to actually sweep it rather than thread a needle.
   const profile = boosting
-    ? { maxDrop: 47, baseRadius: 8.2, coneSpread: 0.34, spring: 25.5, response: 58 }
-    : { maxDrop: 30, baseRadius: 5.8, coneSpread: 0.27, spring: 15.6, response: 32 }
+    ? { maxDrop: 60, haulDrop: 47, baseRadius: 8.2, coneSpread: 0.34, spring: 25.5, response: 58 }
+    : { maxDrop: 40, haulDrop: 30, baseRadius: 5.8, coneSpread: 0.27, spring: 15.6, response: 32 }
   return {
     ...profile,
     maxDrop: profile.maxDrop * reach,
+    haulDrop: Math.min(profile.haulDrop * reach, BEAM_HAUL_TUNED_DROP),
     baseRadius: profile.baseRadius * scale,
     coneSpread: profile.coneSpread * scale,
   }
@@ -347,6 +368,29 @@ export function isInsideBeam(object: Pick<BeamObject, 'position'>, field: BeamFi
   const radius = profile.baseRadius + Math.max(0, drop) * profile.coneSpread
   return Math.hypot(object.position.x - field.position.x, object.position.z - field.position.z) <= radius
 }
+
+/**
+ * The slowest the beam may reel a load in, in metres per second.
+ *
+ * There has to be a floor, because the opening saucer is one strength rung
+ * below a person: `beamLiftScale` returns 0.12 for a pedestrian, which
+ * collapses the spring to almost nothing, and without a floor a beginner's
+ * first catch would hang in the air rather than come up.
+ *
+ * Deliberately flat, and it stays flat. A floor that grew with the drop would
+ * make a body caught 30m down arrive faster than one caught 5m down, which
+ * inverts the rule the whole beam is built on - reach is cheap, grip is what
+ * costs, and flying low is how you buy it. Longer reach therefore means a
+ * longer haul, never a quicker one.
+ */
+export const BEAM_HAUL_FLOOR = 0.9
+
+/**
+ * The longest cone the haul spring was ever tuned against - the boost beam's
+ * reach before the cones were lengthened. Every profile's `haulDrop` stops
+ * here, so a grown craft's drive is the same one it always had.
+ */
+export const BEAM_HAUL_TUNED_DROP = 47
 
 export function beamGrip(drop: number, maxDrop: number, minGrip = BEAM_MIN_GRIP, exponent = BEAM_GRIP_EXPONENT) {
   const dropRatio = Math.max(0, Math.min(1, drop / Math.max(0.001, maxDrop)))
@@ -501,18 +545,20 @@ export function stepBeamObjects(objects: BeamObject[], field: BeamField, dt: num
         y: Math.max(GROUND_HEIGHT + 0.8, field.position.y - (1.8 + layer * 0.48) * rig),
         z: field.position.z + Math.sin(angle) * orbit,
       }
-      // Clamped to the boost beam's own drop, the largest cone this spring
-      // was ever tuned against. Reach grows with the hull now, and an anchor
-      // offset scaled to an 80m cone slings light loads at teleport speed -
-      // longer reach must mean a longer haul, not a faster catapult.
-      const verticalLimit = Math.min(profile.maxDrop, 47) * 0.34
+      // Scaled by the tuned cone rather than the real one - longer reach must
+      // mean a longer haul, not a faster catapult. This used to read the real
+      // maxDrop and clamp it at 47, which was the same number while 47 was the
+      // boost beam's own reach; once the base cones were lengthened for the
+      // opening craft, that clamp quietly handed the short beam a third more
+      // drive and a deep catch started outrunning a shallow one.
+      const verticalLimit = profile.haulDrop * 0.34
       const verticalOffset = Math.max(-verticalLimit, Math.min(verticalLimit, anchor.y - object.position.y))
       const desired = {
         x: field.velocity.x + (anchor.x - object.position.x) * spring,
         y: field.velocity.y + verticalOffset * spring * grip,
         z: field.velocity.z + (anchor.z - object.position.z) * spring,
       }
-      if (anchor.y > object.position.y) desired.y = Math.max(desired.y, 0.9)
+      if (anchor.y > object.position.y) desired.y = Math.max(desired.y, BEAM_HAUL_FLOOR)
       const responseGrip = 0.28 + Math.sqrt(grip) * 0.72
       const blend = 1 - Math.exp(-(profile.response * responseGrip / mass) * d)
       object.velocity.x += (desired.x - object.velocity.x) * blend

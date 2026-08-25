@@ -1,9 +1,21 @@
 export type Vec3 = { x: number; y: number; z: number }
 
 export type DroneInput = {
+  /**
+   * The share of top speed the craft is aiming for, 0..1.
+   *
+   * Not a key any more. The saucer flies itself: the player points, the craft
+   * goes, and the only thing a beginner has to learn is where to look. WASD
+   * was the first wall in front of anyone who had never flown anything, and
+   * it was buying nothing the mouse was not already saying - the ship has
+   * always flown where it looks.
+   *
+   * What is left on this axis is the throttle the *world* holds: the beam's
+   * drag, a lake's grip, and the tutorial parking the craft while the general
+   * talks. Callers scale it, they do not set it from an input device.
+   */
   throttle: number
   steer: number
-  strafe?: number
   lookPitch?: number
   vertical: number
   special: boolean
@@ -53,8 +65,18 @@ export const DRONE_DEFAULTS = {
   boostSpeed: 54,
   acceleration: 38,
   brakeDeceleration: 42,
-  turnRateLow: (185 * Math.PI) / 180,
-  turnRateHigh: (105 * Math.PI) / 180,
+  /**
+   * Yaw, lerped from Low at a standstill to High at top speed.
+   *
+   * High is the one actually flown. Throttle is pinned at 1 now that the
+   * craft flies itself forward (see GameContext), so the speed ratio sits at
+   * the top of this range for the whole run and Low is only reached where the
+   * world takes the throttle away - a lake, an overloaded beam, the tutorial.
+   * That is also where turning matters most, so both ends went up, the top by
+   * more.
+   */
+  turnRateLow: (200 * Math.PI) / 180,
+  turnRateHigh: (120 * Math.PI) / 180,
   verticalSpeed: 9,
   minHeight: 0.4,
   maxHeight: 130,
@@ -121,9 +143,10 @@ export function stepDrone(
   const topSpeed = (isBoosting ? DRONE_DEFAULTS.boostSpeed : DRONE_DEFAULTS.maxSpeed) * speedUpgrade * cargoSpeed
   const speedMultiplier = Math.max(1, input.speedMultiplier ?? 1)
   const lowFlightBonus = next.position.y <= 1.5 ? 1.12 : 1
-  const targetSpeed = input.throttle >= 0
-    ? input.throttle * topSpeed * speedMultiplier * lowFlightBonus
-    : input.throttle * 4
+  // Clamped rather than signed: there is no reverse to ask for now that the
+  // throttle belongs to the world instead of to a key.
+  const cruise = clamp(input.throttle, 0, 1)
+  const targetSpeed = cruise * topSpeed * speedMultiplier * lowFlightBonus
   const accel = Math.abs(targetSpeed) < Math.abs(next.speed)
     ? DRONE_DEFAULTS.brakeDeceleration
     : DRONE_DEFAULTS.acceleration * cargoAcceleration
@@ -142,11 +165,8 @@ export function stepDrone(
   const forwardX = Math.sin(next.heading) * horizontalForward
   const forwardY = Math.sin(next.pitch)
   const forwardZ = Math.cos(next.heading) * horizontalForward
-  const rightX = Math.cos(next.heading)
-  const rightZ = -Math.sin(next.heading)
-  const strafeSpeed = (input.strafe ?? 0) * 14.5 * speedMultiplier
-  const desiredX = forwardX * next.speed + rightX * strafeSpeed
-  const desiredZ = forwardZ * next.speed + rightZ * strafeSpeed
+  const desiredX = forwardX * next.speed
+  const desiredZ = forwardZ * next.speed
   const lateralRetention = clamp(0.88 + load * 0.018, 0.88, 0.97)
   const steeringGrip = 1 - Math.pow(lateralRetention, d * 60)
   next.velocity.x += (desiredX - next.velocity.x) * steeringGrip
@@ -170,16 +190,60 @@ export function stepDrone(
     next.velocity.y = Math.min(next.velocity.y, -2)
   }
 
-  const targetTilt = -(input.steer + (input.strafe ?? 0) * 0.48) * DRONE_DEFAULTS.visualTiltMax * Math.min(1, speedRatio + 0.28)
+  const targetTilt = -input.steer * DRONE_DEFAULTS.visualTiltMax * Math.min(1, speedRatio + 0.28)
   next.visualTilt += (targetTilt - next.visualTilt) * (1 - Math.exp(-10 * d))
   return next
 }
 
-export function collideDrone(state: DroneState, colliders: Aabb[]): CollisionResult {
+/**
+ * How hard a wall turns the nose off itself, per second of dead-on contact.
+ *
+ * A craft with a throttle key could always back out of a wall. This one cannot
+ * - there is no reverse and no strafe, so a nose-on contact with the reticle
+ * centred used to mean the craft pressed into the brickwork at a crawl until
+ * the player thought to steer. Measured over the real city that was 94% of
+ * headings pinned inside a minute and 71% of all flight time spent under a
+ * tenth of cruise: not an edge case, the normal way a run went.
+ *
+ * So the wall does the steering. Scaled by how square the hit is, so a wall
+ * taken at a shallow angle barely nudges - that is a scrape along a facade,
+ * which is a thing players do on purpose - while a dead-on press slides the
+ * nose clear and has the craft back at cruise inside a few seconds with nobody
+ * touching anything.
+ *
+ * Near the craft's own hard-turn rate and no faster. A wall that spun the nose
+ * quicker than the player can would read as the controls being taken away,
+ * which is the opposite of the problem being solved: contact is only
+ * intermittent once the push-off lands, so the figure buys back the frames
+ * where the hull is briefly clear rather than out-turning anybody.
+ */
+export const WALL_DEFLECT_RATE = (210 * Math.PI) / 180
+
+/** The shove a contact leaves behind, in units per second. Small - enough to
+ *  separate the hull from the face so it is not re-resolved every frame. */
+export const WALL_PUSH_OFF = 3
+
+/** Resolved a hair clear of the face rather than flush against it, for the
+ *  same reason. */
+const WALL_SKIN = 0.03
+
+/**
+ * The most speed a single contact may take, at a dead-on hit.
+ *
+ * It used to be a flat 40% on every contact frame regardless of angle, which
+ * is what turned a sustained press into a full stop: re-acceleration adds
+ * about 0.6 per frame and a 40% cut takes more than that back, so the craft
+ * converged on a speed of about one. Charged by angle instead, a graze costs
+ * almost nothing and a real crash costs more than it used to.
+ */
+const WALL_SPEED_COST = 0.55
+
+export function collideDrone(state: DroneState, colliders: Aabb[], dt = 1 / 60): CollisionResult {
   const next: DroneState = structuredClone(state)
   let peakImpulse = 0
   let hit = false
   const r = DRONE_DEFAULTS.radius
+  const d = Math.min(Math.max(0, dt), 0.05)
 
   for (const box of colliders) {
     if (
@@ -198,12 +262,42 @@ export function collideDrone(state: DroneState, colliders: Aabb[]): CollisionRes
     ].sort((a, b) => a.value - b.value)
     const normal = distances[0]
     if (!normal) continue
+    // Unchanged, because this is what the damage model reads: how hard the
+    // hull was travelling into the face it found.
     const incoming = Math.abs(next.velocity[normal.axis])
     peakImpulse = Math.max(peakImpulse, incoming)
     hit = true
-    next.position[normal.axis] += normal.direction * normal.value
-    next.velocity[normal.axis] *= -0.6
-    next.speed *= 0.6
+    next.position[normal.axis] += normal.direction * (normal.value + WALL_SKIN)
+
+    // How square the hit is: 1 straight into the face, 0 sliding along it.
+    const horizontalForward = Math.cos(next.pitch)
+    const forward = {
+      x: Math.sin(next.heading) * horizontalForward,
+      y: Math.sin(next.pitch),
+      z: Math.cos(next.heading) * horizontalForward,
+    }
+    const into = Math.max(0, -forward[normal.axis] * normal.direction)
+
+    // Keep whatever the craft had going *along* the wall and drop only what it
+    // had going into it. Sliding is what makes a wall a wall rather than a
+    // full stop.
+    const inward = next.velocity[normal.axis] * normal.direction
+    if (inward < 0) next.velocity[normal.axis] -= normal.direction * inward
+    next.velocity[normal.axis] += normal.direction * WALL_PUSH_OFF
+    next.speed *= 1 - WALL_SPEED_COST * into
+
+    // And the wall turns the nose off itself. Only a wall: a roof is something
+    // to skim, not something to be steered by.
+    if (normal.axis !== 'y' && into > 0) {
+      const rightDotNormal = (normal.axis === 'x' ? Math.cos(next.heading) : -Math.sin(next.heading)) * normal.direction
+      // Turn towards whichever side the outward normal is on. Dead square onto
+      // a face both sides are equal, so the craft keeps turning the way the
+      // player already had it turning.
+      const turn = Math.abs(rightDotNormal) > 1e-6
+        ? Math.sign(rightDotNormal)
+        : next.yawVelocity < 0 ? -1 : 1
+      next.heading += turn * WALL_DEFLECT_RATE * into * d
+    }
   }
 
   return { state: next, impulse: peakImpulse, hit }

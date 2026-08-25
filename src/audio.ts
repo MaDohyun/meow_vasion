@@ -548,9 +548,11 @@ export function playLaserSound() {
   const source = context.createBufferSource()
   const gain = context.createGain()
   source.buffer = laserBuffer
-  // Laser sits above the deliberately restrained music bed, while still
-  // leaving enough headroom for rapid-fire overlap.
-  gain.gain.setValueAtTime(0.92, context.currentTime)
+  // Laser sits above the deliberately restrained music bed. Raised from 0.92
+  // because the shot read as too quiet against the mix, but held at 1.5 rather
+  // than a straight doubling so rapid-fire overlap keeps some headroom. The
+  // effects master gain still scales this by the player's SFX setting.
+  gain.gain.setValueAtTime(1.5, context.currentTime)
   gain.gain.exponentialRampToValueAtTime(0.001, context.currentTime + Math.min(0.42, laserBuffer.duration))
   source.connect(gain)
   gain.connect(effectsDestination() ?? context.destination)

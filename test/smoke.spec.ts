@@ -91,11 +91,11 @@ test('loads first frame and validates combat and high-altitude flight', async ({
   const secondShotMetrics = await readMetrics()
   expect(secondShotMetrics.laserShotsFired).toBeGreaterThan(heldShotMetrics.laserShotsFired)
 
+  // Nose up and nothing else. There is no throttle key any more - the craft
+  // is always going, so pointing it at the sky is the whole of climbing.
   const viewport = page.viewportSize()!
   await page.mouse.move(viewport.width / 2, 4)
-  await page.keyboard.down('w')
   await page.waitForTimeout(7500)
-  await page.keyboard.up('w')
   await page.waitForTimeout(550)
   const altitudeMetrics = await readMetrics()
   expect(altitudeMetrics.height).toBeGreaterThan(125)
@@ -139,20 +139,27 @@ test('SKIP ends the tutorial outright and starts the run', async ({ page }) => {
   expect(running.remainingTime).toBeLessThan(300)
 
   // Laser and flight both answer, though the briefing never reached the lines
-  // that hand them over. Keys are held rather than tapped here too: the runtime
+  // that hand them over. The laser key is held rather than tapped: the runtime
   // samples the keyboard once a frame.
   await page.keyboard.down('q')
   await page.waitForTimeout(600)
   await page.keyboard.up('q')
   await page.waitForTimeout(500)
   expect((await readMetrics()).laserShotsFired).toBeGreaterThan(0)
+
+  // Flight answers by needing no answer. The tutorial is the one thing that
+  // parks the craft; the moment it is over the saucer is already going, with
+  // nothing held down and nothing to teach a first-time player first.
   const pose = () => page.evaluate(() => window.__BEAM_BANDIT_POSE__!)
-  const parked = await pose()
-  await page.keyboard.down('w')
+  // Deliberately a low bar, as the held-W version of this check was: the
+  // simulation advances in real time and a software-rendered browser gets
+  // through a fraction of the frames a real one does. "It left the spot on its
+  // own" is the claim; how far it got is the flight model's business, and unit
+  // tested there.
+  const before = await pose()
   await page.waitForTimeout(4000)
-  await page.keyboard.up('w')
   const flown = await pose()
-  expect(Math.hypot(flown.x - parked.x, flown.z - parked.z)).toBeGreaterThan(3)
+  expect(Math.hypot(flown.x - before.x, flown.z - before.z)).toBeGreaterThan(3)
 })
 
 /**

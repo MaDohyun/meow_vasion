@@ -85,8 +85,11 @@ export const MISSION_TARGETS: Record<MissionQuestId, number> = {
   // The four gauges all run from the first second of the flight, so the run
   // is priced against the longest of them rather than against their sum.
   'absorb-samples': 3000,
-  // Four to seven towers, or a mixed diet of blocks, traffic and aircraft.
-  'wreck-city': 1800,
+  // Tripled from the first pass: a few towers went down almost by accident on
+  // the way to the samples, so the rung read as already cleared. At this size
+  // it is a dozen to twenty towers, or a sustained mixed diet of blocks,
+  // traffic and aircraft - a stretch of the run spent deliberately wrecking.
+  'wreck-city': 5400,
   // Replaced at stage start with whatever is left on the clock.
   'final-sweep': 0,
 }

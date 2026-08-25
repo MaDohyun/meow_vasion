@@ -23,7 +23,7 @@ function flyAndFeed(seconds: number, startSize = SIZE_START, seed = 4242, steer 
   stepCrowds(crowds, { position: drone.position, heading: 0 }, 0)
   let size = startSize
   let absorbed = 0
-  const input: DroneInput = { throttle: park ? 0 : 1, steer: 0, strafe: 0, lookPitch: 0, vertical: 0, special: false }
+  const input: DroneInput = { throttle: park ? 0 : 1, steer: 0, lookPitch: 0, vertical: 0, special: false }
   // A steering pilot points at the nearest target ahead, the way a player
   // reading the radar would. The city is populated in every direction now, so
   // greedily chasing the nearest body regardless of bearing degenerates into
@@ -90,7 +90,14 @@ function averageFeed(seconds: number, startSize = SIZE_START, steer = false, alt
   return total / seeds.length
 }
 
-describe('feeding is the core loop', () => {
+/**
+ * Each case here flies six seeded runs of a live city for 25 simulated
+ * seconds, which is seconds of real work, not milliseconds - two of them land
+ * within a whisker of vitest's 5s default and tip over it whenever the suite
+ * runs them alongside everything else. The work is the point of the test, so
+ * the limit is what gives.
+ */
+describe('feeding is the core loop', { timeout: 30_000 }, () => {
   it('starves a player who sits still', () => {
     // Hovering with the beam on used to be the strongest play in the game:
     // park zones were chosen without looking at how close they were, so a
@@ -100,11 +107,7 @@ describe('feeding is the core loop', () => {
     const moving = averageFeed(25)
     expect(parked).toBeLessThan(moving / 3)
     expect(parked).toBeLessThan(2)
-    // Twelve twenty-five-second flights, and the only one of these that runs
-    // two full sets. It sat a hair under the five-second default and went over
-    // the moment the lakeside props joined the beam list, which is a fact about
-    // how much city this simulates rather than anything the test asserts.
-  }, 20_000)
+  })
 
   it('feeds any heading in the populated city without punishing steering', () => {
     const blind = averageFeed(25)

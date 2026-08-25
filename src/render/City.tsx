@@ -6,6 +6,7 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { useGame } from '../GameContext'
 import { BUILDING, FX, GROUND } from '../constants/palette'
+import { tintRuin } from './ruinTint'
 import { radialGlowTexture } from './textures'
 import { CityLandmarks, applyLandmarkDaylight } from './CityLandmarks'
 import {
@@ -2580,7 +2581,7 @@ function RuinPool() {
       scale.set(ruin.size.x, ruin.size.y, ruin.size.z)
       matrix.compose(position, rotation, scale)
       mesh.setMatrixAt(slot, matrix)
-      mesh.setColorAt(slot, color.set(ruin.color).multiplyScalar(0.52))
+      mesh.setColorAt(slot, tintRuin(color, ruin.color))
       counts[tier] = slot + 1
     }
     refs.forEach((ref, tier) => {

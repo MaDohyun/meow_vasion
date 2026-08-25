@@ -8,6 +8,11 @@ const SCALE = 1
  * A wrong rotation sign still moves the blips, just the wrong way, so this
  * pins the one property that matters: whatever the heading, something ahead of
  * the craft draws above centre and something to its right draws to the right.
+ *
+ * "Right" here is the pilot's right out of the window, which is the chase
+ * camera's x axis, (-cos h, sin h) - not the vector `drone.ts` names
+ * `rightX`/`rightZ`, which is its negative. These cases used to assert the
+ * latter, so they passed while the dial was mirrored.
  */
 describe('radar projection', () => {
   it('puts what is ahead at the top, facing +z', () => {
@@ -17,8 +22,15 @@ describe('radar projection', () => {
   })
 
   it('puts what is to starboard on the right, facing +z', () => {
-    const { px, py } = projectToRadar(10, 0, 0, CENTER, SCALE)
+    // Facing +z the camera looks down +z, so its right is -x: starboard is -x.
+    const { px, py } = projectToRadar(-10, 0, 0, CENTER, SCALE)
     expect(px).toBeGreaterThan(CENTER)
+    expect(py).toBeCloseTo(CENTER, 6)
+  })
+
+  it('puts what is to port on the left, facing +z', () => {
+    const { px, py } = projectToRadar(10, 0, 0, CENTER, SCALE)
+    expect(px).toBeLessThan(CENTER)
     expect(py).toBeCloseTo(CENTER, 6)
   })
 
@@ -30,10 +42,30 @@ describe('radar projection', () => {
   })
 
   it('still puts starboard on the right after a quarter turn', () => {
-    // Right of a craft facing +x is -z.
-    const { px, py } = projectToRadar(0, -10, Math.PI / 2, CENTER, SCALE)
+    // Right of a craft facing +x is +z.
+    const { px, py } = projectToRadar(0, 10, Math.PI / 2, CENTER, SCALE)
     expect(px).toBeGreaterThan(CENTER)
     expect(py).toBeCloseTo(CENTER, 6)
+  })
+
+  /**
+   * The mirror bug this pins was invisible to a forward-only check: negating
+   * the x axis leaves every "ahead is up" case passing. So walk the headings
+   * and compare the dial's x against the chase camera's own right axis, which
+   * three builds as normalize(up x (eye - target)) = (-cos h, sin h).
+   */
+  it('agrees with the chase camera right axis for every heading', () => {
+    for (let step = 0; step < 24; step += 1) {
+      const heading = (step / 24) * Math.PI * 2
+      const rightX = -Math.cos(heading)
+      const rightZ = Math.sin(heading)
+      const starboard = projectToRadar(rightX * 12, rightZ * 12, heading, CENTER, SCALE)
+      expect(starboard.px, `heading ${heading.toFixed(2)}`).toBeCloseTo(CENTER + 12, 6)
+      expect(starboard.py, `heading ${heading.toFixed(2)}`).toBeCloseTo(CENTER, 6)
+      const port = projectToRadar(-rightX * 12, -rightZ * 12, heading, CENTER, SCALE)
+      expect(port.px, `heading ${heading.toFixed(2)}`).toBeCloseTo(CENTER - 12, 6)
+      expect(port.py, `heading ${heading.toFixed(2)}`).toBeCloseTo(CENTER, 6)
+    }
   })
 
   it('keeps forward above centre for every heading', () => {
@@ -80,7 +112,9 @@ describe('radar rim clamp', () => {
       const bearing = (step / 16) * Math.PI * 2
       const dx = Math.sin(bearing) * 177
       const dz = Math.cos(bearing) * 177
-      const heading = bearing - 0.7
+      // Starboard is (-cos h, sin h), so a contact at world bearing b sits to
+      // starboard when sin(h - b) > 0 - that is, at h = b + 0.7.
+      const heading = bearing + 0.7
       const projected = projectToRadar(dx, dz, heading, 74, scale)
       const rim = clampToRadarRim(projected.px, projected.py, 74, 74 - 11)
       expect(rim.clamped, `bearing ${bearing.toFixed(2)}`).toBe(true)

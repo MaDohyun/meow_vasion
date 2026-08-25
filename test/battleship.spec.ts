@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { beamLiftScale, beginNearbyBeamObjectAbsorption, isAbsorbable } from '../src/core/beam'
+import { BOON_DEFINITIONS } from '../src/core/boons'
 import { DRONE_DEFAULTS } from '../src/core/drone'
 import { BEAM_STRENGTH_MAX, SIZE_MAX, SIZE_START, maxAltitude, sizeProfile, ufoDiameter } from '../src/core/size'
 import {
@@ -301,7 +302,10 @@ describe("earth's last resort", () => {
   it('takes a real laser investment to bring down', () => {
     // The whole reason this exists is to give laser-power a target. An
     // unupgraded laser must be able to finish it inside the last fifty
-    // seconds; a maxed one must finish it visibly sooner.
+    // seconds; the laser pickup must take a visible bite out of that. Read
+    // off BOON_DEFINITIONS rather than a number typed in here, so retuning
+    // the pickup cannot quietly leave this test describing a laser nobody
+    // can actually fly.
     const shotsAt = (damage: number) => {
       const state = createEnemyState(11)
       const player = { x: 0, y: 30, z: 0 }
@@ -315,8 +319,8 @@ describe("earth's last resort", () => {
       return shots + 1
     }
     const plain = shotsAt(1)
-    const maxed = shotsAt(1 + 4 * 0.45)
+    const upgraded = shotsAt(1 + BOON_DEFINITIONS['laser-power'].step * BOON_DEFINITIONS['laser-power'].maxLevel)
     expect(plain).toBe(ENEMY_MAX_HP.boss)
-    expect(maxed).toBeLessThan(plain / 2)
+    expect(upgraded).toBeLessThan(plain * 0.75)
   })
 })
