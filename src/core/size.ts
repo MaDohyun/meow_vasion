@@ -141,7 +141,7 @@ export type SizeGainKind = keyof typeof SIZE_GAIN
  * visibly gets harder each time the saucer outgrows another slice of the city
  * rather than at some point on a curve nobody can see.
  */
-export const GROWTH_STEP = 0.55
+export const GROWTH_STEP = 0.5
 /** A step every twenty metres of hull - 20m, 40m, 60m and on up. */
 export const GROWTH_STEP_DIAMETER = 20
 /**
@@ -169,14 +169,20 @@ export function growthStep(size: number) {
  * about 60m across when the five minutes run out.** Taking a beginner's intake
  * at roughly 0.6 bodies a second - a little over half what the steered bot in
  * test/feeding.spec.ts manages, since a person is also dodging, aiming and
- * reading the mission - GROWTH_STEP at 0.55 puts them at 20m at 2:17, 40m at
- * 3:38 and 60m at 5:05.
+ * reading the mission - GROWTH_STEP at 0.5 puts them at 20m at 2:17, 40m at
+ * 3:45 and 60m at 5:27, so five minutes of that player is a hull around 54m.
+ * A player who also swallows the odd car and bin is nearer 73m.
+ *
+ * The step went 0.55 -> 0.5 on the same complaint that produced the ladder:
+ * the middle of the run was still arriving too quickly to enjoy the city from
+ * inside it. Halving is also the shape the ladder wants - each twenty metres
+ * of hull costs what the whole craft cost to build so far.
  *
  * The bands are deliberately uneven in metres and even in effort. A step costs
- * roughly the same number of meals as the one before it - 82, 49, 52, 67 - so
- * each new twenty metres is a comparable stretch of play rather than a
- * comparable amount of eating, which is what stops the hull running away from
- * the player once the meals themselves get bigger.
+ * a little more than the one before it - 82, 54, 63, 89 - so each new twenty
+ * metres is a comparable stretch of play rather than a comparable amount of
+ * eating, which is what stops the hull running away from the player once the
+ * meals themselves get bigger.
  */
 export function growthFalloff(size: number) {
   return Math.pow(GROWTH_STEP, growthStep(size))

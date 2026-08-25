@@ -174,19 +174,23 @@ describe('craft size as growth, not as health', () => {
       if (growthStep(size) > before) secondsAt.push(meal / BEGINNER_BODIES_PER_SECOND)
       if (meal / BEGINNER_BODIES_PER_SECOND >= RUN_SECONDS) break
     }
-    // Five minutes of a beginner's feeding is a saucer around 60m across -
-    // enormous next to the 2.5m it started at, and still under the 81m where
-    // the stat ladders run out.
-    expect(ufoDiameter(size)).toBeGreaterThan(50)
-    expect(ufoDiameter(size)).toBeLessThan(70)
+    // Five minutes of a beginner's feeding is a saucer in the fifties - and
+    // nearer 70m for one who also swallows the odd car - which is enormous
+    // next to the 2.5m it started at and still under the 81m where the stat
+    // ladders run out.
+    expect(ufoDiameter(size)).toBeGreaterThan(45)
+    expect(ufoDiameter(size)).toBeLessThan(65)
     expect(size).toBeLessThan(SIZE_MATURE)
     // The steps land spread through the run rather than all in the first
-    // minute: 20m a bit past two minutes, 40m before four, 60m at the end.
+    // minute: 20m a bit past two minutes, 40m before four, and the third one
+    // out past the end of the run - a beginner crosses two of these, which is
+    // the point. A player who crosses three inside five minutes was fed a lot
+    // better than this one.
+    expect(secondsAt).toHaveLength(2)
     expect(secondsAt[0]).toBeGreaterThan(100)
     expect(secondsAt[0]).toBeLessThan(160)
     expect(secondsAt[1]).toBeGreaterThan(190)
-    expect(secondsAt[1]).toBeLessThan(250)
-    expect(secondsAt[2]).toBeGreaterThan(270)
+    expect(secondsAt[1]).toBeLessThan(260)
   })
 
   it('puts the ceiling past the end of a run, not inside it', () => {
@@ -210,8 +214,8 @@ describe('craft size as growth, not as health', () => {
     // hull bigger than the skyline and can still see room above it.
     let fed = SIZE_START
     for (let meal = 0; meal < 332; meal += 1) fed = growSize(fed, 'pedestrian')
-    expect(fed).toBeLessThan(SIZE_MAX * 0.8)
-    expect(ufoDiameter(fed)).toBeGreaterThan(90)
+    expect(fed).toBeLessThan(SIZE_MAX * 0.7)
+    expect(ufoDiameter(fed)).toBeGreaterThan(75)
     // The stat ladders do not care what happens up there: they are spent by
     // SIZE_MATURE and hold their last rung for ever.
     const mature = sizeProfile(SIZE_MATURE)
