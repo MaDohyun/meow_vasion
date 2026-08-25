@@ -2052,11 +2052,11 @@ export function GameProvider({ children }: { children: ReactNode }) {
       : Math.min(1, (game.ballast - warningAt) / Math.max(1, capacity - warningAt))
     const stepped = stepDrone(game.drone, flightInput, d, game.ballast * BALLAST_DRAG + (game.daze > 0 ? DAZE_DRAG : 0), {
       ...UFO_UPGRADES,
-      // stepDrone's own speed coefficient is 0.12 per level; dividing the
-      // pickup bonus by it feeds the exact 8%-per-level the boon promises.
+      // stepDrone's own coefficients are 0.12 on speed and 0.15 on yaw;
+      // dividing each pickup's bonus by its own lever feeds through exactly
+      // what core/boons promises - +15% on both - rather than whatever those
+      // internal coefficients happen to be.
       speed: boonBonus(game.boons, 'speed') / 0.12,
-      // Same trick on the yaw lever, whose own coefficient is 0.15 per level,
-      // so a maxed turn pickup is exactly the 20% the boon promises.
       stability: boonBonus(game.boons, 'turn-rate') / 0.15,
     })
     const nextWorld = updateActiveWorld(game.world, stepped.position, false, game.destroyedBuildings)
