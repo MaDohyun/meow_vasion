@@ -222,7 +222,7 @@ export const LIFT_CAPACITY_MAX = 40
 export const LIFT_GROWTH_EXPONENT = 0.75
 
 /**
- * Where the hull starts carrying the laser, and by how much.
+ * Where the craft starts carrying the laser, and by how much.
  *
  * The laser was the one thing growth did nothing for. Every other verb scales
  * with the craft - the cone widens, the reach lengthens, the haul quickens -
@@ -230,27 +230,33 @@ export const LIFT_GROWTH_EXPONENT = 0.75
  * so a player who never routed through a mystery circle spent the back half
  * of the run plinking at fighters with a starter gun.
  *
- * The threshold is the run's middle rather than a taste: fighters scramble at
- * 125s and the dreadnought launches at 160s (see ENEMY_WAVE_STAGES), which is
- * when a laser stops being for buildings and starts being for things shooting
- * back. 5 is just under DRILL_CRAFT_SIZE, the craft the battleship drill hands
- * over at that 160s mark - the codebase's own answer to what a mid-run hull
- * looks like. A run that has been eating arrives here around the two-minute
- * mark; one that has not, later, which is the right way round.
+ * Written as the saucer's width across, because that is the thing being
+ * described: a craft wide enough to shadow a street is what has earned a
+ * heavier gun. Forty metres is a little over halfway up the growth range - the
+ * opening saucer is 2.5m across and the ceiling is 81m - so it lands in the
+ * stretch of the run where the sky stops being empty. Deriving the size from
+ * it rather than writing both keeps the two from drifting apart if the base
+ * diameter ever moves.
  *
- * A step rather than a curve, because the player has to be able to notice it.
- * A ramp spread over the growth range would be a laser that is always slightly
- * different and never visibly better - this is a moment, announced (see
- * msgLaserGrown), after which fighters die in three shots instead of four.
+ * A step rather than a curve. A ramp spread over the growth range would be a
+ * laser that is always slightly different and never actually better; this is
+ * a line the craft crosses once, after which fighters die in three shots
+ * instead of four.
+ *
+ * Crossing it is not announced, for the same reason beam strength is not: what
+ * growth buys is meant to be felt in the shooting, not read off a banner. The
+ * pickups get callouts because they are a thing you flew to and took; this is
+ * just the craft being bigger.
  */
-export const LASER_POWER_SIZE = 5
+export const LASER_POWER_DIAMETER = 40
+export const LASER_POWER_SIZE = LASER_POWER_DIAMETER / UFO_BASE_DIAMETER
 export const LASER_POWER_GROWN = 1.5
 
 /** 1 below the threshold, LASER_POWER_GROWN at or above it. Multiplies with
  *  the mystery-circle laser pickup rather than replacing it, the same way the
  *  beam stats compose: a grown craft carrying the item hits for 2.25. */
 export function laserPowerForSize(size: number) {
-  return clampSize(size) >= LASER_POWER_SIZE ? LASER_POWER_GROWN : 1
+  return ufoDiameter(size) >= LASER_POWER_DIAMETER ? LASER_POWER_GROWN : 1
 }
 
 /** Beam cone multiplier at the ceiling, absorbing the old radius cards'

@@ -12,6 +12,7 @@ import {
   CAMERA_REST_DISTANCE,
   GROWTH_FALLOFF_MIN,
   HEALTH_BONUS_HEARTS_MAX,
+  LASER_POWER_DIAMETER,
   LASER_POWER_GROWN,
   LASER_POWER_SIZE,
   LIFT_CAPACITY_MIN,
@@ -253,18 +254,23 @@ describe('craft size as growth, not as health', () => {
 })
 
 describe('the hull carrying the laser', () => {
-  it('switches on at the run\'s middle, not at the start or the cap', () => {
+  it('is a width, and switches on at forty metres across', () => {
+    // The threshold is stated as the saucer's width because that is what it
+    // describes, so the guard is a width too - a size number that happened to
+    // match today would say nothing if the base diameter moved.
+    expect(ufoDiameter(LASER_POWER_SIZE)).toBeCloseTo(LASER_POWER_DIAMETER)
     expect(laserPowerForSize(SIZE_START)).toBe(1)
+    expect(ufoDiameter(SIZE_START)).toBeLessThan(LASER_POWER_DIAMETER)
     expect(laserPowerForSize(LASER_POWER_SIZE - 0.01)).toBe(1)
     expect(laserPowerForSize(LASER_POWER_SIZE)).toBe(LASER_POWER_GROWN)
     expect(laserPowerForSize(SIZE_MAX)).toBe(LASER_POWER_GROWN)
-    // Squarely inside the run rather than at either end: past it a player is
-    // plinking at fighters with a starter gun, before it the threshold would
-    // be a freebie.
-    const progress = (LASER_POWER_SIZE - SIZE_START) / (SIZE_MAX - SIZE_START)
-    expect(progress).toBeGreaterThan(0.2)
-    expect(progress).toBeLessThan(0.5)
     expect(sizeProfile(LASER_POWER_SIZE).laserPower).toBe(LASER_POWER_GROWN)
+    // Inside the run rather than at either end: before it a player is plinking
+    // at fighters with a starter gun, and at the cap it would arrive too late
+    // to have been worth growing for.
+    const progress = (LASER_POWER_SIZE - SIZE_START) / (SIZE_MAX - SIZE_START)
+    expect(progress).toBeGreaterThan(0.3)
+    expect(progress).toBeLessThan(0.65)
   })
 
   it('spends shots the way the wave ladder expects', () => {

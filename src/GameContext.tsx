@@ -1457,41 +1457,21 @@ function detonateLandmark(game: GameRuntime, landmark: DestructibleLandmark) {
   return true
 }
 
-/**
- * Says so the one time the hull crosses into the stronger laser.
- *
- * Growth is otherwise silent and continuous, so a step change inside it would
- * land as "fighters feel easier now, maybe?" rather than as something the
- * player earned. Compared on the profile either side of the meal rather than
- * on a stored flag: the profile is already the single source for what a size
- * is worth, and a flag would be a second one to keep in step.
- */
-function announceGrowth(game: GameRuntime, wasLaserPower: number) {
-  if (game.sizeProfile.laserPower > wasLaserPower) {
-    setMessage(game, 'msgLaserGrown', 2.4)
-    tone('upgrade')
-  }
-}
-
 function grow(game: GameRuntime, kind: SizeGainKind) {
   const before = game.size
-  const wasLaserPower = game.sizeProfile.laserPower
   game.size = growSize(game.size, kind)
   game.sizeProfile = sizeProfile(game.size)
   game.sizePulse = 1
   raiseHealthMax(game.health, MAX_HEALTH + bonusHeartsForSize(game.size))
-  announceGrowth(game, wasLaserPower)
   return game.size - before
 }
 
 function growBy(game: GameRuntime, amount: number) {
   const before = game.size
-  const wasLaserPower = game.sizeProfile.laserPower
   game.size = growSizeBy(game.size, amount)
   game.sizeProfile = sizeProfile(game.size)
   game.sizePulse = 1
   raiseHealthMax(game.health, MAX_HEALTH + bonusHeartsForSize(game.size))
-  announceGrowth(game, wasLaserPower)
   return game.size - before
 }
 

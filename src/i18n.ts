@@ -233,9 +233,6 @@ export type Strings = {
    * anything. The callout names the stat, which is the whole of what a player
    * needs off a two-second line.
    */
-  /** The one growth step that announces itself: the hull crossing into the
-   *  stronger laser (see core/size). */
-  msgLaserGrown: string
   msgBoonLaser: string
   msgBoonSpeed: string
   msgBoonTurnRate: string
@@ -478,7 +475,6 @@ export const STRINGS: Record<Language, Strings> = {
     msgLakeDrained: '호수 고갈 · 기체 성장',
     msgTurbo: '터보 가동',
     msgTurboOverload: '터보 과부하 · 잠시 사용 불가',
-    msgLaserGrown: '기체 성장 · 레이저 위력 상승',
     msgBoonLaser: '레이저 위력 강화',
     msgBoonSpeed: '속도 강화',
     msgBoonTurnRate: '회전력 강화',
@@ -674,7 +670,6 @@ export const STRINGS: Record<Language, Strings> = {
     msgLakeDrained: '湖を干上がらせた · 機体が成長',
     msgTurbo: 'ターボ作動',
     msgTurboOverload: 'ターボ過負荷 · 一時使用不可',
-    msgLaserGrown: '機体成長 · レーザー威力 上昇',
     msgBoonLaser: 'レーザー威力 強化',
     msgBoonSpeed: '速度 強化',
     msgBoonTurnRate: '旋回力 強化',
@@ -870,7 +865,6 @@ export const STRINGS: Record<Language, Strings> = {
     msgLakeDrained: 'LAKE DRAINED · CRAFT GREW',
     msgTurbo: 'TURBO ENGAGED',
     msgTurboOverload: 'TURBO OVERLOAD · OFFLINE BRIEFLY',
-    msgLaserGrown: 'CRAFT GROWN · LASER POWER UP',
     msgBoonLaser: 'LASER POWER UP',
     msgBoonSpeed: 'SPEED UP',
     msgBoonTurnRate: 'TURN RATE UP',
