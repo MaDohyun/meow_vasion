@@ -24,8 +24,8 @@ import {
 import { boonHoverY } from '../core/boons'
 import {
   busStopsAround,
-  isWorldPropDisplaced,
   isWorldPropHidden,
+  isWorldPropLifted,
   parkBenchesAround,
   parkTreesAround,
   worldPropVisibilityKey,
@@ -769,8 +769,22 @@ const benchGeometry = (() => {
   return mergeGeometries([seat, back, left, right], false)!
 })()
 
+/**
+ * The one question every lifted pool asks, bound to this run's demolition set.
+ *
+ * A prop is drawn by exactly one pool at a time: the static one where the world
+ * put it, this one once the beam has moved it or the laser has struck it off.
+ * Both halves read the same rule from core/worldProps so neither can drift.
+ */
+function useLiftedProp() {
+  const { runtime } = useGame()
+  return (object: Parameters<typeof isWorldPropLifted>[0]) =>
+    isWorldPropLifted(object, runtime.current.destroyedWorldProps)
+}
+
 function LiftedParkBenchPool() {
   const { runtime } = useGame()
+  const lifted = useLiftedProp()
   const ref = useRef<THREE.InstancedMesh>(null)
   const matrix = useMemo(() => new THREE.Matrix4(), [])
   const position = useMemo(() => new THREE.Vector3(), [])
@@ -783,7 +797,7 @@ function LiftedParkBenchPool() {
     if (!mesh) return
     let count = 0
     for (const object of runtime.current.beamObjects) {
-      if (!isWorldPropDisplaced(object) || object.kind !== 'park-bench') continue
+      if (!lifted(object) || object.kind !== 'park-bench') continue
       if (count >= LANDMARK_CELL_COUNT) break
       const swallow = object.absorbing ? Math.max(0.05, object.absorbTimer / BEAM_ABSORB_TIME) : 1
       position.set(object.position.x, object.position.y, object.position.z)
@@ -1182,6 +1196,7 @@ const busStopGeometry = mergedBoxes([
 
 function LiftedBusStopPool() {
   const { runtime } = useGame()
+  const lifted = useLiftedProp()
   const ref = useRef<THREE.InstancedMesh>(null)
   const matrix = useMemo(() => new THREE.Matrix4(), [])
   const position = useMemo(() => new THREE.Vector3(), [])
@@ -1194,7 +1209,7 @@ function LiftedBusStopPool() {
     if (!mesh) return
     let count = 0
     for (const object of runtime.current.beamObjects) {
-      if (!isWorldPropDisplaced(object) || object.kind !== 'bus-stop') continue
+      if (!lifted(object) || object.kind !== 'bus-stop') continue
       if (count >= WORLD_MAX_BUILDINGS) break
       const swallow = object.absorbing ? Math.max(0.05, object.absorbTimer / BEAM_ABSORB_TIME) : 1
       position.set(object.position.x, object.position.y, object.position.z)
@@ -1221,6 +1236,7 @@ function LiftedBusStopPool() {
  */
 function LiftedSubwayPool() {
   const { runtime } = useGame()
+  const lifted = useLiftedProp()
   const shells = useRef<THREE.InstancedMesh>(null)
   const mouths = useRef<THREE.InstancedMesh>(null)
   const signs = useRef<THREE.InstancedMesh>(null)
@@ -1236,7 +1252,7 @@ function LiftedSubwayPool() {
     if (!shells.current || !mouths.current || !signs.current) return
     let count = 0
     for (const object of runtime.current.beamObjects) {
-      if (!isWorldPropDisplaced(object) || object.kind !== 'subway') continue
+      if (!lifted(object) || object.kind !== 'subway') continue
       if (count >= LANDMARK_CELL_COUNT) break
       const swallow = object.absorbing ? Math.max(0.05, object.absorbTimer / BEAM_ABSORB_TIME) : 1
       position.set(object.position.x, object.position.y, object.position.z)
@@ -1373,6 +1389,7 @@ const communicationsWhiteMaterial = withLandmarkGlow(
 
 function LiftedPowerPylonPool() {
   const { runtime } = useGame()
+  const lifted = useLiftedProp()
   const ref = useRef<THREE.InstancedMesh>(null)
   const matrix = useMemo(() => new THREE.Matrix4(), [])
   const position = useMemo(() => new THREE.Vector3(), [])
@@ -1385,7 +1402,7 @@ function LiftedPowerPylonPool() {
     if (!mesh) return
     let count = 0
     for (const object of runtime.current.beamObjects) {
-      if (!object.active || object.kind !== 'power-pylon') continue
+      if (!lifted(object) || object.kind !== 'power-pylon') continue
       if (count >= LANDMARK_CELL_COUNT) break
       const swallow = object.absorbing ? Math.max(0.05, object.absorbTimer / BEAM_ABSORB_TIME) : 1
       position.set(object.position.x, object.position.y, object.position.z)
@@ -1408,6 +1425,7 @@ function LiftedPowerPylonPool() {
 
 function LiftedCommunicationsPool({ paint }: { paint: 'red' | 'white' }) {
   const { runtime } = useGame()
+  const lifted = useLiftedProp()
   const ref = useRef<THREE.InstancedMesh>(null)
   const matrix = useMemo(() => new THREE.Matrix4(), [])
   const position = useMemo(() => new THREE.Vector3(), [])
@@ -1419,7 +1437,7 @@ function LiftedCommunicationsPool({ paint }: { paint: 'red' | 'white' }) {
     if (!mesh) return
     let count = 0
     for (const object of runtime.current.beamObjects) {
-      if (!object.active || object.kind !== 'communications') continue
+      if (!lifted(object) || object.kind !== 'communications') continue
       if (count >= LANDMARK_CELL_COUNT) break
       const swallow = object.absorbing ? Math.max(0.05, object.absorbTimer / BEAM_ABSORB_TIME) : 1
       position.set(object.position.x, object.position.y, object.position.z)
@@ -1434,6 +1452,58 @@ function LiftedCommunicationsPool({ paint }: { paint: 'red' | 'white' }) {
     mesh.instanceMatrix.needsUpdate = true
   })
   return <instancedMesh ref={ref} args={[paint === 'red' ? communicationsRedGeometry : communicationsWhiteGeometry, paint === 'red' ? communicationsRedMaterial : communicationsWhiteMaterial, LANDMARK_CELL_COUNT]} frustumCulled={false} renderOrder={2} onUpdate={(mesh) => { mesh.count = 0 }} />
+}
+
+/**
+ * The forecourt the beam has hold of.
+ *
+ * Two meshes for one object, because the static pool draws it as two: the
+ * merged shop-canopy-pumps body and the red trim slab riding 5.35 above it.
+ * The band composes off the body's own matrix, so a station tumbling under a
+ * craft keeps its trim on rather than shedding it at the kerb.
+ */
+function LiftedGasStationPool() {
+  const { runtime } = useGame()
+  const lifted = useLiftedProp()
+  const body = useRef<THREE.InstancedMesh>(null)
+  const band = useRef<THREE.InstancedMesh>(null)
+  const matrix = useMemo(() => new THREE.Matrix4(), [])
+  const bandMatrix = useMemo(() => new THREE.Matrix4(), [])
+  const position = useMemo(() => new THREE.Vector3(), [])
+  const scale = useMemo(() => new THREE.Vector3(), [])
+  const rotation = useMemo(() => new THREE.Quaternion(), [])
+  const identity = useMemo(() => new THREE.Quaternion(), [])
+  const euler = useMemo(() => new THREE.Euler(), [])
+  useFrame(() => {
+    if (!body.current || !band.current) return
+    let count = 0
+    for (const object of runtime.current.beamObjects) {
+      if (!lifted(object) || object.kind !== 'gas-station') continue
+      if (count >= LANDMARK_CELL_COUNT) break
+      const swallow = object.absorbing ? Math.max(0.05, object.absorbTimer / BEAM_ABSORB_TIME) : 1
+      position.set(object.position.x, object.position.y, object.position.z)
+      euler.set(object.rotation.x, object.rotation.y, object.rotation.z)
+      rotation.setFromEuler(euler)
+      scale.set(object.scale?.x ?? 1, object.scale?.y ?? 1, object.scale?.z ?? 1).multiplyScalar(swallow)
+      matrix.compose(position, rotation, scale)
+      body.current.setMatrixAt(count, matrix)
+      position.set(0, 5.35, 0)
+      scale.setScalar(1)
+      bandMatrix.compose(position, identity, scale).premultiply(matrix)
+      band.current.setMatrixAt(count, bandMatrix)
+      count += 1
+    }
+    for (const mesh of [body.current, band.current]) {
+      mesh.count = count
+      mesh.instanceMatrix.needsUpdate = true
+    }
+  })
+  return (
+    <group>
+      <instancedMesh ref={body} args={[gasStationGeometry, gasStationMaterial, LANDMARK_CELL_COUNT]} frustumCulled={false} renderOrder={2} onUpdate={(mesh) => { mesh.count = 0 }} />
+      <instancedMesh ref={band} args={[gasStationBandGeometry, gasStationCanopyMaterial, LANDMARK_CELL_COUNT]} frustumCulled={false} renderOrder={2} onUpdate={(mesh) => { mesh.count = 0 }} />
+    </group>
+  )
 }
 
 function TransitUtilityPool() {
@@ -1539,6 +1609,9 @@ function TransitUtilityPool() {
         subwaySigns.current.setMatrixAt(subwayCount, partMatrix)
         subwayCount += 1
       } else if (landmark === 'gas-station') {
+        // A forecourt is a beam prop now, so it stands down the moment the
+        // beam owns it - or has eaten it - exactly like the mast beside it.
+        if (isWorldPropHidden(landmarkId(landmark, cell.cellX, cell.cellZ), runtime.current.destroyedWorldProps, runtime.current.beamObjects)) continue
         position.set(centerX, 0, centerZ)
         scale.setScalar(1)
         matrix.compose(position, rotation, scale)
@@ -1630,6 +1703,7 @@ function TransitUtilityPool() {
       <LiftedCommunicationsPool paint="white" />
       <LiftedBusStopPool />
       <LiftedSubwayPool />
+      <LiftedGasStationPool />
     </group>
   )
 }

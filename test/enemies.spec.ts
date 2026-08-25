@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest'
 import {
   DRONE_MINE_HIT_RADIUS,
   ENEMY_CAPS,
+  ENEMY_DIAMETER,
   ENEMY_MAX_HP,
   ENEMY_WAVE_STAGES,
+  WAVE_RAMP_SECONDS,
   activeEnemyCount,
   createEnemyState,
   helicopterBandForSlot,
@@ -12,9 +14,11 @@ import {
   stepEnemies,
   syncEnemyTiers,
   waveStageForTime,
+  waveTargetForKind,
   type EnemyKind,
 } from '../src/core/enemies'
-import { isAbsorbable } from '../src/core/beam'
+import { beamLiftScale, isAbsorbable } from '../src/core/beam'
+import { BEAM_STRENGTH_MAX, SIZE_MAX, SIZE_START, sizeProfile } from '../src/core/size'
 
 function fillWave(time: number) {
   const state = createEnemyState()
@@ -31,18 +35,50 @@ const FIGHTER_WAVE_AT = ENEMY_WAVE_STAGES[3]!.at
 const LAST_WAVE_AT = ENEMY_WAVE_STAGES[ENEMY_WAVE_STAGES.length - 1]!.at
 
 describe('time-based enemy waves', () => {
-  it('leaves only the drone mine grabbable by tractor physics', () => {
+  it('puts the whole sky on the beam, and banks all of it but the mine', () => {
     const state = createEnemyState()
-    // The mine can be caught and dragged; a caught bomb is still a bomb, so
-    // the swallow path may never bank it as food.
-    const drone = state.slots.find((candidate) => candidate.kind === 'drone')!
-    expect(drone.beamImmune).toBe(false)
+    // Nothing is immune any more: what the beam can shift is the weight
+    // ladder's answer and what it can swallow is the hull's, exactly as for a
+    // car or a bus shelter.
+    for (const enemy of state.slots) expect(enemy.beamImmune).toBe(false)
+    // The mine is still never banked as food. It can be caught and dragged;
+    // a caught bomb is still a bomb, so the swallow path may never defuse it.
     expect(isAbsorbable('drone', 1.6, Number.POSITIVE_INFINITY)).toBe(false)
-    for (const kind of ['helicopter', 'fighter'] as const) {
-      const enemy = state.slots.find((candidate) => candidate.kind === kind)!
-      expect(enemy.beamImmune).toBe(true)
+    for (const kind of ['helicopter', 'fighter', 'boss'] as const) {
+      expect(isAbsorbable(kind, ENEMY_DIAMETER[kind], Number.POSITIVE_INFINITY)).toBe(true)
     }
-    expect(ENEMY_WAVE_STAGES.at(-1)!.at).toBe(180)
+    expect(ENEMY_WAVE_STAGES.at(-1)!.at).toBe(160)
+  })
+
+  it('prices the sky on the same weight ladder as the city', () => {
+    // The three numbers a player actually feels, and the size each one asks
+    // for. A helicopter is the first machine a growing craft can pluck out of
+    // the air, a fighter is a supertall block's weight, and the dreadnought is
+    // the top of the ladder - only a craft within a whisker of the size cap
+    // can shift it.
+    const state = createEnemyState()
+    const weightOf = (kind: EnemyKind) => state.slots.find((enemy) => enemy.kind === kind)!.mass
+    expect(weightOf('helicopter')).toBe(6)
+    expect(weightOf('fighter')).toBe(10)
+    expect(weightOf('boss')).toBe(BEAM_STRENGTH_MAX)
+
+    const liftableAt = (weight: number) => {
+      for (let size = SIZE_START; size <= SIZE_MAX; size += 0.01) {
+        if (beamLiftScale(weight, sizeProfile(size).beamStrength) > 0) return size
+      }
+      return Number.POSITIVE_INFINITY
+    }
+    expect(liftableAt(weightOf('helicopter'))).toBeLessThan(liftableAt(weightOf('fighter')))
+    expect(liftableAt(weightOf('fighter'))).toBeLessThan(liftableAt(weightOf('boss')))
+    // The opening saucer can move none of them, and a craft at the ceiling
+    // can move all three.
+    for (const kind of ['helicopter', 'fighter', 'boss'] as const) {
+      expect(beamLiftScale(weightOf(kind), sizeProfile(SIZE_START).beamStrength), kind).toBe(0)
+      expect(beamLiftScale(weightOf(kind), sizeProfile(SIZE_MAX).beamStrength), kind).toBeGreaterThan(0)
+    }
+    // The ship is the last thing on the menu, not something a run passes on
+    // the way: it opens inside the top few percent of the size range.
+    expect(liftableAt(weightOf('boss'))).toBeGreaterThan(SIZE_START + (SIZE_MAX - SIZE_START) * 0.95)
   })
 
   it('detonates a beam-held mine that is drawn onto the hull', () => {
@@ -96,8 +132,39 @@ describe('time-based enemy waves', () => {
     expect(activeEnemyCount(state, 'drone')).toBe(2)
   })
 
+  it('lets a wave in over time rather than all at once', () => {
+    // The complaint this answers was about the moment of arrival, not the
+    // population: eight helicopters materialising inside three seconds reads
+    // as harder than the same eight already being there.
+    for (const [stage, kind] of [[2, 'helicopter'], [3, 'fighter']] as const) {
+      const at = ENEMY_WAVE_STAGES[stage]!.at
+      const full = (ENEMY_WAVE_STAGES[stage]!.targets as Partial<Record<EnemyKind, number>>)[kind]!
+      const held = (ENEMY_WAVE_STAGES[stage - 1]!.targets as Partial<Record<EnemyKind, number>>)[kind] ?? 0
+      // Something arrives on the boundary - the bulletin has to be announcing
+      // a sky the player can see - but not the whole squadron.
+      expect(waveTargetForKind(kind, at), kind).toBeGreaterThan(held)
+      expect(waveTargetForKind(kind, at), kind).toBeLessThan(full)
+      // And it is filling the whole way, not stepping again at the end. Only
+      // non-decreasing: a three-unit wave is two whole fighters for the first
+      // half of its ramp, because a wave is people rather than a fraction.
+      expect(waveTargetForKind(kind, at + WAVE_RAMP_SECONDS * 0.5), kind)
+        .toBeGreaterThanOrEqual(waveTargetForKind(kind, at))
+      expect(waveTargetForKind(kind, at + WAVE_RAMP_SECONDS), kind).toBe(full)
+    }
+    // The ship is the exception, and by arithmetic rather than by a branch:
+    // half of one ship rounds back up to one on the second it launches.
+    expect(waveTargetForKind('boss', LAST_WAVE_AT)).toBe(1)
+    // No wave may still be arriving when the next one starts.
+    for (let stage = 1; stage < ENEMY_WAVE_STAGES.length; stage += 1) {
+      expect(ENEMY_WAVE_STAGES[stage]!.at - ENEMY_WAVE_STAGES[stage - 1]!.at)
+        .toBeGreaterThanOrEqual(WAVE_RAMP_SECONDS)
+    }
+  })
+
   it('escalates to a bounded mixed army and a single boss', () => {
-    const { state } = fillWave(LAST_WAVE_AT)
+    // Sampled once the last wave has finished arriving: the table is the floor
+    // the ramp climbs to, not the number the boundary second holds.
+    const { state } = fillWave(LAST_WAVE_AT + WAVE_RAMP_SECONDS)
     // The wave table is the floor rather than the whole population now: the
     // dreadnought launches escorts of its own on top of what the spawner
     // fills, and the caps are the ceiling that keeps that bounded.

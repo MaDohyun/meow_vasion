@@ -25,8 +25,13 @@ describe('ground explosives', () => {
     expect(isAbsorbable('car', 2.9, 3)).toBe(true)
     expect(isAbsorbable('pedestrian', 0.78, 1.8)).toBe(true)
     expect(isAbsorbable('cat', 0.55, 1.8)).toBe(true)
-    // The battleship is refused by kind, however small a figure is passed for it.
-    expect(isAbsorbable('boss', 1, 20)).toBe(false)
+    // The mine is the one kind refused outright: a caught bomb goes off rather
+    // than being banked as food, so no diameter makes it edible.
+    expect(isAbsorbable('drone', 1.6, 20)).toBe(false)
+    // Everything else, the dreadnought included, answers on width alone. Its
+    // weight is what actually keeps it off the menu until the size cap.
+    expect(isAbsorbable('boss', 13.6, 8)).toBe(false)
+    expect(isAbsorbable('boss', 13.6, 20)).toBe(true)
   })
 
   it('stays out of the opening minute and then builds up', () => {

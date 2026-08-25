@@ -65,26 +65,36 @@ function Eyes({ mood }: { mood: Mood }) {
   )
 }
 
-/** The dashed move arrows and their crosshair, panel one's centrepiece. */
+/**
+ * Panel one: the saucer flying itself towards the reticle.
+ *
+ * It used to be four arrows around a crosshair, one per WASD key. There are no
+ * keys to draw now - the craft is always going, and the only thing the player
+ * does is put the reticle somewhere. So the picture is a trail already flown,
+ * a ship, and the mark it is heading for.
+ */
 function MoveArt() {
-  const arrow = (points: string, head: string) => (
-    <>
-      <polyline points={points} fill="none" stroke="#e9e7d6" strokeWidth="3" strokeDasharray="7 6" strokeLinecap="round" />
-      <polygon points={head} fill="#e9e7d6" />
-    </>
-  )
   return (
     <svg className="howto-art" viewBox="0 0 320 170" role="img" aria-hidden="true">
-      <g transform="translate(64 52) scale(.46)"><Saucer /></g>
-      <g transform="translate(256 52) scale(.46)"><Saucer /></g>
-      <g transform="translate(64 128) scale(.46)"><Saucer /></g>
-      <g transform="translate(256 128) scale(.46)"><Saucer /></g>
-      {arrow('160,62 160,30', '160,18 152,32 168,32')}
-      {arrow('160,102 160,134', '160,146 152,132 168,132')}
-      {arrow('138,82 108,82', '96,82 110,74 110,90')}
-      {arrow('182,82 212,82', '224,82 210,74 210,90')}
-      <circle cx="160" cy="82" r="15" fill="none" stroke="#e9e7d6" strokeWidth="3" />
-      <path d="M160 62 L160 74 M160 90 L160 102 M138 82 L150 82 M170 82 L182 82" stroke="#e9e7d6" strokeWidth="3" strokeLinecap="round" />
+      {/* Behind it: the way it came, which nobody had to hold a key for. */}
+      <path
+        d="M18 142 C72 142 96 122 116 104"
+        fill="none"
+        stroke="#e9e7d6"
+        strokeWidth="3"
+        strokeDasharray="7 6"
+        strokeLinecap="round"
+        opacity=".5"
+      />
+      <g transform="translate(142 90) scale(.5)"><Saucer /></g>
+      {/* Ahead of it: where the reticle is, which is the whole of steering. */}
+      <polyline points="176,80 224,60" fill="none" stroke="#e9e7d6" strokeWidth="3" strokeDasharray="7 6" strokeLinecap="round" />
+      <polygon points="236,54 225.8,65.8 220.4,53" fill="#e9e7d6" />
+      <g transform="translate(264 44)">
+        <circle r="17" fill="none" stroke="#ff5f7c" strokeWidth="3" />
+        <path d="M0 -25 V-11 M0 11 V25 M-25 0 H-11 M11 0 H25" stroke="#ff5f7c" strokeWidth="3" strokeLinecap="round" />
+        <circle r="3.4" fill="#ff5f7c" />
+      </g>
     </svg>
   )
 }
@@ -179,7 +189,7 @@ export function HowToPlay({ onClose }: { onClose: () => void }) {
             <i className="howto-step">1</i>
             <MoveArt />
             <figcaption>
-              <span className="keycap-set"><b className="keycap">W</b><b className="keycap">A</b><b className="keycap">S</b><b className="keycap">D</b></span>
+              <b className="keycap keycap-wide">AUTO</b>
               <span>{t.howToMove}</span>
               <em className="howto-divider" />
               <MouseGlyph />
@@ -203,19 +213,20 @@ export function HowToPlay({ onClose }: { onClose: () => void }) {
           </figure>
         </div>
         <div className="controls-card howto-keys">
-          <span><b>W/S</b> {t.controlFly}</span>
-          <span><b>A/D</b> {t.controlStrafe}</span>
+          <span><b>AUTO</b> {t.controlFly}</span>
           <span><b>MOUSE</b> {t.controlAim}</span>
           <span><b>E</b> {t.controlBeam}</span>
           <span><b>Q</b> {t.controlLaser} · {t.hold}</span>
           <span><b>SPACE</b> {t.controlBoost}</span>
         </div>
-        {/* The two ways a run ends that no panel above can draw: flying into
-            the city, and getting too heavy to stay above it. Both belong in
-            the manual, because both are learned the expensive way otherwise. */}
+        {/* The two things no panel above can draw: flying into the city hurts,
+            and a full beam sinks you. Both belong in the manual, because both
+            are learned the expensive way otherwise. Neither ends the run - the
+            overload crash is gone - but a craft scraping the road with a full
+            gauge is still a craft in trouble. */}
         <div className="howto-hazards">
           <span><i aria-hidden="true">!</i><RichText text={t.hazardBuildings} /></span>
-          <span><i aria-hidden="true">!</i><RichText text={t.overloadAlarm} /></span>
+          <span><i aria-hidden="true">!</i><RichText text={t.overloadHint} /></span>
         </div>
         <button className="primary-button" onClick={onClose}>{t.close}</button>
       </div>

@@ -6,13 +6,28 @@
  * The first version rotated by -heading as if this were a standard maths frame,
  * and the radar ran backwards.
  *
- * The craft's actual basis, from the flight model:
+ * The craft flies a left-handed (x, z) frame, so the screen basis has to be
+ * read off the chase camera rather than assumed:
  *
  *   forward = ( sin h,  cos h )
- *   right   = ( cos h, -sin h )
+ *   screen right = ( -cos h, sin h )
  *
- * So rather than guess a rotation matrix, project the offset onto that basis
- * directly. Screen y grows downward, hence the negation on the forward term.
+ * Forward is the flight model's own heading vector. Screen right comes from
+ * the chase rig in DroneScene: it sits at position - forward * distance and
+ * looks along forward with world up, and three's lookAt builds the camera's
+ * x axis as normalize(up x (eye - target)) = normalize(up x -forward), which
+ * lands on (-cos h, sin h). Steering agrees - `aimSteer` negates the pointer,
+ * so dragging right *decreases* the heading, and d(forward)/d(-h) is exactly
+ * (-cos h, sin h).
+ *
+ * Note this is NOT the vector `drone.ts` calls `rightX`/`rightZ`. That one is
+ * ( cos h, -sin h ), the negative of the above - it pairs with a strafe input
+ * that reads +1 from the *left* key, so the flight model is self-consistent
+ * and only its naming misleads. The radar used to project onto that vector
+ * and so drew every contact on the wrong side of the dial: at heading 0 the
+ * craft faces +z, +x is out the left window, and the dial put it on the right.
+ *
+ * Screen y grows downward, hence the negation on the forward term.
  */
 export function projectToRadar(
   dx: number,
@@ -24,7 +39,7 @@ export function projectToRadar(
   const sin = Math.sin(heading)
   const cos = Math.cos(heading)
   const forward = dx * sin + dz * cos
-  const right = dx * cos - dz * sin
+  const right = dz * sin - dx * cos
   return { px: center + right * scale, py: center - forward * scale }
 }
 

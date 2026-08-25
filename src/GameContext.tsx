@@ -17,7 +17,7 @@ import {
   stepBeamObjects,
 } from './core/beam'
 import { createCrowdState, finishTutorialCrowd, prepareTutorialCrowd, primeCrowds, stepCrowds, type CrowdState } from './core/crowds'
-import { type CrowdSpawnZone, GAS_STATION_BEAM_MASS, canAbsorbBuilding, crowdSpawnZonesAround, damageLandmark, destructibleLandmarksAround, parkingCarsAround, type DestructibleLandmark } from './core/cityLandmarks'
+import { type CrowdSpawnZone, canAbsorbBuilding, crowdSpawnZonesAround, damageLandmark, destructibleLandmarksAround, parkingCarsAround, type DestructibleLandmark } from './core/cityLandmarks'
 import { STRINGS, readStoredLanguage, storeLanguage, type Language, type MessageKey, type TutorialControl } from './i18n'
 import { createDaylightSample, daylightClock, sampleDaylight, type DaylightSample } from './core/daylight'
 import {
@@ -28,7 +28,7 @@ import {
 } from './core/hazards'
 import { SIZE_MIN, SIZE_START, type SizeGainKind, type SizeProfile, bonusHeartsForSize, clampSize, growSize, growSizeBy, sizeProfile, ufoDiameter } from './core/size'
 import { MAX_HEALTH, createHealthState, damageHealth, healHealth, healthRatio, isDead, isRegenerating, raiseHealthMax, stepHealth, type HealthLossKind, type HealthState } from './core/health'
-import { BATTLESHIP_ALTITUDE, BATTLESHIP_TURRETS, ENEMY_WAVE_STAGES, activeEnemyCount, battleshipTurretPoint, createEnemyState, hitEnemy, resolveEnemyContacts, stepEnemies, stepEnemyProjectiles, syncEnemyTiers, waveLabelForTime, waveStageForTime, type EnemyKind, type EnemyState } from './core/enemies'
+import { BATTLESHIP_ALTITUDE, BATTLESHIP_LAUNCH_SECONDS, BATTLESHIP_TURRETS, activeEnemyCount, battleshipTurretPoint, createEnemyState, hitEnemy, resolveEnemyContacts, stepEnemies, stepEnemyProjectiles, syncEnemyTiers, waveLabelForTime, waveStageForTime, type EnemyKind, type EnemyState } from './core/enemies'
 import {
   createLaserPool,
   createLaserBurstPool,
@@ -79,7 +79,7 @@ import {
   type BoonId,
   type BoonState,
 } from './core/boons'
-import { buildingDestructionScore, createBuildingRuin, damageBuilding, ruinCollider, type BuildingRuin } from './core/buildings'
+import { RUIN_BEAM_MASS, buildingDestructionScore, createBuildingRuin, damageBuilding, ruinBulk, ruinCollider, type BuildingRuin } from './core/buildings'
 import {
   createLakeDrainState,
   drawFromLakeCell,
@@ -106,11 +106,11 @@ import {
   type MissionState,
 } from './core/missions'
 import { MYSTERY_BOOST_DURATION, MYSTERY_BOOST_MAX_MULTIPLIER, mysteryBoostMultiplier } from './core/mysteryCircles'
-import { shouldCrashFromOverload } from './core/overload'
 import { DRONE_BLAST_TRAUMA, HELICOPTER_RAM_TRAUMA, HIT_TRAUMA, addShakeTrauma, createShakeState, stepShake, type ShakeState } from './core/shake'
 import { worldPropMass, worldPropsAround } from './core/worldProps'
 import { endingForTimeUp, isVictory, type RunEnding } from './core/ending'
-import { TANKER_EXPLOSION_SCALE, playBoosterSound, playBuildingCollapseSound, playDroneExplosionSound, playLaserSound, playMysteryCircleSound, playNearbyCatCrySound, playVehicleExplosionSound, startBeamSound, startGameplayMusic, stopBeamSound, stopGameplayMusic, stopLobbyMusic, tone, unlockAudio } from './audio'
+import { overloadCruiseScale } from './core/overload'
+import { TANKER_EXPLOSION_SCALE, playBattleshipExplosionSound, playBoosterSound, playBuildingCollapseSound, playDroneExplosionSound, playLaserSound, playMysteryCircleSound, playNearbyCatCrySound, playVehicleExplosionSound, startBeamSound, startGameplayMusic, stopBeamSound, stopGameplayMusic, stopLobbyMusic, tone, unlockAudio } from './audio'
 
 export type GamePhase = 'intro' | 'playing' | 'results'
 
@@ -481,9 +481,7 @@ const UFO_UPGRADES = { speed: 0, stability: 0, rack: 0, special: 'none' as const
  * When the dreadnought's wave lands, read off the wave table rather than
  * written out again, so moving the wave moves the drill with it.
  */
-const BATTLESHIP_WAVE_AT = ENEMY_WAVE_STAGES.find(
-  (stage) => ((stage.targets as Partial<Record<EnemyKind, number>>).boss ?? 0) > 0,
-)!.at
+const BATTLESHIP_WAVE_AT = BATTLESHIP_LAUNCH_SECONDS
 
 /**
  * The craft the drill hands over.
@@ -506,6 +504,10 @@ const CAT_CRY_INTERVAL = 4.5
 const BOON_MESSAGE_KEY: Record<BoonId, MessageKey> = {
   'laser-power': 'msgBoonLaser',
   speed: 'msgBoonSpeed',
+  'turn-rate': 'msgBoonTurnRate',
+  'beam-radius': 'msgBoonBeamRadius',
+  'beam-reach': 'msgBoonBeamReach',
+  'beam-pull': 'msgBoonBeamPull',
   'turbo-recharge': 'msgBoonTurboRecharge',
   'turbo-capacity': 'msgBoonTurboCapacity',
 }
@@ -521,15 +523,19 @@ const BOON_MESSAGE_KEY: Record<BoonId, MessageKey> = {
 const BALLAST_DRAG = 0.31
 
 /**
- * Hanging mass the craft can still hold altitude against.
+ * Hanging mass the craft can still fly properly with.
  *
- * Past it the beam is carrying more than the engines can lift: climb dies, the
- * craft starts sinking, and touching down while still overloaded ends the run.
- * Weight only slowed you down before, which meant there was no ceiling on greed
- * - a decision needs a limit to be a decision.
+ * Past it the beam is carrying more than the engines are rated for: climb
+ * dies, the craft starts sinking, and top speed falls away with how far over
+ * the line the load is (see overloadCruiseScale). It is the one line in the
+ * game that prices greed, which is why greed needs a line at all - a decision
+ * needs a limit to be a decision.
  *
- * It is a countdown, not a dead end. Dropping the load with R or finishing the
- * meal both clear it, so the answer is always in the player's hands.
+ * What it no longer does is kill. Touching down while overloaded used to end
+ * the run, and a trapdoor the player finds by falling through it teaches
+ * nothing the sinking had not already said. Slow and low is the whole penalty
+ * now: it is visible, it is survivable, and finishing the meal or cutting the
+ * beam clears it, so the answer is always in the player's hands.
  */
 /**
  * A detonation makes the craft sluggish; it never takes the controls away.
@@ -583,6 +589,13 @@ const WORLD_PROP_COLORS: Record<BeamWorldProp['kind'], string> = {
   'park-bench': '#c58b68',
   'bus-stop': '#78aebc',
   subway: '#78aebc',
+  // GROUND.SHORE_ROCK and GROUND.SHORE_REED, written out like every other
+  // entry here: a boulder must not change colour on its way up the beam.
+  'shore-rock': '#b4b1ac',
+  'shore-reed': '#7fbe7d',
+  // The forecourt's own paint, so a station carried off keeps the colour it
+  // had on the corner.
+  'gas-station': '#f0eee6',
 }
 
 const WORLD_PROP_DIAMETERS: Record<BeamWorldProp['kind'], number> = {
@@ -595,6 +608,13 @@ const WORLD_PROP_DIAMETERS: Record<BeamWorldProp['kind'], number> = {
   'park-bench': 3.4,
   'bus-stop': 7.2,
   subway: 8.6,
+  // Both clear the opening saucer's 2.48m hull, so weight and bulk open
+  // together and a pond is food from the first second of a run.
+  'shore-rock': 1.6,
+  'shore-reed': 1.4,
+  // Canopy corner to canopy corner - the same figure the laser's landmark
+  // sphere uses for its radius, doubled.
+  'gas-station': 18,
 }
 
 const WORLD_PROP_SCORES: Record<BeamWorldProp['kind'], number> = {
@@ -607,7 +627,25 @@ const WORLD_PROP_SCORES: Record<BeamWorldProp['kind'], number> = {
   'park-bench': 35,
   'bus-stop': 140,
   subway: 220,
+  // Under a bin. They are the cheapest thing in the city and there are
+  // hundreds of them around one lake; a pond must not out-score a street.
+  'shore-rock': 18,
+  'shore-reed': 12,
+  // Between the mast (520) and the station mouth (220): rarer than either as
+  // a sight, and the heaviest thing in the city that is not a building.
+  'gas-station': 420,
 }
+
+/**
+ * What the three road vehicles are worth to the laser.
+ *
+ * Named rather than inlined because the mid-run callout quotes the figure, and
+ * a callout that says "+50" while the tanker banked 140 is worse than no
+ * callout at all - it teaches the player the wrong price for the target.
+ */
+const CAR_DESTROY_SCORE = 50
+const TRUCK_DESTROY_SCORE = 90
+const TANKER_DESTROY_SCORE = 140
 
 function makeWorldPropBeamObject(worldProp: BeamWorldProp): BeamObject {
   return {
@@ -652,7 +690,7 @@ const ENEMY_BLAST: Partial<Record<EnemyKind, BlastKind>> = {
   drone: 'aircraft',
   helicopter: 'aircraft',
   fighter: 'aircraft',
-  boss: 'landmark',
+  boss: 'battleship',
 }
 
 /** Varies one blast from the next without the caller having to carry a
@@ -806,6 +844,23 @@ function liftLimit(game: GameRuntime) {
  *  the ceiling, and the whole weight ladder hangs off it. */
 function beamStrength(game: GameRuntime) {
   return game.sizeProfile.beamStrength
+}
+
+/**
+ * The beam's shape: what the hull gives, times what the pickups add.
+ *
+ * One source for the physics field, the drawn cone and the smoke snapshot.
+ * The render layer carries a comment about the last time these drifted apart
+ * - the drawn beam stayed at the default while the volume that actually
+ * caught things grew, so the visible beam and the real one were two different
+ * shapes. A pickup that widened only one of them would be the same bug again.
+ */
+function beamRadiusScale(game: GameRuntime) {
+  return game.sizeProfile.beamScale * boonMultiplier(game.boons, 'beam-radius')
+}
+
+function beamReachScale(game: GameRuntime) {
+  return game.sizeProfile.beamReach * boonMultiplier(game.boons, 'beam-reach')
 }
 
 function refreshWorldGeometry(game: GameRuntime) {
@@ -977,6 +1032,67 @@ function grabBuildings(game: GameRuntime, field: BeamField) {
   game.worldColliders = activeWorldColliders(game.world)
 }
 
+/**
+ * Clears rubble, on the same terms as everything else.
+ *
+ * A ruin is what the laser leaves behind, and until now that was the end of
+ * it: a permanent low slab with a collider and no way to shift it, sitting on
+ * a lot the player themself emptied. Rubble weighs five - see RUIN_BEAM_MASS -
+ * so a craft a fifth of the way up the run can pick the mess up, which is
+ * about when the hull first grows wide enough to swallow a footprint that
+ * broad.
+ *
+ * Written against grabBuildings rather than the prop path on purpose. A ruin
+ * is runtime state, not world generation - it exists because the player
+ * brought a block down - so there is no deterministic list to stream it from
+ * and no static pool to hand it back to. Like a building, it leaves the world
+ * the moment it is caught: out of `ruinedBuildings`, out of the colliders, and
+ * into the beam as an ordinary object. One drawer at a time, and no way for
+ * the rubble to snap home.
+ */
+function grabRuins(game: GameRuntime, field: BeamField) {
+  if (!game.beamActive) return
+  if (beamLiftScale(RUIN_BEAM_MASS, beamStrength(game)) <= 0) return
+  let taken = false
+  for (const ruin of [...game.ruinedBuildings.values()]) {
+    if (!isInsideBeam({ position: ruin.position }, field)) continue
+    game.ruinedBuildings.delete(ruin.id)
+    game.beamObjects.unshift({
+      id: `ruin:${ruin.id}`,
+      kind: 'ruin',
+      mass: RUIN_BEAM_MASS,
+      diameter: ruinBulk(ruin),
+      color: ruin.color,
+      position: { ...ruin.position },
+      velocity: { x: 0, y: 0, z: 0 },
+      rotation: { x: 0, y: 0, z: 0 },
+      angularVelocity: { x: 0, y: 0.6, z: 0 },
+      scale: { ...ruin.size },
+      active: true,
+      inBeam: true,
+      hold: 1,
+      tether: 1,
+      playerTouched: true,
+      destroying: false,
+      destroyTimer: 0,
+      explosionPending: false,
+      absorbing: false,
+      absorbTimer: 0,
+      // Under a bin's worth of the block it came from: clearing a lot is
+      // tidying, not a second demolition, and the score for knocking the
+      // building down was already paid once.
+      scoreValue: 60,
+      ruin,
+    })
+    triggerLaserBurst(game.laserBursts, 'impact', ruin.position)
+    tone('impact')
+    taken = true
+  }
+  // The collider list carries a box per ruin, so one that is now hanging off
+  // the beam has to stop being something the craft can fly into.
+  if (taken) refreshWorldGeometry(game)
+}
+
 function syncBeamObjects(game: GameRuntime) {
   const existing = new Map(game.beamObjects.map((object) => [object.id, object]))
   const retained = game.beamObjects.filter((object) => object.active && (object.inBeam || object.tether > 0.02 || object.playerTouched) && Math.hypot(object.position.x - game.drone.position.x, object.position.z - game.drone.position.z) <= WORLD_REMOVE_RADIUS)
@@ -984,7 +1100,7 @@ function syncBeamObjects(game: GameRuntime) {
   const sourceCars = [...parkingCarsAround(game.drone.position), ...game.world.cars]
   const sourceProps = worldPropsAround(game.world, game.drone.position)
     .filter((prop) => !game.destroyedWorldProps.has(prop.id))
-    .filter((prop) => prop.kind !== 'communications' || !game.destroyedLandmarks.has(prop.id))
+    .filter((prop) => (prop.kind !== 'communications' && prop.kind !== 'gas-station') || !game.destroyedLandmarks.has(prop.id))
   // Buildings in flight are not sourced from anywhere - they were torn out of
   // the world - so they are retained on their own rather than rebuilt.
   const lifted = retained.filter((object) => object.kind === 'building')
@@ -1147,7 +1263,10 @@ function registerEnemyHit(game: GameRuntime, id: string, damage: number) {
   }
   if (!result.destroyed || !result.kind) return
   if (result.kind === 'drone') playDroneExplosionSound()
-  if (result.kind === 'boss') game.bossDestroyed = true
+  if (result.kind === 'boss') {
+    game.bossDestroyed = true
+    playBattleshipExplosionSound()
+  }
   if (result.kind === 'boss' && result.enemy) {
     // Seventy-four metres of ship does not go up in one puff. A burst at every
     // gun station breaks along the whole length.
@@ -1174,6 +1293,8 @@ function registerEnemyLaserHit(game: GameRuntime, id: string) {
   registerEnemyHit(game, id, boonMultiplier(game.boons, 'laser-power'))
 }
 
+/** Returns the score banked, or 0 if nothing was destroyed - the callout
+ *  quotes the figure, so it has to come back from whoever awarded it. */
 function destroyCar(game: GameRuntime, id: string, direction: Vec3) {
   let target: BeamObject | null = null
   for (const object of game.beamObjects) if (object.id === id && object.active) { target = object; break }
@@ -1181,31 +1302,33 @@ function destroyCar(game: GameRuntime, id: string, direction: Vec3) {
     const captured = captureTrafficCar(game.traffic, id)
     if (captured) { target = makeTrafficBeamObject(captured); game.beamObjects.unshift(target) }
   }
-  if (!target || !beginCarDestruction(target, direction, game.drone.velocity)) return false
+  if (!target || !beginCarDestruction(target, direction, game.drone.velocity)) return 0
   game.destroyedCars.add(id)
-  bankDestroyScore(game, 50)
-  return true
+  bankDestroyScore(game, CAR_DESTROY_SCORE)
+  return CAR_DESTROY_SCORE
 }
 
 /**
  * A laser hit on a truck or tanker, run like a building hit: every shot lands
  * with a blast off the bodywork, and the vehicle only goes up once its hit
- * points are spent. Returns true on the killing hit.
+ * points are spent. Returns the score banked on the killing hit, 0 otherwise -
+ * a truck and a tanker are worth several times a car, and the callout says so.
  */
 function registerHeavyVehicleLaserHit(game: GameRuntime, id: string) {
   const result = damageHazard(game.hazards, id, boonMultiplier(game.boons, 'laser-power'))
-  if (!result) return false
+  if (!result) return 0
   triggerLaserBurst(game.laserBursts, 'impact', result.hazard.position)
   if (!result.destroyed) {
     triggerFireball(game.fireballs, 'strike', result.hazard.position, undefined, blastSeed(game))
-    return false
+    return 0
   }
-  bankDestroyScore(game, result.hazard.kind === 'truck' ? 90 : 140)
+  const reward = result.hazard.kind === 'truck' ? TRUCK_DESTROY_SCORE : TANKER_DESTROY_SCORE
+  bankDestroyScore(game, reward)
   // Both heavies share the road-vehicle blast; the tanker is the one carrying
   // fuel, so it is the one that is heard over the rest of the street.
   playVehicleExplosionSound(result.hazard.kind === 'truck' ? 1 : TANKER_EXPLOSION_SCALE)
   triggerFireball(game.fireballs, 'vehicle', result.hazard.position, undefined, blastSeed(game))
-  return true
+  return reward
 }
 
 /**
@@ -1391,7 +1514,12 @@ function absorbBeamObject(game: GameRuntime, object: BeamObject) {
   const reward = absorptionScore(object, game.sizeProfile.scoreMultiplier)
   if (object.worldProp) {
     game.destroyedWorldProps.add(object.worldProp.id)
-    if (object.worldProp.kind === 'communications') game.destroyedLandmarks.add(object.worldProp.id)
+    // The two props the laser also knows as landmarks. Eating one has to tell
+    // that half of the game it is gone, or the shot list keeps aiming at a
+    // forecourt that is inside the craft.
+    if (object.worldProp.kind === 'communications' || object.worldProp.kind === 'gas-station') {
+      game.destroyedLandmarks.add(object.worldProp.id)
+    }
   }
   // Larger meals grow the craft more, as a fraction of current size like every
   // other gain. Bounded so no single meal - not even a tower - skips a run.
@@ -1501,8 +1629,8 @@ function snapshotOf(game: GameRuntime): GameSnapshot {
     broadcastStage: game.broadcastTime > 0 ? game.broadcastStage : null,
     broadcastRemaining: game.broadcastTime,
     boonLevels: game.boons.levels,
-    beamRadiusScale: game.sizeProfile.beamScale,
-    beamReachScale: game.sizeProfile.beamReach,
+    beamRadiusScale: beamRadiusScale(game),
+    beamReachScale: beamReachScale(game),
     daylightLabel: game.daylight.label,
     daylightClock: daylightClock(game.sessionTime),
     nightFactor: game.daylight.nightFactor,
@@ -1633,7 +1761,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   // The finger that currently owns the reticle, and where it last was. Null
   // whenever no drag is in flight, which is most of the time on a phone.
   const touchAim = useRef<{ pointerId: number; x: number; y: number } | null>(null)
-  const mobile = useRef<MobileInput>({ throttle: 0, steer: 0, strafe: 0, lookPitch: 0, vertical: 0, special: false, beam: false, laser: false, active: false })
+  const mobile = useRef<MobileInput>({ throttle: 1, steer: 0, lookPitch: 0, vertical: 0, special: false, beam: false, laser: false, active: false })
   const publishAccumulator = useRef(0)
   const publish = useCallback(() => setSnapshot(snapshotOf(runtime.current)), [])
 
@@ -1722,9 +1850,15 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   const readInput = useCallback((): PlayerInput => {
     const keyboard: PlayerInput = {
-      throttle: (keys.current.KeyW || keys.current.ArrowUp ? 1 : 0) - (keys.current.KeyS || keys.current.ArrowDown ? 1 : 0),
+      // The craft is always going. WASD is gone: it was the one control a
+      // first-time player had to be taught before anything else in the game
+      // could happen, and it only ever repeated what the reticle was already
+      // saying - the ship flies where it looks. Now it just flies, and the
+      // mouse is the whole of steering. Whatever slows the craft down (the
+      // beam, a lake, the tutorial) scales this on the way to the flight
+      // model.
+      throttle: 1,
       steer: aimSteer(pointer.current.x),
-      strafe: (keys.current.KeyA || keys.current.ArrowLeft ? 1 : 0) - (keys.current.KeyD || keys.current.ArrowRight ? 1 : 0),
       lookPitch: -pointer.current.y,
       vertical: 0,
       special: Boolean(keys.current.Space),
@@ -1795,7 +1929,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
       ? {
           ...rawInput,
           throttle: 0,
-          strafe: 0,
           vertical: 0,
           special: turboUnlocked && rawInput.special,
           laser: laserUnlocked && rawInput.laser,
@@ -1906,15 +2039,13 @@ export function GameProvider({ children }: { children: ReactNode }) {
         game.mysteryFlash = 0.65
         game.turbo = 1
         game.turboLockout = 0
-        // The circle is a full pit stop, not a speed strip: surge, a fresh
-        // turbo gauge and every pip of hull back. Reading a circle as "the
-        // place you go when you are hurt" is what makes the detour worth
-        // planning a route around, and it is the first thing the general
-        // explains once mission one is cleared.
-        const hurt = game.health.current < game.health.max
-        if (hurt) healHealth(game.health, game.health.max)
+        // The circle is a speed pit stop: a surge and a fresh turbo gauge. It
+        // does not repair the craft - a landmark that healed you turned every
+        // fight into "go stand on a circle", so life comes back only from the
+        // slow regen, and the detour is worth planning for the speed and the
+        // item overhead.
         playMysteryCircleSound()
-        setMessage(game, hurt ? 'msgMysteryHeal' : 'msgMysteryCircle', 1.8)
+        setMessage(game, 'msgMysteryCircle', 1.8)
         // Reported after the pit-stop effects land, because clearing mission
         // one freezes the game for the general's word about them.
         reportMissionEvent(game, { type: 'pass-mystery-circle', id: mysteryCircle.id })
@@ -1947,15 +2078,20 @@ export function GameProvider({ children }: { children: ReactNode }) {
           game.pickupPulse = 1
           game.mysteryFlash = Math.max(game.mysteryFlash, 0.65)
           if (granted.kind === 'stat') {
-            setMessage(game, BOON_MESSAGE_KEY[granted.id], 2.2, granted.level)
+            // No level argument: every stat caps at one, so the callout names
+            // the stat and stops there.
+            setMessage(game, BOON_MESSAGE_KEY[granted.id], 2.2)
             tone('upgrade')
           } else if (game.health.current < game.health.max) {
-            // Every stat is capped, so the item patches the hull instead.
+            // Every stat is capped, so there is nothing left to raise and the
+            // item patches the craft instead. This is the only life a circle
+            // gives back - flying through one does not, and this costs the
+            // whole item on a run that has already finished its ladder.
             healHealth(game.health, BOON_HEAL_PIPS)
             setMessage(game, 'msgBoonHeal', 2.2)
             tone('upgrade')
           } else {
-            // Capped and healthy: the pickup pays out like a meal would.
+            // Capped and at full life: the pickup pays out like a meal would.
             const reward = Math.round(BOON_FULL_SCORE * game.sizeProfile.scoreMultiplier)
             game.score += reward
             setMessage(game, 'msgBoonScore', 2.2, reward)
@@ -2007,15 +2143,11 @@ export function GameProvider({ children }: { children: ReactNode }) {
       tone('pickup')
     }
     // Scaling the throttle scales the top speed the flight model aims for, so
-    // the craft still accelerates, steers and strafes - it just tops out at
-    // half. This used to also multiply the stepped velocity every frame, and
+    // the craft still accelerates and steers - it just tops out at half. This used to also multiply the stepped velocity every frame, and
     // that is a per-frame damping rather than a speed limit: at sixty hertz it
     // pinned the craft to the spot, which read as the beam being broken over
     // water rather than as water being heavy.
-    if (game.waterAnchored) {
-      flightInput.throttle *= lake.speedScale
-      flightInput.strafe = (flightInput.strafe ?? 0) * lake.speedScale
-    }
+    if (game.waterAnchored) flightInput.throttle *= lake.speedScale
     // Only ballast slows the craft. Size is deliberately absent: growth is what
     // the player is good at, and taxing it directly punishes them for winning.
     // Soft ceiling. The climb input fades out as the craft nears the height its
@@ -2029,27 +2161,41 @@ export function GameProvider({ children }: { children: ReactNode }) {
     // Overloaded: the engines lose the argument with the load and the craft
     // starts down. Climb is cut rather than reversed - the sinking comes from
     // the flight model's own gravity, so it eases in instead of snapping.
+    //
+    // Where it used to go is the part that is gone. Touching the street while
+    // still overloaded ended the run, and that was a trapdoor a player could
+    // only find by falling through it. The pressure stays, the death does not:
+    // an overloaded craft sinks, scrapes along the rooftops and the road, and
+    // flies badly until it eats the load or cuts the beam - all of which the
+    // player can see happening and undo.
+    //
+    // It is also the brake. Holding the beam used to cost speed on its own,
+    // which priced the verb instead of the greed - an empty pass with the cone
+    // open was billed like one that came away with three cars. Opening the
+    // beam is free now; what is charged for is what is still hanging off it,
+    // and only past what the hull is rated to lift. Which means the loop feeds
+    // itself: the more you snag, the slower you fly, and the slower you fly
+    // the easier the next thing is to catch - right up until you are sinking
+    // through the traffic at half speed and have to decide whether to swallow
+    // it or let go.
     const capacity = liftLimit(game)
     const overload = Math.max(0, game.ballast - capacity)
     if (overload > 0) {
       flightInput.vertical = Math.min(flightInput.vertical, 0) - Math.min(1, overload / 12)
-      if (shouldCrashFromOverload(game.beamActive, game.ballast, capacity, game.drone.position.y)) {
-        endRun(game, 'CRUSHED BY THE LOAD', 'crushed')
-        updatePilotStatus(game)
-        publish()
-        return
-      }
+      flightInput.throttle *= overloadCruiseScale(game.ballast, capacity)
     }
     const warningAt = capacity * 0.6
     game.overloadWarn = game.ballast <= warningAt
       ? 0
       : Math.min(1, (game.ballast - warningAt) / Math.max(1, capacity - warningAt))
-    // Keep the visual overload meter, but do not repeat an audio warning.
     const stepped = stepDrone(game.drone, flightInput, d, game.ballast * BALLAST_DRAG + (game.daze > 0 ? DAZE_DRAG : 0), {
       ...UFO_UPGRADES,
-      // stepDrone's own speed coefficient is 0.12 per level; dividing the
-      // pickup bonus by it feeds the exact 8%-per-level the boon promises.
+      // stepDrone's own coefficients are 0.12 on speed and 0.15 on yaw;
+      // dividing each pickup's bonus by its own lever feeds through exactly
+      // what core/boons promises - +15% on both - rather than whatever those
+      // internal coefficients happen to be.
       speed: boonBonus(game.boons, 'speed') / 0.12,
+      stability: boonBonus(game.boons, 'turn-rate') / 0.15,
     })
     const nextWorld = updateActiveWorld(game.world, stepped.position, false, game.destroyedBuildings)
     if (nextWorld !== game.world) {
@@ -2059,7 +2205,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       syncBeamObjects(game)
       updateMissionTarget(game)
     }
-    const collision = collideDrone(stepped, game.worldColliders)
+    const collision = collideDrone(stepped, game.worldColliders, d)
     game.drone = collision.state
     // One sample per tick, written into the runtime's own object so the render
     // layer can read it without sampling again or allocating.
@@ -2093,7 +2239,16 @@ export function GameProvider({ children }: { children: ReactNode }) {
         mineExplosion.position.y - game.drone.position.y,
         mineExplosion.position.z - game.drone.position.z,
       )
-      if (distance <= mineExplosion.radius) registerImpact(game, 'ENEMY', 'contact', DRONE_BLAST_TRAUMA)
+      // Sphere against sphere, not point in sphere. The blast is ten metres
+      // around the mine and the craft grows past fifteen, so measuring to the
+      // centre made a grown saucer immune to the one enemy that detonates on
+      // contact: the mine went off against the hull, at a distance from the
+      // centre that was already outside its own blast, and nothing happened.
+      // Past a hull radius of ten - a bit over half the growth range - mines
+      // stopped being able to hurt the player at all.
+      if (distance <= mineExplosion.radius + game.sizeProfile.hitRadius) {
+        registerImpact(game, 'ENEMY', 'contact', DRONE_BLAST_TRAUMA)
+      }
     }
     if (collision.hit && collision.impulse > 2.5 && game.collisionCooldown <= 0) { game.collisionCooldown = 0.45; registerImpact(game, 'BUILDING') }
 
@@ -2119,10 +2274,13 @@ export function GameProvider({ children }: { children: ReactNode }) {
       velocity: game.drone.velocity,
       // Radius, reach and pull all follow the hull: a bigger craft sweeps a
       // wider cone, reaches the street from its own cruising altitude, and
-      // hauls what it catches visibly faster - no card involved in any of it.
-      radiusScale: game.sizeProfile.beamScale,
-      reachScale: game.sizeProfile.beamReach,
-      gripScale: game.sizeProfile.beamPull,
+      // hauls what it catches visibly faster. The pickups multiply on top of
+      // that rather than replacing it - each is a slice of the same range
+      // growth covers (see core/boons), so a grown craft is always the one
+      // with the bigger beam and the item is a bonus on whatever it has.
+      radiusScale: beamRadiusScale(game),
+      reachScale: beamReachScale(game),
+      gripScale: game.sizeProfile.beamPull * boonMultiplier(game.boons, 'beam-pull'),
       // Natural grip from size, and nothing else - the whole 1..12 ladder is
       // growth now.
       gripStrength: beamStrength(game),
@@ -2130,28 +2288,15 @@ export function GameProvider({ children }: { children: ReactNode }) {
       // falling through it into the street.
       colliders: game.worldColliders,
     }
-    // What the beam does to a rare landmark, and what it takes.
+    // Nothing the beam touches is detonated by touching it.
     //
-    // Touching one used to detonate it: sweep the cone across a forecourt or a
-    // comms mast and it went up in a full blast, at any craft size, from a
-    // graze nobody aimed. The beam is a tractor beam, so contact alone must
-    // never be a demolition.
-    //
-    // A comms mast is city dressing with a weight in WORLD_PROP_MASS, so it is
-    // not handled here at all any more - a beam strong enough tears it out of
-    // the ground and carries it off like any other prop (see the lifted comms
-    // pool), and the laser is what blows it up. A gas station has no lifted
-    // model to carry, so the beam route for it stays a demolition - but it now
-    // costs the same weight ladder everything else does, rather than a brush
-    // of the cone.
-    if (game.beamActive && beamLiftScale(GAS_STATION_BEAM_MASS, beamStrength(game)) > 0) {
-      for (const landmark of destructibleLandmarksAround(game.drone.position, 1)) {
-        if (landmark.kind !== 'gas-station') continue
-        if (game.destroyedLandmarks.has(landmark.id)) continue
-        const contact = { position: { x: landmark.position.x, y: 0.65, z: landmark.position.z } }
-        if (isInsideBeam(contact, beamField)) detonateLandmark(game, landmark)
-      }
-    }
+    // A forecourt and a comms mast both used to go up in a full blast from a
+    // graze nobody aimed, at any craft size. The mast lost that first: it is
+    // city dressing with a weight in WORLD_PROP_MASS, so a beam strong enough
+    // tears it out of the ground and carries it off like any other prop. The
+    // station kept a demolition route for one reason - it had no lifted model
+    // to carry - and now it has one, so it is a prop on the same terms: weight
+    // nine, hauled or eaten, and the laser is what blows one up.
     // No pickup cap: hanging mass is its own limit, and a craft that grabbed
     // too much should feel it rather than be quietly protected from it.
     //
@@ -2169,6 +2314,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     }
     if (!tutorialAtStart) stepHazards(game.hazards, { position: game.drone.position, heading: game.drone.heading, elapsed: game.sessionTime }, d)
     grabBuildings(game, beamField)
+    grabRuins(game, beamField)
     stepBeamObjects(game.beamObjects, beamField, d)
     // Crowd movement owns its absorption timer; beam physics only handles the
     // pull so the shrink animation is not advanced twice per frame.
@@ -2297,10 +2443,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
         }
       }
       if (aim.targetKind === 'car' && aim.targetId) {
-        const destroyed = aim.targetId.startsWith('hazard:')
+        const reward = aim.targetId.startsWith('hazard:')
           ? registerHeavyVehicleLaserHit(game, aim.targetId)
           : destroyCar(game, aim.targetId, direction)
-        if (destroyed) setMessage(game, 'msgCarLaunched', 0.9)
+        if (reward > 0) setMessage(game, 'msgVehicleDestroyed', 0.9, reward)
       }
       game.laserShotsFired += 1
       if (tutorialAtStart) game.tutorialLaserFired = true

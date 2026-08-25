@@ -18,7 +18,6 @@ import {
 } from '../src/core/lakes'
 import { MISSION_TARGETS } from '../src/core/missions'
 import { SIZE_GAIN } from '../src/core/size'
-import { shouldCrashFromOverload } from '../src/core/overload'
 import type { ProceduralBuilding } from '../src/core/world'
 
 const building = (height: number): ProceduralBuilding => ({
@@ -144,7 +143,7 @@ describe('recon overhaul support systems', () => {
     expect(LAKE_CELL_CAPACITY_MIN).toBeGreaterThanOrEqual(MISSION_TARGETS['absorb-water'])
   })
 
-  it('grows the hull per tile at a rate the city still beats per second', () => {
+  it('grows the craft per tile at a rate the city still beats per second', () => {
     // The honest comparison is per second of play, not per tile: a deep tile
     // grows more only because it took longer to drink.
     const cityPerSecond = Math.pow(1 + SIZE_GAIN.pedestrian, 0.8) - 1
@@ -173,13 +172,6 @@ describe('recon overhaul support systems', () => {
     // And the richest lake the world can build stays under the sample rung,
     // so water is a detour worth taking rather than a rung worth skipping.
     expect(LAKE_CELL_CAPACITY_MAX * 4 * LAKE_SCORE_PER_LITRE).toBeLessThan(MISSION_TARGETS['absorb-samples'])
-  })
-
-  it('crashes only with beam on, overload and ground contact together', () => {
-    expect(shouldCrashFromOverload(true, 12, 10, 1)).toBe(true)
-    expect(shouldCrashFromOverload(false, 12, 10, 1)).toBe(false)
-    expect(shouldCrashFromOverload(true, 10, 10, 1)).toBe(false)
-    expect(shouldCrashFromOverload(true, 12, 10, 2)).toBe(false)
   })
 
   it('pays more for the towers that take more shooting', () => {

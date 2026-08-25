@@ -6,6 +6,7 @@ import * as THREE from 'three'
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { useGame } from '../GameContext'
+import { boonMultiplier } from '../core/boons'
 import { BUILDING, ENTITY, FX, LIGHT, SKY } from '../constants/palette'
 import {
   applyEntityDaylight,
@@ -92,7 +93,19 @@ const CHASE_RIG_DROP = 0.6
  */
 const IMPACT_BLINK_RATE = 32
 
-const BEAM_TARGET_RING_CAPACITY = WORLD_MAX_CARS + TRAFFIC_MAX_CARS + 8 + PEDESTRIAN_MAX + CAT_MAX + HAZARD_MAX + Object.values(ENEMY_CAPS).reduce((sum, count) => sum + count, 0)
+/**
+ * City dressing's share of the ring pool.
+ *
+ * Every other term below is a real pool cap; props are not capped at all -
+ * `syncBeamObjects` appends whatever the district holds - so this is the one
+ * term that has to be measured. The densest district the generator produces is
+ * a lakeside one at just under four hundred pieces, most of them boulders and
+ * reed clumps, and rings are only drawn for what is inside the cone and
+ * liftable. Rounded up from that, with the slack the old bare `+ 8` was
+ * quietly relying on made explicit.
+ */
+const WORLD_PROP_RING_ALLOWANCE = 512
+const BEAM_TARGET_RING_CAPACITY = WORLD_MAX_CARS + TRAFFIC_MAX_CARS + WORLD_PROP_RING_ALLOWANCE + PEDESTRIAN_MAX + CAT_MAX + HAZARD_MAX + Object.values(ENEMY_CAPS).reduce((sum, count) => sum + count, 0)
 const beamTargetRingMaterial = new THREE.MeshBasicMaterial({
   color: '#a7fff0',
   transparent: true,
@@ -769,8 +782,10 @@ function TractorBeam() {
   // Same scales the physics uses. These were left at their defaults, so the
   // drawn beam never widened or lengthened with the craft while the pickup
   // volume did - the visible beam and the beam that actually catches things
-  // were two different shapes. beamRadiusScale IS the size profile's aperture
-  // now, so it is applied once, not multiplied in twice.
+  // were two different shapes. The snapshot's two scales ARE the numbers the
+  // beam field is built from (hull aperture and reach, times whatever the
+  // cone and range pickups add), so they are applied once here, never
+  // multiplied in a second time.
   const profile = beamProfile(snapshot.boostActive, snapshot.beamRadiusScale, snapshot.beamReachScale)
   const length = Math.max(0.8, beamVisualLength(runtime.current.drone.position.y, profile.maxDrop))
   const radius = profile.baseRadius + length * profile.coneSpread
@@ -2184,7 +2199,7 @@ function PerformanceProbe() {
       activeEnemyProjectiles: runtime.current.enemies.projectiles.filter((projectile) => projectile.active).length,
       laserShotsFired: runtime.current.laserShotsFired,
       boonLevels: { ...runtime.current.boons.levels },
-      beamReachScale: runtime.current.sizeProfile.beamReach,
+      beamReachScale: runtime.current.sizeProfile.beamReach * boonMultiplier(runtime.current.boons, 'beam-reach'),
       height: runtime.current.drone.position.y,
       missionStage: runtime.current.mission.stage,
       // The debrief freezes the world, so a smoke run needs to see it as a

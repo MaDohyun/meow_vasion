@@ -4,7 +4,7 @@
  * The card screen is gone. Stopping the run to pick one of three random cards
  * meant the stats you wanted arrived on the deck's schedule, not yours, and a
  * five-minute run never came close to the caps anyway. The body stats now ride
- * on hull size (see core/size); the four flight-and-fight stats here are
+ * on hull size (see core/size); the eight flight-and-fight stats here are
  * earned by flying somewhere: each mystery circle hovers one glowing saucer
  * item over its beacon, and eating it grants one level of whatever that
  * circle carries.
@@ -14,15 +14,26 @@
  * distance, and the circle's own turbo refill makes the trip toward the next
  * one partly self-funding.
  *
- * Once every stat is capped a pickup patches the hull instead, and with the
- * hull full it pays score - a late-run circle is never a dead landmark.
+ * Once every stat is capped a pickup patches the craft instead, and with life
+ * full it pays score - a late-run circle is never a dead landmark. That
+ * fallback is the only life a circle ever hands back: passing through one is a
+ * speed pit stop and nothing more, so the repair is the reward for a run that
+ * has already finished its upgrade ladder, not a place to go when hurt.
  *
  * Pure data and arithmetic - no React, no Three.js. Wording lives in
  * `src/i18n.ts`; the bob math lives here so the simulation eats the item at
  * exactly the height the render layer draws it.
  */
 
-export type BoonId = 'laser-power' | 'speed' | 'turbo-recharge' | 'turbo-capacity'
+export type BoonId =
+  | 'laser-power'
+  | 'speed'
+  | 'turn-rate'
+  | 'beam-radius'
+  | 'beam-reach'
+  | 'beam-pull'
+  | 'turbo-recharge'
+  | 'turbo-capacity'
 
 export type BoonDefinition = {
   id: BoonId
@@ -30,18 +41,55 @@ export type BoonDefinition = {
    *  capacity. */
   step: number
   /**
-   * Where the stat stops. Without a cap the correct play is to farm circles
-   * forever; with one, a run that clears all fourteen levels has actually
-   * finished something and the pickups move on to healing.
+   * Where the stat stops - one level on every stat now. Without a cap the
+   * correct play is to farm circles forever; with one, a run that has eaten
+   * eight items has actually finished something and the pickups move on to
+   * healing.
+   *
+   * One level each rather than a ladder on a few: with eight stats a ladder
+   * meant the same circle handing you a fifth of a laser over and over while
+   * the beam and the turbo stayed where they started. One-and-done makes
+   * every item a different sentence - you can read what you are still missing
+   * off the list of what you have, and no circle is ever a repeat.
    */
   maxLevel: number
 }
 
+/**
+ * One level each, so every step is the whole of what that stat will ever get
+ * and is sized to be felt the moment it lands.
+ *
+ * The laser is the big one at 1.5x, because it is the stat with a target that
+ * only it can answer - the dreadnought cannot be eaten (see core/enemies).
+ * The rest sit in a 15-30% band, which is where a change is read from the
+ * cockpit without retuning the game around itself: these are stats that
+ * change how the craft *handles*, and a big number on any of them rewrites
+ * the run rather than improving it.
+ *
+ * Three of them - cone, reach and pull - are stats size already owns, and a
+ * pickup that out-ran growth would be saying the craft is bigger than it
+ * looks. So each is a slice of the range growth covers, never a replacement
+ * for it: size takes the cone to 1.75x and the reach to 2.75x over a whole
+ * run (see core/size), and the item adds its sixth or fifth on top of
+ * wherever the hull has got to.
+ *
+ * What each is worth: half again the laser damage; a sixth quicker round a
+ * corner; a cone a sixth wider, which is ~1.3x the ground swept per pass
+ * because area goes as the square; a fifth further down the beam; a haul
+ * about a third faster - pull feeds the spring twice (once in the spring
+ * constant, once in the vertical drive - see core/beam), so its felt
+ * speed-up is roughly the multiplier squared; a turbo gauge that refills
+ * a third faster; and two more seconds of turbo on the base five.
+ */
 export const BOON_DEFINITIONS: Record<BoonId, BoonDefinition> = {
-  'laser-power': { id: 'laser-power', step: 0.2, maxLevel: 5 },
-  speed: { id: 'speed', step: 0.08, maxLevel: 3 },
-  'turbo-recharge': { id: 'turbo-recharge', step: 0.2, maxLevel: 3 },
-  'turbo-capacity': { id: 'turbo-capacity', step: 1.5, maxLevel: 3 },
+  'laser-power': { id: 'laser-power', step: 0.5, maxLevel: 1 },
+  speed: { id: 'speed', step: 0.15, maxLevel: 1 },
+  'turn-rate': { id: 'turn-rate', step: 0.15, maxLevel: 1 },
+  'beam-radius': { id: 'beam-radius', step: 0.15, maxLevel: 1 },
+  'beam-reach': { id: 'beam-reach', step: 0.2, maxLevel: 1 },
+  'beam-pull': { id: 'beam-pull', step: 0.15, maxLevel: 1 },
+  'turbo-recharge': { id: 'turbo-recharge', step: 0.3, maxLevel: 1 },
+  'turbo-capacity': { id: 'turbo-capacity', step: 2, maxLevel: 1 },
 }
 
 export const BOON_IDS = Object.keys(BOON_DEFINITIONS) as BoonId[]
@@ -146,10 +194,12 @@ export const BOON_PICKUP_RADIUS = 8
 export const BOON_PICKUP_VERTICAL = 6
 
 /** What a pickup is worth once every stat is capped: a meaningful patch, not
- *  a full repair - free full heals would defang the late waves. */
+ *  a full repair. It costs a whole circle's item and only arrives once there
+ *  is nothing left to level, which is what keeps it from being the free heal
+ *  that flying through the circle used to hand out. */
 export const BOON_HEAL_PIPS = 1.5
-/** And with the hull already full, score - scaled by size like every other
- *  reward - so no circle is ever worth nothing. */
+/** And with life already full, score - scaled by size like every other reward
+ *  - so no circle is ever worth nothing. */
 export const BOON_FULL_SCORE = 150
 
 /** Item colours, shared by the pickup mesh and anything else that wants to
@@ -157,6 +207,10 @@ export const BOON_FULL_SCORE = 150
 export const BOON_COLORS: Record<BoonId, string> = {
   'laser-power': '#ff557f',
   speed: '#6deeff',
+  'turn-rate': '#b07bff',
+  'beam-radius': '#dff6ff',
+  'beam-reach': '#3fa9ff',
+  'beam-pull': '#7bffcf',
   'turbo-recharge': '#ffd24d',
   'turbo-capacity': '#ff8a45',
 }

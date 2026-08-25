@@ -22,15 +22,19 @@
  * its final stretch is the far side of the same fall.
  *
  * The day is deliberately compressed into the middle half. Night has to be
- * back before the dreadnought launches at a hundred and eighty seconds, which
- * is why dusk lands just before it and full night about twenty seconds into
- * the fight: the whole boss fight is fought in the dark and the run ends
- * there.
+ * back before the dreadnought launches, which is why dusk lands just before it
+ * and nightfall on the launch second itself: the whole boss fight is fought in
+ * the dark and the run ends there. The launch time is read off the wave table
+ * rather than written out here, so moving the wave moves the sunset with it -
+ * which is what happened when the launch came forward to a hundred and sixty
+ * seconds, and the afternoon lost the twenty seconds the fight gained.
  *
  * Pure data and scalars only - no Three.js. The render layer turns the hex
  * strings into colours and does the interpolation in linear space, so this file
  * stays testable.
  */
+
+import { BATTLESHIP_LAUNCH_SECONDS } from './enemies'
 
 export type DaylightPhase = 'golden' | 'dusk' | 'night' | 'dawn' | 'morning' | 'day'
 
@@ -102,10 +106,20 @@ const RUN_LENGTH_SECONDS = 300
  * Seconds for one full turn of the sky.
  *
  * A shade over nine tenths of the run, which is what puts the final frame on
- * RUN_CLOSES_ON. It also lands the dreadnought's launch at a hundred and
- * eighty seconds exactly on the nightfall keyframe.
+ * RUN_CLOSES_ON.
  */
 export const DAY_CYCLE_SECONDS = RUN_LENGTH_SECONDS / (1 + RUN_CLOSES_ON)
+
+/**
+ * Where nightfall sits in the cycle: on the second the dreadnought launches.
+ *
+ * Derived from the wave table rather than typed as a fraction, because the two
+ * are the same event seen from different systems - the sky going out and the
+ * ship arriving in it - and a hand-written fraction only stays true until
+ * somebody moves the wave. `enemies.ts` is pure data and type-only imports, so
+ * this costs nothing at runtime and keeps this file free of Three.js.
+ */
+const NIGHTFALL_AT = BATTLESHIP_LAUNCH_SECONDS / DAY_CYCLE_SECONDS
 
 /** The hour the run opens on. Night, not evening. */
 export const DAYLIGHT_START_HOUR = 21
@@ -236,7 +250,7 @@ export const DAYLIGHT_KEYFRAMES: DaylightKeyframe[] = [
     fogFar: 700,
   },
   {
-    at: 0.34,
+    at: 0.33,
     phase: 'day',
     label: 'MIDDAY',
     hour: 15,
@@ -265,7 +279,7 @@ export const DAYLIGHT_KEYFRAMES: DaylightKeyframe[] = [
     fogFar: 760,
   },
   {
-    at: 0.42,
+    at: 0.39,
     phase: 'day',
     label: 'AFTERNOON',
     hour: 18,
@@ -294,7 +308,7 @@ export const DAYLIGHT_KEYFRAMES: DaylightKeyframe[] = [
     fogFar: 730,
   },
   {
-    at: 0.49,
+    at: 0.45,
     phase: 'golden',
     label: 'EVENING',
     hour: 20.5,
@@ -323,7 +337,7 @@ export const DAYLIGHT_KEYFRAMES: DaylightKeyframe[] = [
     fogFar: 700,
   },
   {
-    at: 0.53,
+    at: 0.48,
     phase: 'golden',
     label: 'SUNSET',
     hour: 21.5,
@@ -353,7 +367,7 @@ export const DAYLIGHT_KEYFRAMES: DaylightKeyframe[] = [
   },
   {
     // The last light, about twenty seconds before the dreadnought launches.
-    at: 0.58,
+    at: 0.52,
     phase: 'dusk',
     label: 'DUSK',
     hour: 22,
@@ -384,8 +398,9 @@ export const DAYLIGHT_KEYFRAMES: DaylightKeyframe[] = [
   {
     // Night falls on the second the dreadnought launches, and the rest of the
     // run - the whole boss fight - is spent going deeper into it, past the
-    // seam and down onto the floor.
-    at: 0.66,
+    // seam and down onto the floor. Pinned to the wave rather than to a
+    // fraction, so the two cannot drift apart.
+    at: NIGHTFALL_AT,
     phase: 'night',
     label: 'NIGHT',
     hour: 23,

@@ -72,13 +72,47 @@ export const SIZE_CAMERA_LIFT_MAX = 7.5
  *
  * Cats are worth more than people, which is what makes chasing the fast,
  * evasive target worthwhile.
+ *
+ * These are the rates a *small* craft eats at. They are the top of the curve,
+ * not the whole of it - growthFalloff below tapers them as the hull fills out.
  */
 export const SIZE_GAIN = {
-  pedestrian: 0.035,
-  cat: 0.058,
+  pedestrian: 0.046,
+  cat: 0.076,
 } as const
 
 export type SizeGainKind = keyof typeof SIZE_GAIN
+
+/**
+ * What a meal is still worth at the ceiling, as a fraction of the opening
+ * rate. Growth never stops - the last stretch is meant to be a climb, not a
+ * wall - but a craft the size of a city block should not put on another block
+ * for the same handful of pedestrians that doubled it in the first ten
+ * seconds.
+ */
+export const GROWTH_FALLOFF_MIN = 0.18
+/**
+ * Above 1 so the taper is back-loaded: the first third of the range keeps
+ * essentially the full opening rate (the curve is flat where p is small) and
+ * the bite only arrives once the craft is genuinely huge, which is where the
+ * player asked for the brakes.
+ */
+export const GROWTH_FALLOFF_EXPONENT = 2
+
+/**
+ * Multiplier on every gain, 1 at the opening size falling to
+ * GROWTH_FALLOFF_MIN at the ceiling.
+ *
+ * Purely proportional growth means each meal is worth more in absolute metres
+ * than the last, so the back half of the run used to rush past: ten pedestrians
+ * covered the top third of the range while the opening third took seventy. This
+ * flips that around - roughly fifty meals for the first third and twenty for
+ * the last - without changing how long a whole run to the ceiling takes.
+ */
+export function growthFalloff(size: number) {
+  const progress = sizeGrowthProgress(size)
+  return GROWTH_FALLOFF_MIN + (1 - GROWTH_FALLOFF_MIN) * (1 - Math.pow(progress, GROWTH_FALLOFF_EXPONENT))
+}
 
 export type SizeProfile = {
   size: number
@@ -104,7 +138,7 @@ export type SizeProfile = {
    * stronger simply by being bigger.
    */
   beamPower: number
-  /** Integer base pull strength, 0..7. */
+  /** Integer base pull strength, 0..BEAM_STRENGTH_MAX. */
   beamStrength: number
   /** Hanging weight the craft can keep aloft before lift-card bonuses. */
   liftCapacity: number
@@ -128,20 +162,52 @@ export type SizeProfile = {
 export const CAMERA_REST_DISTANCE = 12
 
 /**
- * The twelve integer strength rungs shared by the HUD and beam simulation.
+ * The integer strength rungs shared by the HUD and beam simulation.
  *
  * This used to top out at 7 with cards adding up to +5 on the side; the cards
- * are gone, so the whole 1..12 ladder now lives on size alone. The heaviest
- * liftables keep their old meaning: a supertall block (mass 11) still needs a
- * craft near the ceiling, it just no longer needs a lucky deck as well.
+ * are gone, so the ladder lives on size alone. It then had to grow a second
+ * storey, because the sky joined the menu: a helicopter weighs 6, a fighter
+ * 10 and the dreadnought 30, and a ladder that stopped at 12 could never
+ * reach the last of them however far the craft grew.
+ *
+ * The two storeys are deliberately unequal, see `beamStrengthForSize`.
  */
-export const BEAM_STRENGTH_MAX = 12
+export const BEAM_STRENGTH_MAX = 30
 /**
- * One. The opening saucer carries one unit of hanging weight and not a gram
- * more - a single trash bin is a full load, which is exactly the "barely a
- * predator" the start of the run is selling.
+ * The top of the city ladder - the rung a supertall block (mass 11) sits
+ * under, and the whole of what the old 1..12 range covered.
  */
-export const LIFT_CAPACITY_MIN = 1
+export const BEAM_STRENGTH_CITY_RUNG = 12
+/**
+ * How much of the growth range the city ladder spends.
+ *
+ * The first eighty-five percent of growing buys rungs 1..12, which is the
+ * street, the park and the skyline. The last fifteen buys 12..30, which is
+ * nothing but the dreadnought and its escorts - and the last rung of it only
+ * arrives within a whisker of the size cap, so eating the ship is the final
+ * thing a run can do rather than something it passes on the way.
+ *
+ * The city ladder is slightly quicker than it was for the compression: a
+ * supertall tower opens around 66% of the way up instead of 77%. That is the
+ * price of the second storey, and it is charged where the run has already made
+ * its point rather than at the start where the rungs teach.
+ */
+export const BEAM_STRENGTH_CITY_PROGRESS = 0.85
+/**
+ * Two: exactly one body.
+ *
+ * A pedestrian weighs 2 (see PEDESTRIAN_MASS) and a bin weighs 2 as well, so
+ * this is the smallest rating at which the opening saucer's first catch is a
+ * full load rather than an overload. It sat at 1, which meant the very first
+ * thing a new player picked up put them over the line - alarm on, sinking,
+ * top speed falling - before they had done anything wrong. A limit that is
+ * breached by the tutorial's own lesson is not teaching a limit, it is just
+ * noise.
+ *
+ * Still "barely a predator": one body at a time, and a second one is already
+ * twice the rating.
+ */
+export const LIFT_CAPACITY_MIN = 2
 /** Forty by the ceiling. Self-limiting long before that: ballast drag prices
  *  a full hold at well under half speed, so the cap is ambition, not power. */
 export const LIFT_CAPACITY_MAX = 40
@@ -201,10 +267,24 @@ export function bonusHeartsForSize(size: number) {
   return Math.min(HEALTH_BONUS_HEARTS_MAX, Math.floor(sizeGrowthProgress(size) * (HEALTH_BONUS_HEARTS_MAX + 1)))
 }
 
+/**
+ * Two straight segments, not one.
+ *
+ * A single line from 1 to 30 would hand the opening saucer a car on its third
+ * meal and a tower before half the run; a single line to 12 cannot reach the
+ * ship at all. So the curve keeps the city ladder's shape over the bulk of
+ * growth and spends the last stretch climbing to the ship.
+ */
 export function beamStrengthForSize(size: number) {
   const clamped = clampSize(size)
   if (clamped < SIZE_START) return 0
-  return Math.min(BEAM_STRENGTH_MAX, 1 + Math.round(sizeGrowthProgress(clamped) * (BEAM_STRENGTH_MAX - 1)))
+  const progress = sizeGrowthProgress(clamped)
+  if (progress <= BEAM_STRENGTH_CITY_PROGRESS) {
+    const city = progress / BEAM_STRENGTH_CITY_PROGRESS
+    return Math.min(BEAM_STRENGTH_CITY_RUNG, 1 + Math.round(city * (BEAM_STRENGTH_CITY_RUNG - 1)))
+  }
+  const sky = (progress - BEAM_STRENGTH_CITY_PROGRESS) / (1 - BEAM_STRENGTH_CITY_PROGRESS)
+  return Math.min(BEAM_STRENGTH_MAX, BEAM_STRENGTH_CITY_RUNG + Math.round(sky * (BEAM_STRENGTH_MAX - BEAM_STRENGTH_CITY_RUNG)))
 }
 
 export function liftCapacityForSize(size: number) {
@@ -266,12 +346,14 @@ export function sizeCameraLift(size: number) {
 }
 
 export function growSize(size: number, kind: SizeGainKind) {
-  return clampSize(size * (1 + SIZE_GAIN[kind]))
+  return growSizeBy(size, SIZE_GAIN[kind])
 }
 
-/** `amount` is a fraction of current size, matching SIZE_GAIN. */
+/** `amount` is a fraction of current size, matching SIZE_GAIN. Every source of
+ *  growth goes through here, so the late-game taper applies to swallowed cars
+ *  and buildings exactly as it does to pedestrians. */
 export function growSizeBy(size: number, amount: number) {
-  return clampSize(size * (1 + Math.max(0, amount)))
+  return clampSize(size * (1 + Math.max(0, amount) * growthFalloff(size)))
 }
 
 export function ufoDiameter(size: number) {

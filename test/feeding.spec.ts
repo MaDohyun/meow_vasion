@@ -23,7 +23,7 @@ function flyAndFeed(seconds: number, startSize = SIZE_START, seed = 4242, steer 
   stepCrowds(crowds, { position: drone.position, heading: 0 }, 0)
   let size = startSize
   let absorbed = 0
-  const input: DroneInput = { throttle: park ? 0 : 1, steer: 0, strafe: 0, lookPitch: 0, vertical: 0, special: false }
+  const input: DroneInput = { throttle: park ? 0 : 1, steer: 0, lookPitch: 0, vertical: 0, special: false }
   // A steering pilot points at the nearest target ahead, the way a player
   // reading the radar would. The city is populated in every direction now, so
   // greedily chasing the nearest body regardless of bearing degenerates into
@@ -90,13 +90,14 @@ function averageFeed(seconds: number, startSize = SIZE_START, steer = false, alt
   return total / seeds.length
 }
 
-// Each case drives the real runtime for hundreds of simulated seconds, and
-// the two slowest sit close enough to vitest's 5s default that a loaded
-// machine trips them. The assertions are about game balance, not speed, so
-// they get room rather than a stopwatch.
-const SIMULATION_TIMEOUT = 20_000
-
-describe('feeding is the core loop', () => {
+/**
+ * Each case here flies six seeded runs of a live city for 25 simulated
+ * seconds, which is seconds of real work, not milliseconds - two of them land
+ * within a whisker of vitest's 5s default and tip over it whenever the suite
+ * runs them alongside everything else. The work is the point of the test, so
+ * the limit is what gives.
+ */
+describe('feeding is the core loop', { timeout: 30_000 }, () => {
   it('starves a player who sits still', () => {
     // Hovering with the beam on used to be the strongest play in the game:
     // park zones were chosen without looking at how close they were, so a
@@ -106,7 +107,7 @@ describe('feeding is the core loop', () => {
     const moving = averageFeed(25)
     expect(parked).toBeLessThan(moving / 3)
     expect(parked).toBeLessThan(2)
-  }, SIMULATION_TIMEOUT)
+  })
 
   it('feeds any heading in the populated city without punishing steering', () => {
     const blind = averageFeed(25)
@@ -120,7 +121,7 @@ describe('feeding is the core loop', () => {
     // through uniform density, but steering must stay competitive rather than
     // becoming a trap.
     expect(steered).toBeGreaterThan(blind * 0.55)
-  }, SIMULATION_TIMEOUT)
+  })
 
   it('keeps even a blind pass above starvation', () => {
     // The floor matters: a player busy dodging must not starve outright. Growth
