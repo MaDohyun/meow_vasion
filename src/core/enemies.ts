@@ -423,6 +423,35 @@ const MINE_BOB = 1.4
 const MINE_CREEP_SPEED = 6
 const AIR_DESPAWN_DISTANCE = 240
 
+/**
+ * What shaking a unit off costs the spawner, in seconds.
+ *
+ * Only the player's own flying puts distance between a unit and the player -
+ * mines hold station and helicopters patrol a shelf - so every despawn at
+ * AIR_DESPAWN_DISTANCE is somebody having run away from something. The
+ * spawner used to refill that hole on the next tick from the pool's spare
+ * slots, which meant running produced a new sky instantly and flying straight
+ * was answered as fast as the player could fly.
+ *
+ * Deliberately tiny, and measured rather than guessed. Over the last minute of
+ * a run: a player who holds position and fights sees 21.1 mines, 12.4
+ * helicopters and 5.4 fighters within 150m, at this value and at zero alike -
+ * standing still leaves nothing behind, so it costs them exactly nothing. A
+ * player flying one heading at cruise sees 20.6/6.0/4.5 without it and
+ * 15.2/4.6/3.8 with it: about a quarter thinner while the running lasts.
+ *
+ * Bigger values were tried and are worse than they look. At 0.25 the late sky
+ * during a permanent flight falls below the early one, which breaks the rule
+ * the wave table exists to state - later waves add to the sky, they do not
+ * replace it - and `test/wave-mix.spec.ts` says so out loud.
+ */
+export const LEFT_BEHIND_SPAWN_PAUSE = 0.08
+
+/** The most that can pile up. A held spawner may never empty the sky, so the
+ *  pause is capped well below the time it takes to fall behind in the first
+ *  place. */
+export const LEFT_BEHIND_SPAWN_PAUSE_MAX = 0.5
+
 // Helicopters own an altitude band and patrol in it, so an unprovoked sky
 // still reads as layers rather than as a swarm. Only a locked-on chase leaves
 // the band - it has to, or a ram could never land - and losing the chase puts
@@ -1335,6 +1364,14 @@ export function stepEnemies(state: EnemyState, player: Vec3, dt: number, playerV
     else if (enemy.kind === 'fighter') stepFighter(enemy, player, d)
     else if (enemy.kind === 'drone') stepDroneMine(enemy, player, d)
     else stepHelicopter(enemy, player, d)
+
+    // Falling out of range is the only thing those four can do to `active`,
+    // and a detonating mine has already left this loop, so this is exactly
+    // the left-behind case and needs no flag of its own.
+    if (!enemy.active) {
+      state.spawnTimer = Math.min(LEFT_BEHIND_SPAWN_PAUSE_MAX, Math.max(0, state.spawnTimer) + LEFT_BEHIND_SPAWN_PAUSE)
+      continue
+    }
 
     if (enemy.kind === 'boss') { stepBattleshipGuns(state, enemy, player, d); continue }
     enemy.attackTimer -= d

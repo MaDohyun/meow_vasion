@@ -4,6 +4,7 @@ import {
   ENEMY_CAPS,
   ENEMY_MAX_HP,
   ENEMY_WAVE_STAGES,
+  LEFT_BEHIND_SPAWN_PAUSE_MAX,
   WAVE_RAMP_SECONDS,
   activeEnemyCount,
   createEnemyState,
@@ -31,6 +32,10 @@ function fillWave(time: number) {
 const MID_WAVE_AT = ENEMY_WAVE_STAGES[2]!.at
 const FIGHTER_WAVE_AT = ENEMY_WAVE_STAGES[3]!.at
 const LAST_WAVE_AT = ENEMY_WAVE_STAGES[ENEMY_WAVE_STAGES.length - 1]!.at
+
+/** The most the spawn timer may ever read: the ordinary cadence for a full
+ *  burst, plus everything the flee pause is allowed to add on top. */
+const SPAWN_HOLD_CEILING = 0.2 * 8 + LEFT_BEHIND_SPAWN_PAUSE_MAX
 
 describe('time-based enemy waves', () => {
   it('leaves only the drone mine grabbable by tractor physics', () => {
@@ -125,6 +130,57 @@ describe('time-based enemy waves', () => {
       expect(ENEMY_WAVE_STAGES[stage]!.at - ENEMY_WAVE_STAGES[stage - 1]!.at)
         .toBeGreaterThanOrEqual(WAVE_RAMP_SECONDS)
     }
+  })
+
+  it('makes running away cost the spawner a beat, and only running away', () => {
+    // Units fall out of range behind a player who keeps flying, and each one
+    // that does holds the refill briefly. Nothing else in the game creates
+    // that distance - mines hold station and helicopters patrol a shelf - so
+    // this lands on the tactic and on nothing else.
+    const fly = (flee: boolean) => {
+      const state = createEnemyState(0x51de)
+      let held = 0
+      let total = 0
+      let samples = 0
+      for (let tick = 0; tick * 0.05 < LAST_WAVE_AT; tick += 1) {
+        const elapsed = tick * 0.05
+        const player = { x: 0, y: 14, z: flee ? elapsed * 30 : 0 }
+        syncEnemyTiers(state, elapsed, player, 0, 0.05)
+        stepEnemies(state, player, 0.05)
+        held = Math.max(held, state.spawnTimer)
+        // Both runs shoot down whatever comes close, because a spawner with
+        // nothing to replace has spare capacity and a pause it never feels.
+        // The case worth measuring is the one a player is actually in: losing
+        // units to the laser and to the horizon at the same time.
+        if (tick % 8 === 0) {
+          let nearest: (typeof state.slots)[number] | null = null
+          let best = Infinity
+          for (const enemy of state.slots) {
+            if (!enemy.active || enemy.kind === 'boss') continue
+            const distance = Math.hypot(enemy.position.x - player.x, enemy.position.z - player.z)
+            if (distance < best) { best = distance; nearest = enemy }
+          }
+          if (nearest && best < 90) { nearest.active = false; nearest.respawn = 0.6 }
+        }
+        // Sampled over the last stretch only, so both runs are read at the
+        // same wave with the sky already settled.
+        if (elapsed < LAST_WAVE_AT - 40 || tick % 20 !== 0) continue
+        samples += 1
+        total += activeEnemyCount(state, 'drone')
+      }
+      return { held, sky: total / samples, state }
+    }
+
+    const fleeing = fly(true)
+    const standing = fly(false)
+    // Running is answered a little more slowly, and only a little.
+    expect(fleeing.sky).toBeLessThan(standing.sky * 0.9)
+    expect(fleeing.sky).toBeGreaterThan(standing.sky * 0.5)
+    // The hold is capped, so a spawner that is always behind still never
+    // empties the sky: running thins it, it does not switch it off.
+    expect(fleeing.held).toBeLessThanOrEqual(SPAWN_HOLD_CEILING)
+    expect(activeEnemyCount(fleeing.state, 'drone')).toBeGreaterThan(0)
+    expect(activeEnemyCount(fleeing.state, 'helicopter')).toBeGreaterThan(0)
   })
 
   it('escalates to a bounded mixed army and a single boss', () => {
