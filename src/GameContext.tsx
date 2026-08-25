@@ -849,6 +849,17 @@ function beamStrength(game: GameRuntime) {
 }
 
 /**
+ * What one laser shot is worth: the hull's own power times the pickup's.
+ *
+ * Every shot in the game goes through here - enemies, hazards, buildings,
+ * landmarks - because four call sites each composing this themselves is four
+ * chances for one of them to keep hitting at the old strength.
+ */
+function laserDamage(game: GameRuntime) {
+  return game.sizeProfile.laserPower * boonMultiplier(game.boons, 'laser-power')
+}
+
+/**
  * The beam's shape: what the hull gives, times what the pickups add.
  *
  * One source for the physics field, the drawn cone and the smoke snapshot.
@@ -1292,7 +1303,7 @@ function registerEnemyHit(game: GameRuntime, id: string, damage: number) {
 }
 
 function registerEnemyLaserHit(game: GameRuntime, id: string) {
-  registerEnemyHit(game, id, boonMultiplier(game.boons, 'laser-power'))
+  registerEnemyHit(game, id, laserDamage(game))
 }
 
 /** Returns the score banked, or 0 if nothing was destroyed - the callout
@@ -1317,7 +1328,7 @@ function destroyCar(game: GameRuntime, id: string, direction: Vec3) {
  * a truck and a tanker are worth several times a car, and the callout says so.
  */
 function registerHeavyVehicleLaserHit(game: GameRuntime, id: string) {
-  const result = damageHazard(game.hazards, id, boonMultiplier(game.boons, 'laser-power'))
+  const result = damageHazard(game.hazards, id, laserDamage(game))
   if (!result) return 0
   triggerLaserBurst(game.laserBursts, 'impact', result.hazard.position)
   if (!result.destroyed) {
@@ -1380,7 +1391,7 @@ function registerPropLaserHit(game: GameRuntime, id: string, direction: Vec3) {
 function registerBuildingLaserHit(game: GameRuntime, id: string) {
   const building = game.world.buildings.find((candidate) => candidate.id === id)
   if (!building || game.destroyedBuildings.has(id)) return false
-  const result = damageBuilding(game.buildingHealth, building, boonMultiplier(game.boons, 'laser-power'))
+  const result = damageBuilding(game.buildingHealth, building, laserDamage(game))
   game.buildingHitFlash.set(building.id, 1)
   triggerLaserBurst(game.laserBursts, 'impact', building.position)
   if (!result.destroyed) return true
@@ -1434,21 +1445,41 @@ function detonateLandmark(game: GameRuntime, landmark: DestructibleLandmark) {
   return true
 }
 
+/**
+ * Says so the one time the hull crosses into the stronger laser.
+ *
+ * Growth is otherwise silent and continuous, so a step change inside it would
+ * land as "fighters feel easier now, maybe?" rather than as something the
+ * player earned. Compared on the profile either side of the meal rather than
+ * on a stored flag: the profile is already the single source for what a size
+ * is worth, and a flag would be a second one to keep in step.
+ */
+function announceGrowth(game: GameRuntime, wasLaserPower: number) {
+  if (game.sizeProfile.laserPower > wasLaserPower) {
+    setMessage(game, 'msgLaserGrown', 2.4)
+    tone('upgrade')
+  }
+}
+
 function grow(game: GameRuntime, kind: SizeGainKind) {
   const before = game.size
+  const wasLaserPower = game.sizeProfile.laserPower
   game.size = growSize(game.size, kind)
   game.sizeProfile = sizeProfile(game.size)
   game.sizePulse = 1
   raiseHealthMax(game.health, MAX_HEALTH + bonusHeartsForSize(game.size))
+  announceGrowth(game, wasLaserPower)
   return game.size - before
 }
 
 function growBy(game: GameRuntime, amount: number) {
   const before = game.size
+  const wasLaserPower = game.sizeProfile.laserPower
   game.size = growSizeBy(game.size, amount)
   game.sizeProfile = sizeProfile(game.size)
   game.sizePulse = 1
   raiseHealthMax(game.health, MAX_HEALTH + bonusHeartsForSize(game.size))
+  announceGrowth(game, wasLaserPower)
   return game.size - before
 }
 
@@ -2471,7 +2502,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         // Two base hits, scaled by laser power - a maxed laser one-shots. The
         // first shot lights the landmark up and leaves it standing.
         if (landmark && !game.destroyedLandmarks.has(landmark.id)) {
-          const result = damageLandmark(game.landmarkHealth, landmark.id, boonMultiplier(game.boons, 'laser-power'))
+          const result = damageLandmark(game.landmarkHealth, landmark.id, laserDamage(game))
           game.landmarkHitFlash.set(landmark.id, 1)
           if (result.destroyed) detonateLandmark(game, landmark)
         }

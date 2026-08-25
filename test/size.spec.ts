@@ -12,12 +12,15 @@ import {
   CAMERA_REST_DISTANCE,
   GROWTH_FALLOFF_MIN,
   HEALTH_BONUS_HEARTS_MAX,
+  LASER_POWER_GROWN,
+  LASER_POWER_SIZE,
   LIFT_CAPACITY_MIN,
   SIZE_MAX,
   SIZE_MIN,
   SIZE_START,
   beamStrengthForSize,
   bonusHeartsForSize,
+  laserPowerForSize,
   clampSize,
   growSize,
   growSizeBy,
@@ -29,6 +32,8 @@ import {
   ufoDiameter,
 } from '../src/core/size'
 import { PEDESTRIAN_MASS } from '../src/core/crowds'
+import { BOON_DEFINITIONS } from '../src/core/boons'
+import { ENEMY_MAX_HP } from '../src/core/enemies'
 
 describe('craft size as growth, not as health', () => {
   it('starts small enough that one person is a real meal', () => {
@@ -244,5 +249,44 @@ describe('craft size as growth, not as health', () => {
   it('reports ratio from the death threshold, not from zero', () => {
     expect(sizeProfile(SIZE_MIN).ratio).toBe(0)
     expect(sizeProfile(SIZE_MAX).ratio).toBe(1)
+  })
+})
+
+describe('the hull carrying the laser', () => {
+  it('switches on at the run\'s middle, not at the start or the cap', () => {
+    expect(laserPowerForSize(SIZE_START)).toBe(1)
+    expect(laserPowerForSize(LASER_POWER_SIZE - 0.01)).toBe(1)
+    expect(laserPowerForSize(LASER_POWER_SIZE)).toBe(LASER_POWER_GROWN)
+    expect(laserPowerForSize(SIZE_MAX)).toBe(LASER_POWER_GROWN)
+    // Squarely inside the run rather than at either end: past it a player is
+    // plinking at fighters with a starter gun, before it the threshold would
+    // be a freebie.
+    const progress = (LASER_POWER_SIZE - SIZE_START) / (SIZE_MAX - SIZE_START)
+    expect(progress).toBeGreaterThan(0.2)
+    expect(progress).toBeLessThan(0.5)
+    expect(sizeProfile(LASER_POWER_SIZE).laserPower).toBe(LASER_POWER_GROWN)
+  })
+
+  it('spends shots the way the wave ladder expects', () => {
+    // What the change is actually for, said in shots rather than multipliers.
+    // hitEnemy subtracts damage and kills at zero, so this is ceil(hp/damage).
+    const shots = (hp: number, damage: number) => Math.ceil(hp / damage)
+    const grown = LASER_POWER_GROWN
+    const item = 1 + BOON_DEFINITIONS['laser-power'].step
+
+    // A starter craft: four shots for a fighter, which is the problem.
+    expect(shots(ENEMY_MAX_HP.fighter, 1)).toBe(4)
+    // Grown, but no pickup - three. Not two: 4/1.5 is 2.67 and a fighter does
+    // not die on a partial shot.
+    expect(shots(ENEMY_MAX_HP.fighter, grown)).toBe(3)
+    // Grown AND carrying the circle's laser item - two. The two-shot fighter
+    // is the pair, not the hull on its own.
+    expect(shots(ENEMY_MAX_HP.fighter, grown * item)).toBe(2)
+    // Helicopters fall to two either way; the step is what makes a fighter
+    // cost the same as a helicopter used to.
+    expect(shots(ENEMY_MAX_HP.helicopter, grown)).toBe(2)
+    // The dreadnought stays a real fight: a grown craft with the item still
+    // spends nearly thirty shots on it.
+    expect(shots(ENEMY_MAX_HP.boss, grown * item)).toBe(29)
   })
 })

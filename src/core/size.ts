@@ -127,6 +127,8 @@ export type SizeProfile = {
   /** Pull-speed multiplier on the haul (BeamField.gripScale): a caught load
    *  rides a grown craft's beam visibly faster. See beamPullForSize. */
   beamPull: number
+  /** Laser damage multiplier from the hull alone. See laserPowerForSize. */
+  laserPower: number
   /**
    * Natural grip on whatever the beam has hold of, before any upgrade.
    *
@@ -218,6 +220,38 @@ export const LIFT_CAPACITY_MAX = 40
  * The endpoints are untouched - pow(0) and pow(1) are still 0 and 1.
  */
 export const LIFT_GROWTH_EXPONENT = 0.75
+
+/**
+ * Where the hull starts carrying the laser, and by how much.
+ *
+ * The laser was the one thing growth did nothing for. Every other verb scales
+ * with the craft - the cone widens, the reach lengthens, the haul quickens -
+ * but a saucer the size of a block shot exactly as hard as the opening one,
+ * so a player who never routed through a mystery circle spent the back half
+ * of the run plinking at fighters with a starter gun.
+ *
+ * The threshold is the run's middle rather than a taste: fighters scramble at
+ * 125s and the dreadnought launches at 160s (see ENEMY_WAVE_STAGES), which is
+ * when a laser stops being for buildings and starts being for things shooting
+ * back. 5 is just under DRILL_CRAFT_SIZE, the craft the battleship drill hands
+ * over at that 160s mark - the codebase's own answer to what a mid-run hull
+ * looks like. A run that has been eating arrives here around the two-minute
+ * mark; one that has not, later, which is the right way round.
+ *
+ * A step rather than a curve, because the player has to be able to notice it.
+ * A ramp spread over the growth range would be a laser that is always slightly
+ * different and never visibly better - this is a moment, announced (see
+ * msgLaserGrown), after which fighters die in three shots instead of four.
+ */
+export const LASER_POWER_SIZE = 5
+export const LASER_POWER_GROWN = 1.5
+
+/** 1 below the threshold, LASER_POWER_GROWN at or above it. Multiplies with
+ *  the mystery-circle laser pickup rather than replacing it, the same way the
+ *  beam stats compose: a grown craft carrying the item hits for 2.25. */
+export function laserPowerForSize(size: number) {
+  return clampSize(size) >= LASER_POWER_SIZE ? LASER_POWER_GROWN : 1
+}
 
 /** Beam cone multiplier at the ceiling, absorbing the old radius cards'
  *  headroom (x1.75) into growth itself. */
@@ -333,6 +367,7 @@ export function sizeProfile(size: number): SizeProfile {
     beamPull: beamPullForSize(clamped),
     beamPower: beamStrength,
     beamStrength,
+    laserPower: laserPowerForSize(clamped),
     liftCapacity: liftCapacityForSize(clamped),
     absorbDistance: Math.min(2.1 + clamped * 1.5, ABSORB_DISTANCE_MAX + sizeGrowthProgress(clamped) * ABSORB_DISTANCE_GROWN_BONUS),
     hitRadius: 1.05 * clamped,
