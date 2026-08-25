@@ -152,7 +152,7 @@ export type Strings = {
   altitude: string
   threats: string
   pilotCam: string
-  tutorialPressE: string
+  tutorialRescueHint: string
   hold: string
   mission: string
   missionCopy: Record<MissionQuestId, string>
@@ -394,7 +394,7 @@ export const STRINGS: Record<Language, Strings> = {
     altitude: '고도',
     threats: '위협',
     pilotCam: '파일럿',
-    tutorialPressE: '눌러서 구출',
+    tutorialRescueHint: '꾹 눌러서 구출',
     hold: '누르고 있기',
     mission: '미션',
     missionCopy: {
@@ -607,7 +607,7 @@ export const STRINGS: Record<Language, Strings> = {
     altitude: '高度',
     threats: '脅威',
     pilotCam: 'パイロット',
-    tutorialPressE: '押して救出',
+    tutorialRescueHint: '長押しで救出',
     hold: '長押し',
     mission: 'ミッション',
     missionCopy: {
@@ -820,7 +820,7 @@ export const STRINGS: Record<Language, Strings> = {
     altitude: 'ALT',
     threats: 'THREATS',
     pilotCam: 'PILOT CAM',
-    tutorialPressE: 'HOLD TO RESCUE',
+    tutorialRescueHint: 'HOLD TO RESCUE',
     hold: 'HOLD',
     mission: 'MISSION',
     missionCopy: {

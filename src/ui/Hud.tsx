@@ -1054,17 +1054,18 @@ export function Hud() {
         {/* Flight, laser, turbo and drop are all inert during the tutorial -
             this is the one thing left to try, so it has to name itself.
             Held back until the briefing actually reaches that instruction -
-            E does nothing before then, so the prompt shouldn't invite it. */}
+            the beam does nothing before then, so the prompt shouldn't
+            invite it. */}
         {snapshot.tutorial && snapshot.tutorialBriefingReady && !snapshot.beamActive && (
           <div
-            className="tutorial-e-prompt"
+            className="tutorial-beam-prompt"
             style={{ left: `${50 + snapshot.aimX * 50}%`, top: `${50 + snapshot.aimY * 50}%` }}
           >
             {/* Both, because this prompt is the first thing a new player is
                 asked to do and the machine they brought is not knowable. */}
             <b>{t.keyRightClick}</b>
             <b>W</b>
-            <span>{t.tutorialPressE}</span>
+            <span>{t.tutorialRescueHint}</span>
           </div>
         )}
         {/* The briefing teaches the four controls over the tutorial cat, and a
