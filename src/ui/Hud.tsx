@@ -19,6 +19,15 @@ const formatTime = (seconds: number) => {
   return `${Math.floor(safe / 60)}:${String(safe % 60).padStart(2, '0')}`
 }
 
+/**
+ * The objective card: which rung of five, what it asks for, and how far along.
+ *
+ * One objective rather than three, so the numbers on it are worth reading -
+ * a board of three simultaneous counters is a thing to audit between fights
+ * rather than a thing to fly toward. The gauge underneath is there because
+ * three of the five rungs are measured in points and litres, and "1240/3600"
+ * on its own does not say whether that is nearly done or barely started.
+ */
 function MissionPanel() {
   const { snapshot, t } = useGame()
   if (snapshot.tutorial) {
@@ -30,21 +39,22 @@ function MissionPanel() {
       </section>
     )
   }
-  if (snapshot.missionStage < 1) return null
+  const quest = snapshot.missionQuest
+  if (!quest || snapshot.missionStage < 1) return null
+  const ratio = quest.target > 0 ? Math.min(1, quest.progress / quest.target) : 0
   return (
     <section className={`mission-panel panel ${snapshot.missionPulse > 0 ? 'mission-pulse' : ''}`}>
-      <span className="eyebrow">{t.mission} {Math.min(3, snapshot.missionStage)}</span>
-      {snapshot.missionQuests.map((quest) => (
-        <div key={quest.id} data-complete={quest.complete}>
-          {/* The glyph is what the eye finds the row by; the tick that used to
-              sit here only ever appeared once the row no longer mattered. A
-              finished objective is struck through instead, which says the same
-              thing without spending the one column that aids the scan. */}
-          <i aria-hidden="true">{MISSION_ICONS[quest.id]}</i>
-          <span>{t.missionCopy[quest.id]}</span>
-          <b>{Math.floor(quest.progress)}/{Math.floor(quest.target)}</b>
-        </div>
-      ))}
+      <span className="eyebrow">{t.mission} {Math.min(snapshot.missionCount, snapshot.missionStage)}/{snapshot.missionCount}</span>
+      <div data-complete={quest.complete}>
+        {/* The glyph is what the eye finds the row by; a tick would only ever
+            appear once the row no longer mattered. A finished objective is
+            struck through instead, which says the same thing without spending
+            the one column that aids the scan. */}
+        <i aria-hidden="true">{MISSION_ICONS[quest.id]}</i>
+        <span>{t.missionCopy[quest.id]}</span>
+        <b>{Math.floor(quest.progress)}/{Math.floor(quest.target)}</b>
+      </div>
+      <div className="mission-gauge"><i style={{ width: `${ratio * 100}%` }} /></div>
     </section>
   )
 }
@@ -426,6 +436,30 @@ export function devToolsEnabled() {
   return /(?:^|[?&])dev=1(?:&|$)/.test(window.location.search) || window.location.hash === '#dev'
 }
 
+/**
+ * The lobby's ending previewer, behind the same developer gate as the drill.
+ *
+ * Four endings, each of which otherwise costs a full five-minute run flown a
+ * particular way to look at once - and two of them cannot be reached at all
+ * without deliberately losing. Reading what the general says on each, and
+ * whether the sign-off still fits the card at that length, is a thing to do
+ * in a few seconds rather than in half an hour.
+ */
+function EndingPreview() {
+  const { previewEnding, t } = useGame()
+  if (!devToolsEnabled()) return null
+  const endings: RunEnding[] = ['recon', 'missionFailed', 'downed', 'crushed']
+  return (
+    <div className="lobby-ending-preview" role="group" aria-label={t.devEndings}>
+      {endings.map((ending) => (
+        <button key={ending} className="dev-button" type="button" onMouseEnter={playMenuHoverSound} onClick={() => previewEnding(ending)}>
+          <span aria-hidden="true">⚙</span>{ending}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 function Intro() {
   const { start, startBattleshipDrill, t, language, setLanguage } = useGame()
   const [optionsOpen, setOptionsOpen] = useState(false)
@@ -519,6 +553,7 @@ function Intro() {
             <span aria-hidden="true">🔊</span>{t.soundBlocked}
           </button>
         )}
+        <EndingPreview />
       </section>
     </div>
   )
@@ -587,6 +622,11 @@ function BossBriefing() {
   }, [step, done, steps])
 
   if (done) return null
+  // Never two generals at once. A mission debrief has the frozen world behind
+  // it and a click that must reach it, so the tutorial's own trailing lines
+  // stand down rather than stacking a second identical box on top. Returning
+  // null keeps this component mounted, so its place in the script is not lost.
+  if (snapshot.missionDebrief) return null
   const current = steps[step]
   if (!current) return null
 
@@ -625,6 +665,38 @@ function BossBriefing() {
           <button type="button" className="briefing-skip" onClick={skip}>
             {t.briefingSkip}
           </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * The general's word after a mission, over a frozen world.
+ *
+ * It reuses the opening briefing's box on purpose: the same face said the
+ * same kind of thing during the tutorial, and a second visual language for
+ * "the general is talking" would only ask the player to learn it twice.
+ *
+ * Everything about it is a click-to-continue step. There is no skip and no
+ * auto-advance: the simulation is stopped behind it (see the debrief gate in
+ * GameContext's advance), so nothing is running out while it is up, and each
+ * one is explaining a rule the pilot met about a second ago by doing it.
+ */
+function MissionDebrief() {
+  const { snapshot, dismissMissionDebrief, t } = useGame()
+  const id = snapshot.missionDebrief
+  if (!id) return null
+  return (
+    <div className="briefing-touch clickable" onClick={dismissMissionDebrief}>
+      <div className="briefing-box">
+        <div className="briefing-portrait" aria-hidden="true" />
+        <div className="briefing-panel">
+          <span className="eyebrow">{t.briefingTitle}</span>
+          {t.missionDebrief[id].map((line, index) => (
+            <p key={index}><RichText text={line} /></p>
+          ))}
+          <span className="briefing-hint">{t.briefingContinue}</span>
         </div>
       </div>
     </div>
@@ -807,6 +879,13 @@ function Results() {
       {/* Saying why it ended matters more on the losing screens: the clock and
           the mission fail for different reasons, and neither is a collapse. */}
       <p className="result-lead">{lead}</p>
+      {/* The general signs off on every ending, win or loss. The run opened
+          with him giving the orders, and a results screen that reports the
+          numbers without him is the one screen he is missing from. */}
+      <div className="result-general">
+        <div className="briefing-portrait" aria-hidden="true" />
+        <p>{t.endingRemark[snapshot.ending ?? 'downed']}</p>
+      </div>
       <strong className="final-score">{Math.floor(snapshot.score).toLocaleString()}</strong>
       <p>{t.finalScore}</p>
       <div className="result-stats">
@@ -972,6 +1051,7 @@ export function Hud() {
             through the beam while a dreadnought is overhead is the general
             reading from the wrong page. */}
         {snapshot.phase === 'playing' && !snapshot.devRun && <BossBriefing key={briefingRun} />}
+        {snapshot.phase === 'playing' && <MissionDebrief />}
       </div>
       <MobileControls />
       {snapshot.phase === 'results' && <Results />}

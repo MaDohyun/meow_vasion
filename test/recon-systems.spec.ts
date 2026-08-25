@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildingMaxHealth, createBuildingRuin, damageBuilding, ruinCollider } from '../src/core/buildings'
+import { BUILDING_SCORE, buildingDestructionScore, buildingMaxHealth, createBuildingRuin, damageBuilding, ruinCollider } from '../src/core/buildings'
 import { LAKE_BEAM_SPEED_SCALE, stepLakeAbsorption } from '../src/core/lakes'
 import { shouldCrashFromOverload } from '../src/core/overload'
 import type { ProceduralBuilding } from '../src/core/world'
@@ -17,6 +17,8 @@ describe('recon overhaul support systems', () => {
     const active = stepLakeAbsorption(20, 2, true, 20)
     expect(active.litres).toBe(120)
     expect(active.absorbed).toBe(100)
+    // Half speed, not a standstill: the craft can still leave the lake.
+    expect(LAKE_BEAM_SPEED_SCALE).toBe(0.5)
     expect(active.speedScale).toBeCloseTo(LAKE_BEAM_SPEED_SCALE)
     expect(active.anchored).toBe(true)
     expect('ballast' in active).toBe(false)
@@ -44,6 +46,19 @@ describe('recon overhaul support systems', () => {
     expect(shouldCrashFromOverload(false, 12, 10, 1)).toBe(false)
     expect(shouldCrashFromOverload(true, 10, 10, 1)).toBe(false)
     expect(shouldCrashFromOverload(true, 12, 10, 2)).toBe(false)
+  })
+
+  it('pays more for the towers that take more shooting', () => {
+    const buildings = [building(12), building(30), building(52), building(78)]
+    const scores = buildings.map(buildingDestructionScore)
+    // Strictly rising with the hit tiers, so "shoot the big one" is always the
+    // better answer on mission four's wrecking gauge.
+    expect(scores).toEqual([...scores].sort((left, right) => left - right))
+    expect(new Set(scores).size).toBe(scores.length)
+    expect(scores[0]).toBe(BUILDING_SCORE.low)
+    expect(scores[3]).toBe(BUILDING_SCORE.supertall)
+    const hits = buildings.map(buildingMaxHealth)
+    expect(scores[3]! / scores[0]!).toBeGreaterThan(hits[3]! / hits[0]!)
   })
 
   it('uses four hit tiers and leaves a low fly-over ruin collider', () => {

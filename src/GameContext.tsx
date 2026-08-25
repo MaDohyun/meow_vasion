@@ -17,7 +17,7 @@ import {
   stepBeamObjects,
 } from './core/beam'
 import { createCrowdState, finishTutorialCrowd, prepareTutorialCrowd, primeCrowds, stepCrowds, type CrowdState } from './core/crowds'
-import { type CrowdSpawnZone, GAS_STATION_BEAM_MASS, canAbsorbBuilding, crowdSpawnZonesAround, damageLandmark, destructibleLandmarksAround, nearestDestructibleLandmark, parkingCarsAround, type DestructibleLandmark } from './core/cityLandmarks'
+import { type CrowdSpawnZone, GAS_STATION_BEAM_MASS, canAbsorbBuilding, crowdSpawnZonesAround, damageLandmark, destructibleLandmarksAround, parkingCarsAround, type DestructibleLandmark } from './core/cityLandmarks'
 import { STRINGS, readStoredLanguage, storeLanguage, type Language, type MessageKey, type TutorialControl } from './i18n'
 import { createDaylightSample, daylightClock, sampleDaylight, type DaylightSample } from './core/daylight'
 import {
@@ -57,6 +57,8 @@ import {
   createActiveWorld,
   lakeDepthAt,
   mysteryCircleAt,
+  mysteryCirclesNear,
+  type MysteryCircleSite,
   TUTORIAL_CAT,
   TUTORIAL_SPAWN,
   updateActiveWorld,
@@ -76,9 +78,24 @@ import {
   type BoonId,
   type BoonState,
 } from './core/boons'
-import { createBuildingRuin, damageBuilding, ruinCollider, type BuildingRuin } from './core/buildings'
+import { buildingDestructionScore, createBuildingRuin, damageBuilding, ruinCollider, type BuildingRuin } from './core/buildings'
 import { stepLakeAbsorption } from './core/lakes'
-import { createMissionState, isInsideAirCheckpoint, missionHasQuest, recordMissionEvent, startFinalMission, startMissionOne, syncMissionState, type MissionQuest, type MissionState } from './core/missions'
+import {
+  MISSION_COUNT,
+  closeRecon,
+  createMissionState,
+  isReconComplete,
+  missionHasQuest,
+  peekMissionDebrief,
+  recordMissionEvent,
+  startFinalMission,
+  startMissionOne,
+  syncMissionState,
+  takeMissionDebrief,
+  type MissionDebriefId,
+  type MissionQuest,
+  type MissionState,
+} from './core/missions'
 import { MYSTERY_BOOST_DURATION, MYSTERY_BOOST_MAX_MULTIPLIER, mysteryBoostMultiplier } from './core/mysteryCircles'
 import { shouldCrashFromOverload } from './core/overload'
 import { DRONE_BLAST_TRAUMA, HELICOPTER_RAM_TRAUMA, HIT_TRAUMA, addShakeTrauma, createShakeState, stepShake, type ShakeState } from './core/shake'
@@ -268,9 +285,19 @@ export type GameRuntime = {
   missionPulse: number
   missionBanner: MissionBanner | null
   missionBannerTime: number
-  checkpoint: Vec3 | null
-  checkpointGeneration: number
+  /**
+   * Where mission one is pointing, in world space.
+   *
+   * Only the first mission uses it - the nearest mystery circle the craft has
+   * not been to - because a circle is painted flat on the ground and is
+   * invisible from any altitude worth flying at. The radar dot and the arrow
+   * over the hull both read this, so they can never disagree about which
+   * circle the pilot is being sent to.
+   */
   missionTarget: Vec3 | null
+  /** Throttles the nearest-circle sweep; the answer only moves as fast as the
+   *  craft does. */
+  missionTargetCooldown: number
   hazards: HazardState
   daze: number
   daylight: DaylightSample
@@ -328,7 +355,14 @@ export type GameSnapshot = {
   waterAbsorbed: number
   waterAnchored: boolean
   missionStage: number
-  missionQuests: MissionQuest[]
+  /** The one objective on the board, or null in the tutorial and once the
+   *  recon closes. */
+  missionQuest: MissionQuest | null
+  /** Published so the HUD's "1/5" counter never hard-codes the ladder length. */
+  missionCount: number
+  /** The mission the general is still owed a word about. While this is set
+   *  the simulation is frozen: see the debrief gate in advance(). */
+  missionDebrief: MissionDebriefId | null
   missionPulse: number
   missionBanner: MissionBanner | null
   tutorial: boolean
@@ -411,6 +445,12 @@ type GameContextValue = {
   unlockTutorialControl: (control: TutorialControl) => void
   /** Ends the tutorial where it stands and starts the run. */
   skipTutorial: () => void
+  /** Dismisses the general's mission debrief and unfreezes the run. */
+  dismissMissionDebrief: () => void
+  /** Jumps straight to a results screen for one ending, so the general's
+   *  sign-off can be read without flying five minutes a particular way first.
+   *  Reached only from the developer entrance - see previewEnding. */
+  previewEnding: (ending: RunEnding) => void
   quality: RenderQuality
   setQuality: (quality: RenderQuality) => void
   language: Language
@@ -715,13 +755,12 @@ function makeRuntime(): GameRuntime {
     ballast: 0,
     waterAbsorbed: 0,
     waterAnchored: false,
-    mission: createMissionState((Math.random() * 0xffffffff) >>> 0),
+    mission: createMissionState(),
     missionPulse: 0,
     missionBanner: null,
     missionBannerTime: 0,
-    checkpoint: null,
-    checkpointGeneration: 0,
     missionTarget: null,
+    missionTargetCooldown: 0,
     hazards: createHazardState(),
     daze: 0,
     daylight: createDaylightSample(),
@@ -761,53 +800,65 @@ function refreshWorldGeometry(game: GameRuntime) {
   ]
 }
 
-function spawnCheckpoint(game: GameRuntime) {
-  game.checkpointGeneration += 1
-  const seed = Math.imul(game.checkpointGeneration + game.mission.randomState, 0x45d9f3b) >>> 0
-  const angle = seed % 360 / 180 * Math.PI
-  const distance = 44 + ((seed >>> 9) % 28)
-  game.checkpoint = {
-    x: game.drone.position.x + Math.sin(angle) * distance,
-    y: Math.max(10, Math.min(game.sizeProfile.maxAltitude - 3, 17 + ((seed >>> 15) % 15))),
-    z: game.drone.position.z + Math.cos(angle) * distance,
-  }
-}
+/** Reused by the nearest-circle sweep so a per-tick search allocates nothing. */
+const missionCircleScratch: MysteryCircleSite[] = []
 
+/**
+ * Points mission one at the nearest circle the craft has not visited.
+ *
+ * Stepped by sector rather than by cell (see mysteryCirclesNear) and only a
+ * few times a second, because the answer cannot change faster than the craft
+ * can fly. The sweep widens until it finds something: circles sit one to a
+ * 204m sector at roughly a quarter density, so the first ring almost always
+ * answers, and the wider rings only ever run in the empty stretches where the
+ * pilot most needs the arrow.
+ */
 function updateMissionTarget(game: GameRuntime) {
-  const targets = [] as DestructibleLandmark[]
-  if (missionHasQuest(game.mission, 'destroy-comms')) {
-    const communications = nearestDestructibleLandmark(game.drone.position, 'communications', game.destroyedLandmarks)
-    if (communications) targets.push(communications)
+  if (!missionHasQuest(game.mission, 'visit-mystery-circle')) {
+    // Mission one is the only thing that ever points anywhere, so the arrow
+    // and the radar dot both go out the moment it is cleared.
+    game.missionTarget = null
+    return
   }
-  targets.sort((left, right) =>
-    Math.hypot(left.position.x - game.drone.position.x, left.position.z - game.drone.position.z) -
-    Math.hypot(right.position.x - game.drone.position.x, right.position.z - game.drone.position.z),
-  )
-  game.missionTarget = targets[0] ? { ...targets[0].position } : null
+  let nearest: MysteryCircleSite | null = null
+  let nearestDistance = Infinity
+  for (const range of [320, 700, 1400]) {
+    for (const site of mysteryCirclesNear(game.drone.position, range, missionCircleScratch)) {
+      if (game.mysteryCirclesVisited.has(site.id)) continue
+      const distance = Math.hypot(site.x - game.drone.position.x, site.z - game.drone.position.z)
+      if (distance >= nearestDistance) continue
+      nearest = site
+      nearestDistance = distance
+    }
+    if (nearest) break
+  }
+  game.missionTarget = nearest ? { x: nearest.x, y: 0, z: nearest.z } : null
 }
 
 function presentMissionChange(game: GameRuntime, previousStage: number, previousRevision: number) {
   if (game.mission.revision === previousRevision) return
   game.missionPulse = 1
   if (game.mission.stage !== previousStage) {
-    // The tutorial's own hand-off to mission 1 is narrated by the general's
-    // briefing instead, so this banner only fires between real missions.
-    if (previousStage >= 1 && game.mission.stage >= 1 && game.mission.stage <= 3) {
+    // A cleared mission is announced by the general freezing the game (see
+    // the debrief queue), so the banner is only for the last rung, where
+    // there is no general and the run is about to end anyway.
+    if (isReconComplete(game.mission)) {
+      game.missionBanner = { type: 'recon-complete' }
+      game.missionBannerTime = 6
+    } else if (previousStage >= 1) {
       game.missionBanner = {
         type: 'stage-complete',
         previousStage,
         nextStage: game.mission.stage,
       }
       game.missionBannerTime = 4.4
-    } else if (game.mission.stage === 4) {
-      game.missionBanner = { type: 'recon-complete' }
-      game.missionBannerTime = 6
     }
   }
-  if (missionHasQuest(game.mission, 'air-checkpoints') && !game.checkpoint) spawnCheckpoint(game)
-  if (!missionHasQuest(game.mission, 'air-checkpoints')) game.checkpoint = null
-  if (game.mission.stage === 3 && game.bossDestroyed && missionHasQuest(game.mission, 'destroy-battleship')) {
-    recordMissionEvent(game.mission, { type: 'destroy-enemy', kind: 'boss' }, game.sessionTime)
+  // A debrief freezes the world, and a beam left running through the freeze
+  // would keep its sound on over a still picture.
+  if (peekMissionDebrief(game.mission) && game.beamActive) {
+    game.beamActive = false
+    stopBeamSound()
   }
   updateMissionTarget(game)
 }
@@ -817,6 +868,27 @@ function reportMissionEvent(game: GameRuntime, event: Parameters<typeof recordMi
   const previousRevision = game.mission.revision
   recordMissionEvent(game.mission, event, game.sessionTime)
   presentMissionChange(game, previousStage, previousRevision)
+}
+
+/**
+ * Points the tractor beam earned, banked to the score and to mission three.
+ *
+ * The split between this and bankDestroyScore is the whole reason the sample
+ * gauge and the wrecking gauge are two different meters: a car swallowed and
+ * a car shot are worth the same score and mean opposite things about what the
+ * pilot was asked to do. Routing every payout through one of these two makes
+ * it impossible to add a reward that quietly counts for both.
+ */
+function bankAbsorbScore(game: GameRuntime, reward: number) {
+  game.score += reward
+  reportMissionEvent(game, { type: 'absorb-score', score: reward })
+}
+
+/** Points something blowing up earned, banked to the score and to mission
+ *  four. City and aircraft alike: an air raid counts the fighters it downed. */
+function bankDestroyScore(game: GameRuntime, reward: number) {
+  game.score += reward
+  reportMissionEvent(game, { type: 'destroy-score', score: reward })
 }
 
 function removeRooftopProp(game: GameRuntime, buildingId: string) {
@@ -1076,8 +1148,7 @@ function registerEnemyHit(game: GameRuntime, id: string, damage: number) {
   // move with that would make the fight cost more than it pays.
   const reward = result.kind === 'boss' ? 3200 : result.kind === 'fighter' ? 140 : result.kind === 'helicopter' ? 80 : 35
   game.enemiesDown += 1
-  game.score += reward
-  reportMissionEvent(game, { type: 'destroy-enemy', kind: result.kind })
+  bankDestroyScore(game, reward)
   setMessage(game, 'msgEnemyDown', 1.4, reward)
   tone('upgrade')
 }
@@ -1095,8 +1166,7 @@ function destroyCar(game: GameRuntime, id: string, direction: Vec3) {
   }
   if (!target || !beginCarDestruction(target, direction, game.drone.velocity)) return false
   game.destroyedCars.add(id)
-  game.score += 50
-  reportMissionEvent(game, { type: 'destroy-car' })
+  bankDestroyScore(game, 50)
   return true
 }
 
@@ -1113,8 +1183,7 @@ function registerHeavyVehicleLaserHit(game: GameRuntime, id: string) {
     triggerFireball(game.fireballs, 'strike', result.hazard.position, undefined, blastSeed(game))
     return false
   }
-  game.score += result.hazard.kind === 'truck' ? 90 : 140
-  reportMissionEvent(game, { type: result.hazard.kind === 'truck' ? 'destroy-truck' : 'destroy-tanker' })
+  bankDestroyScore(game, result.hazard.kind === 'truck' ? 90 : 140)
   // Both heavies share the road-vehicle blast; the tanker is the one carrying
   // fuel, so it is the one that is heard over the rest of the street.
   playVehicleExplosionSound(result.hazard.kind === 'truck' ? 1 : TANKER_EXPLOSION_SCALE)
@@ -1133,7 +1202,7 @@ function registerPersonLaserHit(game: GameRuntime, id: string) {
   person.active = false
   person.inBeam = false
   person.tether = 0
-  game.score += 15
+  bankDestroyScore(game, 15)
   triggerLaserBurst(game.laserBursts, 'impact', person.position, '#fff06d')
   return true
 }
@@ -1151,7 +1220,7 @@ function registerPropLaserHit(game: GameRuntime, id: string, direction: Vec3) {
   // fleck pool follows any launched bin. Its spot never refills either way.
   if (object.worldProp.kind === 'trash-bin' && beginTrashBinLaunch(object, direction, game.drone.velocity)) {
     game.destroyedWorldProps.add(object.worldProp.id)
-    game.score += 30
+    bankDestroyScore(game, 30)
     triggerLaserBurst(game.laserBursts, 'impact', object.position, '#c9d18a')
     return true
   }
@@ -1159,7 +1228,7 @@ function registerPropLaserHit(game: GameRuntime, id: string, direction: Vec3) {
   object.inBeam = false
   object.tether = 0
   game.destroyedWorldProps.add(object.worldProp.id)
-  game.score += 20
+  bankDestroyScore(game, 20)
   const blastPoint = { x: object.position.x, y: object.position.y + 0.9, z: object.position.z }
   triggerLaserBurst(game.laserBursts, 'impact', blastPoint, '#9be8ff')
   triggerFireball(game.fireballs, 'vehicle', blastPoint, undefined, blastSeed(game))
@@ -1184,8 +1253,7 @@ function registerBuildingLaserHit(game: GameRuntime, id: string) {
   game.destroyedBuildings.add(building.id)
   removeRooftopProp(game, building.id)
   game.ruinedBuildings.set(building.id, createBuildingRuin(building))
-  game.score += 420
-  reportMissionEvent(game, { type: 'ruin-building' })
+  bankDestroyScore(game, buildingDestructionScore(building))
   game.world = updateActiveWorld(game.world, game.drone.position, true, game.destroyedBuildings)
   refreshWorldGeometry(game)
   game.buildingHitFlash.delete(building.id)
@@ -1220,11 +1288,7 @@ function detonateLandmark(game: GameRuntime, landmark: DestructibleLandmark) {
   for (const object of game.beamObjects) knock(object)
   for (const object of game.crowds.objects) knock(object)
   for (const object of game.hazards.objects) knock(object)
-  game.score += 650
-  // A gas station going up is score and spectacle only - the mission board no
-  // longer asks for one - while a comms mast still counts toward its hunt.
-  if (landmark.kind !== 'gas-station') reportMissionEvent(game, { type: 'destroy-comms' })
-  updateMissionTarget(game)
+  bankDestroyScore(game, 650)
   return true
 }
 
@@ -1290,14 +1354,16 @@ function absorbCrowd(game: GameRuntime, kind: 'cat' | 'pedestrian') {
   const reward = Math.round((kind === 'cat' ? 40 : 15) * game.sizeProfile.scoreMultiplier)
   grow(game, kind)
   game.absorbedCount += 1
-  game.score += reward
   game.pickupPulse = 1
   if (tutorialCat) {
+    // The tutorial cat is the gate, not a sample: it opens the board rather
+    // than paying into it, and its score is banked plain.
+    game.score += reward
     leaveTutorial(game)
     // No pilot callout here - the general's briefing (BossBriefing)
     // covers the tutorial hand-off with its own step 6/7 lines.
   } else {
-    reportMissionEvent(game, { type: kind === 'cat' ? 'capture-cat' : 'capture-person' })
+    bankAbsorbScore(game, reward)
   }
   if (!tutorialCat) setMessage(game, kind === 'cat' ? 'msgAbsorbedCat' : 'msgAbsorbedPerson', 1.25, reward)
   tone('pickup')
@@ -1314,30 +1380,14 @@ function absorbBeamObject(game: GameRuntime, object: BeamObject) {
   // other gain. Bounded so no single meal - not even a tower - skips a run.
   growBy(game, Math.min(0.2, 0.012 + diameter * 0.012))
   game.absorbedCount += 1
-  game.score += reward
+  bankAbsorbScore(game, reward)
   game.pickupPulse = 1
   if (object.kind === 'car') game.destroyedCars.add(object.id)
-  if (object.kind === 'car') reportMissionEvent(game, { type: 'destroy-car' })
-  if (object.kind === 'truck') reportMissionEvent(game, { type: 'destroy-truck' })
-  // Swallowing a tanker whole removes it as surely as shooting it, so the
-  // hunt counts both - same rule the truck quest already follows.
-  if (object.kind === 'explosive') reportMissionEvent(game, { type: 'destroy-tanker' })
-  if (object.kind === 'rooftop-structure') reportMissionEvent(game, { type: 'absorb-rooftop-structure' })
-  if (object.worldProp?.kind === 'tree') reportMissionEvent(game, { type: 'absorb-tree' })
-  if (object.worldProp?.kind === 'utility-pole') reportMissionEvent(game, { type: 'absorb-streetlight' })
-  // Carrying a mast off cuts communications exactly as surely as shooting it
-  // down, and it is now the only way the beam can take one - so the mission
-  // has to count it, and the marker has to move on to the next mast.
-  if (object.worldProp?.kind === 'communications') {
-    reportMissionEvent(game, { type: 'destroy-comms' })
-    updateMissionTarget(game)
-  }
   if (object.id.startsWith('enemy:')) {
     const enemy = game.enemies.slots.find((candidate) => candidate.id === object.id)
     if (enemy) {
       enemy.respawn = enemy.kind === 'boss' ? 999 : 4.5
       game.enemiesDown += 1
-      reportMissionEvent(game, { type: 'destroy-enemy', kind: enemy.kind })
     }
   }
   setMessage(game, 'msgAbsorbedObject', 1.25, reward)
@@ -1456,7 +1506,9 @@ function snapshotOf(game: GameRuntime): GameSnapshot {
     waterAbsorbed: game.waterAbsorbed,
     waterAnchored: game.waterAnchored,
     missionStage: game.mission.stage,
-    missionQuests: game.mission.quests.map((quest) => ({ ...quest })),
+    missionQuest: game.mission.quest ? { ...game.mission.quest } : null,
+    missionCount: MISSION_COUNT,
+    missionDebrief: peekMissionDebrief(game.mission),
     missionPulse: game.missionPulse,
     missionBanner: game.missionBannerTime > 0 ? game.missionBanner : null,
     tutorial: game.mission.stage === 0,
@@ -1687,6 +1739,14 @@ export function GameProvider({ children }: { children: ReactNode }) {
       game.hitstop = Math.max(0, game.hitstop - dt)
       return
     }
+    // A mission the general still owes a word about stops everything: the
+    // clock, the city, the enemies and the craft. The lesson is about
+    // something the pilot did a quarter of a second ago, and a lesson
+    // delivered over a live sky is a lesson read while dodging. Nothing is
+    // published from here either - the snapshot carrying the debrief was
+    // published on the frame that queued it, and the dismiss handler
+    // publishes the one that clears it.
+    if (peekMissionDebrief(game.mission)) return
     const d = Math.min(dt, 0.05)
     const rawInput = readInput()
     const tutorialAtStart = game.mission.stage === 0
@@ -1746,6 +1806,11 @@ export function GameProvider({ children }: { children: ReactNode }) {
     game.daze = Math.max(0, game.daze - d)
     game.turboLockout = Math.max(0, game.turboLockout - d)
     game.mysteryFlash = Math.max(0, game.mysteryFlash - d)
+    game.missionTargetCooldown -= d
+    if (game.missionTargetCooldown <= 0) {
+      game.missionTargetCooldown = 0.25
+      updateMissionTarget(game)
+    }
     game.timeBonusPulse = Math.max(0, game.timeBonusPulse - d * 2.6)
     game.damageCooldown = Math.max(0, game.damageCooldown - d)
     game.collisionCooldown = Math.max(0, game.collisionCooldown - d)
@@ -1770,7 +1835,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     if (!tutorialAtStart && game.remainingTime <= 0) {
       const previousStage = game.mission.stage
       const previousRevision = game.mission.revision
-      const complete = syncMissionState(game.mission, game.sessionTime, game.score)
+      const complete = closeRecon(game.mission, game.sessionTime)
       presentMissionChange(game, previousStage, previousRevision)
       endRun(game, complete ? 'EARTH RECON COMPLETE' : 'EARTH RECON FAILED', endingForTimeUp(complete))
       updatePilotStatus(game)
@@ -1811,12 +1876,22 @@ export function GameProvider({ children }: { children: ReactNode }) {
       if (game.mysteryCircleId !== mysteryCircle.id) {
         game.mysteryCircleId = mysteryCircle.id
         game.mysteryCirclesVisited.add(mysteryCircle.id)
-        reportMissionEvent(game, { type: 'pass-mystery-circle', id: mysteryCircle.id })
         game.mysteryBoostRemaining = MYSTERY_BOOST_DURATION
         game.mysteryFlash = 0.65
         game.turbo = 1
         game.turboLockout = 0
+        // The circle is a full pit stop, not a speed strip: surge, a fresh
+        // turbo gauge and every pip of hull back. Reading a circle as "the
+        // place you go when you are hurt" is what makes the detour worth
+        // planning a route around, and it is the first thing the general
+        // explains once mission one is cleared.
+        const hurt = game.health.current < game.health.max
+        if (hurt) healHealth(game.health, game.health.max)
         playMysteryCircleSound()
+        setMessage(game, hurt ? 'msgMysteryHeal' : 'msgMysteryCircle', 1.8)
+        // Reported after the pit-stop effects land, because clearing mission
+        // one freezes the game for the general's word about them.
+        reportMissionEvent(game, { type: 'pass-mystery-circle', id: mysteryCircle.id })
         // Give a moving craft the surge immediately, while leaving a parked
         // craft to choose its own direction with the next throttle input.
         const horizontalSpeed = Math.hypot(game.drone.velocity.x, game.drone.velocity.z)
@@ -1874,6 +1949,12 @@ export function GameProvider({ children }: { children: ReactNode }) {
     game.waterAbsorbed = lake.litres
     game.waterAnchored = lake.anchored
     if (lake.absorbed > 0) reportMissionEvent(game, { type: 'absorb-water', litres: lake.absorbed })
+    // Scaling the throttle scales the top speed the flight model aims for, so
+    // the craft still accelerates, steers and strafes - it just tops out at
+    // half. This used to also multiply the stepped velocity every frame, and
+    // that is a per-frame damping rather than a speed limit: at sixty hertz it
+    // pinned the craft to the spot, which read as the beam being broken over
+    // water rather than as water being heavy.
     if (game.waterAnchored) {
       flightInput.throttle *= lake.speedScale
       flightInput.strafe = (flightInput.strafe ?? 0) * lake.speedScale
@@ -1913,11 +1994,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
       // pickup bonus by it feeds the exact 8%-per-level the boon promises.
       speed: boonBonus(game.boons, 'speed') / 0.12,
     })
-    if (game.waterAnchored) {
-      stepped.speed *= lake.speedScale
-      stepped.velocity.x *= lake.speedScale
-      stepped.velocity.z *= lake.speedScale
-    }
     const nextWorld = updateActiveWorld(game.world, stepped.position, false, game.destroyedBuildings)
     if (nextWorld !== game.world) {
       game.world = nextWorld
@@ -1928,16 +2004,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
     }
     const collision = collideDrone(stepped, game.worldColliders)
     game.drone = collision.state
-    if (game.checkpoint) {
-      // A checkpoint is a gate now, not a parking spot: touching the ring
-      // counts immediately and moves the next ring far enough away that this
-      // same entry cannot be counted again on the following frame.
-      if (isInsideAirCheckpoint(game.drone.position, game.checkpoint)) {
-        reportMissionEvent(game, { type: 'pass-checkpoint' })
-        if (missionHasQuest(game.mission, 'air-checkpoints')) spawnCheckpoint(game)
-        else game.checkpoint = null
-      }
-    }
     // One sample per tick, written into the runtime's own object so the render
     // layer can read it without sampling again or allocating.
     sampleDaylight(game.sessionTime, game.daylight)
@@ -2218,11 +2284,14 @@ export function GameProvider({ children }: { children: ReactNode }) {
     if (contactDamage > 0) registerImpact(game, 'ENEMY', 'contact', contactBlasts > 0 ? DRONE_BLAST_TRAUMA : ramTrauma)
     const previousMissionStage = game.mission.stage
     const previousMissionRevision = game.mission.revision
-    syncMissionState(game.mission, game.sessionTime, game.score)
+    syncMissionState(game.mission, game.sessionTime)
     presentMissionChange(game, previousMissionStage, previousMissionRevision)
     updatePilotStatus(game)
     publishAccumulator.current += d
-    if (game.phase !== phaseAtEntry || publishAccumulator.current >= 0.06) {
+    // A queued debrief has to reach the screen on the frame it was queued:
+    // the next frame returns at the gate above and publishes nothing, so a
+    // throttled snapshot would leave the general up to 60ms late.
+    if (game.phase !== phaseAtEntry || peekMissionDebrief(game.mission) || publishAccumulator.current >= 0.06) {
       publishAccumulator.current = 0
       publish()
     }
@@ -2254,6 +2323,37 @@ export function GameProvider({ children }: { children: ReactNode }) {
     storeLanguage(next)
   }, [])
 
+
+  /** Clicking the general away. Pops one debrief and lets the world run
+   *  again - or straight into the next debrief, if a mission opened already
+   *  finished and closed on the same frame. */
+  const dismissMissionDebrief = useCallback(() => {
+    takeMissionDebrief(runtime.current.mission)
+    publish()
+  }, [publish])
+
+  /**
+   * Opens the results screen on a chosen ending, from the lobby.
+   *
+   * Each of the four endings otherwise needs the whole five minutes flown a
+   * particular way to be seen once, and two of them need the run deliberately
+   * lost - which makes proof-reading the general's sign-off, or the layout at
+   * that length of text, a half-hour job per edit.
+   *
+   * Unguarded here on purpose: the lobby button is the gate (`devToolsEnabled`
+   * in the HUD), exactly as it is for the dreadnought drill. A second check in
+   * here would only mean the `?dev=1` entrance silently did nothing on a
+   * deployed build, which is the one place the endings actually get looked at.
+   */
+  const previewEnding = useCallback((ending: RunEnding) => {
+    const game = runtime.current
+    game.phase = 'results'
+    game.ending = ending
+    game.victory = isVictory(ending)
+    game.resultTitle = ending
+    game.devRun = true
+    publish()
+  }, [publish])
 
   const unlockTutorialControl = useCallback((control: TutorialControl) => {
     const game = runtime.current
@@ -2355,7 +2455,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   }, [publish])
 
   const setMobileInput = useCallback((input: Partial<MobileInput>) => { Object.assign(mobile.current, input) }, [])
-  const value = useMemo<GameContextValue>(() => ({ runtime, snapshot, readInput, advance, start, startBattleshipDrill, restart, unlockTutorialControl, skipTutorial, setMobileInput, quality, setQuality, language, setLanguage, t: STRINGS[language] }), [advance, quality, readInput, restart, startBattleshipDrill, unlockTutorialControl, skipTutorial, setMobileInput, setQuality, snapshot, start, language, setLanguage])
+  const value = useMemo<GameContextValue>(() => ({ runtime, snapshot, readInput, advance, start, startBattleshipDrill, restart, unlockTutorialControl, skipTutorial, dismissMissionDebrief, previewEnding, setMobileInput, quality, setQuality, language, setLanguage, t: STRINGS[language] }), [advance, dismissMissionDebrief, previewEnding, quality, readInput, restart, startBattleshipDrill, unlockTutorialControl, skipTutorial, setMobileInput, setQuality, snapshot, start, language, setLanguage])
   return <GameContext.Provider value={value}>{children}</GameContext.Provider>
 }
 

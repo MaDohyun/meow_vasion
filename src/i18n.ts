@@ -1,4 +1,5 @@
-import type { MissionQuestId } from './core/missions'
+import type { MissionDebriefId, MissionQuestId } from './core/missions'
+import type { RunEnding } from './core/ending'
 /**
  * UI strings, in one dictionary.
  *
@@ -55,6 +56,8 @@ export type Strings = {
    *  Translated like everything else: whoever is testing the game reads the
    *  lobby in their own language too. */
   devDrill: string
+  /** Label on the developer ending previewer's button row. */
+  devEndings: string
   devRunNote: string
   howToTitle: string
   howToMove: string
@@ -117,6 +120,17 @@ export type Strings = {
   hold: string
   mission: string
   missionCopy: Record<MissionQuestId, string>
+  /**
+   * The general's word after each of the first four missions, one paragraph
+   * per line.
+   *
+   * These freeze the game while they are on screen, so they are written to be
+   * read once and remembered: each one names a rule the pilot has just met by
+   * doing it rather than by being told about it in the opening briefing.
+   */
+  missionDebrief: Record<MissionDebriefId, readonly string[]>
+  /** The general's closing word on the results screen, one per ending. */
+  endingRemark: Record<RunEnding, string>
   tutorialMissionEyebrow: string
   tutorialMissionLead: string
   tutorialMissionAction: string
@@ -194,6 +208,9 @@ export type Strings = {
   msgBoonTurboCapacity: (level: number) => string
   msgBoonHeal: string
   msgBoonScore: (reward: number) => string
+  /** Flying through a circle, with and without a hull to patch up. */
+  msgMysteryCircle: string
+  msgMysteryHeal: string
   breakingFlag: string
   broadcast: BulletinSet
 }
@@ -261,6 +278,7 @@ export const STRINGS: Record<Language, Strings> = {
     close: '닫기',
     howTo: '하는 방법',
     devDrill: '개발자 모드 · 전함으로',
+    devEndings: '개발자 모드 · 엔딩 확인',
     devRunNote: '개발자 모드로 시작한 판은 랭킹에 올리지 않습니다.',
     howToTitle: 'UFO CONTROLS',
     howToMove: '이동',
@@ -316,24 +334,40 @@ export const STRINGS: Record<Language, Strings> = {
     hold: '누르고 있기',
     mission: '미션',
     missionCopy: {
-      'capture-cats': '동포 고양이 구출! (아직 지구에 남은 동료가 있어)',
-      'capture-people': '지구인 표본 챙기기',
-      'destroy-cars': '승용차를 깡통으로 만들기',
-      'destroy-trucks': '트럭 해체 쇼',
-      'destroy-tankers': '유조차 불꽃놀이',
-      'absorb-water': '호수 물 쪽 빨아보기',
-      'ruin-buildings': '건물을 폐허로 리모델링',
-      'destroy-comms': '지구 통신 끊어놓기',
-      'destroy-drones': '드론은 Q 연속 레이저로 톡톡',
-      'destroy-fighters': '전투기 격추하기',
-      'absorb-rooftop-structures': '옥상 구조물 흡수하기',
-      'absorb-trees': '나무 쏙쏙 뽑아 먹기',
-      'absorb-streetlights': '가로등 뽑아 챙기기',
-      'pass-mystery-circles': '서로 다른 미스터리 서클 지나가기',
-      'air-checkpoints': '원모양 체크포인트 3번 통과하기',
-      'destroy-battleship': '저 큰 전함 치우기',
-      'reach-score': '보고서용 점수 채우기',
-      'survive-final': '퇴근 시간까지 버티기',
+      'visit-mystery-circle': '미스터리 서클로 날아가 보기',
+      'absorb-water': '빔으로 호수 물 흡수하기 (L)',
+      'absorb-samples': '빔으로 지구의 표본 흡수하기 (흡수 점수)',
+      'wreck-city': '레이저로 도시를 난장판으로 만들기 (파괴 점수)',
+      'final-sweep': '남은 시간 동안 점수 올리며 살아남기',
+    },
+    missionDebrief: {
+      'visit-mystery-circle': [
+        '잘 찾았다, 대원. 그게 우리 동지들이 지구에 남겨 둔 미스터리 서클이다.',
+        '서클을 통과하면 선체가 순간적으로 [[가속]]하고 [[터보 게이지가 가득]] 찬다. 게다가 [[생명력까지 전부 회복]]된다.',
+        '서클 위에는 능력치를 올려 주는 부품 아이템도 떠 있으니 반드시 챙겨라.',
+        '정찰 내내 서클을 경유해서 날아라. 그게 살아 돌아오는 길이다.',
+      ],
+      'absorb-water': [
+        '물을 퍼 올렸군, 대원. 그럼 이제 몸으로 알았을 거다.',
+        '물 타일 위에서 빔을 쓰면 [[UFO의 속도가 대폭 저하된다]]. 물이 그만큼 무겁기 때문이다.',
+        '임무가 아니라면 물 위에서의 빔은 가능한 한 피해라. 도망칠 수 없는 곳에서 느려지는 게 제일 위험하다.',
+      ],
+      'absorb-samples': [
+        '잘했다! 표본 수집 임무는 완수다.',
+        '하지만 여기서 멈추지 마라. 계속해서 가능한 한 최대한 많이 빔으로 지구의 표본을 흡수해서 돌아오도록!',
+        '많이 삼킬수록 선체도 커진다. 그게 곧 대원의 힘이다.',
+      ],
+      'wreck-city': [
+        '잘했다! 도시 파괴 임무도 완수다.',
+        '하지만 여기서 멈추지 마라. 계속해서 가능한 한 많이 레이저로 도시를 난장판으로 만들어서, 우리가 침략하기 쉽도록 해 놓고 돌아오도록!',
+        '지구인들이 다시 세우기 전에 최대한 부숴라.',
+      ],
+    },
+    endingRemark: {
+      recon: '완벽한 정찰이었다, 대원. 지구는 이제 우리 손안이다. 귀환을 허가한다!',
+      missionFailed: '연료를 다 쓰고도 임무를 못 끝냈군, 대원. 다음 정찰에선 시간을 아껴 써라.',
+      downed: '대원! 대원?! ...선체가 격추됐다. 표본은 됐으니 일단 살아서 돌아와라.',
+      crushed: '대원, 욕심이 화를 불렀군. 빔에 그만큼 매달고 날 수 있는 접시는 없다. 다음엔 놓을 줄도 알아라.',
     },
     tutorialMissionEyebrow: '장군의 첫 무전',
     tutorialMissionLead: '“대원, 공원에 남은 동포 고양이부터 구출해 봐.”',
@@ -343,16 +377,16 @@ export const STRINGS: Record<Language, Strings> = {
     briefingSkip: '튜토리얼 건너뛰기',
     briefingWaitHint: { beam: 'E 를 꾹 누르기', laser: 'Q 를 누르기', turbo: '스페이스 를 누르기' },
     tutorialBriefing: [
-      { lines: ['대원, 작전에 들어간다. 대원의 임무는 지구라는 별의 정찰대 임무다.', '지구에서 많은 샘플을 가지고 돌아오도록!'] },
-      { lines: ['E 버튼을 누르면 빔 조작을 통해 고양이 동무를 구출하거나 물체를 흡수할 수 있다.', '우리 우주선은 물체를 흡수할수록 몸집이 커지니 가능한 한 많은 물체를 흡수하도록!'] },
+      { lines: ['대원, 작전에 들어간다. 대원의 임무는 지구라는 별의 정찰대 임무다.', 'UFO의 연료를 전부 쓰는 [[5분]] 동안, 지구에서 최대한 많은 임무를 수행하고 돌아오도록!'] },
+      { lines: ['E 버튼을 누르면 빔 조작을 통해 고양이 동무를 구출하거나 물체를 흡수할 수 있다.', '우리 우주선은 물체를 흡수할수록 몸집이 커지니 가능한 한 많은 물체를 흡수하도록!', '그리고 [[몸집이 커질수록 빔의 힘도 세져서 더 크고 무거운 물체까지 흡수]]할 수 있게 된다.'] },
       { lines: ['Q 버튼을 누르면 레이저를 쏘아 적을 무찌를 수 있다!', '말로만 들어서는 모른다. 지금 Q를 한 번 눌러 봐.'], wait: 'laser' },
       { lines: ['좋다, 그게 레이저다. 위급할 때 쓰도록!', '다음은 터보다. 스페이스를 누르면 우주선이 훨씬 빨라진다. 지금 눌러 봐.'], wait: 'turbo' },
       { lines: ['그거다! 터보는 쓸 수 있는 시간이 정해져 있으니 주의해서 쓰도록!', '그리고 터보를 켠 채로 E를 누르면 빔이 더 굵고 멀리, 더 강하게 나간다. 기억해 둬라.'] },
       { lines: ['대원, 첫 임무다. 저 고양이를 구출해 봐. E 키를 꾹 누르고 있으면 된다.', '터보를 같이 켜면 빔이 커져서 훨씬 수월할 거다.'], wait: 'beam' },
       { lines: ['좋아, 합격이다.', '명심해라, 대원. 너무 많은 물건을 흡수하면 [[무게 때문에 우주선이 추락한다]].', '그리고 비행 중 [[건물에 부딪혀도 선체가 손상된다]]. 건물은 피해서 날아라!'], auto: 6.4 },
-      { lines: ['왼쪽에 대원이 달성해야 할 임무들을 표시해 두었다.', '아 참, 대원을 위해 우리 동지들의 표식을 지구 곳곳에 준비했으니 발견하면 지나가 보도록!', '그럼 행운을 빈다.'], auto: 5.2 },
+      { lines: ['왼쪽에 임무를 하나씩 띄워 둔다. 전부 다섯 개, 순서대로 처리해라.', '첫 임무 목표는 우주선 위의 화살표가 가리키고 있으니 그쪽으로 날아가 봐.', '그럼 행운을 빈다.'], auto: 5.2 },
     ],
-    missionStageComplete: (previous, next) => `미션 ${previous} 완료 · 미션 ${next}, 골라서 해!`,
+    missionStageComplete: (previous, next) => `미션 ${previous} 완료 · 다음은 미션 ${next}!`,
     reconComplete: '지구 정찰 완료 · 장군님 퇴근 준비 끝!',
     radar: '주변 탐지 · 실시간',
     radarKeyHostile: '적',
@@ -414,6 +448,8 @@ export const STRINGS: Record<Language, Strings> = {
     msgBoonTurboCapacity: (level) => `터보 양 Lv.${level}`,
     msgBoonHeal: '선체 회복',
     msgBoonScore: (reward) => `보너스 +${reward}`,
+    msgMysteryCircle: '미스터리 서클 · 가속 · 터보 충전',
+    msgMysteryHeal: '미스터리 서클 · 가속 · 터보 충전 · 선체 완전 회복',
     breakingFlag: '속보',
     broadcast: [
       { headline: '미확인 비행체 도심 상공 출현', line: '속보입니다. 미확인 비행체가 도심 상공에 나타났습니다.\n시민 여러분은 각별히 주의하시기 바랍니다.' },
@@ -435,6 +471,7 @@ export const STRINGS: Record<Language, Strings> = {
     close: '閉じる',
     howTo: '遊び方',
     devDrill: '開発者モード · 戦艦へ',
+    devEndings: '開発者モード · エンディング確認',
     devRunNote: '開発者モードで始めたプレイはランキングに登録されません。',
     howToTitle: 'UFO CONTROLS',
     howToMove: '移動',
@@ -490,24 +527,40 @@ export const STRINGS: Record<Language, Strings> = {
     hold: '長押し',
     mission: 'ミッション',
     missionCopy: {
-      'capture-cats': '仲間の猫を救出！ (まだ地球に仲間がいる)',
-      'capture-people': '地球人の標本を集める',
-      'destroy-cars': '乗用車をブリキにする',
-      'destroy-trucks': 'トラック解体ショー',
-      'destroy-tankers': 'タンクローリー花火',
-      'absorb-water': '湖の水を吸い上げる',
-      'ruin-buildings': '建物を廃墟にリフォーム',
-      'destroy-comms': '地球の通信を断つ',
-      'destroy-drones': 'ドローンをQの連続レーザーで撃つ',
-      'destroy-fighters': '戦闘機を撃墜する',
-      'absorb-rooftop-structures': '屋上設備を吸収する',
-      'absorb-trees': '木を引き抜いて吸収する',
-      'absorb-streetlights': '街灯を抜いて回収する',
-      'pass-mystery-circles': '別々のミステリーサークルを通過する',
-      'air-checkpoints': '円形チェックポイントを3回通過する',
-      'destroy-battleship': 'あの大きな戦艦を片付ける',
-      'reach-score': '報告用スコアを稼ぐ',
-      'survive-final': '退勤時間まで生き残る',
+      'visit-mystery-circle': 'ミステリーサークルまで飛んでみる',
+      'absorb-water': 'ビームで湖の水を吸収する (L)',
+      'absorb-samples': 'ビームで地球の標本を吸収する (吸収スコア)',
+      'wreck-city': 'レーザーで街をめちゃくちゃにする (破壊スコア)',
+      'final-sweep': '残り時間でスコアを稼ぎながら生き残る',
+    },
+    missionDebrief: {
+      'visit-mystery-circle': [
+        'よく見つけた、隊員。それが仲間たちが地球に残したミステリーサークルだ。',
+        'サークルを通過すると機体が一瞬[[加速]]し、[[ターボゲージが満タン]]になる。さらに[[ライフも全回復]]する。',
+        'サークルの上には能力を上げる部品アイテムも浮いている。必ず回収しろ。',
+        '偵察の間はサークルを経由して飛べ。それが生きて帰る道だ。',
+      ],
+      'absorb-water': [
+        '水を汲み上げたな、隊員。これで身体でわかっただろう。',
+        '水タイルの上でビームを使うと[[UFOの速度が大幅に低下する]]。それだけ水が重いということだ。',
+        '任務でなければ水上でのビームはできる限り避けろ。逃げられない場所で遅くなるのが一番危険だ。',
+      ],
+      'absorb-samples': [
+        'よくやった！ 標本収集の任務は完了だ。',
+        'だがここで止まるな。引き続き、できる限り多くの地球の標本をビームで吸収して帰還しろ！',
+        '多く飲み込むほど機体も大きくなる。それがそのまま君の力だ。',
+      ],
+      'wreck-city': [
+        'よくやった！ 都市破壊の任務も完了だ。',
+        'だがここで止まるな。引き続き、できる限りレーザーで街をめちゃくちゃにして、我々が侵略しやすい状態にしてから帰還しろ！',
+        '地球人が建て直す前に壊せるだけ壊せ。',
+      ],
+    },
+    endingRemark: {
+      recon: '完璧な偵察だった、隊員。地球はもう我々のものだ。帰還を許可する！',
+      missionFailed: '燃料を使い切って任務は未完了か、隊員。次の偵察では時間を大事に使え。',
+      downed: '隊員！ 隊員？！ ...機体が撃墜された。標本はいい、まずは生きて帰ってこい。',
+      crushed: '隊員、欲が身を滅ぼしたな。あれだけ吊るして飛べる機体はない。次は手放すことも覚えろ。',
     },
     tutorialMissionEyebrow: '将軍の最初の通信',
     tutorialMissionLead: '「隊員、公園に残った仲間の猫から救出してみろ。」',
@@ -517,16 +570,16 @@ export const STRINGS: Record<Language, Strings> = {
     briefingSkip: 'チュートリアルをスキップ',
     briefingWaitHint: { beam: 'E を長押し', laser: 'Q を押す', turbo: 'スペース を押す' },
     tutorialBriefing: [
-      { lines: ['隊員、作戦を開始する。君の任務は地球という星の偵察だ。', '地球からできるだけ多くのサンプルを持ち帰れ！'] },
-      { lines: ['Eボタンでビームを操作し、仲間の猫を救出したり物体を吸収できる。', '物体を吸収するほど機体は大きくなる。できるだけ多く吸収しろ！'] },
+      { lines: ['隊員、作戦を開始する。君の任務は地球という星の偵察だ。', 'UFOの燃料を使い切る[[5分]]の間に、地球でできる限り多くの任務をこなして帰還しろ！'] },
+      { lines: ['Eボタンでビームを操作し、仲間の猫を救出したり物体を吸収できる。', '物体を吸収するほど機体は大きくなる。できるだけ多く吸収しろ！', 'そして[[機体が大きくなるほどビームも強くなり、より大きく重い物体まで吸収できる]]ようになる。'] },
       { lines: ['Qボタンでレーザーを撃ち、敵を倒せる！', '口で言ってもわからん。今すぐQを一度押してみろ。'], wait: 'laser' },
       { lines: ['よし、それがレーザーだ。緊急時に使え！', '次はターボだ。スペースを押せば機体が一気に速くなる。今、押してみろ。'], wait: 'turbo' },
       { lines: ['それだ！ ターボは使える時間に限りがある。慎重に使え！', 'そしてターボ中にEを押すと、ビームが太く、遠く、強くなる。覚えておけ。'] },
       { lines: ['隊員、最初の任務だ。あの猫を救出しろ。Eキーを長押しだ。', 'ターボも一緒に使えばビームが広がって楽になるぞ。'], wait: 'beam' },
       { lines: ['よし、合格だ。', 'いいか、物体を吸収しすぎると[[重量で宇宙船が墜落する]]。', 'それと飛行中に[[建物にぶつかっても船体が損傷する]]。建物は避けて飛べ！'], auto: 6.4 },
-      { lines: ['左側に達成すべき任務を表示している。', 'そうだ、仲間の印を地球各地に用意した。見つけたら通過してみろ！', '幸運を祈る。'], auto: 5.2 },
+      { lines: ['左側に任務を一つずつ表示する。全部で五つ、順番に片付けろ。', '最初の目標は機体の上の矢印が指している。その方向へ飛べ。', '幸運を祈る。'], auto: 5.2 },
     ],
-    missionStageComplete: (previous, next) => `ミッション${previous}完了 · ミッション${next}、好きなものを選べ！`,
+    missionStageComplete: (previous, next) => `ミッション${previous}完了 · 次はミッション${next}！`,
     reconComplete: '地球偵察完了 · 将軍も帰宅準備完了！',
     radar: '周辺探知・リアルタイム',
     radarKeyHostile: '敵',
@@ -588,6 +641,8 @@ export const STRINGS: Record<Language, Strings> = {
     msgBoonTurboCapacity: (level) => `ターボ容量 Lv.${level}`,
     msgBoonHeal: '船体を回復',
     msgBoonScore: (reward) => `ボーナス +${reward}`,
+    msgMysteryCircle: 'ミステリーサークル · 加速 · ターボ満タン',
+    msgMysteryHeal: 'ミステリーサークル · 加速 · ターボ満タン · ライフ全回復',
     breakingFlag: '速報',
     broadcast: [
       { headline: '未確認飛行物体が都心上空に出現', line: '速報です。未確認飛行物体が都心の上空に現れました。\n市民の皆さまは十分ご注意ください。' },
@@ -609,6 +664,7 @@ export const STRINGS: Record<Language, Strings> = {
     close: 'CLOSE',
     howTo: 'HOW TO PLAY',
     devDrill: 'DEV · JUMP TO BATTLESHIP',
+    devEndings: 'DEV · PREVIEW ENDINGS',
     devRunNote: 'A developer drill run is not ranked.',
     howToTitle: 'UFO CONTROLS',
     howToMove: 'MOVE',
@@ -664,24 +720,40 @@ export const STRINGS: Record<Language, Strings> = {
     hold: 'HOLD',
     mission: 'MISSION',
     missionCopy: {
-      'capture-cats': 'RESCUE ALLIED CATS! (YOUR CREW IS STILL DOWN THERE)',
-      'capture-people': 'COLLECT HUMAN SAMPLES',
-      'destroy-cars': 'TURN SEDANS INTO SCRAP',
-      'destroy-trucks': 'PUT ON A TRUCK DISASSEMBLY SHOW',
-      'destroy-tankers': 'TANKER TRUCK FIREWORKS',
-      'absorb-water': 'SUCK UP LAKE WATER',
-      'ruin-buildings': 'REMODEL BUILDINGS INTO RUINS',
-      'destroy-comms': 'CUT EARTH COMMUNICATIONS',
-      'destroy-drones': 'TAP DRONES WITH Q LASERS',
-      'destroy-fighters': 'SHOOT DOWN FIGHTERS',
-      'absorb-rooftop-structures': 'ABSORB ROOFTOP STRUCTURES',
-      'absorb-trees': 'UPROOT AND EAT TREES',
-      'absorb-streetlights': 'PLUCK UP STREETLIGHTS',
-      'pass-mystery-circles': 'PASS THROUGH DIFFERENT MYSTERY CIRCLES',
-      'air-checkpoints': 'PASS THROUGH 3 ROUND CHECKPOINTS',
-      'destroy-battleship': 'TAKE OUT THAT BIG BATTLESHIP',
-      'reach-score': 'FILL THE REPORT SCORE',
-      'survive-final': 'SURVIVE UNTIL QUITTING TIME',
+      'visit-mystery-circle': 'FLY OUT TO A MYSTERY CIRCLE',
+      'absorb-water': 'ABSORB LAKE WATER WITH THE BEAM (L)',
+      'absorb-samples': 'ABSORB EARTH SAMPLES WITH THE BEAM (ABSORB SCORE)',
+      'wreck-city': 'WRECK THE CITY WITH THE LASER (DESTRUCTION SCORE)',
+      'final-sweep': 'SURVIVE THE REMAINING TIME AND RUN UP THE SCORE',
+    },
+    missionDebrief: {
+      'visit-mystery-circle': [
+        'Good find, pilot. That is a mystery circle our comrades left on Earth.',
+        'Fly through one and the craft [[surges forward]] and the [[turbo gauge refills]]. It also [[restores your life completely]].',
+        'A parts item that raises your stats hovers over every circle. Always take it.',
+        'Route the whole recon through the circles. That is how you get home.',
+      ],
+      'absorb-water': [
+        'Water pumped, pilot. Now you have felt it for yourself.',
+        'Running the beam over a water tile [[slows the craft down badly]]. Water is that heavy.',
+        'Unless a mission asks for it, keep the beam off the water. Being slow where you cannot run is the worst place to be.',
+      ],
+      'absorb-samples': [
+        'Well done! The sample collection mission is complete.',
+        'But do not stop here. Keep absorbing as many Earth samples with the beam as you possibly can before you come home!',
+        'The more you swallow, the bigger the craft gets. That size is your strength.',
+      ],
+      'wreck-city': [
+        'Well done! The city demolition mission is complete too.',
+        'But do not stop here. Keep tearing the city apart with the laser so the invasion is easy for us, and then come home!',
+        'Break everything you can before the humans rebuild it.',
+      ],
+    },
+    endingRemark: {
+      recon: 'A flawless recon, pilot. Earth is ours now. You are cleared to return!',
+      missionFailed: 'Out of fuel with the job half done, pilot. Spend the clock better next time.',
+      downed: 'Pilot! Pilot?! ...The craft is down. Forget the samples - just get home alive.',
+      crushed: 'Greed brought you down, pilot. No saucer flies with that much on the beam. Next time, learn to let go.',
     },
     tutorialMissionEyebrow: "THE GENERAL'S FIRST TRANSMISSION",
     tutorialMissionLead: '“Pilot, start by rescuing the allied cat left in the park.”',
@@ -691,16 +763,16 @@ export const STRINGS: Record<Language, Strings> = {
     briefingSkip: 'SKIP TUTORIAL',
     briefingWaitHint: { beam: 'HOLD E', laser: 'PRESS Q', turbo: 'PRESS SPACE' },
     tutorialBriefing: [
-      { lines: ['Pilot, begin the operation. Your mission is to recon the planet called Earth.', 'Bring back as many samples from Earth as you can!'] },
-      { lines: ['Press E to use the beam to rescue allied cats or absorb objects.', 'The craft grows as it absorbs objects, so absorb as many as possible!'] },
+      { lines: ['Pilot, begin the operation. Your mission is to recon the planet called Earth.', 'You have [[five minutes]] - one full tank - so run as many missions on Earth as you can and come home!'] },
+      { lines: ['Press E to use the beam to rescue allied cats or absorb objects.', 'The craft grows as it absorbs objects, so absorb as many as possible!', 'And [[the bigger the craft, the stronger the beam - bigger, heavier things become food]].'] },
       { lines: ['Press Q to fire the laser and defeat enemies!', 'Being told is not the same as knowing. Press Q once, right now.'], wait: 'laser' },
       { lines: ['Good, that is the laser. Save it for emergencies!', 'Turbo is next. SPACE makes the craft far faster. Press it now.'], wait: 'turbo' },
       { lines: ['That is it! Turbo time is limited, so use it carefully!', 'And holding E while turbo is on makes the beam wider, longer and stronger. Remember that.'] },
       { lines: ['Pilot, this is your first mission. Rescue that cat. HOLD E.', 'Run turbo at the same time and the wider beam makes it far easier.'], wait: 'beam' },
       { lines: ['Good, you pass.', 'Remember: absorb too much and [[the weight will crash the craft]].', 'And in flight, [[hitting a building damages the hull]]. Fly around them!'], auto: 6.4 },
-      { lines: ['Your objectives are displayed on the left.', 'We placed allied marks all over Earth. Pass through them when you find them!', 'Good luck.'], auto: 5.2 },
+      { lines: ['Your objectives appear on the left, one at a time. Five of them, in order.', 'The arrow above your craft points at the first one. Fly that way.', 'Good luck.'], auto: 5.2 },
     ],
-    missionStageComplete: (previous, next) => `MISSION ${previous} COMPLETE · MISSION ${next}, PICK YOUR OBJECTIVES!`,
+    missionStageComplete: (previous, next) => `MISSION ${previous} COMPLETE · MISSION ${next} IS UP!`,
     reconComplete: 'EARTH RECON COMPLETE · THE GENERAL IS READY TO CLOCK OUT!',
     radar: 'LOCAL GRID · LIVE',
     radarKeyHostile: 'Hostile',
@@ -762,6 +834,8 @@ export const STRINGS: Record<Language, Strings> = {
     msgBoonTurboCapacity: (level) => `TURBO CAPACITY LV.${level}`,
     msgBoonHeal: 'HULL RESTORED',
     msgBoonScore: (reward) => `BONUS +${reward}`,
+    msgMysteryCircle: 'MYSTERY CIRCLE · SURGE · TURBO REFILLED',
+    msgMysteryHeal: 'MYSTERY CIRCLE · SURGE · TURBO REFILLED · HULL RESTORED',
     breakingFlag: 'BREAKING',
     broadcast: [
       { headline: 'UFO SIGHTED OVER THE CITY', line: 'Breaking news. An unidentified craft has appeared over the city.\nResidents are urged to take care.' },

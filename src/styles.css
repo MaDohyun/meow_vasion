@@ -117,6 +117,10 @@ button { font: inherit; }
 .mission-panel > div[data-complete="true"] i { opacity:.5; }
 .mission-panel > div[data-complete="true"] b { color:var(--green); }
 .mission-panel.mission-pulse { animation:mission-pop .28s steps(3); }
+/* Three of the five objectives are counted in points or litres, where the
+   raw pair of numbers says nothing about how close the bar is to full. */
+.mission-gauge { margin-top:9px; height:9px; background:rgba(255,245,199,.16); border:2px solid rgba(255,245,199,.4); }
+.mission-gauge i { display:block; height:100%; background:var(--yellow); transition:width .18s linear; }
 .tutorial-mission strong { display:block; color:var(--green); font-size:17px; line-height:1.55; }
 .tutorial-mission p { margin:9px 0 0; color:var(--cream); font-size:15px; line-height:1.45; }
 .tutorial-mission p b { color:var(--yellow); font-size:19px; }
@@ -381,6 +385,13 @@ button { font: inherit; }
    the options panel so a player who cannot read the menu never has to guess
    which button opens the settings. Each label is set in its own language. */
 .lobby-language { z-index:2; display:flex; align-items:center; justify-content:center; gap:7px; margin-top:13px; }
+/* Development-only ending previewer. Deliberately plain: it is a tool, not
+   part of the lobby, and it is not in a production bundle at all. */
+.lobby-ending-preview { z-index:2; display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:6px; margin-top:10px; }
+/* Same dashed workshop door as the drill button, so the two developer
+   entrances read as one thing rather than as two different affordances. */
+.lobby-ending-preview .dev-button { display:flex; align-items:center; gap:6px; padding:7px 11px; color:rgba(226,238,255,.72); background:rgba(3,17,37,.5); border:2px dashed rgba(226,238,255,.34); font-family:inherit; font-size:9px; font-weight:1000; letter-spacing:1.4px; cursor:pointer; }
+.lobby-ending-preview .dev-button:hover { color:var(--cream); border-color:rgba(255,224,95,.7); }
 .lobby-language button { padding:7px 13px; color:rgba(233,231,214,.82); background:rgba(3,17,37,.72); border:2px solid rgba(100,241,238,.45); box-shadow:3px 3px 0 #031326; font-size:9px; font-weight:1000; letter-spacing:1.4px; cursor:pointer; }
 .lobby-language button:hover { color:var(--cream); border-color:rgba(100,241,238,.85); transform:translate(2px,2px); box-shadow:1px 1px 0 #031326; }
 .lobby-language button.selected { color:var(--ink); background:var(--cyan); border-color:var(--cream); }
@@ -712,6 +723,16 @@ button { font: inherit; }
 .volume-control input { width:100%; accent-color:var(--cyan); cursor:pointer; }
 .volume-control output { color:var(--cyan); font-size:10px; font-weight:1000; letter-spacing:1px; text-align:right; }
 .result-lead { margin:0 0 10px; font-size:15px; font-weight:1000; letter-spacing:2px; opacity:.92; }
+/* The general's sign-off. He shares the briefing's portrait so the face that
+   gave the orders is the face that grades them. */
+.result-general { display:flex; align-items:center; gap:14px; width:min(92vw,560px); margin:0 0 16px; padding:12px 14px; text-align:left; background:rgba(17,22,42,.72); border:3px solid rgba(255,245,199,.5); box-shadow:6px 6px 0 rgba(0,0,0,.4); }
+.result-general .briefing-portrait { width:72px; height:72px; border-width:3px; box-shadow:4px 4px 0 var(--ink); }
+.result-general p { margin:0; color:var(--cream); font-size:14px; font-weight:900; line-height:1.6; }
+@media (max-width:760px) {
+  .result-general { gap:10px; padding:9px 10px; }
+  .result-general .briefing-portrait { width:52px; height:52px; }
+  .result-general p { font-size:12px; }
+}
 .results-overlay.defeat h2 { color:var(--coral); text-shadow:6px 6px 0 var(--ink); }
 .results-overlay.defeat .final-score { color:var(--cream); }
 

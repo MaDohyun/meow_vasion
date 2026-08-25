@@ -48,4 +48,16 @@ describe('how a run is reported', () => {
       expect(/무게|重|weight|outweigh|load/i.test(said)).toBe(true)
     }
   })
+
+  it('lets the general sign off on every ending, in every language', () => {
+    // He gives the orders at the start of the run, so he grades them at the
+    // end of it - including the three he is not happy about.
+    const endings: RunEnding[] = ['recon', 'missionFailed', 'downed', 'crushed']
+    for (const language of LANGUAGES) {
+      const remarks = endings.map((ending) => STRINGS[language].endingRemark[ending])
+      for (const remark of remarks) expect(remark.trim().length, language).toBeGreaterThan(0)
+      expect(new Set(remarks).size, language).toBe(endings.length)
+    }
+    expect(STRINGS.ko.endingRemark.recon).not.toBe(STRINGS.en.endingRemark.recon)
+  })
 })
