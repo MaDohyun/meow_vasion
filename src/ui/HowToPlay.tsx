@@ -227,12 +227,18 @@ export function HowToPlay({ onClose }: { onClose: () => void }) {
             <figure className="howto-panel">
               <i className="howto-step">2</i>
               <LaserArt />
-              <figcaption><b className="keycap">Q</b><span>{t.controlLaser}</span></figcaption>
+              <figcaption>
+                <span className="keycap-set"><b className="keycap keycap-wide">{t.keyLeftClick}</b><b className="keycap">Q</b></span>
+                <span>{t.controlLaser}</span>
+              </figcaption>
             </figure>
             <figure className="howto-panel">
               <i className="howto-step">3</i>
               <BeamArt />
-              <figcaption><b className="keycap">E</b><span>{t.beam}</span></figcaption>
+              <figcaption>
+                <span className="keycap-set"><b className="keycap keycap-wide">{t.keyRightClick}</b><b className="keycap">W</b></span>
+                <span>{t.beam}</span>
+              </figcaption>
             </figure>
             <figure className="howto-panel">
               <i className="howto-step">4</i>
@@ -243,8 +249,8 @@ export function HowToPlay({ onClose }: { onClose: () => void }) {
           <div className="controls-card howto-keys">
             <span><b>AUTO</b> {t.controlFly}</span>
             <span><b>MOUSE</b> {t.controlAim}</span>
-            <span><b>E</b> {t.controlBeam}</span>
-            <span><b>Q</b> {t.controlLaser} · {t.hold}</span>
+            <span><b>{t.keyRightClick} / W</b> {t.controlBeam}</span>
+            <span><b>{t.keyLeftClick} / Q</b> {t.controlLaser} · {t.hold}</span>
             <span><b>SPACE</b> {t.controlBoost}</span>
           </div>
           {/* The two things no panel above can draw: flying into the city hurts,
