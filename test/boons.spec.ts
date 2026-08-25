@@ -14,6 +14,8 @@ import {
   isBoonMaxed,
 } from '../src/core/boons'
 import { buildingMaxHealth, damageBuilding } from '../src/core/buildings'
+import { type BeamField, type BeamObject, stepBeamObjects } from '../src/core/beam'
+import { createDroneState, stepDrone } from '../src/core/drone'
 import { mysteryCircleForCell, mysteryCirclesNear, worldCellCenter, worldCellCoord, type MysteryCircleSite, type ProceduralBuilding } from '../src/core/world'
 
 /** Levels a state to the cap on the given stats. */
@@ -23,15 +25,31 @@ function maxOut(state = createBoonState(), ids = BOON_IDS) {
 }
 
 describe('mystery-circle boon pickups', () => {
-  it('keeps the promised caps: laser five, the flight stats three each', () => {
-    expect(BOON_IDS).toEqual(['laser-power', 'speed', 'turbo-recharge', 'turbo-capacity'])
+  it('keeps the promised caps: laser five, handling two, the rest three each', () => {
+    expect(BOON_IDS).toEqual([
+      'laser-power', 'speed', 'turn-rate', 'beam-pull', 'turbo-recharge', 'turbo-capacity',
+    ])
     expect(BOON_DEFINITIONS['laser-power'].maxLevel).toBe(5)
     expect(BOON_DEFINITIONS.speed.maxLevel).toBe(3)
+    expect(BOON_DEFINITIONS['turn-rate'].maxLevel).toBe(2)
+    expect(BOON_DEFINITIONS['beam-pull'].maxLevel).toBe(2)
     expect(BOON_DEFINITIONS['turbo-recharge'].maxLevel).toBe(3)
     expect(BOON_DEFINITIONS['turbo-capacity'].maxLevel).toBe(3)
     // A maxed laser exactly doubles damage; maxed turbo adds 4.5 seconds.
     expect(1 + BOON_DEFINITIONS['laser-power'].step * 5).toBeCloseTo(2)
     expect(BOON_DEFINITIONS['turbo-capacity'].step * 3).toBeCloseTo(4.5)
+  })
+
+  it('keeps the two handling stats small enough to read as tuning', () => {
+    // Yaw is what the dodge is made of and beam pull feeds the haul spring
+    // twice, so both caps are deliberately modest: a fifth quicker round a
+    // corner, and about half again as fast on the haul.
+    const state = maxOut()
+    expect(boonMultiplier(state, 'turn-rate')).toBeCloseTo(1.2)
+    const pull = boonMultiplier(state, 'beam-pull')
+    expect(pull).toBeCloseTo(1.24)
+    expect(pull * pull).toBeGreaterThan(1.5)
+    expect(pull * pull).toBeLessThan(1.6)
   })
 
   it('grants one level per circle and never the same circle twice', () => {
@@ -57,13 +75,14 @@ describe('mystery-circle boon pickups', () => {
     expect(boonForCircle(state, id)).not.toBe(dealt)
   })
 
-  it('pays score once every stat is capped, and never life', () => {
-    // Circles are a speed pit stop, not a repair bay. A capped run's pickup
-    // falls through to score - there is no claim that hands back a pip.
+  it('patches the craft once every stat is capped', () => {
+    // The only life a circle gives back. Flying through one is a speed pit
+    // stop; this costs a whole item and only exists because a capped run has
+    // nothing left to raise.
     const state = maxOut()
     expect(allBoonsMaxed(state)).toBe(true)
     expect(boonForCircle(state, 'mystery:0:0')).toBeNull()
-    expect(claimBoon(state, 'mystery:0:0')).toEqual({ kind: 'score' })
+    expect(claimBoon(state, 'mystery:0:0')).toEqual({ kind: 'heal' })
   })
 
   it('reports multipliers and bonuses off the level times the step', () => {
@@ -81,7 +100,7 @@ describe('mystery-circle boon pickups', () => {
     // The exact chain GameContext runs on a hit: claimBoon raises the level,
     // boonMultiplier turns it into damage, damageBuilding spends it. Max the
     // other stats first so every circle deals laser, then eat five.
-    const state = maxOut(createBoonState(), ['speed', 'turbo-recharge', 'turbo-capacity'])
+    const state = maxOut(createBoonState(), ['speed', 'turn-rate', 'beam-pull', 'turbo-recharge', 'turbo-capacity'])
     for (let circle = 0; circle < 5; circle += 1) {
       const claim = claimBoon(state, `mystery:${circle}:0`)
       expect(claim).toEqual({ kind: 'stat', id: 'laser-power', level: circle + 1 })
@@ -103,6 +122,53 @@ describe('mystery-circle boon pickups', () => {
     // A maxed laser halves the supertall block: seven hits become four.
     expect(shotsToDestroy(1)).toBe(buildingMaxHealth(tower))
     expect(shotsToDestroy(boonMultiplier(state, 'laser-power'))).toBe(Math.ceil(buildingMaxHealth(tower) / 2))
+  })
+
+  it('turns exactly a fifth quicker at a maxed turn-rate, through stepDrone', () => {
+    // GameContext feeds the pickup through stepDrone's own yaw lever, whose
+    // coefficient is 0.15 per level, so the bonus is divided by it. Get the
+    // divide wrong and the stat quietly lands somewhere else entirely - this
+    // pins the promised 20% to the number the flight model actually turns at.
+    const maxed = maxOut(createBoonState(), ['turn-rate'])
+    const flat = { throttle: 1, steer: 1, vertical: 0, special: false }
+    const upgrades = { speed: 0, stability: 0, rack: 0, special: 'none' as const }
+    const yawAfter = (stability: number) => {
+      let state = createDroneState()
+      for (let frame = 0; frame < 60; frame += 1) {
+        state = stepDrone(state, flat, 1 / 60, 0, { ...upgrades, stability })
+      }
+      return state.yawVelocity
+    }
+    const base = yawAfter(0)
+    const upgraded = yawAfter(boonBonus(maxed, 'turn-rate') / 0.15)
+    expect(upgraded / base).toBeCloseTo(1.2, 5)
+  })
+
+  it('hauls a caught load faster at a maxed beam-pull', () => {
+    // Pull is the one beam property a pickup raises - radius and reach stay
+    // pure hull. It feeds the haul spring twice, so a 1.24 multiplier is felt
+    // as roughly half again the climb rate.
+    const maxed = maxOut(createBoonState(), ['beam-pull'])
+    const car = (): BeamObject => ({
+      id: 'car-1', kind: 'car', mass: 2.4, color: '#ff5d74',
+      position: { x: 0, y: 0.65, z: 0 }, velocity: { x: 0, y: 0, z: 0 },
+      rotation: { x: 0, y: 0, z: 0 }, angularVelocity: { x: 0, y: 0, z: 0 },
+      active: true, inBeam: false, tether: 0, playerTouched: false,
+      destroying: false, destroyTimer: 0, explosionPending: false,
+      absorbing: false, absorbTimer: 0,
+    })
+    const field = (gripScale: number): BeamField => ({
+      active: true, boosting: false,
+      position: { x: 0, y: 7, z: 0 }, velocity: { x: 0, y: 0, z: 0 },
+      gripScale,
+    })
+    const climb = (gripScale: number) => {
+      const objects = [car()]
+      for (let frame = 0; frame < 20; frame += 1) stepBeamObjects(objects, field(gripScale), 1 / 60)
+      return objects[0]!.position.y
+    }
+    expect(boonMultiplier(maxed, 'beam-pull')).toBeCloseTo(1.24)
+    expect(climb(boonMultiplier(maxed, 'beam-pull'))).toBeGreaterThan(climb(1))
   })
 
   it('hangs every box inside the 50-80m band, per-circle at its own height', () => {

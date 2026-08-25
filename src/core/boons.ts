@@ -4,7 +4,7 @@
  * The card screen is gone. Stopping the run to pick one of three random cards
  * meant the stats you wanted arrived on the deck's schedule, not yours, and a
  * five-minute run never came close to the caps anyway. The body stats now ride
- * on hull size (see core/size); the four flight-and-fight stats here are
+ * on hull size (see core/size); the six flight-and-fight stats here are
  * earned by flying somewhere: each mystery circle hovers one glowing saucer
  * item over its beacon, and eating it grants one level of whatever that
  * circle carries.
@@ -14,15 +14,24 @@
  * distance, and the circle's own turbo refill makes the trip toward the next
  * one partly self-funding.
  *
- * Once every stat is capped a pickup pays score instead - a late-run circle is
- * never a dead landmark.
+ * Once every stat is capped a pickup patches the craft instead, and with life
+ * full it pays score - a late-run circle is never a dead landmark. That
+ * fallback is the only life a circle ever hands back: passing through one is a
+ * speed pit stop and nothing more, so the repair is the reward for a run that
+ * has already finished its upgrade ladder, not a place to go when hurt.
  *
  * Pure data and arithmetic - no React, no Three.js. Wording lives in
  * `src/i18n.ts`; the bob math lives here so the simulation eats the item at
  * exactly the height the render layer draws it.
  */
 
-export type BoonId = 'laser-power' | 'speed' | 'turbo-recharge' | 'turbo-capacity'
+export type BoonId =
+  | 'laser-power'
+  | 'speed'
+  | 'turn-rate'
+  | 'beam-pull'
+  | 'turbo-recharge'
+  | 'turbo-capacity'
 
 export type BoonDefinition = {
   id: BoonId
@@ -31,15 +40,29 @@ export type BoonDefinition = {
   step: number
   /**
    * Where the stat stops. Without a cap the correct play is to farm circles
-   * forever; with one, a run that clears all fourteen levels has actually
-   * finished something and the pickups move on to paying score.
+   * forever; with one, a run that clears all eighteen levels has actually
+   * finished something and the pickups move on to healing.
    */
   maxLevel: number
 }
 
+/**
+ * Two levels each on turn rate and beam pull, and small steps on both.
+ *
+ * They are the two stats that change how the craft *handles* rather than what
+ * it is worth, so a big number on either rewrites the game rather than
+ * improving it: yaw is what the whole dodge is made of, and beam pull feeds
+ * the haul spring twice (once in the spring constant, once in the vertical
+ * drive - see core/beam), so its felt speed-up is roughly the multiplier
+ * squared. A maxed turn is a fifth quicker round a corner; a maxed pull hauls
+ * about half again as fast. Both are read instantly from the cockpit and
+ * neither retunes the game around itself.
+ */
 export const BOON_DEFINITIONS: Record<BoonId, BoonDefinition> = {
   'laser-power': { id: 'laser-power', step: 0.2, maxLevel: 5 },
   speed: { id: 'speed', step: 0.08, maxLevel: 3 },
+  'turn-rate': { id: 'turn-rate', step: 0.1, maxLevel: 2 },
+  'beam-pull': { id: 'beam-pull', step: 0.12, maxLevel: 2 },
   'turbo-recharge': { id: 'turbo-recharge', step: 0.2, maxLevel: 3 },
   'turbo-capacity': { id: 'turbo-capacity', step: 1.5, maxLevel: 3 },
 }
@@ -90,7 +113,7 @@ function hashCircleId(id: string) {
 
 /**
  * Which stat the item over a circle grants, or null when everything is capped
- * and the pickup falls through to score.
+ * and the pickup falls through to healing.
  *
  * Hashed from the circle's id rather than rolled at claim time, so the render
  * layer can colour the item before it is eaten and a player can read "that
@@ -104,14 +127,14 @@ export function boonForCircle(state: BoonState, circleId: string): BoonId | null
   return open[hashCircleId(circleId) % open.length]!
 }
 
-export type BoonClaim = { kind: 'stat'; id: BoonId; level: number } | { kind: 'score' }
+export type BoonClaim = { kind: 'stat'; id: BoonId; level: number } | { kind: 'heal' }
 
 /** Eats the item over a circle. Null when this circle already gave its item. */
 export function claimBoon(state: BoonState, circleId: string): BoonClaim | null {
   if (state.claimed.has(circleId)) return null
   state.claimed.add(circleId)
   const id = boonForCircle(state, circleId)
-  if (!id) return { kind: 'score' }
+  if (!id) return { kind: 'heal' }
   state.levels[id] += 1
   return { kind: 'stat', id, level: state.levels[id] }
 }
@@ -145,10 +168,13 @@ export function boonHoverY(time: number, circleId: string) {
 export const BOON_PICKUP_RADIUS = 8
 export const BOON_PICKUP_VERTICAL = 6
 
-/** What a pickup is worth once every stat is capped: score, scaled by size
- *  like every other reward, so no circle is ever worth nothing. Circles do not
- *  repair the craft - a free heal on a landmark you can park next to would
- *  defang the late waves. */
+/** What a pickup is worth once every stat is capped: a meaningful patch, not
+ *  a full repair. It costs a whole circle's item and only arrives once there
+ *  is nothing left to level, which is what keeps it from being the free heal
+ *  that flying through the circle used to hand out. */
+export const BOON_HEAL_PIPS = 1.5
+/** And with life already full, score - scaled by size like every other reward
+ *  - so no circle is ever worth nothing. */
 export const BOON_FULL_SCORE = 150
 
 /** Item colours, shared by the pickup mesh and anything else that wants to
@@ -156,6 +182,9 @@ export const BOON_FULL_SCORE = 150
 export const BOON_COLORS: Record<BoonId, string> = {
   'laser-power': '#ff557f',
   speed: '#6deeff',
+  'turn-rate': '#b07bff',
+  'beam-pull': '#7bffcf',
   'turbo-recharge': '#ffd24d',
   'turbo-capacity': '#ff8a45',
 }
+export const BOON_HEAL_COLOR = '#63ff8f'

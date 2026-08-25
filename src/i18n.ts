@@ -211,12 +211,15 @@ export type Strings = {
   msgVehicleDestroyed: (reward: number) => string
   msgTurbo: string
   msgTurboOverload: string
-  /** The mystery-circle pickup callouts. One per stat, one for the score a
-   *  fully-upgraded craft gets instead. */
+  /** The mystery-circle pickup callouts. One per stat, one for the patch a
+   *  fully-upgraded craft gets instead, one for the score fallback. */
   msgBoonLaser: (level: number) => string
   msgBoonSpeed: (level: number) => string
+  msgBoonTurnRate: (level: number) => string
+  msgBoonBeamPull: (level: number) => string
   msgBoonTurboRecharge: (level: number) => string
   msgBoonTurboCapacity: (level: number) => string
+  msgBoonHeal: string
   msgBoonScore: (reward: number) => string
   /** Flying through a circle: surge and a turbo refill, never a repair. */
   msgMysteryCircle: string
@@ -448,8 +451,11 @@ export const STRINGS: Record<Language, Strings> = {
     msgTurboOverload: '터보 과부하 · 잠시 사용 불가',
     msgBoonLaser: (level) => `레이저 위력 Lv.${level}`,
     msgBoonSpeed: (level) => `속도 Lv.${level}`,
+    msgBoonTurnRate: (level) => `회전력 Lv.${level}`,
+    msgBoonBeamPull: (level) => `빔 흡수 속도 Lv.${level}`,
     msgBoonTurboRecharge: (level) => `터보 게이지 충전 Lv.${level}`,
     msgBoonTurboCapacity: (level) => `터보 양 Lv.${level}`,
+    msgBoonHeal: '생명력 회복',
     msgBoonScore: (reward) => `보너스 +${reward}`,
     msgMysteryCircle: '미스터리 서클 · 가속 · 터보 충전',
     breakingFlag: '속보',
@@ -634,8 +640,11 @@ export const STRINGS: Record<Language, Strings> = {
     msgTurboOverload: 'ターボ過負荷 · 一時使用不可',
     msgBoonLaser: (level) => `レーザー威力 Lv.${level}`,
     msgBoonSpeed: (level) => `速度 Lv.${level}`,
+    msgBoonTurnRate: (level) => `旋回力 Lv.${level}`,
+    msgBoonBeamPull: (level) => `ビーム吸収速度 Lv.${level}`,
     msgBoonTurboRecharge: (level) => `ターボ充填 Lv.${level}`,
     msgBoonTurboCapacity: (level) => `ターボ容量 Lv.${level}`,
+    msgBoonHeal: 'ライフを回復',
     msgBoonScore: (reward) => `ボーナス +${reward}`,
     msgMysteryCircle: 'ミステリーサークル · 加速 · ターボ満タン',
     breakingFlag: '速報',
@@ -820,8 +829,11 @@ export const STRINGS: Record<Language, Strings> = {
     msgTurboOverload: 'TURBO OVERLOAD · OFFLINE BRIEFLY',
     msgBoonLaser: (level) => `LASER POWER LV.${level}`,
     msgBoonSpeed: (level) => `SPEED LV.${level}`,
+    msgBoonTurnRate: (level) => `TURN RATE LV.${level}`,
+    msgBoonBeamPull: (level) => `BEAM PULL LV.${level}`,
     msgBoonTurboRecharge: (level) => `TURBO RECHARGE LV.${level}`,
     msgBoonTurboCapacity: (level) => `TURBO CAPACITY LV.${level}`,
+    msgBoonHeal: 'LIFE RESTORED',
     msgBoonScore: (reward) => `BONUS +${reward}`,
     msgMysteryCircle: 'MYSTERY CIRCLE · SURGE · TURBO REFILLED',
     breakingFlag: 'BREAKING',

@@ -27,7 +27,7 @@ import {
   type HazardState,
 } from './core/hazards'
 import { SIZE_MIN, SIZE_START, type SizeGainKind, type SizeProfile, bonusHeartsForSize, clampSize, growSize, growSizeBy, sizeProfile, ufoDiameter } from './core/size'
-import { MAX_HEALTH, createHealthState, damageHealth, healthRatio, isDead, isRegenerating, raiseHealthMax, stepHealth, type HealthLossKind, type HealthState } from './core/health'
+import { MAX_HEALTH, createHealthState, damageHealth, healHealth, healthRatio, isDead, isRegenerating, raiseHealthMax, stepHealth, type HealthLossKind, type HealthState } from './core/health'
 import { BATTLESHIP_ALTITUDE, BATTLESHIP_TURRETS, ENEMY_WAVE_STAGES, activeEnemyCount, battleshipTurretPoint, createEnemyState, hitEnemy, resolveEnemyContacts, stepEnemies, stepEnemyProjectiles, syncEnemyTiers, waveLabelForTime, waveStageForTime, type EnemyKind, type EnemyState } from './core/enemies'
 import {
   createLaserPool,
@@ -67,6 +67,7 @@ import { captureTrafficCar, createTrafficState, primeTraffic, releaseTrafficSlot
 import { BROADCAST_OPENING_AT, BROADCAST_SECONDS } from './core/broadcast'
 import {
   BOON_FULL_SCORE,
+  BOON_HEAL_PIPS,
   BOON_PICKUP_RADIUS,
   BOON_PICKUP_VERTICAL,
   boonBonus,
@@ -490,6 +491,8 @@ const CAT_CRY_INTERVAL = 4.5
 const BOON_MESSAGE_KEY: Record<BoonId, MessageKey> = {
   'laser-power': 'msgBoonLaser',
   speed: 'msgBoonSpeed',
+  'turn-rate': 'msgBoonTurnRate',
+  'beam-pull': 'msgBoonBeamPull',
   'turbo-recharge': 'msgBoonTurboRecharge',
   'turbo-capacity': 'msgBoonTurboCapacity',
 }
@@ -1944,8 +1947,16 @@ export function GameProvider({ children }: { children: ReactNode }) {
           if (granted.kind === 'stat') {
             setMessage(game, BOON_MESSAGE_KEY[granted.id], 2.2, granted.level)
             tone('upgrade')
+          } else if (game.health.current < game.health.max) {
+            // Every stat is capped, so there is nothing left to raise and the
+            // item patches the craft instead. This is the only life a circle
+            // gives back - flying through one does not, and this costs the
+            // whole item on a run that has already finished its ladder.
+            healHealth(game.health, BOON_HEAL_PIPS)
+            setMessage(game, 'msgBoonHeal', 2.2)
+            tone('upgrade')
           } else {
-            // Every stat is capped, so the pickup pays out like a meal would.
+            // Capped and at full life: the pickup pays out like a meal would.
             const reward = Math.round(BOON_FULL_SCORE * game.sizeProfile.scoreMultiplier)
             game.score += reward
             setMessage(game, 'msgBoonScore', 2.2, reward)
@@ -2009,6 +2020,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
       // stepDrone's own speed coefficient is 0.12 per level; dividing the
       // pickup bonus by it feeds the exact 8%-per-level the boon promises.
       speed: boonBonus(game.boons, 'speed') / 0.12,
+      // Same trick on the yaw lever, whose own coefficient is 0.15 per level,
+      // so a maxed turn pickup is exactly the 20% the boon promises.
+      stability: boonBonus(game.boons, 'turn-rate') / 0.15,
     })
     const nextWorld = updateActiveWorld(game.world, stepped.position, false, game.destroyedBuildings)
     if (nextWorld !== game.world) {
@@ -2081,7 +2095,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
       // hauls what it catches visibly faster - no card involved in any of it.
       radiusScale: game.sizeProfile.beamScale,
       reachScale: game.sizeProfile.beamReach,
-      gripScale: game.sizeProfile.beamPull,
+      // Pull is the one beam property a pickup can raise. Radius and reach
+      // stay pure hull: they say how big the craft is, and an item that made
+      // a small saucer sweep like a big one would be saying otherwise.
+      gripScale: game.sizeProfile.beamPull * boonMultiplier(game.boons, 'beam-pull'),
       // Natural grip from size, and nothing else - the whole 1..12 ladder is
       // growth now.
       gripStrength: beamStrength(game),
