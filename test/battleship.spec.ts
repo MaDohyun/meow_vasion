@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { isAbsorbable } from '../src/core/beam'
+import { beamLiftScale, beginNearbyBeamObjectAbsorption, isAbsorbable } from '../src/core/beam'
 import { BOON_DEFINITIONS } from '../src/core/boons'
 import { DRONE_DEFAULTS } from '../src/core/drone'
-import { maxAltitude } from '../src/core/size'
+import { BEAM_STRENGTH_MAX, SIZE_MAX, SIZE_START, maxAltitude, sizeProfile, ufoDiameter } from '../src/core/size'
 import {
   BATTLESHIP_ALTITUDE,
   BATTLESHIP_ESCORT_FIGHTERS,
@@ -45,12 +45,64 @@ describe("earth's last resort", () => {
     expect(state.slots.filter((enemy) => enemy.kind === 'boss' && enemy.active)).toHaveLength(1)
   })
 
-  it('is not food, at any craft size', () => {
-    // "Too big to eat yet" would be wrong: the player reaches the size cap in a
-    // good run, and the fight has to still be a fight when they do.
+  it('is food, but only for a craft at the ceiling', () => {
+    // It is the heaviest thing in the game at thirty, which is the whole top
+    // of the weight ladder: the fight is still a fight for the entire run, and
+    // the one craft that can end it by swallowing the ship is one that has
+    // spent five minutes growing into it.
     const { ship } = launch()
-    expect(ship.beamImmune).toBe(true)
-    expect(isAbsorbable('boss', ship.diameter, Number.POSITIVE_INFINITY)).toBe(false)
+    expect(ship.beamImmune).toBe(false)
+    expect(ship.mass).toBe(BEAM_STRENGTH_MAX)
+    expect(isAbsorbable('boss', ship.diameter, Number.POSITIVE_INFINITY)).toBe(true)
+
+    // Both gates, run against real craft rather than against constants. The
+    // hull opens early and the weight opens last, so weight is what the player
+    // actually feels.
+    const swallows = (size: number) => {
+      const profile = sizeProfile(size)
+      return isAbsorbable('boss', ship.diameter, ufoDiameter(size))
+        && beamLiftScale(ship.mass, profile.beamStrength) > 0
+    }
+    expect(swallows(SIZE_START)).toBe(false)
+    expect(swallows(SIZE_START + (SIZE_MAX - SIZE_START) * 0.9)).toBe(false)
+    expect(swallows(SIZE_MAX)).toBe(true)
+  })
+
+  it('goes up the beam of the craft that can lift it, and stays down', () => {
+    // The whole point of the weight, run end to end: draw the ship into the
+    // swallow window with a craft at the ceiling and it is banked like any
+    // other meal - and the slot is marked so the wave spawner never sends a
+    // second one.
+    const { state, ship } = launch()
+    const profile = sizeProfile(SIZE_MAX)
+    ship.position.x = 0
+    ship.position.y = 90
+    ship.position.z = 0
+    ship.inBeam = true
+    const hull = { x: 0, y: 90 + profile.absorbDistance * 0.5, z: 0 }
+    const eaten = beginNearbyBeamObjectAbsorption([ship], hull, ufoDiameter(SIZE_MAX), profile.absorbDistance, profile.beamStrength)
+    expect(eaten).toBe(ship)
+    expect(ship.absorbing).toBe(true)
+
+    // And the ship stops being a ship: the AI leaves it alone from the moment
+    // the beam has it, so it neither steers nor fires on its way in.
+    const before = { ...ship.position }
+    stepEnemies(state, { x: 0, y: 100, z: 0 }, 1 / 60)
+    expect(ship.position).toEqual(before)
+    expect(state.projectiles.filter((orb) => orb.active)).toHaveLength(0)
+  })
+
+  it('refuses the same beam to a craft that has not grown into it', () => {
+    const { ship } = launch()
+    const opening = sizeProfile(SIZE_START)
+    ship.position.x = 0
+    ship.position.y = 90
+    ship.position.z = 0
+    ship.inBeam = true
+    const hull = { x: 0, y: 90 + opening.absorbDistance * 0.5, z: 0 }
+    expect(beginNearbyBeamObjectAbsorption([ship], hull, ufoDiameter(SIZE_START), opening.absorbDistance, opening.beamStrength)).toBeNull()
+    expect(ship.absorbing).toBe(false)
+    expect(ship.active).toBe(true)
   })
 
   it('holds high station and circles instead of sitting on the player', () => {

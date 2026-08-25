@@ -83,8 +83,12 @@ function flyAndFeed(seconds: number, startSize = SIZE_START, seed = 4242, steer 
  * people, so every measurement here is an average. Tuning the loop against one
  * sample means tuning against noise.
  */
-function averageFeed(seconds: number, startSize = SIZE_START, steer = false, altitude = 7, park = false) {
-  const seeds = [4242, 9137, 31, 77021, 555, 12345]
+const FEED_SEEDS = [4242, 9137, 31, 77021, 555, 12345]
+
+function averageFeed(
+  seconds: number, startSize = SIZE_START, steer = false, altitude = 7, park = false,
+  seeds: readonly number[] = FEED_SEEDS,
+) {
   let total = 0
   for (const seed of seeds) total += flyAndFeed(seconds, startSize, seed, steer, altitude, park).absorbed
   return total / seeds.length
@@ -147,11 +151,17 @@ describe('feeding is the core loop', { timeout: 30_000 }, () => {
   })
 
   it('keeps a bigger craft competitive while the preloaded city stays dispersed', () => {
-    const small = averageFeed(18, SIZE_START, true)
-    const big = averageFeed(18, SIZE_START * 6, true)
-    // A larger hull also has a wider turn, so on a deliberately dispersed
-    // opening it is allowed a small routing loss. Its beam must remain within
-    // a competitive band rather than becoming a growth penalty.
+    // Every other case here compares one average against a fixed number and
+    // sits nowhere near it, so six seeds is plenty. This one divides two
+    // averages by each other, so it carries both their noise: at six seeds the
+    // ratio swings from 0.81 to 1.07 across code that should not move it at
+    // all, which is a coin toss rather than a guard. Fourteen holds it inside
+    // 0.94..1.00 - so the sample is what was too small here, not the band.
+    const seeds = Array.from({ length: 14 }, (_, index) => 4242 + index * 977)
+    const small = averageFeed(18, SIZE_START, true, 7, false, seeds)
+    const big = averageFeed(18, SIZE_START * 6, true, 7, false, seeds)
+    // Growth must never be a tax. Measured, the two are within a few percent
+    // of each other - a larger hull turns wider but sweeps wider with it.
     expect(big).toBeGreaterThan(small * 0.85)
   })
 })

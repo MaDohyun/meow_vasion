@@ -138,7 +138,7 @@ export type SizeProfile = {
    * stronger simply by being bigger.
    */
   beamPower: number
-  /** Integer base pull strength, 0..7. */
+  /** Integer base pull strength, 0..BEAM_STRENGTH_MAX. */
   beamStrength: number
   /** Hanging weight the craft can keep aloft before lift-card bonuses. */
   liftCapacity: number
@@ -162,14 +162,37 @@ export type SizeProfile = {
 export const CAMERA_REST_DISTANCE = 12
 
 /**
- * The twelve integer strength rungs shared by the HUD and beam simulation.
+ * The integer strength rungs shared by the HUD and beam simulation.
  *
  * This used to top out at 7 with cards adding up to +5 on the side; the cards
- * are gone, so the whole 1..12 ladder now lives on size alone. The heaviest
- * liftables keep their old meaning: a supertall block (mass 11) still needs a
- * craft near the ceiling, it just no longer needs a lucky deck as well.
+ * are gone, so the ladder lives on size alone. It then had to grow a second
+ * storey, because the sky joined the menu: a helicopter weighs 6, a fighter
+ * 10 and the dreadnought 30, and a ladder that stopped at 12 could never
+ * reach the last of them however far the craft grew.
+ *
+ * The two storeys are deliberately unequal, see `beamStrengthForSize`.
  */
-export const BEAM_STRENGTH_MAX = 12
+export const BEAM_STRENGTH_MAX = 30
+/**
+ * The top of the city ladder - the rung a supertall block (mass 11) sits
+ * under, and the whole of what the old 1..12 range covered.
+ */
+export const BEAM_STRENGTH_CITY_RUNG = 12
+/**
+ * How much of the growth range the city ladder spends.
+ *
+ * The first eighty-five percent of growing buys rungs 1..12, which is the
+ * street, the park and the skyline. The last fifteen buys 12..30, which is
+ * nothing but the dreadnought and its escorts - and the last rung of it only
+ * arrives within a whisker of the size cap, so eating the ship is the final
+ * thing a run can do rather than something it passes on the way.
+ *
+ * The city ladder is slightly quicker than it was for the compression: a
+ * supertall tower opens around 66% of the way up instead of 77%. That is the
+ * price of the second storey, and it is charged where the run has already made
+ * its point rather than at the start where the rungs teach.
+ */
+export const BEAM_STRENGTH_CITY_PROGRESS = 0.85
 /**
  * Two: exactly one body.
  *
@@ -244,10 +267,24 @@ export function bonusHeartsForSize(size: number) {
   return Math.min(HEALTH_BONUS_HEARTS_MAX, Math.floor(sizeGrowthProgress(size) * (HEALTH_BONUS_HEARTS_MAX + 1)))
 }
 
+/**
+ * Two straight segments, not one.
+ *
+ * A single line from 1 to 30 would hand the opening saucer a car on its third
+ * meal and a tower before half the run; a single line to 12 cannot reach the
+ * ship at all. So the curve keeps the city ladder's shape over the bulk of
+ * growth and spends the last stretch climbing to the ship.
+ */
 export function beamStrengthForSize(size: number) {
   const clamped = clampSize(size)
   if (clamped < SIZE_START) return 0
-  return Math.min(BEAM_STRENGTH_MAX, 1 + Math.round(sizeGrowthProgress(clamped) * (BEAM_STRENGTH_MAX - 1)))
+  const progress = sizeGrowthProgress(clamped)
+  if (progress <= BEAM_STRENGTH_CITY_PROGRESS) {
+    const city = progress / BEAM_STRENGTH_CITY_PROGRESS
+    return Math.min(BEAM_STRENGTH_CITY_RUNG, 1 + Math.round(city * (BEAM_STRENGTH_CITY_RUNG - 1)))
+  }
+  const sky = (progress - BEAM_STRENGTH_CITY_PROGRESS) / (1 - BEAM_STRENGTH_CITY_PROGRESS)
+  return Math.min(BEAM_STRENGTH_MAX, BEAM_STRENGTH_CITY_RUNG + Math.round(sky * (BEAM_STRENGTH_MAX - BEAM_STRENGTH_CITY_RUNG)))
 }
 
 export function liftCapacityForSize(size: number) {

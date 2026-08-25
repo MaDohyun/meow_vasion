@@ -1,15 +1,17 @@
+import type { BuildingRuin } from './buildings'
 import type { Aabb, Vec3 } from './drone'
 
 export type BeamObjectKind =
   | 'car' | 'truck' | 'pedestrian' | 'cat' | 'explosive' | 'building'
   | 'rooftop-structure' | 'tree' | 'utility-pole' | 'power-pylon' | 'communications'
   | 'trash-bin' | 'park-bench' | 'bus-stop' | 'subway'
+  | 'shore-rock' | 'shore-reed' | 'gas-station' | 'ruin'
   | 'drone' | 'helicopter'
   | 'fighter' | 'boss'
 
 export type BeamWorldProp = {
   id: string
-  kind: 'rooftop-structure' | 'tree' | 'utility-pole' | 'power-pylon' | 'communications' | 'trash-bin' | 'park-bench' | 'bus-stop' | 'subway'
+  kind: 'rooftop-structure' | 'tree' | 'utility-pole' | 'power-pylon' | 'communications' | 'trash-bin' | 'park-bench' | 'bus-stop' | 'subway' | 'shore-rock' | 'shore-reed' | 'gas-station'
   position: Vec3
   rotation: number
   scale: Vec3
@@ -55,6 +57,11 @@ const DEFAULT_DIAMETER: Record<BeamObjectKind, number> = {
   building: 18,
   cat: 0.55,
   pedestrian: 0.78,
+  // The lakeside pair. Both are the smallest things in the city that are not
+  // alive, and both have to fit through the opening saucer's 2.48m hull -
+  // a pond is the one place a brand-new craft can feed on scenery.
+  'shore-reed': 1.4,
+  'shore-rock': 1.6,
   drone: 1.6,
   car: 2.9,
   truck: 4.2,
@@ -70,15 +77,28 @@ const DEFAULT_DIAMETER: Record<BeamObjectKind, number> = {
   'power-pylon': 7.2,
   subway: 8.6,
   communications: 12,
-  // The battleship's beam width. Only a fallback - it is excluded by kind
-  // below, so this figure never decides anything.
+  // A whole forecourt, canopy and pumps included - the widest thing in the
+  // city that is not a building. Only a fallback; the live prop carries the
+  // same figure from WORLD_PROP_DIAMETERS.
+  'gas-station': 18,
+  // Rubble keeps ninety percent of the block's footprint. Only a fallback -
+  // a live ruin measures its own, see ruinBulk.
+  ruin: 18,
+  // The battleship's beam width. Only a fallback - the live ship carries its
+  // own measured hull in `ENEMY_DIAMETER`.
   boss: 16,
 }
 
-/** The battleship is the one beam object treated as architecture. Everything
- *  else is eligible once it is no wider than the hull itself - `maxDiameter` is the current UFO diameter -
- *  though among enemies only the drone mine is even grabbable: the rest are
- *  flagged `beamImmune`.
+/** Everything is eligible once it is no wider than the hull itself -
+ *  `maxDiameter` is the current UFO diameter - with the drone mine the single
+ *  exception below.
+ *
+ *  The sky is on the same terms as the street now. The helicopter, the fighter
+ *  and the dreadnought used to be excluded here or flagged `beamImmune`, which
+ *  made "can I eat it" a question about what something *is* rather than about
+ *  how big and how heavy it is. They are ordinary beam objects with ordinary
+ *  weights (6, 10 and 30, the heaviest in the game); a craft that has grown
+ *  enough to move thirty units of hanging ship has earned it.
  *
  *  This is the swallow gate, not the pull gate. What the beam can shift is the
  *  weight ladder's question (see beamLiftScale); this one asks the separate
@@ -86,15 +106,11 @@ const DEFAULT_DIAMETER: Record<BeamObjectKind, number> = {
  *  a caller must pass both - `maxDiameter` defaults to infinity, which is
  *  exactly how the hull rule came to be documented here and never applied. */
 export function isAbsorbable(kind: BeamObjectKind, diameter = DEFAULT_DIAMETER[kind], maxDiameter = Number.POSITIVE_INFINITY) {
-  // The battleship is excluded by kind rather than by size. Gating it on
-  // diameter would make it edible to a craft at the size cap, and it is meant
-  // to be the one thing in the sky that is never food.
-  //
-  // The drone mine is excluded for the opposite reason: the beam can catch
-  // one, but a bomb is never banked as a meal - drawn to the hull it strikes
-  // and detonates through the same rules as flying into it, so the swallow
-  // path must never quietly defuse it first.
-  return kind !== 'boss' && kind !== 'drone' && diameter <= maxDiameter
+  // The drone mine is the one exclusion: the beam can catch one, but a bomb is
+  // never banked as a meal - drawn to the hull it strikes and detonates
+  // through the same rules as flying into it, so the swallow path must never
+  // quietly defuse it first.
+  return kind !== 'drone' && diameter <= maxDiameter
 }
 
 export type BeamObject = {
@@ -144,6 +160,10 @@ export type BeamObject = {
   freePhysics?: boolean
   /** Procedural city prop metadata used by the static and lifted render pools. */
   worldProp?: BeamWorldProp
+  /** The rubble this object was, for the lifted ruin pool. Ruins are runtime
+   *  state rather than world generation, so they cannot be world props - a
+   *  ruin only exists because the player brought a building down. */
+  ruin?: BuildingRuin
 }
 
 export type BeamField = {

@@ -7,8 +7,10 @@ import {
   updateActiveWorld,
   type ProceduralBuilding,
 } from '../src/core/world'
-import { buildingNeonSignLayout, canAbsorbBuilding, hasBuildingNeonSign, isNewsTower, isSpecialBuilding } from '../src/core/cityLandmarks'
-import { BEAM_STRENGTH_MAX } from '../src/core/size'
+import { NEWS_TOWER_MIN_HEIGHT, buildingNeonSignLayout, canAbsorbBuilding, hasBuildingNeonSign, isNewsTower, isSpecialBuilding } from '../src/core/cityLandmarks'
+import { RUIN_BEAM_MASS, createBuildingRuin, ruinBulk } from '../src/core/buildings'
+import { beamLiftScale, isAbsorbable } from '../src/core/beam'
+import { BEAM_STRENGTH_MAX, SIZE_MAX, SIZE_START, sizeProfile, ufoDiameter } from '../src/core/size'
 
 const canEat = (building: ProceduralBuilding, strength: number) =>
   canAbsorbBuilding(building, strength)
@@ -73,12 +75,43 @@ describe('eating buildings', () => {
     expect(buildingMass(short)).toBeLessThan(buildingMass(tall))
   })
 
-  it('never lets a news tower be eaten', () => {
-    // A city you can strip to nothing is a duller one, and the broadcast
-    // screens are this game's voice.
+  it('charges a news tower by its height like any other block', () => {
+    // It used to be the one building the beam could never take, which made
+    // the rule about what a building is rather than what it weighs. Height
+    // charges for it instead: a news tower is at least NEWS_TOWER_MIN_HEIGHT
+    // tall, so it is always at the top of the city ladder.
     const towers = everyBuilding().filter(isNewsTower)
     expect(towers.length).toBeGreaterThan(0)
-    for (const tower of towers) expect(canEat(tower, BEAM_STRENGTH_MAX + 5)).toBe(false)
+    for (const tower of towers) {
+      expect(tower.size.y).toBeGreaterThanOrEqual(NEWS_TOWER_MIN_HEIGHT)
+      expect(buildingMass(tower)).toBeGreaterThanOrEqual(10)
+      expect(canEat(tower, buildingMass(tower) - 2), tower.id).toBe(false)
+      expect(canEat(tower, buildingMass(tower) - 1), tower.id).toBe(true)
+    }
+  })
+
+  it('prices rubble under the block it came from', () => {
+    // Clearing a lot the player emptied themselves is tidying, not a second
+    // demolition: what is left after a building comes down has to be liftable
+    // long before the building was.
+    const buildings = everyBuilding()
+    const ruins = buildings.map(createBuildingRuin)
+    for (const [index, ruin] of ruins.entries()) {
+      expect(RUIN_BEAM_MASS).toBeLessThan(buildingMass(buildings[index]!))
+      // Ninety percent of the footprint, and never taller than four metres -
+      // which is why ruinBulk measures width alone.
+      expect(ruinBulk(ruin)).toBeCloseTo(Math.max(buildings[index]!.size.x, buildings[index]!.size.z) * 0.9)
+      expect(ruin.size.y).toBeLessThan(4)
+    }
+    // Both gates, against real craft: the opening saucer can neither shift a
+    // pile nor fit one through itself, and both open around a fifth of the way
+    // up the run.
+    const widest = ruins.reduce((left, right) => (ruinBulk(left) > ruinBulk(right) ? left : right))
+    const clears = (size: number) =>
+      beamLiftScale(RUIN_BEAM_MASS, sizeProfile(size).beamStrength) > 0
+      && isAbsorbable('ruin', ruinBulk(widest), ufoDiameter(size))
+    expect(clears(SIZE_START)).toBe(false)
+    expect(clears(SIZE_START + (SIZE_MAX - SIZE_START) * 0.3)).toBe(true)
   })
 
   it('keeps an eaten building gone as the city streams', () => {
