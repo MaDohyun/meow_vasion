@@ -2188,7 +2188,16 @@ export function GameProvider({ children }: { children: ReactNode }) {
         mineExplosion.position.y - game.drone.position.y,
         mineExplosion.position.z - game.drone.position.z,
       )
-      if (distance <= mineExplosion.radius) registerImpact(game, 'ENEMY', 'contact', DRONE_BLAST_TRAUMA)
+      // Sphere against sphere, not point in sphere. The blast is ten metres
+      // around the mine and the craft grows past fifteen, so measuring to the
+      // centre made a grown saucer immune to the one enemy that detonates on
+      // contact: the mine went off against the hull, at a distance from the
+      // centre that was already outside its own blast, and nothing happened.
+      // Past a hull radius of ten - a bit over half the growth range - mines
+      // stopped being able to hurt the player at all.
+      if (distance <= mineExplosion.radius + game.sizeProfile.hitRadius) {
+        registerImpact(game, 'ENEMY', 'contact', DRONE_BLAST_TRAUMA)
+      }
     }
     if (collision.hit && collision.impulse > 2.5 && game.collisionCooldown <= 0) { game.collisionCooldown = 0.45; registerImpact(game, 'BUILDING') }
 

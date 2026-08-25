@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { DRONE_DEFAULTS } from '../src/core/drone'
+import { SIZE_MAX, sizeProfile } from '../src/core/size'
 import {
   DRONE_MINE_BLAST_RADIUS,
   DRONE_MINE_FUSE,
@@ -68,27 +69,68 @@ describe('suicide drones', () => {
     mine.target = { x: 0, y: 20, z: 0 }
     mine.hitRadius = DRONE_MINE_HIT_RADIUS
 
+    // Measured to the hull, not to the craft's centre. The blast field is ten
+    // metres of air around the mine, and a grown saucer's hull is wider than
+    // that on its own - so where the field starts has to be a hull radius
+    // further out, or a craft big enough would be through the field before it
+    // counted as having entered it.
+    const hull = 1.4
+
     // Just outside: nothing happens, however long the player loiters.
-    const outside = { x: 0, y: 20, z: DRONE_MINE_BLAST_RADIUS + 0.5 }
-    for (let tick = 0; tick < 200; tick += 1) stepEnemies(state, outside, 1 / 60)
+    const outside = { x: 0, y: 20, z: DRONE_MINE_BLAST_RADIUS + hull + 0.5 }
+    for (let tick = 0; tick < 200; tick += 1) stepEnemies(state, outside, 1 / 60, undefined, hull)
     expect(mine.mineArmed).toBe(false)
     expect(mine.active).toBe(true)
 
     // Just inside: armed at once, and it holds for the fuse before going off.
-    const inside = { x: 0, y: 20, z: DRONE_MINE_BLAST_RADIUS - 0.5 }
-    stepEnemies(state, inside, 1 / 60)
+    const inside = { x: 0, y: 20, z: DRONE_MINE_BLAST_RADIUS + hull - 0.5 }
+    stepEnemies(state, inside, 1 / 60, undefined, hull)
     expect(mine.mineArmed).toBe(true)
     expect(mine.mineFuse).toBeGreaterThan(DRONE_MINE_FUSE - 0.1)
     // Backing off does not disarm it.
     for (let tick = 0; tick < Math.round(DRONE_MINE_FUSE * 60) - 4; tick += 1) {
-      stepEnemies(state, { x: 0, y: 20, z: 400 }, 1 / 60)
+      stepEnemies(state, { x: 0, y: 20, z: 400 }, 1 / 60, undefined, hull)
       expect(state.mineExplosion, `${tick}`).toBe(null)
     }
     for (let tick = 0; tick < 8 && state.mineExplosion === null; tick += 1) {
-      stepEnemies(state, { x: 0, y: 20, z: 400 }, 1 / 60)
+      stepEnemies(state, { x: 0, y: 20, z: 400 }, 1 / 60, undefined, hull)
     }
     expect(state.mineExplosion?.radius).toBe(DRONE_MINE_BLAST_RADIUS)
     expect(mine.active).toBe(false)
+  })
+
+  it('still arms and detonates against a craft far wider than its own blast', () => {
+    // The bug this pins: at the size cap the hull radius is 15.75 and the
+    // blast is 10, so the mine went off against the hull at a centre distance
+    // already outside its own blast - and every check that measured from the
+    // centre then found nothing there. Mines could not hurt a grown craft at
+    // all, which is the half of the run where they matter least and the half
+    // where the player has most to lose.
+    const hull = sizeProfile(SIZE_MAX).hitRadius
+    expect(hull).toBeGreaterThan(DRONE_MINE_BLAST_RADIUS)
+    const state = createEnemyState()
+    const mine = state.slots.find((enemy) => enemy.kind === 'drone')!
+    mine.active = true
+    mine.mode = 'fixed'
+    mine.position = { x: 0, y: 20, z: 0 }
+    mine.target = { x: 0, y: 20, z: 0 }
+    mine.hitRadius = DRONE_MINE_HIT_RADIUS
+
+    // The hull crosses into the field long before the centre would.
+    const approaching = { x: 0, y: 20, z: DRONE_MINE_BLAST_RADIUS + hull - 1 }
+    stepEnemies(state, approaching, 1 / 60, undefined, hull)
+    expect(mine.mineArmed).toBe(true)
+
+    for (let tick = 0; tick < 60 && state.mineExplosion === null; tick += 1) {
+      stepEnemies(state, approaching, 1 / 60, undefined, hull)
+    }
+    const blast = state.mineExplosion
+    expect(blast).not.toBe(null)
+    // And the blast it hands the game reaches the hull, which is what the
+    // damage check has to measure against: centre-to-centre it does not.
+    const centreDistance = Math.hypot(blast!.position.z - approaching.z)
+    expect(centreDistance).toBeGreaterThan(blast!.radius)
+    expect(centreDistance).toBeLessThanOrEqual(blast!.radius + hull)
   })
 
   it('goes off the instant the hull touches it, with no fuse to run', () => {
