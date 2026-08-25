@@ -28,7 +28,7 @@ import {
 } from './core/hazards'
 import { SIZE_MIN, SIZE_START, type SizeGainKind, type SizeProfile, bonusHeartsForSize, clampSize, growSize, growSizeBy, sizeProfile, ufoDiameter } from './core/size'
 import { MAX_HEALTH, createHealthState, damageHealth, healHealth, healthRatio, isDead, isRegenerating, raiseHealthMax, stepHealth, type HealthLossKind, type HealthState } from './core/health'
-import { BATTLESHIP_ALTITUDE, BATTLESHIP_LAUNCH_SECONDS, BATTLESHIP_TURRETS, activeEnemyCount, battleshipTurretPoint, createEnemyState, droneMineInSight, hitEnemy, resolveEnemyContacts, stepEnemies, stepEnemyProjectiles, syncEnemyTiers, waveLabelForTime, waveStageForTime, type EnemyKind, type EnemyState } from './core/enemies'
+import { BATTLESHIP_ALTITUDE, BATTLESHIP_LAUNCH_SECONDS, BATTLESHIP_TURRETS, activeEnemyCount, armMinesInBeam, battleshipTurretPoint, createEnemyState, droneMineInSight, hitEnemy, resolveEnemyContacts, stepEnemies, stepEnemyProjectiles, syncEnemyTiers, waveLabelForTime, waveStageForTime, type EnemyKind, type EnemyState } from './core/enemies'
 import {
   createLaserPool,
   createLaserBurstPool,
@@ -2346,6 +2346,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
     stepBeamObjects(game.crowds.objects, beamField, d, false)
     stepBeamObjects(game.hazards.objects, beamField, d)
     stepBeamObjects(game.enemies.slots, beamField, d)
+    // The cone is a fuse for mines rather than a tow rope: it never drags one
+    // in (they are beamImmune), it lights it where it stands and the same
+    // three tenths of a second run down in stepEnemies.
+    armMinesInBeam(game.enemies, beamField)
     // Weight decides what the craft can move; bulk decides what it can eat.
     //
     // This was POSITIVE_INFINITY, which switched the size half off entirely -

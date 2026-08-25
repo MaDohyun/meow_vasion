@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { DRONE_DEFAULTS } from '../src/core/drone'
+import { isInsideBeam, stepBeamObjects, type BeamField } from '../src/core/beam'
 import { SIZE_MAX, sizeProfile } from '../src/core/size'
 import {
   DRONE_MINE_BLAST_RADIUS,
@@ -7,8 +8,10 @@ import {
   DRONE_MINE_HIT_RADIUS,
   DRONE_SIGHT_ARC,
   DRONE_SIGHT_DISTANCE,
+  MINE_BOB,
   ENEMY_CONTACT_DAMAGE,
   ENEMY_WAVE_STAGES,
+  armMinesInBeam,
   createEnemyState,
   droneMineInSight,
   mineTargetForTime,
@@ -100,6 +103,71 @@ describe('suicide drones', () => {
     }
     expect(state.mineExplosion?.radius).toBe(DRONE_MINE_BLAST_RADIUS)
     expect(mine.active).toBe(false)
+  })
+
+  it('is lit by the beam where it stands, never towed home by it', () => {
+    // The cone grows with the craft: at the size cap it covers a circle
+    // fifty-seven metres across at street level. Towing what it touched, that
+    // pulled in 269 mines a minute over a late-run field and set off 252 of
+    // them against the hull - four explosions a second on the one button the
+    // whole game is about.
+    //
+    // So the cone is a fuse instead. The mine still goes off, on the same
+    // three tenths of a second, and it goes off where it was: how close that
+    // is to the hull is the altitude the player chose.
+    const profile = sizeProfile(SIZE_MAX)
+    const state = createEnemyState()
+    const mine = state.slots.find((enemy) => enemy.kind === 'drone')!
+    mine.active = true
+    mine.mode = 'fixed'
+    mine.position = { x: 0, y: 4, z: 0 }
+    mine.target = { ...mine.position }
+    mine.hitRadius = DRONE_MINE_HIT_RADIUS
+    expect(mine.beamImmune).toBe(true)
+
+    const field: BeamField = {
+      active: true,
+      boosting: true,
+      position: { x: 0, y: 60, z: 0 },
+      velocity: { x: 0, y: 0, z: 0 },
+      radiusScale: profile.beamScale,
+      reachScale: profile.beamReach,
+      gripScale: profile.beamPull,
+      gripStrength: profile.beamStrength,
+    }
+    expect(isInsideBeam({ position: mine.position }, field)).toBe(true)
+
+    const resting = { ...mine.position }
+    armMinesInBeam(state, field)
+    expect(mine.mineArmed).toBe(true)
+    expect(mine.mineFuse).toBeCloseTo(DRONE_MINE_FUSE, 5)
+
+    // The fuse runs down on its own count and the mine never moves a metre.
+    let detonated = null
+    for (let frame = 0; frame < 60 && detonated === null; frame += 1) {
+      stepBeamObjects(state.slots, field, 1 / 60)
+      stepEnemies(state, { x: 0, y: 60, z: 0 }, 1 / 60, undefined, profile.hitRadius)
+      detonated = state.mineExplosion
+    }
+    expect(mine.inBeam).toBe(false)
+    expect(mine.tether).toBe(0)
+    expect(detonated).not.toBe(null)
+    // Where it stood. Horizontally exactly, vertically inside its own hover
+    // bob - what it must not do is set off towards the hull.
+    expect(detonated!.position.x).toBe(resting.x)
+    expect(detonated!.position.z).toBe(resting.z)
+    expect(Math.abs(detonated!.position.y - resting.y)).toBeLessThanOrEqual(MINE_BOB)
+
+    // Fifty-six metres under the hull, so a craft up here sweeps the street
+    // clean for nothing. The same sweep at low altitude is inside its own
+    // blast, which is the trade the mine has always offered.
+    const gap = 60 - resting.y
+    expect(gap).toBeGreaterThan(detonated!.radius + profile.hitRadius)
+
+    // Everything else in the sky is still towed, and still food.
+    for (const kind of ['helicopter', 'fighter'] as const) {
+      expect(state.slots.find((enemy) => enemy.kind === kind)!.beamImmune, kind).toBe(false)
+    }
   })
 
   it('still arms and detonates against a craft far wider than its own blast', () => {
