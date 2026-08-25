@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   DRONE_MINE_HIT_RADIUS,
   ENEMY_CAPS,
+  ENEMY_CONTACT_DAMAGE,
   ENEMY_DIAMETER,
   ENEMY_MAX_HP,
   ENEMY_WAVE_STAGES,
@@ -262,5 +263,18 @@ describe('time-based enemy waves', () => {
     expect(state.contactKills).toBe(3)
     expect(drones.every((drone) => !drone.active)).toBe(true)
     expect(helicopter.active).toBe(true)
+  })
+
+  it.each(['fighter', 'boss'] as const)('damages the craft on %s hull contact even while caught in the beam', (kind) => {
+    const state = createEnemyState()
+    const player = { x: 0, y: 18, z: 0 }
+    const enemy = state.slots.find((slot) => slot.kind === kind)!
+    enemy.active = true
+    enemy.position = { ...player }
+    enemy.inBeam = true
+    enemy.tether = 1
+
+    expect(resolveEnemyContacts(state, player)).toBe(ENEMY_CONTACT_DAMAGE[kind])
+    expect(enemy.active).toBe(true)
   })
 })

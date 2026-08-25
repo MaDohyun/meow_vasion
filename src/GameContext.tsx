@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { collideDrone, createDroneState, DRONE_DEFAULTS, stepDrone, type Aabb, type DroneInput, type DroneState, type Vec3 } from './core/drone'
-import { absoluteAim, aimSteer, dragAim, steerWithStick, type AimPoint } from './core/aim'
+import { absoluteAim, aimSteer, type AimPoint } from './core/aim'
 import {
   type BeamField,
   type BeamObject,
@@ -202,6 +202,21 @@ export type GameRuntime = {
   mysteryFlash: number
   aimX: number
   aimY: number
+  /**
+   * What the reticle's magnet has hold of, if anything - see
+   * `core/autoTarget`. The lock is decided in the render pass, because it is
+   * the only place that knows where the camera is pointing, and it is read
+   * back here by the laser and by the HUD.
+   *
+   * `autoTargetX`/`Y` are the contact's own place on screen in the same frame
+   * as `aimX`/`aimY`, so the gold reticle sits on the target rather than on
+   * the cursor. The raw pointer is left untouched: steering reads that, and a
+   * magnet that moved the craft would be an autopilot.
+   */
+  autoTargetId: string | null
+  autoTargetKind: EnemyKind | null
+  autoTargetX: number
+  autoTargetY: number
   laserAimOrigin: Vec3
   laserAimDirection: Vec3
   beamActive: boolean
@@ -396,6 +411,9 @@ export type GameSnapshot = {
   boostActive: boolean
   aimX: number
   aimY: number
+  /** Where the reticle's magnet has landed, or null while the cursor is free.
+   *  The HUD draws the reticle here instead of under the pointer, in gold. */
+  autoTarget: { x: number; y: number; kind: EnemyKind } | null
   beamActive: boolean
   beamAvailable: boolean
   beamTargetId: string | null
@@ -428,19 +446,16 @@ export type RenderQuality = 'high' | 'low'
 const QUALITY_STORAGE_KEY = 'ufo-attack-quality'
 
 /**
- * HUD surfaces that own the touches landing on them: the movement stick, the
- * altitude arrows, the fire buttons, and every overlay control. A drag that
- * starts on one of these is that control's input, not an aiming swipe.
+ * Where a mouse button is a click rather than a trigger.
+ *
+ * The fire buttons live on the mouse now, which means every click on the city
+ * shoots - and the briefing is a full-screen sheet the player clicks through
+ * while the run is already live. Its own click has to advance the briefing and
+ * nothing else, or a judge reading the general's lines fires the laser at
+ * every line break and clears the hands-on laser step without knowing it.
+ * Same for the lobby and the results sheet.
  */
-const HUD_CONTROLS = '.mobile-controls, button, input, select, textarea, label, a'
-
-/**
- * Mirrors the query that reveals `.mobile-controls` in styles.css. The drag
- * reticle is part of that control scheme, so it turns up exactly where the
- * stick and the fire buttons do; a desktop that happens to have a touchscreen
- * keeps the cursor mapping for its taps.
- */
-const TOUCH_CONTROL_QUERY = '(pointer: coarse), (max-width: 760px)'
+const POINTER_FIRE_BLOCKERS = '.mobile-controls, .briefing-touch, .overlay, button, input, select, textarea, label, a'
 
 function readStoredQuality(): RenderQuality {
   if (typeof window === 'undefined') return 'high'
@@ -465,10 +480,6 @@ type GameContextValue = {
   skipTutorial: () => void
   /** Dismisses the general's mission debrief and unfreezes the run. */
   dismissMissionDebrief: () => void
-  /** Jumps straight to a results screen for one ending, so the general's
-   *  sign-off can be read without flying five minutes a particular way first.
-   *  Reached only from the developer entrance - see previewEnding. */
-  previewEnding: (ending: RunEnding) => void
   quality: RenderQuality
   setQuality: (quality: RenderQuality) => void
   language: Language
@@ -760,6 +771,10 @@ function makeRuntime(): GameRuntime {
     mysteryFlash: 0,
     aimX: 0,
     aimY: 0,
+    autoTargetId: null,
+    autoTargetKind: null,
+    autoTargetX: 0,
+    autoTargetY: 0,
     laserAimOrigin: { ...drone.position },
     laserAimDirection: laserDirection(drone.heading, drone.pitch),
     beamActive: false,
@@ -850,6 +865,17 @@ function liftLimit(game: GameRuntime) {
  *  the ceiling, and the whole weight ladder hangs off it. */
 function beamStrength(game: GameRuntime) {
   return game.sizeProfile.beamStrength
+}
+
+/**
+ * What one laser shot is worth: the hull's own power times the pickup's.
+ *
+ * Every shot in the game goes through here - enemies, hazards, buildings,
+ * landmarks - because four call sites each composing this themselves is four
+ * chances for one of them to keep hitting at the old strength.
+ */
+function laserDamage(game: GameRuntime) {
+  return game.sizeProfile.laserPower * boonMultiplier(game.boons, 'laser-power')
 }
 
 /**
@@ -1296,7 +1322,7 @@ function registerEnemyHit(game: GameRuntime, id: string, damage: number) {
 }
 
 function registerEnemyLaserHit(game: GameRuntime, id: string) {
-  registerEnemyHit(game, id, boonMultiplier(game.boons, 'laser-power'))
+  registerEnemyHit(game, id, laserDamage(game))
 }
 
 /** Returns the score banked, or 0 if nothing was destroyed - the callout
@@ -1321,7 +1347,7 @@ function destroyCar(game: GameRuntime, id: string, direction: Vec3) {
  * a truck and a tanker are worth several times a car, and the callout says so.
  */
 function registerHeavyVehicleLaserHit(game: GameRuntime, id: string) {
-  const result = damageHazard(game.hazards, id, boonMultiplier(game.boons, 'laser-power'))
+  const result = damageHazard(game.hazards, id, laserDamage(game))
   if (!result) return 0
   triggerLaserBurst(game.laserBursts, 'impact', result.hazard.position)
   if (!result.destroyed) {
@@ -1384,7 +1410,7 @@ function registerPropLaserHit(game: GameRuntime, id: string, direction: Vec3) {
 function registerBuildingLaserHit(game: GameRuntime, id: string) {
   const building = game.world.buildings.find((candidate) => candidate.id === id)
   if (!building || game.destroyedBuildings.has(id)) return false
-  const result = damageBuilding(game.buildingHealth, building, boonMultiplier(game.boons, 'laser-power'))
+  const result = damageBuilding(game.buildingHealth, building, laserDamage(game))
   game.buildingHitFlash.set(building.id, 1)
   triggerLaserBurst(game.laserBursts, 'impact', building.position)
   if (!result.destroyed) return true
@@ -1675,6 +1701,9 @@ function snapshotOf(game: GameRuntime): GameSnapshot {
     boostActive: game.drone.boostRemaining > 0,
     aimX: game.aimX,
     aimY: game.aimY,
+    autoTarget: game.autoTargetId !== null && game.autoTargetKind !== null
+      ? { x: game.autoTargetX, y: game.autoTargetY, kind: game.autoTargetKind }
+      : null,
     beamActive: game.beamActive,
     beamAvailable: true,
     beamTargetId: game.beamTargetId,
@@ -1766,10 +1795,18 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const [language, setLanguageState] = useState<Language>(readStoredLanguage)
   const keys = useRef<Record<string, boolean>>({})
   const pointer = useRef<AimPoint>({ x: 0, y: 0 })
-  // The finger that currently owns the reticle, and where it last was. Null
-  // whenever no drag is in flight, which is most of the time on a phone.
-  const touchAim = useRef<{ pointerId: number; x: number; y: number } | null>(null)
   const mobile = useRef<MobileInput>({ throttle: 1, steer: 0, lookPitch: 0, vertical: 0, special: false, beam: false, laser: false, active: false })
+  /**
+   * The mouse's own trigger fingers.
+   *
+   * Left fires, right beams - the two things every player who has ever held a
+   * mouse already knows, and the reason they are worth having is that the hand
+   * doing the aiming is the hand doing the shooting. The keys stay: a laptop
+   * with no mouse holds a right-click down with two fingers on a trackpad
+   * while the same fingers are supposed to be steering, which is not a control
+   * scheme. Whichever the player reaches for first is the right one.
+   */
+  const mouseFire = useRef({ laser: false, beam: false })
   const publishAccumulator = useRef(0)
   const publish = useCallback(() => setSnapshot(snapshotOf(runtime.current)), [])
 
@@ -1802,57 +1839,63 @@ export function GameProvider({ children }: { children: ReactNode }) {
       if (event.key.length === 1) keys.current[`Key${event.key.toUpperCase()}`] = false
     }
     const aimBounds = () => document.querySelector<HTMLCanvasElement>('.game-shell canvas')?.getBoundingClientRect() ?? null
-    // `matches` stays live, so this is read rather than re-queried per event.
-    const touchControls = window.matchMedia?.(TOUCH_CONTROL_QUERY) ?? null
-    // See core/aim: a cursor puts the reticle where it is, a finger pushes the
-    // reticle by how far it moved.
-    const drags = (event: PointerEvent) => event.pointerType === 'touch' && Boolean(touchControls?.matches)
     const move = (event: PointerEvent) => {
+      // Touch and pen gestures belong to the on-screen direction stick. Only
+      // a mouse moves the free reticle; otherwise a thumb on any HUD control
+      // would also steer the raycaster behind it.
+      if (event.pointerType !== 'mouse') return
       const bounds = aimBounds()
       if (!bounds) return
-      if (drags(event)) {
-        const drag = touchAim.current
-        if (!drag || drag.pointerId !== event.pointerId) return
-        const to = { x: event.clientX, y: event.clientY }
-        pointer.current = dragAim(pointer.current, drag, to, bounds)
-        drag.x = to.x
-        drag.y = to.y
-        return
-      }
       pointer.current = absoluteAim({ x: event.clientX, y: event.clientY }, bounds)
     }
+    const firing = (event: PointerEvent) =>
+      !(event.target instanceof Element && event.target.closest(POINTER_FIRE_BLOCKERS))
+    const setFire = (button: number, held: boolean) => {
+      if (button === 0) mouseFire.current.laser = held
+      else if (button === 2) mouseFire.current.beam = held
+    }
     const press = (event: PointerEvent) => {
-      if (!drags(event)) { move(event); return }
-      // A thumb on the stick or a fire button is already saying something; it
-      // must not drag the reticle across the city on the way.
-      if (event.target instanceof Element && event.target.closest(HUD_CONTROLS)) return
-      touchAim.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY }
-      // An aiming drag is a mobile control like any other. Without this the
-      // same swipe would also reach the mouse-steer path below and bank the
-      // craft towards whichever side of the screen the thumb ended up on.
-      mobile.current.active = true
+      if (event.pointerType === 'mouse' && firing(event)) setFire(event.button, true)
+      move(event)
     }
     const lift = (event: PointerEvent) => {
-      // The reticle stays where the finger left it: aim with one thumb, fire
-      // with the other.
-      if (touchAim.current?.pointerId === event.pointerId) touchAim.current = null
+      if (event.pointerType === 'mouse') setFire(event.button, false)
     }
-    const leave = () => { pointer.current = { x: 0, y: 0 } }
+    /** A button released outside the window never sends its pointerup here, so
+     *  the bitmask on the next move is the only thing that can clear it. */
+    const syncButtons = (event: PointerEvent) => {
+      if (event.pointerType !== 'mouse') return
+      if ((event.buttons & 1) === 0) mouseFire.current.laser = false
+      if ((event.buttons & 2) === 0) mouseFire.current.beam = false
+    }
+    const dropFire = () => { mouseFire.current.laser = false; mouseFire.current.beam = false }
+    // Right-hold is the beam, so the menu it would otherwise open has to go -
+    // but only over the city. A right-click on the ranking name box is still a
+    // right-click.
+    const menu = (event: MouseEvent) => {
+      if (event.target instanceof Element && event.target.closest(POINTER_FIRE_BLOCKERS)) return
+      event.preventDefault()
+    }
+    const leave = () => { pointer.current = { x: 0, y: 0 }; dropFire() }
     window.addEventListener('keydown', down, { passive: false })
     window.addEventListener('keyup', up)
+    window.addEventListener('pointermove', syncButtons)
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerdown', press)
+    window.addEventListener('contextmenu', menu)
+    window.addEventListener('blur', dropFire)
     window.addEventListener('pointerup', lift)
     window.addEventListener('pointercancel', lift)
-    document.documentElement.addEventListener('mouseleave', leave)
     return () => {
       window.removeEventListener('keydown', down)
       window.removeEventListener('keyup', up)
+      window.removeEventListener('pointermove', syncButtons)
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerdown', press)
+      window.removeEventListener('contextmenu', menu)
+      window.removeEventListener('blur', dropFire)
       window.removeEventListener('pointerup', lift)
       window.removeEventListener('pointercancel', lift)
-      document.documentElement.removeEventListener('mouseleave', leave)
     }
   }, [])
 
@@ -1870,25 +1913,36 @@ export function GameProvider({ children }: { children: ReactNode }) {
       lookPitch: -pointer.current.y,
       vertical: 0,
       special: Boolean(keys.current.Space),
-      beam: Boolean(keys.current.KeyE),
-      // E remains the tractor beam. Holding Q keeps the laser firing on its
-      // normal cooldown cadence instead of requiring repeated key presses.
-      laser: Boolean(keys.current.KeyQ),
-      laserContinuous: Boolean(keys.current.KeyQ),
+      // Q and W are the named pair, and the mouse buttons sit beside them.
+      //
+      // Which machine the player brought is not knowable - this is a browser
+      // game that gets handed to strangers - so both hands are wired and both
+      // are printed on screen. A mouse has the two buttons every player who
+      // has ever played anything already knows, and the hand doing the aiming
+      // is the hand doing the shooting. A laptop trackpad cannot hold a button
+      // down while the same fingers steer, so on that machine the keys are the
+      // whole of it.
+      //
+      // Q and W rather than Q and E because WASD is gone: with the left hand
+      // no longer anchored on the movement keys, the two verbs can sit on
+      // adjacent keys instead of straddling a dead one.
+      //
+      // E, F and D still answer, unprinted. Nothing is taken away from anyone
+      // who already learned a different pair.
+      beam: Boolean(keys.current.KeyE || keys.current.KeyF || keys.current.KeyW) || mouseFire.current.beam,
+      // Holding either key keeps the laser firing on its normal cooldown
+      // cadence instead of requiring repeated presses.
+      laser: Boolean(keys.current.KeyQ || keys.current.KeyD) || mouseFire.current.laser,
+      laserContinuous: Boolean(keys.current.KeyQ || keys.current.KeyD) || mouseFire.current.laser,
     }
     if (!mobile.current.active) return keyboard
     const { active: _active, ...mobileInput } = mobile.current
-    // A finger points the craft the same way a cursor does. The touch HUD only
-    // speaks for the axes it actually owns - the stick's yaw while a thumb is
-    // on it - and everything the aim drag decides has to survive the spread.
-    // Letting the stick's resting zero through was what left the ship staring
-    // dead ahead no matter how far the reticle had been dragged, and nothing on
-    // the HUD sets a pitch at all, so the drag owns that outright.
+    // On touch, the two-axis direction stick owns yaw and pitch. Its springing
+    // zero deliberately levels the craft when the thumb lifts; the centred
+    // reticle then remains aligned with the chase camera and forward laser.
     return {
       ...keyboard,
       ...mobileInput,
-      steer: steerWithStick(mobileInput.steer, keyboard.steer),
-      lookPitch: keyboard.lookPitch,
     }
   }, [])
 
@@ -2468,7 +2522,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         // Two base hits, scaled by laser power - a maxed laser one-shots. The
         // first shot lights the landmark up and leaves it standing.
         if (landmark && !game.destroyedLandmarks.has(landmark.id)) {
-          const result = damageLandmark(game.landmarkHealth, landmark.id, boonMultiplier(game.boons, 'laser-power'))
+          const result = damageLandmark(game.landmarkHealth, landmark.id, laserDamage(game))
           game.landmarkHitFlash.set(landmark.id, 1)
           if (result.destroyed) detonateLandmark(game, landmark)
         }
@@ -2541,7 +2595,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
     stopLobbyMusic()
     startGameplayMusic()
     pointer.current = { x: 0, y: 0 }
-    touchAim.current = null
     const game = runtime.current
     game.phase = 'playing'
     publish()
@@ -2567,29 +2620,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
    *  finished and closed on the same frame. */
   const dismissMissionDebrief = useCallback(() => {
     takeMissionDebrief(runtime.current.mission)
-    publish()
-  }, [publish])
-
-  /**
-   * Opens the results screen on a chosen ending, from the lobby.
-   *
-   * Each of the four endings otherwise needs the whole five minutes flown a
-   * particular way to be seen once, and two of them need the run deliberately
-   * lost - which makes proof-reading the general's sign-off, or the layout at
-   * that length of text, a half-hour job per edit.
-   *
-   * Unguarded here on purpose: the lobby button is the gate (`devToolsEnabled`
-   * in the HUD), exactly as it is for the dreadnought drill. A second check in
-   * here would only mean the `?dev=1` entrance silently did nothing on a
-   * deployed build, which is the one place the endings actually get looked at.
-   */
-  const previewEnding = useCallback((ending: RunEnding) => {
-    const game = runtime.current
-    game.phase = 'results'
-    game.ending = ending
-    game.victory = isVictory(ending)
-    game.resultTitle = ending
-    game.devRun = true
     publish()
   }, [publish])
 
@@ -2622,7 +2652,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
     stopLobbyMusic()
     startGameplayMusic()
     pointer.current = { x: 0, y: 0 }
-    touchAim.current = null
     runtime.current = makeRuntime()
     runtime.current.phase = 'playing'
     publish()
@@ -2659,7 +2688,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
     stopLobbyMusic()
     startGameplayMusic()
     pointer.current = { x: 0, y: 0 }
-    touchAim.current = null
     const game = makeRuntime()
     game.devRun = true
     game.sessionTime = BATTLESHIP_WAVE_AT
@@ -2693,7 +2721,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   }, [publish])
 
   const setMobileInput = useCallback((input: Partial<MobileInput>) => { Object.assign(mobile.current, input) }, [])
-  const value = useMemo<GameContextValue>(() => ({ runtime, snapshot, readInput, advance, start, startBattleshipDrill, restart, unlockTutorialControl, skipTutorial, dismissMissionDebrief, previewEnding, setMobileInput, quality, setQuality, language, setLanguage, t: STRINGS[language] }), [advance, dismissMissionDebrief, previewEnding, quality, readInput, restart, startBattleshipDrill, unlockTutorialControl, skipTutorial, setMobileInput, setQuality, snapshot, start, language, setLanguage])
+  const value = useMemo<GameContextValue>(() => ({ runtime, snapshot, readInput, advance, start, startBattleshipDrill, restart, unlockTutorialControl, skipTutorial, dismissMissionDebrief, setMobileInput, quality, setQuality, language, setLanguage, t: STRINGS[language] }), [advance, dismissMissionDebrief, quality, readInput, restart, startBattleshipDrill, unlockTutorialControl, skipTutorial, setMobileInput, setQuality, snapshot, start, language, setLanguage])
   return <GameContext.Provider value={value}>{children}</GameContext.Provider>
 }
 

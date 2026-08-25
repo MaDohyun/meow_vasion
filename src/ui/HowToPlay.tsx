@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react'
 import { useGame } from '../GameContext'
 import { RichText } from './RichText'
 
@@ -179,56 +180,98 @@ function MouseGlyph() {
 
 export function HowToPlay({ onClose }: { onClose: () => void }) {
   const { t } = useGame()
+  const cardRef = useRef<HTMLDivElement>(null)
+  const [scrollThumb, setScrollThumb] = useState({ top: 0, height: 100 })
+
+  useEffect(() => {
+    const card = cardRef.current
+    if (!card) return
+    const updateThumb = () => {
+      const height = Math.min(100, (card.clientHeight / card.scrollHeight) * 100)
+      const progress = card.scrollHeight === card.clientHeight
+        ? 0
+        : card.scrollTop / (card.scrollHeight - card.clientHeight)
+      setScrollThumb({ top: progress * (100 - height), height })
+    }
+    updateThumb()
+    window.addEventListener('resize', updateThumb)
+    return () => window.removeEventListener('resize', updateThumb)
+  }, [])
+
   return (
     <div className="overlay howto-overlay" role="dialog" aria-modal="true" aria-labelledby="howto-title">
-      <div className="howto-card panel">
-        <span className="howto-eyebrow">CAT FLEET // FIELD MANUAL</span>
-        <h2 className="howto-title" id="howto-title">{t.howToTitle}</h2>
-        <div className="howto-panels">
-          <figure className="howto-panel">
-            <i className="howto-step">1</i>
-            <MoveArt />
-            <figcaption>
-              <b className="keycap keycap-wide">AUTO</b>
-              <span>{t.howToMove}</span>
-              <em className="howto-divider" />
-              <MouseGlyph />
-              <span>{t.howToAim}</span>
-            </figcaption>
-          </figure>
-          <figure className="howto-panel">
-            <i className="howto-step">2</i>
-            <LaserArt />
-            <figcaption><b className="keycap">Q</b><span>{t.controlLaser}</span></figcaption>
-          </figure>
-          <figure className="howto-panel">
-            <i className="howto-step">3</i>
-            <BeamArt />
-            <figcaption><b className="keycap">E</b><span>{t.beam}</span></figcaption>
-          </figure>
-          <figure className="howto-panel">
-            <i className="howto-step">4</i>
-            <TurboArt />
-            <figcaption><b className="keycap keycap-wide">SPACE</b><span>{t.turbo}</span></figcaption>
-          </figure>
+      <div className="howto-card-shell panel">
+        <div ref={cardRef} className="howto-card" onScroll={() => {
+          const card = cardRef.current
+          if (!card) return
+          const height = Math.min(100, (card.clientHeight / card.scrollHeight) * 100)
+          const progress = card.scrollHeight === card.clientHeight
+            ? 0
+            : card.scrollTop / (card.scrollHeight - card.clientHeight)
+          setScrollThumb({ top: progress * (100 - height), height })
+        }}>
+          <span className="howto-eyebrow">CAT FLEET // FIELD MANUAL</span>
+          <h2 className="howto-title" id="howto-title">{t.howToTitle}</h2>
+          <div className="howto-panels">
+            <figure className="howto-panel">
+              <i className="howto-step">1</i>
+              <MoveArt />
+              <figcaption>
+                <b className="keycap keycap-wide">AUTO</b>
+                <span>{t.howToMove}</span>
+                <em className="howto-divider" />
+                <MouseGlyph />
+                <span>{t.howToAim}</span>
+              </figcaption>
+            </figure>
+            <figure className="howto-panel">
+              <i className="howto-step">2</i>
+              <LaserArt />
+              {/* The magnet gets a line of its own: nothing in the picture can
+                  show a reticle stepping onto a fighter, and a player who never
+                  points at one never finds out it happens. */}
+              <figcaption>
+                <span className="keycap-set"><b className="keycap keycap-wide">{t.keyLeftClick}</b><b className="keycap">Q</b></span>
+                <span>{t.controlLaser}</span>
+                <em className="howto-divider" />
+                <span>{t.controlAutoAim}</span>
+              </figcaption>
+            </figure>
+            <figure className="howto-panel">
+              <i className="howto-step">3</i>
+              <BeamArt />
+              <figcaption>
+                <span className="keycap-set"><b className="keycap keycap-wide">{t.keyRightClick}</b><b className="keycap">W</b></span>
+                <span>{t.beam}</span>
+              </figcaption>
+            </figure>
+            <figure className="howto-panel">
+              <i className="howto-step">4</i>
+              <TurboArt />
+              <figcaption><b className="keycap keycap-wide">SPACE</b><span>{t.turbo}</span></figcaption>
+            </figure>
+          </div>
+          <div className="controls-card howto-keys">
+            <span><b>AUTO</b> {t.controlFly}</span>
+            <span><b>MOUSE</b> {t.controlAim}</span>
+            <span><b>{t.keyRightClick} / W</b> {t.controlBeam}</span>
+            <span><b>{t.keyLeftClick} / Q</b> {t.controlLaser} · {t.hold}</span>
+            <span><b>SPACE</b> {t.controlBoost}</span>
+          </div>
+          {/* The two things no panel above can draw: flying into the city hurts,
+              and a full beam sinks you. Both belong in the manual, because both
+              are learned the expensive way otherwise. Neither ends the run - the
+              overload crash is gone - but a craft scraping the road with a full
+              gauge is still a craft in trouble. */}
+          <div className="howto-hazards">
+            <span><i aria-hidden="true">!</i><RichText text={t.hazardBuildings} /></span>
+            <span><i aria-hidden="true">!</i><RichText text={t.overloadHint} /></span>
+          </div>
+          <button className="primary-button" onClick={onClose}>{t.close}</button>
         </div>
-        <div className="controls-card howto-keys">
-          <span><b>AUTO</b> {t.controlFly}</span>
-          <span><b>MOUSE</b> {t.controlAim}</span>
-          <span><b>E</b> {t.controlBeam}</span>
-          <span><b>Q</b> {t.controlLaser} · {t.hold}</span>
-          <span><b>SPACE</b> {t.controlBoost}</span>
+        <div className="howto-scrollbar" aria-hidden="true">
+          <i style={{ top: `${scrollThumb.top}%`, height: `${scrollThumb.height}%` }} />
         </div>
-        {/* The two things no panel above can draw: flying into the city hurts,
-            and a full beam sinks you. Both belong in the manual, because both
-            are learned the expensive way otherwise. Neither ends the run - the
-            overload crash is gone - but a craft scraping the road with a full
-            gauge is still a craft in trouble. */}
-        <div className="howto-hazards">
-          <span><i aria-hidden="true">!</i><RichText text={t.hazardBuildings} /></span>
-          <span><i aria-hidden="true">!</i><RichText text={t.overloadHint} /></span>
-        </div>
-        <button className="primary-button" onClick={onClose}>{t.close}</button>
       </div>
     </div>
   )

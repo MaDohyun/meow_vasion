@@ -2,17 +2,19 @@ import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent as Re
 import { NAME_MAX_LENGTH, isNameAcceptable, makeEntry, type RankedEntry } from '../core/leaderboard'
 import { leaderboard, type LeaderboardSource } from '../net/leaderboard'
 import { useGame } from '../GameContext'
-import { LANGUAGES, LANGUAGE_LABELS, bulletinFor, formatMessage, type Strings } from '../i18n'
+import { LANGUAGES, LANGUAGE_LABELS, bulletinFor, formatMessage, type MessageKey, type Strings } from '../i18n'
 import { broadcastPhase, broadcastProgress } from '../core/broadcast'
 import { MISSION_RUN_SECONDS } from '../core/missions'
 import type { RunEnding } from '../core/ending'
 import { HowToPlay } from './HowToPlay'
+import { EnemyIntel } from './EnemyIntel'
 import { LifeHearts } from './LifeHearts'
 import { RichText } from './RichText'
 import { Radar } from './Radar'
 import { pilotFrameStyle } from '../render/pilotArt'
 import { MISSION_ICONS } from './missionIcons'
 import { getAudioVolumes, isLobbyMusicBlocked, onLobbyMusicBlockedChange, playMenuHoverSound, setBgmVolume, setSfxVolume, startLobbyMusic, stopLobbyMusic, unlockAudio } from '../audio'
+import { directionStick } from '../core/aim'
 
 const formatTime = (seconds: number) => {
   const safe = Math.max(0, Math.ceil(seconds))
@@ -35,7 +37,7 @@ function MissionPanel() {
       <section className="mission-panel panel tutorial-mission">
         <span className="eyebrow">{t.tutorialMissionEyebrow}</span>
         <strong>{t.tutorialMissionLead}</strong>
-        <p><b>E</b> {t.tutorialMissionAction}</p>
+        <p><b>{t.keyRightClick} / W</b> {t.tutorialMissionAction}</p>
       </section>
     )
   }
@@ -68,28 +70,25 @@ function Joystick() {
     if (!event.currentTarget.hasPointerCapture(event.pointerId)) return
     const dx = event.clientX - origin.current.x
     const dy = event.clientY - origin.current.y
-    const length = Math.hypot(dx, dy)
-    const scale = length > 44 ? 44 / length : 1
-    const x = dx * scale
-    const y = dy * scale
+    const { x, y, steer, lookPitch } = directionStick(dx, dy)
     setKnob({ x, y })
-    // Yaw only. The craft supplies its own forward, so the stick's other axis
-    // has nothing left to say - and a stick that quietly halved the speed when
-    // a thumb rested low on it would be a throttle nobody knew they were
-    // holding.
-    setMobileInput({ active: true, steer: -x / 44 })
+    // The craft supplies its own forward, so the two stick axes are both gaze:
+    // horizontal turns the nose and vertical pitches it. Moving the thumb up
+    // must produce the same positive pitch that moving the desktop reticle up
+    // does, hence the inverted screen-space Y.
+    setMobileInput({ active: true, steer, lookPitch })
   }
 
   const release = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
     setKnob({ x: 0, y: 0 })
-    setMobileInput({ steer: 0 })
+    setMobileInput({ steer: 0, lookPitch: 0 })
   }
 
   return (
     <div
       className="joystick"
-      aria-label="steering joystick"
+      aria-label="flight direction joystick"
       onPointerDown={(event) => {
         event.currentTarget.setPointerCapture(event.pointerId)
         origin.current = { x: event.clientX, y: event.clientY }
@@ -171,8 +170,12 @@ function ControlTips() {
     // narrow column and "flies where you look" wraps onto two lines in it.
     [['AUTO'], t.howToMove],
     [['MOUSE'], t.controlAim],
-    [['E'], t.controlBeam],
-    [['Q'], t.controlLaser],
+    // Both hands named on the rows that fire, because which machine the
+    // player brought is not knowable: a mouse has the two buttons everyone
+    // already knows, and a trackpad cannot hold one down while the same
+    // fingers steer.
+    [[t.keyRightClick, 'W'], t.controlBeam],
+    [[t.keyLeftClick, 'Q'], t.controlLaser],
     [['SPACE'], t.controlBoost],
   ]
 
@@ -255,6 +258,36 @@ function Alerts() {
   )
 }
 
+/** Mystery-circle rewards are earned infrequently and change the rest of the
+ * run, so they get the upper-centre announcement slot instead of reading like
+ * another line of pilot chatter in the instrument corner. */
+const BOON_MESSAGE_KEYS = new Set<MessageKey>([
+  'msgBoonLaser',
+  'msgBoonSpeed',
+  'msgBoonTurnRate',
+  'msgBoonBeamRadius',
+  'msgBoonBeamReach',
+  'msgBoonBeamPull',
+  'msgBoonTurboRecharge',
+  'msgBoonTurboCapacity',
+  'msgBoonHeal',
+  'msgBoonScore',
+])
+
+function isBoonMessage(key: MessageKey | null): key is MessageKey {
+  return key !== null && BOON_MESSAGE_KEYS.has(key)
+}
+
+function BoonCallout() {
+  const { snapshot, t } = useGame()
+  if (!isBoonMessage(snapshot.messageKey)) return null
+  return (
+    <p className="boon-callout" role="status" aria-live="polite">
+      {formatMessage(t, snapshot.messageKey, snapshot.messageArg)}
+    </p>
+  )
+}
+
 /**
  * Everything the craft is doing, in one card along the bottom.
  *
@@ -306,11 +339,11 @@ function FlightBar() {
  * saying - the expressions are the readout, and a caption under a face is
  * just a caption. So the card is the portrait, on screen for the whole run.
  *
- * The callouts - what was just absorbed, what a pickup upgraded, that the
- * turbo has overheated - used to be a card in the middle of the screen, over
- * the city the player is flying through. They are a speech bubble under the
- * pilot instead: it is the one place on the HUD that is already a voice, and
- * an empty bubble simply is not drawn, so nothing sits there saying nothing.
+ * Routine callouts - what was just absorbed, that the turbo has overheated -
+ * are a speech bubble under the pilot: it is the one place on the HUD that is
+ * already a voice, and an empty bubble simply is not drawn, so nothing sits
+ * there saying nothing. The rarer mystery-circle rewards are announced in the
+ * upper centre instead, where the player can see a permanent upgrade land.
  *
  * The bubble hangs below the portrait in a slot that is always there, empty
  * or not. A bubble that took its space from the layout when it arrived pushed
@@ -320,9 +353,9 @@ function FlightBar() {
  */
 function PilotComms() {
   const { snapshot, t } = useGame()
-  const line = snapshot.messageKey
+  const line = snapshot.messageKey && !isBoonMessage(snapshot.messageKey)
     ? formatMessage(t, snapshot.messageKey, snapshot.messageArg)
-    : snapshot.message
+    : snapshot.messageKey ? '' : snapshot.message
   return (
     <section
       className="pilot-card"
@@ -338,20 +371,10 @@ function PilotComms() {
 }
 
 function MobileControls() {
-  const { setMobileInput, t } = useGame()
-  const altitude = (value: number) => ({
-    onPointerDown: () => setMobileInput({ active: true, vertical: value }),
-    onPointerUp: () => setMobileInput({ vertical: 0 }),
-    onPointerCancel: () => setMobileInput({ vertical: 0 }),
-    onPointerLeave: () => setMobileInput({ vertical: 0 }),
-  })
+  const { t } = useGame()
   return (
     <div className="mobile-controls">
       <Joystick />
-      <div className="mobile-altitude">
-        <button className="alt-button" {...altitude(1)}>▲</button>
-        <button className="alt-button" {...altitude(-1)}>▼</button>
-      </div>
       <div className="mobile-actions">
         {/* Translated like every other label. A player who picked Korean or
             Japanese in the lobby should not meet three English words the
@@ -444,34 +467,11 @@ export function devToolsEnabled() {
   return /(?:^|[?&])dev=1(?:&|$)/.test(window.location.search) || window.location.hash === '#dev'
 }
 
-/**
- * The lobby's ending previewer, behind the same developer gate as the drill.
- *
- * Three endings, each of which otherwise costs a full five-minute run flown a
- * particular way to look at once - and one of them cannot be reached at all
- * without deliberately losing. Reading what the general says on each, and
- * whether the sign-off still fits the card at that length, is a thing to do
- * in a few seconds rather than in half an hour.
- */
-function EndingPreview() {
-  const { previewEnding, t } = useGame()
-  if (!devToolsEnabled()) return null
-  const endings: RunEnding[] = ['recon', 'missionFailed', 'downed']
-  return (
-    <div className="lobby-ending-preview" role="group" aria-label={t.devEndings}>
-      {endings.map((ending) => (
-        <button key={ending} className="dev-button" type="button" onMouseEnter={playMenuHoverSound} onClick={() => previewEnding(ending)}>
-          <span aria-hidden="true">⚙</span>{ending}
-        </button>
-      ))}
-    </div>
-  )
-}
-
 function Intro() {
   const { start, startBattleshipDrill, t, language, setLanguage } = useGame()
   const [optionsOpen, setOptionsOpen] = useState(false)
   const [howToOpen, setHowToOpen] = useState(false)
+  const [enemyIntelOpen, setEnemyIntelOpen] = useState(false)
   // The browser will not let the lobby track be heard until it has seen a
   // gesture. Say so, rather than leaving the silence unexplained.
   const soundBlocked = useSyncExternalStore(onLobbyMusicBlockedChange, isLobbyMusicBlocked, () => false)
@@ -496,6 +496,7 @@ function Intro() {
   }, [])
   if (optionsOpen) return <Options onClose={() => setOptionsOpen(false)} />
   if (howToOpen) return <HowToPlay onClose={() => setHowToOpen(false)} />
+  if (enemyIntelOpen) return <EnemyIntel onClose={() => setEnemyIntelOpen(false)} />
   return (
     <div className="overlay intro-overlay" data-language={language}>
       <div className="intro-noise" aria-hidden="true" />
@@ -528,9 +529,10 @@ function Intro() {
         <div className="intro-actions">
           <button className="primary-button" onMouseEnter={playMenuHoverSound} onClick={start}><span>{t.start}</span><b aria-hidden="true">▶</b></button>
           <button className="secondary-button" onMouseEnter={playMenuHoverSound} onClick={() => setHowToOpen(true)}>{t.howTo}</button>
+          <button className="secondary-button" onMouseEnter={playMenuHoverSound} onClick={() => setEnemyIntelOpen(true)}>{t.enemyIntel}</button>
           <button className="secondary-button" onMouseEnter={playMenuHoverSound} onClick={() => setOptionsOpen(true)}>{t.options}</button>
-          {/* Below the three real entrances and styled as its own thing, so it
-              reads as a workshop door rather than a fourth way to play. */}
+          {/* Below the four real entrances and styled as its own thing, so it
+              reads as a workshop door rather than another way to play. */}
           {devToolsEnabled() && (
             <button className="dev-button" type="button" onMouseEnter={playMenuHoverSound} onClick={startBattleshipDrill}>
               <span aria-hidden="true">⚙</span>{t.devDrill}
@@ -561,7 +563,6 @@ function Intro() {
             <span aria-hidden="true">🔊</span>{t.soundBlocked}
           </button>
         )}
-        <EndingPreview />
       </section>
     </div>
   )
@@ -995,6 +996,8 @@ export function Hud() {
         <div className="hud-top">
           <StatusBar />
 
+          <BoonCallout />
+
           {/* The battleship's health. Sixty-four laser hits is a long time to
               shoot at something with no sign of progress - without this the
               fight reads as an invulnerable set piece and the player stops
@@ -1036,21 +1039,33 @@ export function Hud() {
 
         <BreakingNews />
         {snapshot.timeBonusPulse > 0 && <div className="time-bonus">+{snapshot.timeBonusAmount}s</div>}
+        {/* Gold, and standing on the contact rather than under the cursor,
+            whenever the magnet in core/autoTarget has hold of something in the
+            sky. The cream cross under the hand is the resting state, so the
+            colour change is the whole readout: the laser is pointed at that,
+            and no longer at wherever the hand happens to be. */}
         <div
-          className="reticle"
-          style={{ left: `${50 + snapshot.aimX * 50}%`, top: `${50 + snapshot.aimY * 50}%` }}
+          className={snapshot.autoTarget ? 'reticle locked' : 'reticle'}
+          style={{
+            left: `${50 + (snapshot.autoTarget?.x ?? snapshot.aimX) * 50}%`,
+            top: `${50 + (snapshot.autoTarget?.y ?? snapshot.aimY) * 50}%`,
+          }}
         ><i /><i /></div>
         {/* Flight, laser, turbo and drop are all inert during the tutorial -
             this is the one thing left to try, so it has to name itself.
             Held back until the briefing actually reaches that instruction -
-            E does nothing before then, so the prompt shouldn't invite it. */}
+            the beam does nothing before then, so the prompt shouldn't
+            invite it. */}
         {snapshot.tutorial && snapshot.tutorialBriefingReady && !snapshot.beamActive && (
           <div
-            className="tutorial-e-prompt"
+            className="tutorial-beam-prompt"
             style={{ left: `${50 + snapshot.aimX * 50}%`, top: `${50 + snapshot.aimY * 50}%` }}
           >
-            <b>E</b>
-            <span>{t.tutorialPressE}</span>
+            {/* Both, because this prompt is the first thing a new player is
+                asked to do and the machine they brought is not knowable. */}
+            <b>{t.keyRightClick}</b>
+            <b>W</b>
+            <span>{t.tutorialRescueHint}</span>
           </div>
         )}
         {/* The briefing teaches the four controls over the tutorial cat, and a

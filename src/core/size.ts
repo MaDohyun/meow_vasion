@@ -195,6 +195,8 @@ export type SizeProfile = {
   /** Pull-speed multiplier on the haul (BeamField.gripScale): a caught load
    *  rides a grown craft's beam visibly faster. See beamPullForSize. */
   beamPull: number
+  /** Laser damage multiplier from the hull alone. See laserPowerForSize. */
+  laserPower: number
   /**
    * Natural grip on whatever the beam has hold of, before any upgrade.
    *
@@ -287,6 +289,44 @@ export const LIFT_CAPACITY_MAX = 40
  */
 export const LIFT_GROWTH_EXPONENT = 0.75
 
+/**
+ * Where the craft starts carrying the laser, and by how much.
+ *
+ * The laser was the one thing growth did nothing for. Every other verb scales
+ * with the craft - the cone widens, the reach lengthens, the haul quickens -
+ * but a saucer the size of a block shot exactly as hard as the opening one,
+ * so a player who never routed through a mystery circle spent the back half
+ * of the run plinking at fighters with a starter gun.
+ *
+ * Written as the saucer's width across, because that is the thing being
+ * described: a craft wide enough to shadow a street is what has earned a
+ * heavier gun. Forty metres is a little over halfway up the growth range - the
+ * opening saucer is 2.5m across and the ceiling is 81m - so it lands in the
+ * stretch of the run where the sky stops being empty. Deriving the size from
+ * it rather than writing both keeps the two from drifting apart if the base
+ * diameter ever moves.
+ *
+ * A step rather than a curve. A ramp spread over the growth range would be a
+ * laser that is always slightly different and never actually better; this is
+ * a line the craft crosses once, after which fighters die in three shots
+ * instead of four.
+ *
+ * Crossing it is not announced, for the same reason beam strength is not: what
+ * growth buys is meant to be felt in the shooting, not read off a banner. The
+ * pickups get callouts because they are a thing you flew to and took; this is
+ * just the craft being bigger.
+ */
+export const LASER_POWER_DIAMETER = 40
+export const LASER_POWER_SIZE = LASER_POWER_DIAMETER / UFO_BASE_DIAMETER
+export const LASER_POWER_GROWN = 1.5
+
+/** 1 below the threshold, LASER_POWER_GROWN at or above it. Multiplies with
+ *  the mystery-circle laser pickup rather than replacing it, the same way the
+ *  beam stats compose: a grown craft carrying the item hits for 2.25. */
+export function laserPowerForSize(size: number) {
+  return ufoDiameter(size) >= LASER_POWER_DIAMETER ? LASER_POWER_GROWN : 1
+}
+
 /** Beam cone multiplier at the ceiling, absorbing the old radius cards'
  *  headroom (x1.75) into growth itself. */
 export const BEAM_APERTURE_MAX = 1.75
@@ -374,15 +414,23 @@ export function beamApertureForSize(size: number) {
 }
 
 /**
- * Doubling the craft pulls the camera back by half again, not by double.
+ * Doubling the craft pulls the camera back by seventy percent, not by double.
  *
  * The camera used to retreat faster than the craft grew - a twofold craft got
  * a 2.25-fold pull-back - so growing changed the picture without ever making
  * the player feel bigger, which is the one thing the whole run is about. Under
  * this exponent the saucer takes up more of the frame the larger it gets,
  * which is the point, while still leaving room to see what it is reaching for.
+ *
+ * It sat at 1.5, which lost that race by too much at the top of the range: a
+ * ceiling-height hull is 81m across and the rig only stood 58m off it, so the
+ * saucer was wider than the frame and the city it was hunting sat behind it.
+ * Being big has to stay legible - if you cannot see what you are eating, the
+ * reward for growing reads as a penalty. This keeps the hull growing on screen
+ * across the whole run (32x of hull against 12x of camera) while leaving the
+ * grown craft inside its own picture.
  */
-export const CAMERA_GROWTH_PULL_BACK = 1.5
+export const CAMERA_GROWTH_PULL_BACK = 1.7
 export const CAMERA_SIZE_EXPONENT = Math.log2(CAMERA_GROWTH_PULL_BACK)
 
 export function clampSize(size: number) {
@@ -406,6 +454,7 @@ export function sizeProfile(size: number): SizeProfile {
     beamPull: beamPullForSize(clamped),
     beamPower: beamStrength,
     beamStrength,
+    laserPower: laserPowerForSize(clamped),
     liftCapacity: liftCapacityForSize(clamped),
     absorbDistance: Math.min(2.1 + clamped * 1.5, ABSORB_DISTANCE_MAX + sizeGrowthProgress(clamped) * ABSORB_DISTANCE_GROWN_BONUS),
     hitRadius: 1.05 * clamped,

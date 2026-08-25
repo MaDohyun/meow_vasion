@@ -13,6 +13,9 @@ import {
   GROWTH_FALLOFF_MIN,
   GROWTH_STEP,
   HEALTH_BONUS_HEARTS_MAX,
+  LASER_POWER_DIAMETER,
+  LASER_POWER_GROWN,
+  LASER_POWER_SIZE,
   LIFT_CAPACITY_MIN,
   OBJECT_GAIN_BASE,
   OBJECT_GAIN_HULL_SHARE,
@@ -26,6 +29,7 @@ import {
   UFO_BASE_DIAMETER,
   beamStrengthForSize,
   bonusHeartsForSize,
+  laserPowerForSize,
   clampSize,
   growSize,
   growSizeBy,
@@ -39,6 +43,8 @@ import {
   ufoDiameter,
 } from '../src/core/size'
 import { PEDESTRIAN_MASS } from '../src/core/crowds'
+import { BOON_DEFINITIONS } from '../src/core/boons'
+import { ENEMY_MAX_HP } from '../src/core/enemies'
 
 describe('craft size as growth, not as health', () => {
   it('starts small enough that one person is a real meal', () => {
@@ -329,7 +335,7 @@ describe('craft size as growth, not as health', () => {
     expect('drag' in sizeProfile(SIZE_MATURE)).toBe(false)
   })
 
-  it('pulls the camera back by half again per doubling, not by double', () => {
+  it('pulls the camera back by less than the craft grows, but far enough to frame it', () => {
     // The camera used to retreat faster than the craft grew, so growing changed
     // the picture without ever making the player feel bigger - which is the one
     // thing the run is about. Asserted as the ratio rather than as distances so
@@ -342,6 +348,11 @@ describe('craft size as growth, not as health', () => {
     // what puts more saucer on screen the bigger it gets.
     expect(sizeProfile(SIZE_MATURE).cameraDistance).toBeGreaterThan(sizeProfile(SIZE_START).cameraDistance)
     expect(CAMERA_GROWTH_PULL_BACK).toBeLessThan(2)
+    // ...and the grown craft has to fit in its own picture. A hull that is
+    // wider than the rig stands back is a hull you cannot see past, so the
+    // ceiling-height saucer keeps its whole diameter inside the chase
+    // distance - the reason the pull-back was raised from 1.5.
+    expect(sizeProfile(SIZE_MAX).cameraDistance).toBeGreaterThan(ufoDiameter(SIZE_MAX))
     // The rest distance is the rig at size 1; the opening saucer is smaller
     // than that, so the camera starts in closer - which is the whole point of
     // starting small.
@@ -373,5 +384,51 @@ describe('craft size as growth, not as health', () => {
   it('reports ratio from the death threshold, not from zero', () => {
     expect(sizeProfile(SIZE_MIN).ratio).toBe(0)
     expect(sizeProfile(SIZE_MATURE).ratio).toBe(1)
+  })
+})
+
+describe('the hull carrying the laser', () => {
+  it('is a width, and switches on at forty metres across', () => {
+    // The threshold is stated as the saucer's width because that is what it
+    // describes, so the guard is a width too - a size number that happened to
+    // match today would say nothing if the base diameter moved.
+    expect(ufoDiameter(LASER_POWER_SIZE)).toBeCloseTo(LASER_POWER_DIAMETER)
+    expect(laserPowerForSize(SIZE_START)).toBe(1)
+    expect(ufoDiameter(SIZE_START)).toBeLessThan(LASER_POWER_DIAMETER)
+    expect(laserPowerForSize(LASER_POWER_SIZE - 0.01)).toBe(1)
+    expect(laserPowerForSize(LASER_POWER_SIZE)).toBe(LASER_POWER_GROWN)
+    expect(laserPowerForSize(SIZE_MAX)).toBe(LASER_POWER_GROWN)
+    expect(sizeProfile(LASER_POWER_SIZE).laserPower).toBe(LASER_POWER_GROWN)
+    // Inside the run rather than at either end: before it a player is plinking
+    // at fighters with a starter gun, and at the top of the ladder it would
+    // arrive too late to have been worth growing for. Measured against
+    // SIZE_MATURE like every other rung - SIZE_MAX is the 150m ceiling out
+    // past the end of a run, and nothing is paced against that.
+    const progress = (LASER_POWER_SIZE - SIZE_START) / (SIZE_MATURE - SIZE_START)
+    expect(progress).toBeGreaterThan(0.3)
+    expect(progress).toBeLessThan(0.65)
+  })
+
+  it('spends shots the way the wave ladder expects', () => {
+    // What the change is actually for, said in shots rather than multipliers.
+    // hitEnemy subtracts damage and kills at zero, so this is ceil(hp/damage).
+    const shots = (hp: number, damage: number) => Math.ceil(hp / damage)
+    const grown = LASER_POWER_GROWN
+    const item = 1 + BOON_DEFINITIONS['laser-power'].step
+
+    // A starter craft: four shots for a fighter, which is the problem.
+    expect(shots(ENEMY_MAX_HP.fighter, 1)).toBe(4)
+    // Grown, but no pickup - three. Not two: 4/1.5 is 2.67 and a fighter does
+    // not die on a partial shot.
+    expect(shots(ENEMY_MAX_HP.fighter, grown)).toBe(3)
+    // Grown AND carrying the circle's laser item - two. The two-shot fighter
+    // is the pair, not the hull on its own.
+    expect(shots(ENEMY_MAX_HP.fighter, grown * item)).toBe(2)
+    // Helicopters fall to two either way; the step is what makes a fighter
+    // cost the same as a helicopter used to.
+    expect(shots(ENEMY_MAX_HP.helicopter, grown)).toBe(2)
+    // The dreadnought stays a real fight: a grown craft with the item still
+    // spends nearly thirty shots on it.
+    expect(shots(ENEMY_MAX_HP.boss, grown * item)).toBe(29)
   })
 })
