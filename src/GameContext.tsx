@@ -1289,7 +1289,7 @@ function loadedCarCount(game: GameRuntime) {
 function registerEnemyHit(game: GameRuntime, id: string, damage: number) {
   const result = hitEnemy(game.enemies, id, damage)
   if (result.hit && result.enemy && result.enemy.kind === 'boss') {
-    // Sparks where the shot landed, so a hull that takes sixty-four hits still
+    // Sparks where the shot landed, so a hull that takes dozens of hits still
     // answers each one.
     triggerLaserBurst(game.laserBursts, 'impact', result.enemy.position)
   }
@@ -1313,8 +1313,8 @@ function registerEnemyHit(game: GameRuntime, id: string, damage: number) {
   }
   // The dreadnought pays ten thousand - a round number, and deliberately in a
   // different class from everything else in the sky. It is the one target that
-  // takes sixty-four hits, the one that cannot be eaten on the way past, and
-  // the one the whole last wave is built around; a reward that read as "a lot
+  // takes dozens of hits, the one nothing but a nearly-grown craft can eat,
+  // and the one the whole last wave is built around; a reward that read as "a lot
   // of fighters" made the fight an expensive way to farm a number instead of
   // the thing the run is for. At this figure it is the single largest prize a
   // run can bank, and killing it is what a scoreboard place is made of.
