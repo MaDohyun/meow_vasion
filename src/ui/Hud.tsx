@@ -35,7 +35,7 @@ function MissionPanel() {
       <section className="mission-panel panel tutorial-mission">
         <span className="eyebrow">{t.tutorialMissionEyebrow}</span>
         <strong>{t.tutorialMissionLead}</strong>
-        <p><b>E</b> {t.tutorialMissionAction}</p>
+        <p><b>{t.keyRightClick} / W</b> {t.tutorialMissionAction}</p>
       </section>
     )
   }
@@ -171,8 +171,12 @@ function ControlTips() {
     // narrow column and "flies where you look" wraps onto two lines in it.
     [['AUTO'], t.howToMove],
     [['MOUSE'], t.controlAim],
-    [['E'], t.controlBeam],
-    [['Q'], t.controlLaser],
+    // Both hands named on the rows that fire, because which machine the
+    // player brought is not knowable: a mouse has the two buttons everyone
+    // already knows, and a trackpad cannot hold one down while the same
+    // fingers steer.
+    [[t.keyRightClick, 'W'], t.controlBeam],
+    [[t.keyLeftClick, 'Q'], t.controlLaser],
     [['SPACE'], t.controlBoost],
   ]
 
@@ -1024,7 +1028,10 @@ export function Hud() {
             className="tutorial-e-prompt"
             style={{ left: `${50 + snapshot.aimX * 50}%`, top: `${50 + snapshot.aimY * 50}%` }}
           >
-            <b>E</b>
+            {/* Both, because this prompt is the first thing a new player is
+                asked to do and the machine they brought is not knowable. */}
+            <b>{t.keyRightClick}</b>
+            <b>W</b>
             <span>{t.tutorialPressE}</span>
           </div>
         )}

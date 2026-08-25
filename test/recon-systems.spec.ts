@@ -18,7 +18,7 @@ import {
   LAKE_DRAIN_SIZE_GAIN_PER_LITRE,
 } from '../src/core/lakes'
 import { MISSION_TARGETS } from '../src/core/missions'
-import { SIZE_GAIN } from '../src/core/size'
+import { SIZE_GAIN, growSizeBy } from '../src/core/size'
 import { lakeCellsNear, type ProceduralBuilding } from '../src/core/world'
 
 const building = (height: number): ProceduralBuilding => ({
@@ -157,22 +157,27 @@ describe('recon overhaul support systems', () => {
     expect(LAKE_CELL_CAPACITY_MIN).toBeGreaterThanOrEqual(MISSION_TARGETS['absorb-water'])
   })
 
-  it('grows the craft per tile at a rate the city still beats per second', () => {
-    // The honest comparison is per second of play, not per tile: a deep tile
-    // grows more only because it took longer to drink.
-    const cityPerSecond = Math.pow(1 + SIZE_GAIN.pedestrian, 0.8) - 1
-    for (const capacity of [LAKE_CELL_CAPACITY_MIN, 400, LAKE_CELL_CAPACITY_MAX]) {
+  it('keeps a drained lake a real meal, trimmed rather than gutted', () => {
+    // Water is the one meal that does not get better as the craft grows: it
+    // arrives at a flat 50 L/s and pays a flat share of the hull, while the
+    // city pays more per second the bigger the beam gets. That makes water
+    // strongest exactly when the craft is weakest, so the opening is where
+    // this is priced - not the average.
+    for (const capacity of [LAKE_CELL_CAPACITY_MIN, 350, LAKE_CELL_CAPACITY_MAX]) {
       const gain = capacity * LAKE_DRAIN_SIZE_GAIN_PER_LITRE
-      const seconds = capacity / LAKE_ABSORPTION_LITRES_PER_SECOND
-      const lakePerSecond = Math.pow(1 + gain, 1 / seconds) - 1
-      // Water is a real meal - bigger than a cat, never bigger than the
-      // largest tower absorbBeamObject can pay.
+      // A whole lake outweighs a cat, and never reaches what the largest
+      // tower absorbBeamObject can pay.
       expect(gain).toBeGreaterThan(SIZE_GAIN.cat)
-      expect(gain).toBeLessThanOrEqual(0.2)
-      // ...but eating the city stays the faster way to grow, at every roll.
-      expect(lakePerSecond).toBeLessThan(cityPerSecond)
-      expect(lakePerSecond).toBeGreaterThan(cityPerSecond * 0.5)
+      expect(gain).toBeLessThan(0.2)
     }
+    // Six lakes drunk back to back is the run that prompted the trim. It was
+    // 2.33x the opening hull; the ceiling and the rate together bring it under
+    // 2.1x. Deliberately a trim and not a cut - the guard is here so a further
+    // change to either number is a decision rather than a drift.
+    let size = 1
+    for (let lake = 0; lake < 6; lake += 1) size = growSizeBy(size, 350 * LAKE_DRAIN_SIZE_GAIN_PER_LITRE)
+    expect(size).toBeLessThan(2.1)
+    expect(size).toBeGreaterThan(1.6)
     // The gain a tile actually pays is the one derived from its capacity.
     expect(lakeDrainSizeGain(3, -7)).toBeCloseTo(lakeCellCapacity(3, -7) * LAKE_DRAIN_SIZE_GAIN_PER_LITRE, 10)
   })
@@ -181,7 +186,7 @@ describe('recon overhaul support systems', () => {
     // Water pays well per second precisely because it runs out: the most any
     // one tile can ever pay is fixed, however long anyone parks on it.
     expect(LAKE_SCORE_PER_LITRE).toBe(1)
-    expect(LAKE_CELL_CAPACITY_MAX * LAKE_SCORE_PER_LITRE).toBe(500)
+    expect(LAKE_CELL_CAPACITY_MAX * LAKE_SCORE_PER_LITRE).toBe(400)
     expect(LAKE_CELL_CAPACITY_MIN * LAKE_SCORE_PER_LITRE).toBe(300)
     // And the richest lake the world can build stays under the sample rung,
     // so water is a detour worth taking rather than a rung worth skipping.

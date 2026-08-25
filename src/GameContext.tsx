@@ -435,6 +435,18 @@ const QUALITY_STORAGE_KEY = 'ufo-attack-quality'
 const HUD_CONTROLS = '.mobile-controls, button, input, select, textarea, label, a'
 
 /**
+ * Where a mouse button is a click rather than a trigger.
+ *
+ * The fire buttons live on the mouse now, which means every click on the city
+ * shoots - and the briefing is a full-screen sheet the player clicks through
+ * while the run is already live. Its own click has to advance the briefing and
+ * nothing else, or a judge reading the general's lines fires the laser at
+ * every line break and clears the hands-on laser step without knowing it.
+ * Same for the lobby and the results sheet.
+ */
+const POINTER_FIRE_BLOCKERS = '.mobile-controls, .briefing-touch, .overlay, button, input, select, textarea, label, a'
+
+/**
  * Mirrors the query that reveals `.mobile-controls` in styles.css. The drag
  * reticle is part of that control scheme, so it turns up exactly where the
  * stick and the fire buttons do; a desktop that happens to have a touchscreen
@@ -1795,6 +1807,17 @@ export function GameProvider({ children }: { children: ReactNode }) {
   // whenever no drag is in flight, which is most of the time on a phone.
   const touchAim = useRef<{ pointerId: number; x: number; y: number } | null>(null)
   const mobile = useRef<MobileInput>({ throttle: 1, steer: 0, lookPitch: 0, vertical: 0, special: false, beam: false, laser: false, active: false })
+  /**
+   * The mouse's own trigger fingers.
+   *
+   * Left fires, right beams - the two things every player who has ever held a
+   * mouse already knows, and the reason they are worth having is that the hand
+   * doing the aiming is the hand doing the shooting. The keys stay: a laptop
+   * with no mouse holds a right-click down with two fingers on a trackpad
+   * while the same fingers are supposed to be steering, which is not a control
+   * scheme. Whichever the player reaches for first is the right one.
+   */
+  const mouseFire = useRef({ laser: false, beam: false })
   const publishAccumulator = useRef(0)
   const publish = useCallback(() => setSnapshot(snapshotOf(runtime.current)), [])
 
@@ -1846,7 +1869,14 @@ export function GameProvider({ children }: { children: ReactNode }) {
       }
       pointer.current = absoluteAim({ x: event.clientX, y: event.clientY }, bounds)
     }
+    const firing = (event: PointerEvent) =>
+      !(event.target instanceof Element && event.target.closest(POINTER_FIRE_BLOCKERS))
+    const setFire = (button: number, held: boolean) => {
+      if (button === 0) mouseFire.current.laser = held
+      else if (button === 2) mouseFire.current.beam = held
+    }
     const press = (event: PointerEvent) => {
+      if (event.pointerType === 'mouse' && firing(event)) setFire(event.button, true)
       if (!drags(event)) { move(event); return }
       // A thumb on the stick or a fire button is already saying something; it
       // must not drag the reticle across the city on the way.
@@ -1858,21 +1888,44 @@ export function GameProvider({ children }: { children: ReactNode }) {
       mobile.current.active = true
     }
     const lift = (event: PointerEvent) => {
+      if (event.pointerType === 'mouse') setFire(event.button, false)
       // The reticle stays where the finger left it: aim with one thumb, fire
       // with the other.
       if (touchAim.current?.pointerId === event.pointerId) touchAim.current = null
     }
+    /** A button released outside the window never sends its pointerup here, so
+     *  the bitmask on the next move is the only thing that can clear it. */
+    const syncButtons = (event: PointerEvent) => {
+      if (event.pointerType !== 'mouse') return
+      if ((event.buttons & 1) === 0) mouseFire.current.laser = false
+      if ((event.buttons & 2) === 0) mouseFire.current.beam = false
+    }
+    const dropFire = () => { mouseFire.current.laser = false; mouseFire.current.beam = false }
+    // Right-hold is the beam, so the menu it would otherwise open has to go -
+    // but only over the city. A right-click on the ranking name box is still a
+    // right-click.
+    const menu = (event: MouseEvent) => {
+      if (event.target instanceof Element && event.target.closest(POINTER_FIRE_BLOCKERS)) return
+      event.preventDefault()
+    }
+    const leave = () => { pointer.current = { x: 0, y: 0 }; dropFire() }
     window.addEventListener('keydown', down, { passive: false })
     window.addEventListener('keyup', up)
+    window.addEventListener('pointermove', syncButtons)
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerdown', press)
+    window.addEventListener('contextmenu', menu)
+    window.addEventListener('blur', dropFire)
     window.addEventListener('pointerup', lift)
     window.addEventListener('pointercancel', lift)
     return () => {
       window.removeEventListener('keydown', down)
       window.removeEventListener('keyup', up)
+      window.removeEventListener('pointermove', syncButtons)
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerdown', press)
+      window.removeEventListener('contextmenu', menu)
+      window.removeEventListener('blur', dropFire)
       window.removeEventListener('pointerup', lift)
       window.removeEventListener('pointercancel', lift)
     }
@@ -1892,23 +1945,27 @@ export function GameProvider({ children }: { children: ReactNode }) {
       lookPitch: -pointer.current.y,
       vertical: 0,
       special: Boolean(keys.current.Space),
-      // Two keys each, because the hand that holds them is no longer pinned.
+      // Q and W are the named pair, and the mouse buttons sit beside them.
       //
-      // Q and E were chosen around WASD: with the left hand anchored on the
-      // movement keys the top row was the only place a second and third verb
-      // could go. There are no movement keys now, so the hand can sit where a
-      // hand actually rests - F and D, home row, index and middle finger, and
-      // F has the locating bump so the beam is found without looking. On a
-      // laptop keyboard that is a real difference for a key held for minutes
-      // at a time, which the beam is.
+      // Which machine the player brought is not knowable - this is a browser
+      // game that gets handed to strangers - so both hands are wired and both
+      // are printed on screen. A mouse has the two buttons every player who
+      // has ever played anything already knows, and the hand doing the aiming
+      // is the hand doing the shooting. A laptop trackpad cannot hold a button
+      // down while the same fingers steer, so on that machine the keys are the
+      // whole of it.
       //
-      // The old pair still answers. Nothing is taken away from anyone who
-      // already knows where the beam lives.
-      beam: Boolean(keys.current.KeyE || keys.current.KeyF),
+      // Q and W rather than Q and E because WASD is gone: with the left hand
+      // no longer anchored on the movement keys, the two verbs can sit on
+      // adjacent keys instead of straddling a dead one.
+      //
+      // E, F and D still answer, unprinted. Nothing is taken away from anyone
+      // who already learned a different pair.
+      beam: Boolean(keys.current.KeyE || keys.current.KeyF || keys.current.KeyW) || mouseFire.current.beam,
       // Holding either key keeps the laser firing on its normal cooldown
       // cadence instead of requiring repeated presses.
-      laser: Boolean(keys.current.KeyQ || keys.current.KeyD),
-      laserContinuous: Boolean(keys.current.KeyQ || keys.current.KeyD),
+      laser: Boolean(keys.current.KeyQ || keys.current.KeyD) || mouseFire.current.laser,
+      laserContinuous: Boolean(keys.current.KeyQ || keys.current.KeyD) || mouseFire.current.laser,
     }
     if (!mobile.current.active) return keyboard
     const { active: _active, ...mobileInput } = mobile.current

@@ -59,10 +59,12 @@ export function stepLakeAbsorption(
  * to count out.
  *
  * The floor is the water rung's own target, so even the shallowest tile in the
- * world can finish that rung on its own.
+ * world can finish that rung on its own. The ceiling was 500 and came down
+ * with the growth: the roll is there to make tiles differ, and a spread of a
+ * third does that without the deep end being its own strategy.
  */
 export const LAKE_CELL_CAPACITY_MIN = 300
-export const LAKE_CELL_CAPACITY_MAX = 500
+export const LAKE_CELL_CAPACITY_MAX = 400
 
 /**
  * Litres this tile holds before its water is gone for the rest of the run.
@@ -91,16 +93,20 @@ export function lakeCellCapacity(cellX: number, cellZ: number) {
  * once, with a pop.
  *
  * Scaled by what the tile actually held, so a deep tile is a bigger meal in
- * every sense rather than only a longer one. Across the capacity range that
- * puts a tile between +12% and +20%: the bottom sits above a cat (+5.8%) and
- * the top lands exactly on the largest tower `absorbBeamObject` can pay.
+ * every sense rather than only a longer one. Across the capacity range a lake
+ * is worth +10.5% to +14%, which is a cat and a half at the shallow end and
+ * two at the deep end - a real meal, and still short of the +20% the largest
+ * tower `absorbBeamObject` can pay.
  *
- * Per second of held beam it comes out a flat ~1.9% whatever the tile rolled,
- * against roughly 2.8% for eating the city at the rate test/feeding.spec.ts
- * measures. The lake is deliberately about two thirds of the city's rate - a
- * safer-looking, finite option, never the better one.
+ * Trimmed from 0.0004, and only trimmed. Water is the one meal that does not
+ * improve as the craft grows - it arrives at a flat 50 L/s and pays a flat
+ * share of the hull, while the city pays more per second the bigger the beam
+ * gets - so it is at its strongest exactly when the craft is weakest, and the
+ * opening is where it has to be priced rather than the average. The ceiling
+ * coming down to 400 litres does the other half of the work: the deep tiles
+ * that paid +20% do not exist any more.
  */
-export const LAKE_DRAIN_SIZE_GAIN_PER_LITRE = 0.0004
+export const LAKE_DRAIN_SIZE_GAIN_PER_LITRE = 0.00035
 
 /** Growth for draining this particular tile. */
 export function lakeDrainSizeGain(cellX: number, cellZ: number) {
@@ -175,8 +181,8 @@ export function drawFromLakeCell(state: LakeDrainState, cellX: number, cellZ: nu
  * game that is not worth doing, which is a strange thing to build a rung of
  * the ladder out of.
  *
- * A point a litre is fifty a second: 300 to 500 for the one tile a lake gets
- * drunk from, in six to ten seconds of held beam. It was two a litre and that
+ * A point a litre is fifty a second: 300 to 400 for the one tile a lake gets
+ * drunk from, in six to eight seconds of held beam. It was two a litre and that
  * was too much - the general sells water as research data worth diverting for,
  * and at double this a lake cleared most of the sample rung on its own. A
  * detour worth taking should not also be a rung worth skipping.

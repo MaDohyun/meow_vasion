@@ -267,7 +267,7 @@ button { font: inherit; }
 .reticle i:last-child::after { top:0; right:0; width:2px; height:8px; }
 
 .tutorial-e-prompt { position:absolute; display:flex; align-items:center; gap:6px; transform:translate(-50%, 24px); pointer-events:none; animation: warning-pulse .6s steps(2) infinite; }
-.tutorial-e-prompt b { display:flex; align-items:center; justify-content:center; width:32px; height:32px; background:var(--cream); color:var(--ink); border:2px solid var(--ink); border-radius:6px; font-size:18px; font-weight:1000; box-shadow:2px 2px 0 rgba(0,0,0,.4); }
+.tutorial-e-prompt b { display:flex; align-items:center; justify-content:center; min-width:32px; padding:0 8px; height:32px; background:var(--cream); color:var(--ink); border:2px solid var(--ink); border-radius:6px; font-size:18px; font-weight:1000; box-shadow:2px 2px 0 rgba(0,0,0,.4); }
 .tutorial-e-prompt span { padding:5px 11px; background:rgba(20,16,32,.88); color:var(--cream); border:2px solid var(--cream); font-size:14px; font-weight:1000; letter-spacing:.5px; white-space:nowrap; }
 
 /* The general's tutorial briefing: a portrait plus a VN-style text box, sat
