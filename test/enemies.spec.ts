@@ -42,7 +42,7 @@ describe('time-based enemy waves', () => {
       const enemy = state.slots.find((candidate) => candidate.kind === kind)!
       expect(enemy.beamImmune).toBe(true)
     }
-    expect(ENEMY_WAVE_STAGES.at(-1)!.at).toBe(180)
+    expect(ENEMY_WAVE_STAGES.at(-1)!.at).toBe(160)
   })
 
   it('detonates a beam-held mine that is drawn onto the hull', () => {

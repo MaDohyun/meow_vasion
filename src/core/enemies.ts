@@ -22,15 +22,36 @@ export type EnemyProjectileKind = 'orb'
  * already been dodging for half a minute.
  *
  * Spaced across the run rather than packed into its front half: the last wave
- * lands with two minutes still on the clock, which is the boss fight.
+ * lands with two minutes and twenty seconds still on the clock, which is the
+ * boss fight.
+ *
+ * The dreadnought used to launch at a hundred and eighty and now launches
+ * twenty seconds earlier. The fighter wave before it was holding the sky on
+ * its own for seventy seconds - long enough for the stage to stop introducing
+ * anything and start repeating itself - while the fight everyone waits for was
+ * the shortest thing in the run. Moving the launch spends those twenty seconds
+ * where they read: the ship arrives while the fighter wave is still new, and
+ * the fight it opens is a fifth longer.
  */
 export const ENEMY_WAVE_STAGES = [
   { at: 0, tempo: 0, label: 'UFO SIGHTED', targets: {} },
   { at: 30, tempo: 1, label: 'DRONE MINES', targets: { drone: 14 } },
   { at: 70, tempo: 2, label: 'HELICOPTERS UP', targets: { drone: 20, helicopter: 8 } },
   { at: 110, tempo: 3, label: 'FIGHTERS SCRAMBLED', targets: { drone: 25, helicopter: 11, fighter: 4 } },
-  { at: 180, tempo: 4, label: 'SKY BATTLESHIP', targets: { drone: 34, helicopter: 14, fighter: 6, boss: 1 } },
+  { at: 160, tempo: 4, label: 'SKY BATTLESHIP', targets: { drone: 34, helicopter: 14, fighter: 6, boss: 1 } },
 ] as const
+
+/**
+ * When the dreadnought's wave lands, read off the table above.
+ *
+ * Exported because the sky is on the same clock as the waves - see
+ * `daylight.ts`, where nightfall is pinned to this second rather than written
+ * out again as a number that has to be remembered when the wave moves.
+ */
+export const BATTLESHIP_LAUNCH_SECONDS = ENEMY_WAVE_STAGES.reduce(
+  (found, stage) => ((stage.targets as Partial<Record<EnemyKind, number>>).boss ?? 0) > 0 ? stage.at : found,
+  ENEMY_WAVE_STAGES[ENEMY_WAVE_STAGES.length - 1]!.at,
+)
 
 export const ENEMY_TIER: Record<EnemyKind, number> = {
   drone: 0,

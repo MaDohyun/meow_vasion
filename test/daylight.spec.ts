@@ -11,6 +11,7 @@ import {
   daylightProgress,
   sampleDaylight,
 } from '../src/core/daylight'
+import { BATTLESHIP_LAUNCH_SECONDS } from '../src/core/enemies'
 
 /** Where a series turns, so a shape can be asserted rather than a direction. */
 function turningPoints(read: (elapsed: number) => number) {
@@ -217,13 +218,16 @@ describe('the turning sky', () => {
     // Darker than the sky it opened on, which was already night.
     expect(ending.ambientIntensity).toBeLessThan(sampleDaylight(0).ambientIntensity)
 
-    // The dreadnought launches at 180 seconds, on the nightfall keyframe
-    // itself, and the fight from there to the end only ever gets darker.
-    const boss = sampleDaylight(180)
+    // The dreadnought launches on the nightfall keyframe itself - read off the
+    // wave table, because that pinning is the thing under test - and the fight
+    // from there to the end only ever gets darker.
+    expect(BATTLESHIP_LAUNCH_SECONDS).toBe(160)
+    const boss = sampleDaylight(BATTLESHIP_LAUNCH_SECONDS)
     expect(boss.phase).toBe('night')
+    expect(boss.label).toBe('NIGHT')
     expect(boss.nightFactor).toBeGreaterThan(0.9)
     let previous = Number.POSITIVE_INFINITY
-    for (let elapsed = 180; elapsed <= RUN_SECONDS; elapsed += 2) {
+    for (let elapsed = BATTLESHIP_LAUNCH_SECONDS; elapsed <= RUN_SECONDS; elapsed += 2) {
       const sample = sampleDaylight(elapsed)
       expect(sample.phase, `${elapsed}s`).toBe('night')
       expect(sample.ambientIntensity, `${elapsed}s`).toBeLessThanOrEqual(previous + 1e-9)

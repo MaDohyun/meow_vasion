@@ -28,7 +28,7 @@ import {
 } from './core/hazards'
 import { SIZE_MIN, SIZE_START, type SizeGainKind, type SizeProfile, bonusHeartsForSize, clampSize, growSize, growSizeBy, sizeProfile, ufoDiameter } from './core/size'
 import { MAX_HEALTH, createHealthState, damageHealth, healHealth, healthRatio, isDead, isRegenerating, raiseHealthMax, stepHealth, type HealthLossKind, type HealthState } from './core/health'
-import { BATTLESHIP_ALTITUDE, BATTLESHIP_TURRETS, ENEMY_WAVE_STAGES, activeEnemyCount, battleshipTurretPoint, createEnemyState, hitEnemy, resolveEnemyContacts, stepEnemies, stepEnemyProjectiles, syncEnemyTiers, waveLabelForTime, waveStageForTime, type EnemyKind, type EnemyState } from './core/enemies'
+import { BATTLESHIP_ALTITUDE, BATTLESHIP_LAUNCH_SECONDS, BATTLESHIP_TURRETS, activeEnemyCount, battleshipTurretPoint, createEnemyState, hitEnemy, resolveEnemyContacts, stepEnemies, stepEnemyProjectiles, syncEnemyTiers, waveLabelForTime, waveStageForTime, type EnemyKind, type EnemyState } from './core/enemies'
 import {
   createLaserPool,
   createLaserBurstPool,
@@ -466,9 +466,7 @@ const UFO_UPGRADES = { speed: 0, stability: 0, rack: 0, special: 'none' as const
  * When the dreadnought's wave lands, read off the wave table rather than
  * written out again, so moving the wave moves the drill with it.
  */
-const BATTLESHIP_WAVE_AT = ENEMY_WAVE_STAGES.find(
-  (stage) => ((stage.targets as Partial<Record<EnemyKind, number>>).boss ?? 0) > 0,
-)!.at
+const BATTLESHIP_WAVE_AT = BATTLESHIP_LAUNCH_SECONDS
 
 /**
  * The craft the drill hands over.
