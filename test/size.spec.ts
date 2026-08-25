@@ -13,9 +13,10 @@ import {
   GROWTH_FALLOFF_MIN,
   GROWTH_STEP,
   HEALTH_BONUS_HEARTS_MAX,
-  LASER_POWER_DIAMETER,
+  GROWN_DIAMETER,
   LASER_POWER_GROWN,
-  LASER_POWER_SIZE,
+  GROWN_SIZE,
+  SPEED_GROWN,
   LIFT_CAPACITY_MIN,
   CROWD_VALUE,
   GROWTH_PER_POINT,
@@ -30,6 +31,7 @@ import {
   beamStrengthForSize,
   bonusHeartsForSize,
   laserPowerForSize,
+  speedPowerForSize,
   clampSize,
   growSize,
   growSizeBy,
@@ -416,23 +418,35 @@ describe('craft size as growth, not as health', () => {
 })
 
 describe('the hull carrying the laser', () => {
+  it('gives the throttle the same step, worth one speed pickup', () => {
+    expect(speedPowerForSize(SIZE_START)).toBe(1)
+    expect(speedPowerForSize(GROWN_SIZE - 0.01)).toBe(1)
+    expect(speedPowerForSize(GROWN_SIZE)).toBe(SPEED_GROWN)
+    expect(sizeProfile(GROWN_SIZE).speedPower).toBe(SPEED_GROWN)
+    // The same line as the laser, not a second one that happens to match.
+    expect(laserPowerForSize(GROWN_SIZE)).toBe(LASER_POWER_GROWN)
+    // Worth exactly what finding a speed part is worth, so "the craft grew"
+    // and "you found one" read as the same size of gain on the throttle.
+    expect(SPEED_GROWN - 1).toBeCloseTo(BOON_DEFINITIONS.speed.step)
+  })
+
   it('is a width, and switches on at forty metres across', () => {
     // The threshold is stated as the saucer's width because that is what it
     // describes, so the guard is a width too - a size number that happened to
     // match today would say nothing if the base diameter moved.
-    expect(ufoDiameter(LASER_POWER_SIZE)).toBeCloseTo(LASER_POWER_DIAMETER)
+    expect(ufoDiameter(GROWN_SIZE)).toBeCloseTo(GROWN_DIAMETER)
     expect(laserPowerForSize(SIZE_START)).toBe(1)
-    expect(ufoDiameter(SIZE_START)).toBeLessThan(LASER_POWER_DIAMETER)
-    expect(laserPowerForSize(LASER_POWER_SIZE - 0.01)).toBe(1)
-    expect(laserPowerForSize(LASER_POWER_SIZE)).toBe(LASER_POWER_GROWN)
+    expect(ufoDiameter(SIZE_START)).toBeLessThan(GROWN_DIAMETER)
+    expect(laserPowerForSize(GROWN_SIZE - 0.01)).toBe(1)
+    expect(laserPowerForSize(GROWN_SIZE)).toBe(LASER_POWER_GROWN)
     expect(laserPowerForSize(SIZE_MAX)).toBe(LASER_POWER_GROWN)
-    expect(sizeProfile(LASER_POWER_SIZE).laserPower).toBe(LASER_POWER_GROWN)
+    expect(sizeProfile(GROWN_SIZE).laserPower).toBe(LASER_POWER_GROWN)
     // Inside the run rather than at either end: before it a player is plinking
     // at fighters with a starter gun, and at the top of the ladder it would
     // arrive too late to have been worth growing for. Measured against
     // SIZE_MATURE like every other rung - SIZE_MAX is the 150m ceiling out
     // past the end of a run, and nothing is paced against that.
-    const progress = (LASER_POWER_SIZE - SIZE_START) / (SIZE_MATURE - SIZE_START)
+    const progress = (GROWN_SIZE - SIZE_START) / (SIZE_MATURE - SIZE_START)
     expect(progress).toBeGreaterThan(0.3)
     expect(progress).toBeLessThan(0.65)
   })

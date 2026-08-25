@@ -235,8 +235,12 @@ export type SizeProfile = {
   /** Pull-speed multiplier on the haul (BeamField.gripScale): a caught load
    *  rides a grown craft's beam visibly faster. See beamPullForSize. */
   beamPull: number
-  /** Laser damage multiplier from the hull alone. See laserPowerForSize. */
+  /** Laser damage multiplier from the craft's width alone. See
+   *  laserPowerForSize. */
   laserPower: number
+  /** Top-speed multiplier from the craft's width alone. See
+   *  speedPowerForSize. */
+  speedPower: number
   /**
    * Natural grip on whatever the beam has hold of, before any upgrade.
    *
@@ -330,41 +334,58 @@ export const LIFT_CAPACITY_MAX = 40
 export const LIFT_GROWTH_EXPONENT = 0.75
 
 /**
- * Where the craft starts carrying the laser, and by how much.
+ * The one line the craft crosses on its way up, and what crossing it buys.
  *
- * The laser was the one thing growth did nothing for. Every other verb scales
- * with the craft - the cone widens, the reach lengthens, the haul quickens -
- * but a saucer the size of a block shot exactly as hard as the opening one,
- * so a player who never routed through a mystery circle spent the back half
- * of the run plinking at fighters with a starter gun.
+ * The beam was the only thing growth ever paid for - the cone widens, the
+ * reach lengthens, the haul quickens - while the laser and the throttle sat
+ * exactly where the opening saucer left them. So a player who never routed
+ * through a mystery circle spent the back half of the run plinking at
+ * fighters with a starter gun and flying at starter speed.
  *
  * Written as the saucer's width across, because that is the thing being
  * described: a craft wide enough to shadow a street is what has earned a
- * heavier gun. Forty metres is a little over halfway up the growth range - the
- * opening saucer is 2.5m across and the ceiling is 81m - so it lands in the
- * stretch of the run where the sky stops being empty. Deriving the size from
- * it rather than writing both keeps the two from drifting apart if the base
- * diameter ever moves.
+ * heavier gun and a faster cruise. Forty metres is a little over halfway up
+ * the growth range - the opening saucer is 2.5m across and the ceiling is 81m
+ * - so it lands in the stretch of the run where the sky stops being empty.
+ * Deriving the size from it rather than writing both keeps the two from
+ * drifting apart if the base diameter ever moves.
+ *
+ * One threshold for both stats rather than two that happen to be equal. They
+ * are the same beat - the craft is grown now - and two constants sitting at 40
+ * would be two places to change and one of them to forget.
  *
  * A step rather than a curve. A ramp spread over the growth range would be a
- * laser that is always slightly different and never actually better; this is
- * a line the craft crosses once, after which fighters die in three shots
- * instead of four.
+ * laser and a throttle that are always slightly different and never actually
+ * better; this is a line crossed once, after which fighters die in two shots
+ * instead of three.
  *
  * Crossing it is not announced, for the same reason beam strength is not: what
- * growth buys is meant to be felt in the shooting, not read off a banner. The
- * pickups get callouts because they are a thing you flew to and took; this is
- * just the craft being bigger.
+ * growth buys is meant to be felt in the flying and the shooting, not read off
+ * a banner. The pickups get callouts because they are a thing you flew to and
+ * took; this is just the craft being bigger.
  */
-export const LASER_POWER_DIAMETER = 40
-export const LASER_POWER_SIZE = LASER_POWER_DIAMETER / UFO_BASE_DIAMETER
+export const GROWN_DIAMETER = 40
+export const GROWN_SIZE = GROWN_DIAMETER / UFO_BASE_DIAMETER
 export const LASER_POWER_GROWN = 1.5
+/** Matched to one level of the speed pickup (see core/boons), so "the craft
+ *  grew" and "you found a speed part" are worth the same on the throttle. */
+export const SPEED_GROWN = 1.15
+
+export function isGrownCraft(size: number) {
+  return ufoDiameter(size) >= GROWN_DIAMETER
+}
 
 /** 1 below the threshold, LASER_POWER_GROWN at or above it. Multiplies with
  *  the mystery-circle laser pickup rather than replacing it, the same way the
  *  beam stats compose: a grown craft carrying the item hits for 2.25. */
 export function laserPowerForSize(size: number) {
-  return ufoDiameter(size) >= LASER_POWER_DIAMETER ? LASER_POWER_GROWN : 1
+  return isGrownCraft(size) ? LASER_POWER_GROWN : 1
+}
+
+/** Same line, on the throttle. Multiplies with the speed pickup, so a grown
+ *  craft that also found one tops out around 1.32x rather than 1.30x. */
+export function speedPowerForSize(size: number) {
+  return isGrownCraft(size) ? SPEED_GROWN : 1
 }
 
 /** Beam cone multiplier at the ceiling, absorbing the old radius cards'
@@ -516,6 +537,7 @@ export function sizeProfile(size: number): SizeProfile {
     beamPower: beamStrength,
     beamStrength,
     laserPower: laserPowerForSize(clamped),
+    speedPower: speedPowerForSize(clamped),
     liftCapacity: liftCapacityForSize(clamped),
     absorbDistance: Math.min(2.1 + clamped * 1.5, ABSORB_DISTANCE_MAX + sizeGrowthProgress(clamped) * ABSORB_DISTANCE_GROWN_BONUS),
     hitRadius: 1.05 * clamped,
