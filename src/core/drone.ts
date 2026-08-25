@@ -68,15 +68,29 @@ export const DRONE_DEFAULTS = {
   /**
    * Yaw, lerped from Low at a standstill to High at top speed.
    *
-   * High is the one actually flown. Throttle is pinned at 1 now that the
-   * craft flies itself forward (see GameContext), so the speed ratio sits at
-   * the top of this range for the whole run and Low is only reached where the
-   * world takes the throttle away - a lake, an overloaded beam, the tutorial.
-   * That is also where turning matters most, so both ends went up, the top by
-   * more.
+   * High is the one actually flown, and with WASD gone it is the whole of the
+   * horizontal control: throttle is pinned at 1, there is no strafe and no
+   * brake, so the only way to reach anything is to turn towards it. Low is
+   * reached only where the world takes the throttle away - a lake, an
+   * overloaded beam, the tutorial.
+   *
+   * 160 deg/s is measured, not guessed. Flying the feeding harness at each
+   * rate, steering toward the nearest body ate less than flying dead straight
+   * until about 140 (17.5 vs 22.0 per 25s at 120; 23.3 at 140; 26.3 at 160) -
+   * that is, the game's one control was a losing play. 160 clears the
+   * crossover with room and is where the curve flattens; past it the gain is
+   * noise. The matching turn radius is ~11 units at cruise and ~19 under
+   * turbo, against a 34-unit city cell, so a U-turn costs about a block.
+   *
+   * There is a ceiling above this and it is not comfort: turn tight enough and
+   * orbiting one spot would beat flying a route, which is the parking the
+   * crowd rules exist to prevent. Measured, it does not happen at any rate -
+   * an orbit eats 1 body per 25s at every value tested, because a crowd that
+   * has been circled once is a crowd that has fled. So the limit here is the
+   * radius reading like an aircraft rather than a top.
    */
   turnRateLow: (200 * Math.PI) / 180,
-  turnRateHigh: (120 * Math.PI) / 180,
+  turnRateHigh: (160 * Math.PI) / 180,
   verticalSpeed: 9,
   minHeight: 0.4,
   maxHeight: 130,
