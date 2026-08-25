@@ -133,6 +133,29 @@ describe('interface languages', () => {
     }
   })
 
+  it('lets the general call his own ship the craft, never a UFO', () => {
+    // He commands the fleet that built it. Korean had it three ways at once -
+    // UFO in the briefing, 우주선 in the tutorial, 기체 everywhere else - so
+    // the general's own voice is checked line by line. The word survives where
+    // Earth is the one talking (the news bulletins) and in the how-to panel,
+    // which addresses the player rather than the pilot.
+    const retired: Record<string, RegExp> = { ko: /UFO|우주선/, ja: /UFO|宇宙船/, en: /\bUFO\b/i }
+    const kept: Record<string, RegExp> = { ko: /기체/, ja: /機体/, en: /craft/i }
+    for (const language of LANGUAGES) {
+      const strings = STRINGS[language]
+      const general = [
+        strings.tutorialMissionLead,
+        ...strings.tutorialBriefing.flatMap((beat) => beat.lines),
+        ...MISSION_DEBRIEF_IDS.flatMap((id) => strings.missionDebrief[id]),
+        ...Object.values(strings.endingRemark),
+      ]
+      for (const line of general) {
+        expect(line, `${language}: "${line}"`).not.toMatch(retired[language]!)
+      }
+      expect(general.some((line) => kept[language]!.test(line)), language).toBe(true)
+    }
+  })
+
   it('names every objective on the ladder, in every language', () => {
     for (const language of LANGUAGES) {
       for (const id of MISSION_ORDER) {

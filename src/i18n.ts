@@ -34,8 +34,15 @@ import type { RunEnding } from './core/ending'
  * - The final wave's ship is the **sky battleship** - 공중전함 / 空中戦艦 /
  *   SKY BATTLESHIP, shortened to BATTLESHIP only in the radar legend, which
  *   is half a dial wide. Never "dreadnought".
+ * - The ship the player flies is the **craft** - 기체 / 機体 / the craft -
+ *   every time the general speaks of it, in a briefing, a debrief or an
+ *   ending line. He commands the fleet it came from, so he would no sooner
+ *   call it "UFO" (or 우주선 / 宇宙船) than a pilot would call their own jet
+ *   an unidentified object. "UFO" belongs to Earth's half of the script -
+ *   the news bulletins - and to the how-to panel, which speaks to the player
+ *   rather than to the pilot.
  *
- * `test/i18n.spec.ts` holds both to that.
+ * `test/i18n.spec.ts` holds all three to that.
  */
 
 export const LANGUAGES = ['ko', 'ja', 'en'] as const
@@ -368,7 +375,7 @@ export const STRINGS: Record<Language, Strings> = {
       ],
       'absorb-water': [
         '물을 퍼 올렸군, 대원. 그럼 이제 몸으로 알았을 거다.',
-        '물 타일 위에서 빔을 쓰면 [[UFO의 속도가 대폭 저하된다]]. 물이 그만큼 무겁기 때문이다.',
+        '물 타일 위에서 빔을 쓰면 [[기체의 속도가 대폭 저하된다]]. 물이 그만큼 무겁기 때문이다.',
         '임무가 아니라면 물 위에서의 빔은 가능한 한 피해라. 도망칠 수 없는 곳에서 느려지는 게 제일 위험하다.',
       ],
       'absorb-samples': [
@@ -395,14 +402,14 @@ export const STRINGS: Record<Language, Strings> = {
     briefingSkip: '튜토리얼 건너뛰기',
     briefingWaitHint: { beam: 'E를 꾹 누르기', laser: 'Q를 누르기', turbo: '스페이스를 누르기' },
     tutorialBriefing: [
-      { lines: ['대원, 작전에 들어간다. 대원의 임무는 지구라는 별의 정찰대 임무다.', 'UFO의 연료를 전부 쓰는 [[5분]] 동안, 지구에서 최대한 많은 임무를 수행하고 돌아오도록!'] },
-      { lines: ['E 버튼을 누르면 빔 조작을 통해 고양이 동무를 구출하거나 물체를 흡수할 수 있다.', '우리 우주선은 물체를 흡수할수록 몸집이 커지니 가능한 한 많은 물체를 흡수하도록!', '그리고 [[몸집이 커질수록 빔의 힘도 세져서 더 크고 무거운 물체까지 흡수]]할 수 있게 된다.'] },
+      { lines: ['대원, 작전에 들어간다. 대원의 임무는 지구라는 별의 정찰대 임무다.', '기체의 연료를 전부 쓰는 [[5분]] 동안, 지구에서 최대한 많은 임무를 수행하고 돌아오도록!'] },
+      { lines: ['E 버튼을 누르면 빔 조작을 통해 고양이 동무를 구출하거나 물체를 흡수할 수 있다.', '우리 기체는 물체를 흡수할수록 몸집이 커지니 가능한 한 많은 물체를 흡수하도록!', '그리고 [[몸집이 커질수록 빔의 힘도 세져서 더 크고 무거운 물체까지 흡수]]할 수 있게 된다.'] },
       { lines: ['Q 버튼을 누르면 레이저를 쏘아 적을 무찌를 수 있다!', '말로만 들어서는 모른다. 지금 Q를 한 번 눌러 봐.'], wait: 'laser' },
-      { lines: ['좋다, 그게 레이저다. 위급할 때 쓰도록!', '다음은 터보다. 스페이스를 누르면 우주선이 훨씬 빨라진다. 지금 눌러 봐.'], wait: 'turbo' },
+      { lines: ['좋다, 그게 레이저다. 위급할 때 쓰도록!', '다음은 터보다. 스페이스를 누르면 기체가 훨씬 빨라진다. 지금 눌러 봐.'], wait: 'turbo' },
       { lines: ['그거다! 터보는 쓸 수 있는 시간이 정해져 있으니 주의해서 쓰도록!', '그리고 터보를 켠 채로 E를 누르면 빔이 더 굵고 멀리, 더 강하게 나간다. 기억해 둬라.'] },
       { lines: ['대원, 첫 임무다. 저 고양이를 구출해 봐. E 키를 꾹 누르고 있으면 된다.', '터보를 같이 켜면 빔이 커져서 훨씬 수월할 거다.'], wait: 'beam' },
-      { lines: ['좋아, 합격이다.', '명심해라, 대원. 너무 많은 물건을 흡수하면 [[무게 때문에 우주선이 추락한다]].', '그리고 비행 중 [[건물에 부딪혀도 생명력이 깎인다]]. 건물은 피해서 날아라!'], auto: 6.4 },
-      { lines: ['왼쪽에 임무를 하나씩 띄워 둔다. 전부 다섯 개, 순서대로 처리해라.', '첫 임무 목표는 우주선 위의 화살표가 가리키고 있으니 그쪽으로 날아가 봐.', '그럼 행운을 빈다.'], auto: 5.2 },
+      { lines: ['좋아, 합격이다.', '명심해라, 대원. 너무 많은 물건을 흡수하면 [[무게 때문에 기체가 추락한다]].', '그리고 비행 중 [[건물에 부딪혀도 생명력이 깎인다]]. 건물은 피해서 날아라!'], auto: 6.4 },
+      { lines: ['왼쪽에 임무를 하나씩 띄워 둔다. 전부 다섯 개, 순서대로 처리해라.', '첫 임무 목표는 기체 위의 화살표가 가리키고 있으니 그쪽으로 날아가 봐.', '그럼 행운을 빈다.'], auto: 5.2 },
     ],
     missionStageComplete: (previous, next) => `미션 ${previous} 완료 · 다음은 미션 ${next}!`,
     reconComplete: '지구 정찰 완료 · 장군님 퇴근 준비 끝!',
@@ -485,7 +492,7 @@ export const STRINGS: Record<Language, Strings> = {
     devDrill: '開発者モード · 空中戦艦へ',
     devEndings: '開発者モード · エンディング確認',
     devRunNote: '開発者モードで始めたプレイはランキングに登録されません。',
-    howToTitle: 'UFO 操作方法',
+    howToTitle: 'UFO操作方法',
     howToMove: '自動前進',
     howToAim: 'マウスで方向転換',
     graphics: 'グラフィック',
@@ -547,14 +554,14 @@ export const STRINGS: Record<Language, Strings> = {
     },
     missionDebrief: {
       'visit-mystery-circle': [
-        'よく見つけた、隊員。それが仲間たちが地球に残したミステリーサークルだ。',
+        'よく見つけた、隊員。それは仲間たちが地球に残したミステリーサークルだ。',
         'サークルを通過すると機体が一瞬[[加速]]し、[[ターボゲージが満タン]]になる。',
         'サークルの上には能力を上げる部品アイテムも浮いている。必ず回収しろ。',
         '偵察の間はサークルを経由して飛べ。それが生きて帰る道だ。',
       ],
       'absorb-water': [
-        '水を汲み上げたな、隊員。これで身体でわかっただろう。',
-        '水タイルの上でビームを使うと[[UFOの速度が大幅に低下する]]。それだけ水が重いということだ。',
+        '水を汲み上げたな、隊員。これで身をもってわかっただろう。',
+        '水タイルの上でビームを使うと[[機体の速度が大幅に低下する]]。それだけ水が重いということだ。',
         '任務でなければ水上でのビームはできる限り避けろ。逃げられない場所で遅くなるのが一番危険だ。',
       ],
       'absorb-samples': [
@@ -571,23 +578,23 @@ export const STRINGS: Record<Language, Strings> = {
     endingRemark: {
       recon: '完璧な偵察だった、隊員。地球はもう我々のものだ。帰還を許可する！',
       missionFailed: '燃料を使い切って任務は未完了か、隊員。次の偵察では時間を大事に使え。',
-      downed: '隊員！ 隊員？！ ……機体が撃墜された。標本はいい、まずは生きて帰ってこい。',
+      downed: '隊員！ 隊員？！ ……機体が撃墜された。標本はもういい。まずは生きて帰ってこい。',
     },
     tutorialMissionEyebrow: '将軍の最初の通信',
-    tutorialMissionLead: '「隊員、公園に残った仲間の猫から救出してみろ。」',
+    tutorialMissionLead: '「隊員、公園に残った仲間の猫から救出してみろ」',
     tutorialMissionAction: 'トラクタービームで猫を救出',
     briefingTitle: '将軍の通信',
     briefingContinue: '画面をクリックして続ける',
     briefingSkip: 'チュートリアルをスキップ',
-    briefingWaitHint: { beam: 'E を長押し', laser: 'Q を押す', turbo: 'スペース を押す' },
+    briefingWaitHint: { beam: 'E を長押し', laser: 'Q を押す', turbo: 'スペースを押す' },
     tutorialBriefing: [
-      { lines: ['隊員、作戦を開始する。君の任務は地球という星の偵察だ。', 'UFOの燃料を使い切る[[5分]]の間に、地球でできる限り多くの任務をこなして帰還しろ！'] },
-      { lines: ['Eボタンでビームを操作し、仲間の猫を救出したり物体を吸収できる。', '物体を吸収するほど機体は大きくなる。できるだけ多く吸収しろ！', 'そして[[機体が大きくなるほどビームも強くなり、より大きく重い物体まで吸収できる]]ようになる。'] },
-      { lines: ['Qボタンでレーザーを撃ち、敵を倒せる！', '口で言ってもわからん。今すぐQを一度押してみろ。'], wait: 'laser' },
+      { lines: ['隊員、作戦を開始する。君の任務は地球という星の偵察だ。', '機体の燃料を使い切る[[5分]]の間に、地球でできる限り多くの任務をこなして帰還しろ！'] },
+      { lines: ['Eボタンでビームを操作し、仲間の猫を救出したり物体を吸収したりできる。', '物体を吸収するほど機体は大きくなる。できるだけ多く吸収しろ！', 'そして[[機体が大きくなるほどビームも強くなり、より大きく重い物体まで吸収できる]]ようになる。'] },
+      { lines: ['Qボタンでレーザーを撃って敵を倒せる！', '言葉だけではわからん。今すぐQを一度押してみろ。'], wait: 'laser' },
       { lines: ['よし、それがレーザーだ。緊急時に使え！', '次はターボだ。スペースを押せば機体が一気に速くなる。今、押してみろ。'], wait: 'turbo' },
       { lines: ['それだ！ ターボは使える時間に限りがある。慎重に使え！', 'そしてターボ中にEを押すと、ビームが太く、遠く、強くなる。覚えておけ。'] },
       { lines: ['隊員、最初の任務だ。あの猫を救出しろ。Eキーを長押しだ。', 'ターボも一緒に使えばビームが広がって楽になるぞ。'], wait: 'beam' },
-      { lines: ['よし、合格だ。', 'いいか、物体を吸収しすぎると[[重量で宇宙船が墜落する]]。', 'それと飛行中に[[建物にぶつかってもライフが減る]]。建物は避けて飛べ！'], auto: 6.4 },
+      { lines: ['よし、合格だ。', 'いいか、物体を吸収しすぎると[[重量で機体が墜落する]]。', 'それと飛行中に[[建物にぶつかってもライフが減る]]。建物は避けて飛べ！'], auto: 6.4 },
       { lines: ['左側に任務を一つずつ表示する。全部で五つ、順番に片付けろ。', '最初の目標は機体の上の矢印が指している。その方向へ飛べ。', '幸運を祈る。'], auto: 5.2 },
     ],
     missionStageComplete: (previous, next) => `ミッション${previous}完了 · 次はミッション${next}！`,
@@ -602,7 +609,7 @@ export const STRINGS: Record<Language, Strings> = {
     collapsedTitle: '地球、意外とやるな',
     survivedLead: '地球偵察に成功しました、ニャッホー！',
     missionFailedLead: '時間内にミッションを達成できず、地球偵察任務は失敗しました。',
-    collapsedLead: '撃墜されて偵察は失敗。でも猫の話は持ち帰れます',
+    collapsedLead: '撃墜されて偵察は失敗しましたが、猫の話だけは持ち帰れました',
     finalScore: '最終スコア',
     statSurvived: '生存時間',
     statMass: '最終質量',
@@ -623,7 +630,7 @@ export const STRINGS: Record<Language, Strings> = {
     rankingFailed: '記録を送信できませんでした。もう一度お試しください。',
     rankingLocalNote: 'シート未接続のため、このブラウザにのみ保存しました',
     rankingSaved: (rank: number) => `${rank}位で登録しました！`,
-    rankingSavedOffBoard: '登録しました！ 今回はランク圏外です。',
+    rankingSavedOffBoard: '登録しました！ 今回はランキング圏外でした。',
     rankingNameRequired: '名前を1文字以上入力してください',
     rankingColRank: '順位',
     rankingColName: '名前',
@@ -734,18 +741,18 @@ export const STRINGS: Record<Language, Strings> = {
     missionDebrief: {
       'visit-mystery-circle': [
         'Good find, pilot. That is a mystery circle our comrades left on Earth.',
-        'Fly through one and the craft [[surges forward]] and the [[turbo gauge refills]].',
-        'A parts item that raises your stats hovers over every circle. Always take it.',
+        'Fly through one and the craft [[surges forward]] while the [[turbo gauge refills]].',
+        'An upgrade part that raises your stats hovers over every circle. Always take it.',
         'Route the whole recon through the circles. That is how you get home.',
       ],
       'absorb-water': [
         'Water pumped, pilot. Now you have felt it for yourself.',
         'Running the beam over a water tile [[slows the craft down badly]]. Water is that heavy.',
-        'Unless a mission asks for it, keep the beam off the water. Being slow where you cannot run is the worst place to be.',
+        'Unless a mission asks for it, keep the beam off the water. Nothing is worse than being slow somewhere you cannot run.',
       ],
       'absorb-samples': [
         'Well done! The sample collection mission is complete.',
-        'But do not stop here. Keep absorbing as many Earth samples with the beam as you possibly can before you come home!',
+        'But do not stop here. Keep absorbing as many Earth samples as you possibly can with the beam before you come home!',
         'The more you swallow, the bigger the craft gets. That size is your strength.',
       ],
       'wreck-city': [
@@ -768,7 +775,7 @@ export const STRINGS: Record<Language, Strings> = {
     briefingWaitHint: { beam: 'HOLD E', laser: 'PRESS Q', turbo: 'PRESS SPACE' },
     tutorialBriefing: [
       { lines: ['Pilot, begin the operation. Your mission is to recon the planet called Earth.', 'You have [[five minutes]] - one full tank - so run as many missions on Earth as you can and come home!'] },
-      { lines: ['Press E to use the beam to rescue allied cats or absorb objects.', 'The craft grows as it absorbs objects, so absorb as many as possible!', 'And [[the bigger the craft, the stronger the beam - bigger, heavier things become food]].'] },
+      { lines: ['Press E to run the beam and rescue allied cats or absorb objects.', 'The craft grows as it absorbs objects, so absorb as many as possible!', 'And [[the bigger the craft, the stronger the beam - bigger, heavier things become food]].'] },
       { lines: ['Press Q to fire the laser and defeat enemies!', 'Being told is not the same as knowing. Press Q once, right now.'], wait: 'laser' },
       { lines: ['Good, that is the laser. Save it for emergencies!', 'Turbo is next. SPACE makes the craft far faster. Press it now.'], wait: 'turbo' },
       { lines: ['That is it! Turbo time is limited, so use it carefully!', 'And holding E while turbo is on makes the beam wider, longer and stronger. Remember that.'] },
