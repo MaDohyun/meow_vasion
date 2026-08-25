@@ -70,6 +70,28 @@ export const MISSION_DEBRIEF_IDS: readonly MissionDebriefId[] = [
   'wreck-city',
 ]
 
+/**
+ * The general's unscheduled words, raised by something the pilot ran into
+ * rather than by a rung being cleared.
+ *
+ * `drone-mine` fires the first time a suicide drone is spotted ahead of the
+ * craft. It is there because the beam's one exception cannot be discovered
+ * safely: everything else in the sky is either eaten or too heavy to move,
+ * while a mine is drawn in like a meal and detonates on arrival. A pilot who
+ * learns that by doing it has already paid five life for the lesson, so the
+ * general says it once, while the shell is still a dot ahead.
+ */
+export type MissionAdvisoryId = 'drone-mine'
+
+export const MISSION_ADVISORY_IDS: readonly MissionAdvisoryId[] = ['drone-mine']
+
+/** Everything the general can appear over a frozen world to say. The HUD box
+ *  and the string table are shared, because the pilot is being talked to by
+ *  the same face either way. */
+export type GeneralWordId = MissionDebriefId | MissionAdvisoryId
+
+export const GENERAL_WORD_IDS: readonly GeneralWordId[] = [...MISSION_DEBRIEF_IDS, ...MISSION_ADVISORY_IDS]
+
 export const MISSION_TARGETS: Record<MissionQuestId, number> = {
   // One circle. The point of the rung is that the pilot goes to look at one,
   // not that they farm them; the general's debrief does the rest of the work.
@@ -126,10 +148,14 @@ export type MissionState = {
   quest: MissionQuest | null
   stageStartedAt: number
   totals: MissionTotals
-  /** Missions finished and still owing the pilot a word from the general.
-   *  A queue rather than a slot: a rung can open already full and close on
-   *  the same frame, and neither debrief should be lost. */
-  debriefs: MissionDebriefId[]
+  /** Words the general still owes the pilot - missions finished, plus the
+   *  advisories raised in the field. A queue rather than a slot: a rung can
+   *  open already full and close on the same frame, and neither should be
+   *  lost. */
+  debriefs: GeneralWordId[]
+  /** Advisories already given this run. They are once each: a warning
+   *  repeated every time a mine comes into view is a warning nobody reads. */
+  advisories: MissionAdvisoryId[]
   /** Bumped whenever the board changes shape, so the HUD can pulse without
    *  diffing quests. */
   revision: number
@@ -160,6 +186,7 @@ export function createMissionState(): MissionState {
     stageStartedAt: 0,
     totals: { circles: [], water: 0, absorbScore: 0, destroyScore: 0 },
     debriefs: [],
+    advisories: [],
     revision: 0,
   }
 }
@@ -308,12 +335,43 @@ export function missionHasQuest(state: MissionState, id: MissionQuestId) {
   return state.quest?.id === id && !state.quest.complete
 }
 
-/** The debrief the general still owes, without consuming it. */
-export function peekMissionDebrief(state: MissionState): MissionDebriefId | null {
+/** The word the general still owes, without consuming it. */
+export function peekMissionDebrief(state: MissionState): GeneralWordId | null {
   return state.debriefs[0] ?? null
 }
 
-/** Consumes one debrief. Called when the pilot clicks the general away. */
-export function takeMissionDebrief(state: MissionState): MissionDebriefId | null {
+/** Consumes one. Called when the pilot clicks the general away. */
+export function takeMissionDebrief(state: MissionState): GeneralWordId | null {
   return state.debriefs.shift() ?? null
+}
+
+/**
+ * Puts a field advisory in the general's queue, once per run.
+ *
+ * Returns whether it was actually queued, so the runtime can stop the beam
+ * and force a publish on exactly the frame it happens - the same handling a
+ * mission debrief gets, because on screen it is the same box over the same
+ * frozen world.
+ *
+ * Nothing is raised during the opening tutorial (the general is already
+ * mid-briefing, and the sky is empty until the first cat is caught) or after
+ * the recon closes (there is no run left to warn about).
+ *
+ * `missionAdvisoryGiven` above answers the same question without queueing, so
+ * a caller watching for the trigger every frame can stop looking once the
+ * warning has been given.
+ */
+export function missionAdvisoryGiven(state: MissionState, id: MissionAdvisoryId) {
+  return state.advisories.includes(id)
+}
+
+export function queueMissionAdvisory(state: MissionState, id: MissionAdvisoryId) {
+  if (state.stage < 1 || state.stage > MISSION_COUNT) return false
+  if (state.advisories.includes(id)) return false
+  state.advisories.push(id)
+  state.debriefs.push(id)
+  // The board itself did not change, so `revision` stays where it is: bumping
+  // it would pulse the mission panel over a warning that has nothing to do
+  // with the rung on it.
+  return true
 }

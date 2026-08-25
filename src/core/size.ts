@@ -297,15 +297,23 @@ export function beamApertureForSize(size: number) {
 }
 
 /**
- * Doubling the craft pulls the camera back by half again, not by double.
+ * Doubling the craft pulls the camera back by seventy percent, not by double.
  *
  * The camera used to retreat faster than the craft grew - a twofold craft got
  * a 2.25-fold pull-back - so growing changed the picture without ever making
  * the player feel bigger, which is the one thing the whole run is about. Under
  * this exponent the saucer takes up more of the frame the larger it gets,
  * which is the point, while still leaving room to see what it is reaching for.
+ *
+ * It sat at 1.5, which lost that race by too much at the top of the range: a
+ * ceiling-height hull is 81m across and the rig only stood 58m off it, so the
+ * saucer was wider than the frame and the city it was hunting sat behind it.
+ * Being big has to stay legible - if you cannot see what you are eating, the
+ * reward for growing reads as a penalty. This keeps the hull growing on screen
+ * across the whole run (32x of hull against 12x of camera) while leaving the
+ * grown craft inside its own picture.
  */
-export const CAMERA_GROWTH_PULL_BACK = 1.5
+export const CAMERA_GROWTH_PULL_BACK = 1.7
 export const CAMERA_SIZE_EXPONENT = Math.log2(CAMERA_GROWTH_PULL_BACK)
 
 export function clampSize(size: number) {

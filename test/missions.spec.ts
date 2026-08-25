@@ -8,8 +8,10 @@ import {
   closeRecon,
   createMissionState,
   isReconComplete,
+  missionAdvisoryGiven,
   missionHasQuest,
   peekMissionDebrief,
+  queueMissionAdvisory,
   recordMissionEvent,
   startFinalMission,
   startMissionOne,
@@ -179,6 +181,46 @@ describe('the five-mission ladder', () => {
     // Finishing the run is the results screen's to report, not the general's
     // to freeze the game over.
     expect(peekMissionDebrief(last)).toBeNull()
+  })
+
+  it('gives the drone-mine warning once, and only inside a live run', () => {
+    const state = createMissionState()
+    // Stage 0 is the opening tutorial: the general is already talking and the
+    // sky is empty, so there is nothing to warn about yet.
+    expect(queueMissionAdvisory(state, 'drone-mine')).toBe(false)
+    expect(peekMissionDebrief(state)).toBeNull()
+
+    startMissionOne(state, 0)
+    const boardBefore = state.revision
+    expect(queueMissionAdvisory(state, 'drone-mine')).toBe(true)
+    expect(missionAdvisoryGiven(state, 'drone-mine')).toBe(true)
+    expect(peekMissionDebrief(state)).toBe('drone-mine')
+    // A warning is not a change to the board, so the mission panel does not
+    // pulse over it.
+    expect(state.revision).toBe(boardBefore)
+
+    // Once each. Meeting the next mine does not stop the game again.
+    expect(queueMissionAdvisory(state, 'drone-mine')).toBe(false)
+    expect(takeMissionDebrief(state)).toBe('drone-mine')
+    expect(peekMissionDebrief(state)).toBeNull()
+    expect(queueMissionAdvisory(state, 'drone-mine')).toBe(false)
+
+    // And nothing is raised once the recon has closed.
+    const closed = atStage(MISSION_COUNT, 60)
+    closeRecon(closed, MISSION_RUN_SECONDS)
+    expect(isReconComplete(closed)).toBe(true)
+    expect(queueMissionAdvisory(closed, 'drone-mine')).toBe(false)
+  })
+
+  it('keeps a warning in the queue behind the debrief it landed with', () => {
+    // Both go through the same queue, so a mine spotted on the frame a rung
+    // cleared cannot overwrite the general's word about the rung.
+    const state = createMissionState()
+    startMissionOne(state, 0)
+    clear(state, 10)
+    queueMissionAdvisory(state, 'drone-mine')
+    expect(takeMissionDebrief(state)).toBe('visit-mystery-circle')
+    expect(takeMissionDebrief(state)).toBe('drone-mine')
   })
 
   it('drops the developer drill straight onto the last rung', () => {

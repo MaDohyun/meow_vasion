@@ -28,7 +28,7 @@ import {
 } from './core/hazards'
 import { SIZE_MIN, SIZE_START, type SizeGainKind, type SizeProfile, bonusHeartsForSize, clampSize, growSize, growSizeBy, sizeProfile, ufoDiameter } from './core/size'
 import { MAX_HEALTH, createHealthState, damageHealth, healHealth, healthRatio, isDead, isRegenerating, raiseHealthMax, stepHealth, type HealthLossKind, type HealthState } from './core/health'
-import { BATTLESHIP_ALTITUDE, BATTLESHIP_LAUNCH_SECONDS, BATTLESHIP_TURRETS, activeEnemyCount, battleshipTurretPoint, createEnemyState, hitEnemy, resolveEnemyContacts, stepEnemies, stepEnemyProjectiles, syncEnemyTiers, waveLabelForTime, waveStageForTime, type EnemyKind, type EnemyState } from './core/enemies'
+import { BATTLESHIP_ALTITUDE, BATTLESHIP_LAUNCH_SECONDS, BATTLESHIP_TURRETS, activeEnemyCount, armMinesInBeam, battleshipTurretPoint, createEnemyState, droneMineInSight, hitEnemy, resolveEnemyContacts, stepEnemies, stepEnemyProjectiles, syncEnemyTiers, waveLabelForTime, waveStageForTime, type EnemyKind, type EnemyState } from './core/enemies'
 import {
   createLaserPool,
   createLaserBurstPool,
@@ -95,13 +95,15 @@ import {
   createMissionState,
   isReconComplete,
   missionHasQuest,
+  missionAdvisoryGiven,
   peekMissionDebrief,
+  queueMissionAdvisory,
   recordMissionEvent,
   startFinalMission,
   startMissionOne,
   syncMissionState,
   takeMissionDebrief,
-  type MissionDebriefId,
+  type GeneralWordId,
   type MissionQuest,
   type MissionState,
 } from './core/missions'
@@ -375,9 +377,10 @@ export type GameSnapshot = {
   missionQuest: MissionQuest | null
   /** Published so the HUD's "1/5" counter never hard-codes the ladder length. */
   missionCount: number
-  /** The mission the general is still owed a word about. While this is set
-   *  the simulation is frozen: see the debrief gate in advance(). */
-  missionDebrief: MissionDebriefId | null
+  /** What the general is still owed a word about - a finished mission, or a
+   *  field advisory like the first drone mine sighted. While this is set the
+   *  simulation is frozen: see the debrief gate in advance(). */
+  missionDebrief: GeneralWordId | null
   missionPulse: number
   missionBanner: MissionBanner | null
   tutorial: boolean
@@ -432,6 +435,18 @@ const QUALITY_STORAGE_KEY = 'ufo-attack-quality'
 const HUD_CONTROLS = '.mobile-controls, button, input, select, textarea, label, a'
 
 /**
+ * Where a mouse button is a click rather than a trigger.
+ *
+ * The fire buttons live on the mouse now, which means every click on the city
+ * shoots - and the briefing is a full-screen sheet the player clicks through
+ * while the run is already live. Its own click has to advance the briefing and
+ * nothing else, or a judge reading the general's lines fires the laser at
+ * every line break and clears the hands-on laser step without knowing it.
+ * Same for the lobby and the results sheet.
+ */
+const POINTER_FIRE_BLOCKERS = '.mobile-controls, .briefing-touch, .overlay, button, input, select, textarea, label, a'
+
+/**
  * Mirrors the query that reveals `.mobile-controls` in styles.css. The drag
  * reticle is part of that control scheme, so it turns up exactly where the
  * stick and the fire buttons do; a desktop that happens to have a touchscreen
@@ -462,10 +477,6 @@ type GameContextValue = {
   skipTutorial: () => void
   /** Dismisses the general's mission debrief and unfreezes the run. */
   dismissMissionDebrief: () => void
-  /** Jumps straight to a results screen for one ending, so the general's
-   *  sign-off can be read without flying five minutes a particular way first.
-   *  Reached only from the developer entrance - see previewEnding. */
-  previewEnding: (ending: RunEnding) => void
   quality: RenderQuality
   setQuality: (quality: RenderQuality) => void
   language: Language
@@ -1765,6 +1776,17 @@ export function GameProvider({ children }: { children: ReactNode }) {
   // whenever no drag is in flight, which is most of the time on a phone.
   const touchAim = useRef<{ pointerId: number; x: number; y: number } | null>(null)
   const mobile = useRef<MobileInput>({ throttle: 1, steer: 0, lookPitch: 0, vertical: 0, special: false, beam: false, laser: false, active: false })
+  /**
+   * The mouse's own trigger fingers.
+   *
+   * Left fires, right beams - the two things every player who has ever held a
+   * mouse already knows, and the reason they are worth having is that the hand
+   * doing the aiming is the hand doing the shooting. The keys stay: a laptop
+   * with no mouse holds a right-click down with two fingers on a trackpad
+   * while the same fingers are supposed to be steering, which is not a control
+   * scheme. Whichever the player reaches for first is the right one.
+   */
+  const mouseFire = useRef({ laser: false, beam: false })
   const publishAccumulator = useRef(0)
   const publish = useCallback(() => setSnapshot(snapshotOf(runtime.current)), [])
 
@@ -1816,7 +1838,14 @@ export function GameProvider({ children }: { children: ReactNode }) {
       }
       pointer.current = absoluteAim({ x: event.clientX, y: event.clientY }, bounds)
     }
+    const firing = (event: PointerEvent) =>
+      !(event.target instanceof Element && event.target.closest(POINTER_FIRE_BLOCKERS))
+    const setFire = (button: number, held: boolean) => {
+      if (button === 0) mouseFire.current.laser = held
+      else if (button === 2) mouseFire.current.beam = held
+    }
     const press = (event: PointerEvent) => {
+      if (event.pointerType === 'mouse' && firing(event)) setFire(event.button, true)
       if (!drags(event)) { move(event); return }
       // A thumb on the stick or a fire button is already saying something; it
       // must not drag the reticle across the city on the way.
@@ -1828,26 +1857,46 @@ export function GameProvider({ children }: { children: ReactNode }) {
       mobile.current.active = true
     }
     const lift = (event: PointerEvent) => {
+      if (event.pointerType === 'mouse') setFire(event.button, false)
       // The reticle stays where the finger left it: aim with one thumb, fire
       // with the other.
       if (touchAim.current?.pointerId === event.pointerId) touchAim.current = null
     }
-    const leave = () => { pointer.current = { x: 0, y: 0 } }
+    /** A button released outside the window never sends its pointerup here, so
+     *  the bitmask on the next move is the only thing that can clear it. */
+    const syncButtons = (event: PointerEvent) => {
+      if (event.pointerType !== 'mouse') return
+      if ((event.buttons & 1) === 0) mouseFire.current.laser = false
+      if ((event.buttons & 2) === 0) mouseFire.current.beam = false
+    }
+    const dropFire = () => { mouseFire.current.laser = false; mouseFire.current.beam = false }
+    // Right-hold is the beam, so the menu it would otherwise open has to go -
+    // but only over the city. A right-click on the ranking name box is still a
+    // right-click.
+    const menu = (event: MouseEvent) => {
+      if (event.target instanceof Element && event.target.closest(POINTER_FIRE_BLOCKERS)) return
+      event.preventDefault()
+    }
+    const leave = () => { pointer.current = { x: 0, y: 0 }; dropFire() }
     window.addEventListener('keydown', down, { passive: false })
     window.addEventListener('keyup', up)
+    window.addEventListener('pointermove', syncButtons)
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerdown', press)
+    window.addEventListener('contextmenu', menu)
+    window.addEventListener('blur', dropFire)
     window.addEventListener('pointerup', lift)
     window.addEventListener('pointercancel', lift)
-    document.documentElement.addEventListener('mouseleave', leave)
     return () => {
       window.removeEventListener('keydown', down)
       window.removeEventListener('keyup', up)
+      window.removeEventListener('pointermove', syncButtons)
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerdown', press)
+      window.removeEventListener('contextmenu', menu)
+      window.removeEventListener('blur', dropFire)
       window.removeEventListener('pointerup', lift)
       window.removeEventListener('pointercancel', lift)
-      document.documentElement.removeEventListener('mouseleave', leave)
     }
   }, [])
 
@@ -1865,11 +1914,27 @@ export function GameProvider({ children }: { children: ReactNode }) {
       lookPitch: -pointer.current.y,
       vertical: 0,
       special: Boolean(keys.current.Space),
-      beam: Boolean(keys.current.KeyE),
-      // E remains the tractor beam. Holding Q keeps the laser firing on its
-      // normal cooldown cadence instead of requiring repeated key presses.
-      laser: Boolean(keys.current.KeyQ),
-      laserContinuous: Boolean(keys.current.KeyQ),
+      // Q and W are the named pair, and the mouse buttons sit beside them.
+      //
+      // Which machine the player brought is not knowable - this is a browser
+      // game that gets handed to strangers - so both hands are wired and both
+      // are printed on screen. A mouse has the two buttons every player who
+      // has ever played anything already knows, and the hand doing the aiming
+      // is the hand doing the shooting. A laptop trackpad cannot hold a button
+      // down while the same fingers steer, so on that machine the keys are the
+      // whole of it.
+      //
+      // Q and W rather than Q and E because WASD is gone: with the left hand
+      // no longer anchored on the movement keys, the two verbs can sit on
+      // adjacent keys instead of straddling a dead one.
+      //
+      // E, F and D still answer, unprinted. Nothing is taken away from anyone
+      // who already learned a different pair.
+      beam: Boolean(keys.current.KeyE || keys.current.KeyF || keys.current.KeyW) || mouseFire.current.beam,
+      // Holding either key keeps the laser firing on its normal cooldown
+      // cadence instead of requiring repeated presses.
+      laser: Boolean(keys.current.KeyQ || keys.current.KeyD) || mouseFire.current.laser,
+      laserContinuous: Boolean(keys.current.KeyQ || keys.current.KeyD) || mouseFire.current.laser,
     }
     if (!mobile.current.active) return keyboard
     const { active: _active, ...mobileInput } = mobile.current
@@ -2233,6 +2298,22 @@ export function GameProvider({ children }: { children: ReactNode }) {
     // The craft's velocity goes in with its position: enemies lead the shot,
     // and the lead is computed from how it is actually moving.
     if (!tutorialAtStart) stepEnemies(game.enemies, game.drone.position, d, game.drone.velocity, game.sizeProfile.hitRadius)
+    // The first mine the pilot flies toward buys a word from the general.
+    // Checked here, right after the mines have moved, so the shell the
+    // warning is about is the one on screen behind the box - and skipped on
+    // the developer drill, which opens on the dreadnought and is not talked
+    // through anything. A queued advisory freezes the world exactly as a
+    // debrief does, so the beam has to be let go with it.
+    if (
+      !tutorialAtStart && !game.devRun &&
+      !missionAdvisoryGiven(game.mission, 'drone-mine') &&
+      droneMineInSight(game.enemies, game.drone.position, game.drone.heading)
+    ) {
+      if (queueMissionAdvisory(game.mission, 'drone-mine') && game.beamActive) {
+        game.beamActive = false
+        stopBeamSound()
+      }
+    }
     const mineExplosion = game.enemies.mineExplosion
     if (mineExplosion) {
       playDroneExplosionSound()
@@ -2327,6 +2408,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
     stepBeamObjects(game.crowds.objects, beamField, d, false)
     stepBeamObjects(game.hazards.objects, beamField, d)
     stepBeamObjects(game.enemies.slots, beamField, d)
+    // The cone is a fuse for mines rather than a tow rope: it never drags one
+    // in (they are beamImmune), it lights it where it stands and the same
+    // three tenths of a second run down in stepEnemies.
+    armMinesInBeam(game.enemies, beamField)
     // Weight decides what the craft can move; bulk decides what it can eat.
     //
     // This was POSITIVE_INFINITY, which switched the size half off entirely -
@@ -2545,29 +2630,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
     publish()
   }, [publish])
 
-  /**
-   * Opens the results screen on a chosen ending, from the lobby.
-   *
-   * Each of the four endings otherwise needs the whole five minutes flown a
-   * particular way to be seen once, and two of them need the run deliberately
-   * lost - which makes proof-reading the general's sign-off, or the layout at
-   * that length of text, a half-hour job per edit.
-   *
-   * Unguarded here on purpose: the lobby button is the gate (`devToolsEnabled`
-   * in the HUD), exactly as it is for the dreadnought drill. A second check in
-   * here would only mean the `?dev=1` entrance silently did nothing on a
-   * deployed build, which is the one place the endings actually get looked at.
-   */
-  const previewEnding = useCallback((ending: RunEnding) => {
-    const game = runtime.current
-    game.phase = 'results'
-    game.ending = ending
-    game.victory = isVictory(ending)
-    game.resultTitle = ending
-    game.devRun = true
-    publish()
-  }, [publish])
-
   const unlockTutorialControl = useCallback((control: TutorialControl) => {
     const game = runtime.current
     if (control === 'beam') game.tutorialBriefingReady = true
@@ -2668,7 +2730,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   }, [publish])
 
   const setMobileInput = useCallback((input: Partial<MobileInput>) => { Object.assign(mobile.current, input) }, [])
-  const value = useMemo<GameContextValue>(() => ({ runtime, snapshot, readInput, advance, start, startBattleshipDrill, restart, unlockTutorialControl, skipTutorial, dismissMissionDebrief, previewEnding, setMobileInput, quality, setQuality, language, setLanguage, t: STRINGS[language] }), [advance, dismissMissionDebrief, previewEnding, quality, readInput, restart, startBattleshipDrill, unlockTutorialControl, skipTutorial, setMobileInput, setQuality, snapshot, start, language, setLanguage])
+  const value = useMemo<GameContextValue>(() => ({ runtime, snapshot, readInput, advance, start, startBattleshipDrill, restart, unlockTutorialControl, skipTutorial, dismissMissionDebrief, setMobileInput, quality, setQuality, language, setLanguage, t: STRINGS[language] }), [advance, dismissMissionDebrief, quality, readInput, restart, startBattleshipDrill, unlockTutorialControl, skipTutorial, setMobileInput, setQuality, snapshot, start, language, setLanguage])
   return <GameContext.Provider value={value}>{children}</GameContext.Provider>
 }
 

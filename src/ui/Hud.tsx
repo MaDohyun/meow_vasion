@@ -35,7 +35,7 @@ function MissionPanel() {
       <section className="mission-panel panel tutorial-mission">
         <span className="eyebrow">{t.tutorialMissionEyebrow}</span>
         <strong>{t.tutorialMissionLead}</strong>
-        <p><b>E</b> {t.tutorialMissionAction}</p>
+        <p><b>{t.keyRightClick} / W</b> {t.tutorialMissionAction}</p>
       </section>
     )
   }
@@ -171,8 +171,12 @@ function ControlTips() {
     // narrow column and "flies where you look" wraps onto two lines in it.
     [['AUTO'], t.howToMove],
     [['MOUSE'], t.controlAim],
-    [['E'], t.controlBeam],
-    [['Q'], t.controlLaser],
+    // Both hands named on the rows that fire, because which machine the
+    // player brought is not knowable: a mouse has the two buttons everyone
+    // already knows, and a trackpad cannot hold one down while the same
+    // fingers steer.
+    [[t.keyRightClick, 'W'], t.controlBeam],
+    [[t.keyLeftClick, 'Q'], t.controlLaser],
     [['SPACE'], t.controlBoost],
   ]
 
@@ -444,30 +448,6 @@ export function devToolsEnabled() {
   return /(?:^|[?&])dev=1(?:&|$)/.test(window.location.search) || window.location.hash === '#dev'
 }
 
-/**
- * The lobby's ending previewer, behind the same developer gate as the drill.
- *
- * Three endings, each of which otherwise costs a full five-minute run flown a
- * particular way to look at once - and one of them cannot be reached at all
- * without deliberately losing. Reading what the general says on each, and
- * whether the sign-off still fits the card at that length, is a thing to do
- * in a few seconds rather than in half an hour.
- */
-function EndingPreview() {
-  const { previewEnding, t } = useGame()
-  if (!devToolsEnabled()) return null
-  const endings: RunEnding[] = ['recon', 'missionFailed', 'downed']
-  return (
-    <div className="lobby-ending-preview" role="group" aria-label={t.devEndings}>
-      {endings.map((ending) => (
-        <button key={ending} className="dev-button" type="button" onMouseEnter={playMenuHoverSound} onClick={() => previewEnding(ending)}>
-          <span aria-hidden="true">⚙</span>{ending}
-        </button>
-      ))}
-    </div>
-  )
-}
-
 function Intro() {
   const { start, startBattleshipDrill, t, language, setLanguage } = useGame()
   const [optionsOpen, setOptionsOpen] = useState(false)
@@ -561,7 +541,6 @@ function Intro() {
             <span aria-hidden="true">🔊</span>{t.soundBlocked}
           </button>
         )}
-        <EndingPreview />
       </section>
     </div>
   )
@@ -1049,7 +1028,10 @@ export function Hud() {
             className="tutorial-e-prompt"
             style={{ left: `${50 + snapshot.aimX * 50}%`, top: `${50 + snapshot.aimY * 50}%` }}
           >
-            <b>E</b>
+            {/* Both, because this prompt is the first thing a new player is
+                asked to do and the machine they brought is not knowable. */}
+            <b>{t.keyRightClick}</b>
+            <b>W</b>
             <span>{t.tutorialPressE}</span>
           </div>
         )}

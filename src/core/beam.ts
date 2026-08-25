@@ -38,6 +38,10 @@ export const BEAM_ABSORB_TIME = 0.24
  *
  * The cost of keeping hold is the point: everything you catch hangs off you
  * and slows you down until you eat it or dump it.
+ *
+ * "What it catches" is the load-bearing half. Only what the weight band lets
+ * the beam actually lift is caught at all; the cone playing over something too
+ * heavy grips nothing and holds nothing (see stepBeamObjects).
  */
 export const BEAM_HOLD_TIME = 0.35
 
@@ -506,16 +510,38 @@ export function stepBeamObjects(objects: BeamObject[], field: BeamField, dt: num
       continue
     }
     const inside = isInsideBeam(object, field)
-    // Grip only lapses once the beam is off. While it is on, a load stays
-    // caught even after the craft has flown past it.
-    object.hold = inside && field.active
-      ? BEAM_HOLD_TIME
-      : field.active
-        ? (object.hold ?? 0)
-        : Math.max(0, (object.hold ?? 0) - d)
+    const liftScale = beamLiftScale(object.mass, field.gripStrength ?? 12)
+    // Only a load the beam can actually lift is gripped, and only a gripped
+    // load keeps its hold after leaving the cone.
+    //
+    // The retention rule below - grip does not lapse while the beam is on - is
+    // about carrying what you caught in passing, and it was being handed to
+    // things the beam never caught at all. A tree, a pylon, a bus shelter, a
+    // fighter: anything above the weight band takes `liftScale` 0, is never
+    // moved a millimetre, and used to be stamped held for the rest of the
+    // flight anyway, from any distance, simply for having been grazed once.
+    //
+    // That is the bug behind objects sailing in from off-screen as the craft
+    // grows. Strength climbs with the hull and never falls, so the moment
+    // growth lifted the band, every prop the cone had swept over the whole run
+    // - a city's worth of them, out to the far edge of the simulation - became
+    // liftable at once and was hauled in from wherever it stood, the spring
+    // pulling harder the further away it was. It also left half the sky
+    // switched off: enemies skip their AI, their contact damage and the threat
+    // count while `inBeam` is set (see core/enemies), so a beginner's beam was
+    // a permanent freeze ray on every helicopter and fighter it brushed past.
+    //
+    // `inBeam` still goes true for an unliftable object while the cone is
+    // physically on it - that is what the player sees, and the ballast and
+    // static-prop rules already ask `tether` rather than this. What it no
+    // longer does is outlive the cone. To catch what it once could not lift,
+    // the grown craft has to fly over it again.
+    const gripped = liftScale > 0
+    object.hold = gripped && field.active
+      ? (inside ? BEAM_HOLD_TIME : (object.hold ?? 0))
+      : Math.max(0, (object.hold ?? 0) - d)
     const captured = field.active && (inside || (object.hold ?? 0) > 0)
     object.inBeam = captured
-    const liftScale = beamLiftScale(object.mass, field.gripStrength ?? 12)
     const lifting = captured && liftScale > 0
 
     if (lifting) {

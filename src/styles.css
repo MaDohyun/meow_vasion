@@ -34,7 +34,7 @@ button { font: inherit; }
 .game-shell { position: fixed; inset: 0; background: #65c8cf; }
 .game-shell > canvas { display: block; width: 100% !important; height: 100% !important; image-rendering: pixelated; cursor: none; }
 
-.loading-overlay { position:fixed; inset:0; z-index:30; display:flex; align-items:center; justify-content:center; overflow:hidden; color:var(--cream); background:#031426 url('/lobby/meowvasion-lobby.png') center/cover no-repeat; isolation:isolate; }
+.loading-overlay { position:fixed; inset:0; z-index:30; display:flex; align-items:center; justify-content:center; overflow:hidden; color:var(--cream); background:#031426 url('/lobby/meowvasion-lobby-abduction.png') center/cover no-repeat; isolation:isolate; }
 .loading-overlay::before { content:""; position:absolute; inset:0; z-index:-1; background:linear-gradient(90deg,rgba(1,8,20,.68),rgba(1,8,20,.82) 42%,rgba(1,8,20,.6)),linear-gradient(180deg,rgba(2,11,26,.25),rgba(2,11,26,.7)); backdrop-filter:blur(2px); }
 .loading-overlay::after { content:""; position:absolute; inset:0; z-index:-1; background:repeating-linear-gradient(0deg,rgba(255,255,255,.028) 0 1px,transparent 1px 4px); box-shadow:inset 0 0 130px 28px #010914; opacity:.72; }
 .loading-grid { position:absolute; inset:0; z-index:-1; opacity:.1; background-image:linear-gradient(rgba(100,241,238,.3) 1px,transparent 1px),linear-gradient(90deg,rgba(100,241,238,.3) 1px,transparent 1px); background-size:48px 48px; mask-image:radial-gradient(circle at 50% 50%,#000,transparent 68%); animation:loading-drift 8s linear infinite; }
@@ -267,7 +267,7 @@ button { font: inherit; }
 .reticle i:last-child::after { top:0; right:0; width:2px; height:8px; }
 
 .tutorial-e-prompt { position:absolute; display:flex; align-items:center; gap:6px; transform:translate(-50%, 24px); pointer-events:none; animation: warning-pulse .6s steps(2) infinite; }
-.tutorial-e-prompt b { display:flex; align-items:center; justify-content:center; width:32px; height:32px; background:var(--cream); color:var(--ink); border:2px solid var(--ink); border-radius:6px; font-size:18px; font-weight:1000; box-shadow:2px 2px 0 rgba(0,0,0,.4); }
+.tutorial-e-prompt b { display:flex; align-items:center; justify-content:center; min-width:32px; padding:0 8px; height:32px; background:var(--cream); color:var(--ink); border:2px solid var(--ink); border-radius:6px; font-size:18px; font-weight:1000; box-shadow:2px 2px 0 rgba(0,0,0,.4); }
 .tutorial-e-prompt span { padding:5px 11px; background:rgba(20,16,32,.88); color:var(--cream); border:2px solid var(--cream); font-size:14px; font-weight:1000; letter-spacing:.5px; white-space:nowrap; }
 
 /* The general's tutorial briefing: a portrait plus a VN-style text box, sat
@@ -319,7 +319,7 @@ button { font: inherit; }
   justify-content:center;
   overflow:hidden;
   color:var(--cream);
-  background:#041528 url('/lobby/meowvasion-lobby.png') center/cover no-repeat;
+  background:#041528 url('/lobby/meowvasion-lobby-abduction.png') center/cover no-repeat;
   isolation:isolate;
 }
 .intro-overlay::before {
@@ -390,13 +390,6 @@ button { font: inherit; }
    the options panel so a player who cannot read the menu never has to guess
    which button opens the settings. Each label is set in its own language. */
 .lobby-language { z-index:2; display:flex; align-items:center; justify-content:center; gap:7px; margin-top:13px; }
-/* Development-only ending previewer. Deliberately plain: it is a tool, not
-   part of the lobby, and it is not in a production bundle at all. */
-.lobby-ending-preview { z-index:2; display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:6px; margin-top:10px; }
-/* Same dashed workshop door as the drill button, so the two developer
-   entrances read as one thing rather than as two different affordances. */
-.lobby-ending-preview .dev-button { display:flex; align-items:center; gap:6px; padding:7px 11px; color:rgba(226,238,255,.72); background:rgba(3,17,37,.5); border:2px dashed rgba(226,238,255,.34); font-family:inherit; font-size:9px; font-weight:1000; letter-spacing:1.4px; cursor:pointer; }
-.lobby-ending-preview .dev-button:hover { color:var(--cream); border-color:rgba(255,224,95,.7); }
 .lobby-language button { padding:7px 13px; color:rgba(233,231,214,.82); background:rgba(3,17,37,.72); border:2px solid rgba(100,241,238,.45); box-shadow:3px 3px 0 #031326; font-size:9px; font-weight:1000; letter-spacing:1.4px; cursor:pointer; }
 .lobby-language button:hover { color:var(--cream); border-color:rgba(100,241,238,.85); transform:translate(2px,2px); box-shadow:1px 1px 0 #031326; }
 .lobby-language button.selected { color:var(--ink); background:var(--cyan); border-color:var(--cream); }
@@ -410,13 +403,17 @@ button { font: inherit; }
 
 /* The field manual uses code-drawn diagrams over the same key art as the
    lobby. Controls live here rather than competing with the title screen. */
-.howto-overlay { overflow:hidden; background:#031426 url('/lobby/meowvasion-lobby.png') center/cover no-repeat; isolation:isolate; }
+.howto-overlay { overflow:hidden; background:#031426 url('/lobby/meowvasion-lobby-abduction.png') center/cover no-repeat; isolation:isolate; }
 .howto-overlay::before { content:""; position:absolute; inset:0; z-index:-1; background:linear-gradient(135deg,rgba(1,8,20,.84),rgba(3,19,39,.76)); backdrop-filter:blur(5px); }
 .howto-overlay::after { content:""; position:absolute; inset:0; z-index:-1; background:repeating-linear-gradient(0deg,rgba(255,255,255,.022) 0 1px,transparent 1px 4px); box-shadow:inset 0 0 120px rgba(0,5,16,.82); }
-.howto-card { position:relative; z-index:1; display:flex; align-items:center; flex-direction:column; gap:11px; width:min(94vw,960px); max-height:calc(100vh - 36px); padding:19px 22px 18px; overflow-y:auto; color:var(--cream); background:linear-gradient(145deg,rgba(3,18,38,.96),rgba(5,27,49,.91)); border:1px solid rgba(100,241,238,.72); box-shadow:0 0 0 5px rgba(2,13,29,.72),12px 12px 0 rgba(0,6,18,.56),0 0 54px rgba(31,226,222,.09); scrollbar-color:var(--cyan) rgba(2,13,29,.8); }
-.howto-card::before,.howto-card::after { content:""; position:absolute; width:24px; height:24px; border-color:var(--yellow); }
-.howto-card::before { top:-1px; left:-1px; border-top:3px solid; border-left:3px solid; }
-.howto-card::after { right:-1px; bottom:-1px; border-right:3px solid; border-bottom:3px solid; }
+.howto-card-shell { position:relative; z-index:1; width:min(94vw,960px); max-height:calc(100vh - 36px); overflow:hidden; color:var(--cream); background:linear-gradient(145deg,rgba(3,18,38,.96),rgba(5,27,49,.91)); border:1px solid rgba(100,241,238,.72); box-shadow:0 0 0 5px rgba(2,13,29,.72),12px 12px 0 rgba(0,6,18,.56),0 0 54px rgba(31,226,222,.09); }
+.howto-card { display:flex; align-items:center; flex-direction:column; gap:11px; width:100%; max-height:calc(100vh - 38px); padding:19px 30px 18px 22px; overflow-y:scroll; scrollbar-width:none; }
+.howto-card::-webkit-scrollbar { width:0; height:0; }
+.howto-card-shell::before,.howto-card-shell::after { content:""; position:absolute; z-index:4; width:24px; height:24px; border-color:var(--yellow); pointer-events:none; }
+.howto-card-shell::before { top:-1px; left:-1px; border-top:3px solid; border-left:3px solid; }
+.howto-card-shell::after { right:-1px; bottom:-1px; border-right:3px solid; border-bottom:3px solid; }
+.howto-scrollbar { position:absolute; top:7px; right:5px; bottom:7px; z-index:3; width:11px; padding:1px; background:rgba(2,13,29,.9); border:1px solid rgba(100,241,238,.48); pointer-events:none; }
+.howto-scrollbar i { position:absolute; left:1px; right:1px; min-height:28px; background:var(--cyan); box-shadow:0 0 8px rgba(100,241,238,.35); }
 .howto-eyebrow { color:var(--cyan); font-size:11px; font-weight:1000; letter-spacing:3px; }
 .howto-title { margin:0 0 2px; color:var(--cream); font-family:Impact,"Arial Black",sans-serif; font-size:clamp(28px,4vw,42px); letter-spacing:3px; text-shadow:3px 3px 0 rgba(255,103,81,.82); }
 .howto-panels { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; width:100%; }
@@ -608,7 +605,7 @@ button { font: inherit; }
 }
 
 @media (max-width:760px) {
-  .loading-overlay { background-image:url('/lobby/meowvasion-lobby-mobile.png'); }
+  .loading-overlay { background-image:url('/lobby/meowvasion-lobby-mobile-abduction.png'); }
   .loading-frame { inset:10px; }
   .loading-console { width:calc(100vw - 40px); padding:24px 19px 21px; }
   .loading-emblem { width:52px; height:52px; margin-bottom:11px; }
@@ -616,8 +613,9 @@ button { font: inherit; }
   .loading-kicker { font-size:6px; letter-spacing:2.2px; }
   .loading-subtitle { margin-bottom:18px; font-size:5px; letter-spacing:1.7px; }
   .loading-checks { grid-template-columns:repeat(2,1fr); }
-  .howto-overlay { background-image:url('/lobby/meowvasion-lobby-mobile.png'); }
-  .howto-card { gap:9px; width:calc(100vw - 20px); max-height:calc(100vh - 20px); padding:15px 12px 13px; }
+  .howto-overlay { background-image:url('/lobby/meowvasion-lobby-mobile-abduction.png'); }
+  .howto-card-shell { width:calc(100vw - 20px); max-height:calc(100vh - 20px); }
+  .howto-card { gap:9px; max-height:calc(100vh - 22px); padding:15px 21px 13px 12px; }
   .howto-eyebrow { font-size:6px; letter-spacing:2px; }
   .howto-title { font-size:28px; }
   .howto-panels { grid-template-columns:minmax(0,1fr); gap:8px; }
@@ -628,7 +626,7 @@ button { font: inherit; }
   .howto-keys b { font-size:12px; }
   .howto-hazards { grid-template-columns:minmax(0,1fr); }
   .howto-hazards span { font-size:11px; }
-  .intro-overlay { --lobby-edge:10px; background-image:url('/lobby/meowvasion-lobby-mobile.png'); background-position:center; }
+  .intro-overlay { --lobby-edge:10px; background-image:url('/lobby/meowvasion-lobby-mobile-abduction.png'); background-position:center; }
   .intro-overlay::before { background:linear-gradient(180deg,rgba(1,8,18,.28) 0%,transparent 24%,rgba(1,8,18,.6) 34%,rgba(1,8,18,.26) 59%,rgba(1,8,18,.2) 100%); }
   .lobby-command-bar { top:8px; height:30px; padding:0 8px; font-size:6px; letter-spacing:1.4px; }
   .lobby-faction { gap:5px; }

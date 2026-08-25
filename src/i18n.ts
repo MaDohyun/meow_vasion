@@ -1,4 +1,4 @@
-import type { MissionDebriefId, MissionQuestId } from './core/missions'
+import type { GeneralWordId, MissionQuestId } from './core/missions'
 import type { RunEnding } from './core/ending'
 /**
  * UI strings, in one dictionary.
@@ -74,8 +74,6 @@ export type Strings = {
    *  Translated like everything else: whoever is testing the game reads the
    *  lobby in their own language too. */
   devDrill: string
-  /** Label on the developer ending previewer's button row. */
-  devEndings: string
   devRunNote: string
   howToTitle: string
   howToMove: string
@@ -87,6 +85,11 @@ export type Strings = {
   bgmVolume: string
   sfxVolume: string
   soundBlocked: string
+  /** Both hands are named, because the machine the player brought is not
+   *  knowable: a mouse has the two buttons every player already knows, and a
+   *  laptop trackpad cannot hold one down while the same fingers steer. */
+  keyLeftClick: string
+  keyRightClick: string
   /** The craft flies itself; these name what the player still decides. */
   controlFly: string
   controlAim: string
@@ -143,14 +146,16 @@ export type Strings = {
   mission: string
   missionCopy: Record<MissionQuestId, string>
   /**
-   * The general's word after each of the first four missions, one paragraph
-   * per line.
+   * The general's word after each of the first four missions, plus the field
+   * advisories he raises unprompted, one paragraph per line.
    *
    * These freeze the game while they are on screen, so they are written to be
    * read once and remembered: each one names a rule the pilot has just met by
-   * doing it rather than by being told about it in the opening briefing.
+   * doing it rather than by being told about it in the opening briefing. The
+   * one exception is `drone-mine`, which is said *before* the lesson can be
+   * paid for - the mine teaches itself at the cost of five life otherwise.
    */
-  missionDebrief: Record<MissionDebriefId, readonly string[]>
+  missionDebrief: Record<GeneralWordId, readonly string[]>
   /** The general's closing word on the results screen, one per ending. */
   endingRemark: Record<RunEnding, string>
   tutorialMissionEyebrow: string
@@ -306,9 +311,8 @@ export const STRINGS: Record<Language, Strings> = {
     options: '옵션',
     close: '닫기',
     howTo: '하는 방법',
-    devDrill: '개발자 모드 · 공중전함으로',
-    devEndings: '개발자 모드 · 엔딩 확인',
-    devRunNote: '개발자 모드로 시작한 판은 랭킹에 올리지 않습니다.',
+    devDrill: '공중전함 모드',
+    devRunNote: '공중전함 모드로 시작한 판은 랭킹에 올리지 않습니다.',
     howToTitle: 'UFO 조작법',
     howToMove: '자동 전진',
     howToAim: '마우스로 방향 조종',
@@ -319,6 +323,8 @@ export const STRINGS: Record<Language, Strings> = {
     bgmVolume: 'BGM',
     sfxVolume: '효과음',
     soundBlocked: '소리 켜기',
+    keyLeftClick: '좌클릭',
+    keyRightClick: '우클릭',
     controlFly: '보는 방향으로 자동 비행',
     controlAim: '조종 · 조준',
     controlBeam: '빔 유지 · 흡수',
@@ -392,6 +398,11 @@ export const STRINGS: Record<Language, Strings> = {
         '하지만 여기서 멈추지 마라. 계속해서 가능한 한 많이 레이저로 도시를 난장판으로 만들어서, 우리가 침략하기 쉽도록 해 놓고 돌아오도록!',
         '지구인들이 다시 세우기 전에 최대한 부숴라.',
       ],
+      'drone-mine': [
+        '대원, 앞에 붉은 구체가 보이나? 지구인들이 뿌린 자폭 드론이다.',
+        '조심해라. 저것도 [[빔에 그대로 빨려 들어온다]]. 하지만 표본이 아니라 폭탄이라, 끌려온 자리에서 [[터진다]].',
+        '안전한 순서는 하나다. 레이저(Q)로 드론을 먼저 지우고, 그 다음에 빔(E)으로 그 일대를 훑어라.',
+      ],
     },
     endingRemark: {
       recon: '완벽한 정찰이었다, 대원. 지구는 이제 우리 손안이다. 귀환을 허가한다!',
@@ -404,15 +415,15 @@ export const STRINGS: Record<Language, Strings> = {
     briefingTitle: '장군의 무전',
     briefingContinue: '화면을 클릭해서 계속',
     briefingSkip: '튜토리얼 건너뛰기',
-    briefingWaitHint: { beam: 'E를 꾹 누르기', laser: 'Q를 누르기', turbo: '스페이스를 누르기' },
+    briefingWaitHint: { beam: 'W 또는 우클릭 꾹 누르기', laser: 'Q 또는 좌클릭', turbo: '스페이스를 누르기' },
     tutorialBriefing: [
       { lines: ['대원, 작전에 들어간다. 대원의 임무는 지구라는 별의 정찰대 임무다.', '기체의 연료를 전부 쓰는 [[5분]] 동안, 지구에서 최대한 많은 임무를 수행하고 돌아오도록!'] },
       { lines: ['먼저 조종이다.', '[[마우스로 조준점을 움직이면 기체가 그쪽을 보고, 보는 방향 그대로 나아간다]].', '위를 보면 올라가고 아래를 보면 내려간다. 대원이 정할 것은 방향 하나뿐이다.'] },
-      { lines: ['E 버튼을 누르면 빔 조작을 통해 고양이 동무를 구출하거나 물체를 흡수할 수 있다.', '우리 기체는 물체를 흡수할수록 몸집이 커지니 가능한 한 많은 물체를 흡수하도록!', '그리고 [[몸집이 커질수록 빔의 힘도 세져서 더 크고 무거운 물체까지 흡수]]할 수 있게 된다.'] },
-      { lines: ['Q 버튼을 누르면 레이저를 쏘아 적을 무찌를 수 있다!', '말로만 들어서는 모른다. 지금 Q를 한 번 눌러 봐.'], wait: 'laser' },
+      { lines: ['W 버튼이나 마우스 우클릭으로 빔을 켜서 고양이 동무를 구출하거나 물체를 흡수할 수 있다.', '우리 기체는 물체를 흡수할수록 몸집이 커지니 가능한 한 많은 물체를 흡수하도록!', '그리고 [[몸집이 커질수록 빔의 힘도 세져서 더 크고 무거운 물체까지 흡수]]할 수 있게 된다.'] },
+      { lines: ['Q 버튼이나 마우스 좌클릭으로 레이저를 쏘아 적을 무찌를 수 있다!', '말로만 들어서는 모른다. 지금 한 번 눌러 봐.'], wait: 'laser' },
       { lines: ['좋다, 그게 레이저다. 위급할 때 쓰도록!', '다음은 터보다. 스페이스를 누르면 기체가 훨씬 빨라진다. 지금 눌러 봐.'], wait: 'turbo' },
-      { lines: ['그거다! 터보는 쓸 수 있는 시간이 정해져 있으니 주의해서 쓰도록!', '그리고 터보를 켠 채로 E를 누르면 빔이 더 굵고 멀리, 더 강하게 나간다. 기억해 둬라.'] },
-      { lines: ['대원, 첫 임무다. 저 고양이를 구출해 봐. E 키를 꾹 누르고 있으면 된다.', '터보를 같이 켜면 빔이 커져서 훨씬 수월할 거다.'], wait: 'beam' },
+      { lines: ['그거다! 터보는 쓸 수 있는 시간이 정해져 있으니 주의해서 쓰도록!', '그리고 터보를 켠 채로 빔을 켜면 더 굵고 멀리, 더 강하게 나간다. 기억해 둬라.'] },
+      { lines: ['대원, 첫 임무다. 저 고양이를 구출해 봐. W 키나 마우스 우클릭을 꾹 누르고 있으면 된다.', '터보를 같이 켜면 빔이 커져서 훨씬 수월할 거다.'], wait: 'beam' },
       { lines: ['좋아, 합격이다.', '명심해라, 대원. 빔에 너무 많이 매달면 [[무게 때문에 느려지고 고도가 내려간다]].', '그리고 비행 중 [[건물에 부딪혀도 생명력이 깎인다]]. 건물은 피해서 날아라!'], auto: 6.4 },
       { lines: ['왼쪽에 임무를 하나씩 띄워 둔다. 전부 다섯 개, 순서대로 처리해라.', '첫 임무 목표는 기체 위의 화살표가 가리키고 있으니 그쪽으로 날아가 봐.', '그럼 행운을 빈다.'], auto: 5.2 },
     ],
@@ -495,9 +506,8 @@ export const STRINGS: Record<Language, Strings> = {
     options: 'オプション',
     close: '閉じる',
     howTo: '遊び方',
-    devDrill: '開発者モード · 空中戦艦へ',
-    devEndings: '開発者モード · エンディング確認',
-    devRunNote: '開発者モードで始めたプレイはランキングに登録されません。',
+    devDrill: '空中戦艦モード',
+    devRunNote: '空中戦艦モードで始めたプレイはランキングに登録されません。',
     howToTitle: 'UFO操作方法',
     howToMove: '自動前進',
     howToAim: 'マウスで方向転換',
@@ -508,6 +518,8 @@ export const STRINGS: Record<Language, Strings> = {
     bgmVolume: 'BGM',
     sfxVolume: '効果音',
     soundBlocked: 'サウンドをオン',
+    keyLeftClick: '左クリック',
+    keyRightClick: '右クリック',
     controlFly: '見ている方向へ自動飛行',
     controlAim: '操縦 · 照準',
     controlBeam: 'ビーム維持 · 吸収',
@@ -581,6 +593,11 @@ export const STRINGS: Record<Language, Strings> = {
         'だがここで止まるな。引き続き、できる限りレーザーで街をめちゃくちゃにして、我々が侵略しやすい状態にしてから帰還しろ！',
         '地球人が建て直す前に壊せるだけ壊せ。',
       ],
+      'drone-mine': [
+        '隊員、前方の赤い球が見えるか。地球人がばら撒いた自爆ドローンだ。',
+        '気をつけろ。あれも[[そのままビームに吸い込まれる]]。だが標本ではなく爆弾だ。引き寄せたその場で[[爆発する]]。',
+        '安全な手順はひとつだけだ。まずレーザー（Q）でドローンを消し、それからビーム（E）でその一帯を吸い上げろ。',
+      ],
     },
     endingRemark: {
       recon: '完璧な偵察だった、隊員。地球はもう我々のものだ。帰還を許可する！',
@@ -593,15 +610,15 @@ export const STRINGS: Record<Language, Strings> = {
     briefingTitle: '将軍の通信',
     briefingContinue: '画面をクリックして続ける',
     briefingSkip: 'チュートリアルをスキップ',
-    briefingWaitHint: { beam: 'E を長押し', laser: 'Q を押す', turbo: 'スペースを押す' },
+    briefingWaitHint: { beam: 'W か右クリックを長押し', laser: 'Q か左クリック', turbo: 'スペースを押す' },
     tutorialBriefing: [
       { lines: ['隊員、作戦を開始する。君の任務は地球という星の偵察だ。', '機体の燃料を使い切る[[5分]]の間に、地球でできる限り多くの任務をこなして帰還しろ！'] },
       { lines: ['まずは操縦だ。', '[[マウスで照準を動かせば機体はそちらを向き、向いた方向へそのまま進む]]。', '上を見れば上がり、下を見れば下がる。決めるのは方向ひとつだけだ。'] },
-      { lines: ['Eボタンでビームを操作し、仲間の猫を救出したり物体を吸収したりできる。', '物体を吸収するほど機体は大きくなる。できるだけ多く吸収しろ！', 'そして[[機体が大きくなるほどビームも強くなり、より大きく重い物体まで吸収できる]]ようになる。'] },
-      { lines: ['Qボタンでレーザーを撃って敵を倒せる！', '言葉だけではわからん。今すぐQを一度押してみろ。'], wait: 'laser' },
+      { lines: ['Wボタンか右クリックでビームを操作し、仲間の猫を救出したり物体を吸収したりできる。', '物体を吸収するほど機体は大きくなる。できるだけ多く吸収しろ！', 'そして[[機体が大きくなるほどビームも強くなり、より大きく重い物体まで吸収できる]]ようになる。'] },
+      { lines: ['Qボタンか左クリックでレーザーを撃って敵を倒せる！', '言葉だけではわからん。今すぐ一度押してみろ。'], wait: 'laser' },
       { lines: ['よし、それがレーザーだ。緊急時に使え！', '次はターボだ。スペースを押せば機体が一気に速くなる。今、押してみろ。'], wait: 'turbo' },
-      { lines: ['それだ！ ターボは使える時間に限りがある。慎重に使え！', 'そしてターボ中にEを押すと、ビームが太く、遠く、強くなる。覚えておけ。'] },
-      { lines: ['隊員、最初の任務だ。あの猫を救出しろ。Eキーを長押しだ。', 'ターボも一緒に使えばビームが広がって楽になるぞ。'], wait: 'beam' },
+      { lines: ['それだ！ ターボは使える時間に限りがある。慎重に使え！', 'そしてターボ中にビームを使うと、太く、遠く、強くなる。覚えておけ。'] },
+      { lines: ['隊員、最初の任務だ。あの猫を救出しろ。Wキーか右クリックを長押しだ。', 'ターボも一緒に使えばビームが広がって楽になるぞ。'], wait: 'beam' },
       { lines: ['よし、合格だ。', 'いいか、ビームに吊るしすぎると[[重量で速度が落ち、高度も下がる]]。', 'それと飛行中に[[建物にぶつかってもライフが減る]]。建物は避けて飛べ！'], auto: 6.4 },
       { lines: ['左側に任務を一つずつ表示する。全部で五つ、順番に片付けろ。', '最初の目標は機体の上の矢印が指している。その方向へ飛べ。', '幸運を祈る。'], auto: 5.2 },
     ],
@@ -684,9 +701,8 @@ export const STRINGS: Record<Language, Strings> = {
     options: 'OPTIONS',
     close: 'CLOSE',
     howTo: 'HOW TO PLAY',
-    devDrill: 'DEV · JUMP TO SKY BATTLESHIP',
-    devEndings: 'DEV · PREVIEW ENDINGS',
-    devRunNote: 'A developer drill run is not ranked.',
+    devDrill: 'SKY BATTLESHIP MODE',
+    devRunNote: 'A sky battleship mode run is not ranked.',
     howToTitle: 'UFO CONTROLS',
     howToMove: 'AUTO FORWARD',
     howToAim: 'STEER WITH THE MOUSE',
@@ -697,6 +713,8 @@ export const STRINGS: Record<Language, Strings> = {
     bgmVolume: 'BGM',
     sfxVolume: 'SOUND EFFECTS',
     soundBlocked: 'TAP FOR SOUND',
+    keyLeftClick: 'L-CLICK',
+    keyRightClick: 'R-CLICK',
     controlFly: 'ALWAYS FLYING WHERE YOU LOOK',
     controlAim: 'STEER / AIM',
     controlBeam: 'HOLD BEAM · ABSORB',
@@ -770,6 +788,11 @@ export const STRINGS: Record<Language, Strings> = {
         'But do not stop here. Keep tearing the city apart with the laser so the invasion is easy for us, and then come home!',
         'Break everything you can before the humans rebuild it.',
       ],
+      'drone-mine': [
+        'Pilot, that red sphere ahead of you - that is one of the suicide drones the humans seeded.',
+        'Careful. The beam [[pulls one straight in]] like anything else. But it is a bomb, not a sample, and it [[goes off]] the moment it reaches you.',
+        'There is one safe order. Clear the drone with the laser (Q) first, then sweep the area with the beam (E).',
+      ],
     },
     endingRemark: {
       recon: 'A flawless recon, pilot. Earth is ours now. You are cleared to return!',
@@ -782,15 +805,15 @@ export const STRINGS: Record<Language, Strings> = {
     briefingTitle: "THE GENERAL'S TRANSMISSION",
     briefingContinue: 'CLICK THE SCREEN TO CONTINUE',
     briefingSkip: 'SKIP TUTORIAL',
-    briefingWaitHint: { beam: 'HOLD E', laser: 'PRESS Q', turbo: 'PRESS SPACE' },
+    briefingWaitHint: { beam: 'HOLD W OR RIGHT-CLICK', laser: 'PRESS Q OR LEFT-CLICK', turbo: 'PRESS SPACE' },
     tutorialBriefing: [
       { lines: ['Pilot, begin the operation. Your mission is to recon the planet called Earth.', 'You have [[five minutes]] - one full tank - so run as many missions on Earth as you can and come home!'] },
       { lines: ['Flying first.', '[[Move the reticle with the mouse and the craft looks that way, then flies that way]].', 'Look up to climb, look down to dive. All you ever choose is where to point.'] },
-      { lines: ['Press E to run the beam and rescue allied cats or absorb objects.', 'The craft grows as it absorbs objects, so absorb as many as possible!', 'And [[the bigger the craft, the stronger the beam - bigger, heavier things become food]].'] },
-      { lines: ['Press Q to fire the laser and defeat enemies!', 'Being told is not the same as knowing. Press Q once, right now.'], wait: 'laser' },
+      { lines: ['Press W, or right-click, to run the beam and rescue allied cats or absorb objects.', 'The craft grows as it absorbs objects, so absorb as many as possible!', 'And [[the bigger the craft, the stronger the beam - bigger, heavier things become food]].'] },
+      { lines: ['Press Q, or left-click, to fire the laser and defeat enemies!', 'Being told is not the same as knowing. Press it once, right now.'], wait: 'laser' },
       { lines: ['Good, that is the laser. Save it for emergencies!', 'Turbo is next. SPACE makes the craft far faster. Press it now.'], wait: 'turbo' },
-      { lines: ['That is it! Turbo time is limited, so use it carefully!', 'And holding E while turbo is on makes the beam wider, longer and stronger. Remember that.'] },
-      { lines: ['Pilot, this is your first mission. Rescue that cat. HOLD E.', 'Run turbo at the same time and the wider beam makes it far easier.'], wait: 'beam' },
+      { lines: ['That is it! Turbo time is limited, so use it carefully!', 'And running the beam while turbo is on makes it wider, longer and stronger. Remember that.'] },
+      { lines: ['Pilot, this is your first mission. Rescue that cat. HOLD W, or hold right-click.', 'Run turbo at the same time and the wider beam makes it far easier.'], wait: 'beam' },
       { lines: ['Good, you pass.', 'Remember: hang too much off the beam and [[the weight slows you and drags you down]].', 'And in flight, [[hitting a building costs you life]]. Fly around them!'], auto: 6.4 },
       { lines: ['Your objectives appear on the left, one at a time. Five of them, in order.', 'The arrow above your craft points at the first one. Fly that way.', 'Good luck.'], auto: 5.2 },
     ],

@@ -35,14 +35,21 @@ const FIGHTER_WAVE_AT = ENEMY_WAVE_STAGES[3]!.at
 const LAST_WAVE_AT = ENEMY_WAVE_STAGES[ENEMY_WAVE_STAGES.length - 1]!.at
 
 describe('time-based enemy waves', () => {
-  it('puts the whole sky on the beam, and banks all of it but the mine', () => {
+  it('puts the whole sky on the beam except the mine, and banks all of that', () => {
     const state = createEnemyState()
-    // Nothing is immune any more: what the beam can shift is the weight
-    // ladder's answer and what it can swallow is the hull's, exactly as for a
-    // car or a bus shelter.
-    for (const enemy of state.slots) expect(enemy.beamImmune).toBe(false)
-    // The mine is still never banked as food. It can be caught and dragged;
-    // a caught bomb is still a bomb, so the swallow path may never defuse it.
+    // What the beam can shift is the weight ladder's answer and what it can
+    // swallow is the hull's, exactly as for a car or a bus shelter - for every
+    // machine in the sky.
+    for (const enemy of state.slots.filter((slot) => slot.kind !== 'drone')) {
+      expect(enemy.beamImmune, enemy.kind).toBe(false)
+    }
+    // The mine is the exception, and it is refused twice over: the cone never
+    // catches it, and the swallow path would refuse it anyway. A cone fifty
+    // metres across dragging bombs into the hull by the hundred is not a
+    // decision the player is making - they are holding the beam for the food.
+    for (const enemy of state.slots.filter((slot) => slot.kind === 'drone')) {
+      expect(enemy.beamImmune).toBe(true)
+    }
     expect(isAbsorbable('drone', 1.6, Number.POSITIVE_INFINITY)).toBe(false)
     for (const kind of ['helicopter', 'fighter', 'boss'] as const) {
       expect(isAbsorbable(kind, ENEMY_DIAMETER[kind], Number.POSITIVE_INFINITY)).toBe(true)

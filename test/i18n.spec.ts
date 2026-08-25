@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_LANGUAGE, LANGUAGES, LANGUAGE_LABELS, STRINGS } from '../src/i18n'
-import { MISSION_DEBRIEF_IDS, MISSION_ORDER, MISSION_RUN_SECONDS } from '../src/core/missions'
+import { GENERAL_WORD_IDS, MISSION_ORDER, MISSION_RUN_SECONDS } from '../src/core/missions'
 import { LAKE_CELL_CAPACITY_MAX, LAKE_CELL_CAPACITY_MIN } from '../src/core/lakes'
 
 describe('interface languages', () => {
@@ -76,17 +76,32 @@ describe('interface languages', () => {
     expect(STRINGS.en.missionStageComplete(1, 2)).not.toBe(STRINGS.ko.missionStageComplete(1, 2))
   })
 
-  it('gives every debriefed mission the general\'s words, in every language', () => {
-    // A debrief freezes the game, so a missing one would freeze it over an
+  it('gives every debrief and field advisory the general\'s words, in every language', () => {
+    // Either one freezes the game, so a missing one would freeze it over an
     // empty box with nothing to click but the same empty box.
+    expect(GENERAL_WORD_IDS).toContain('drone-mine')
     for (const language of LANGUAGES) {
-      for (const id of MISSION_DEBRIEF_IDS) {
+      for (const id of GENERAL_WORD_IDS) {
         const lines = STRINGS[language].missionDebrief[id]
         expect(lines.length, `${language}.${id}`).toBeGreaterThan(0)
         for (const line of lines) expect(line.trim(), `${language}.${id}`).toBeTruthy()
       }
     }
     expect(STRINGS.ko.missionDebrief['absorb-water'][0]).not.toBe(STRINGS.en.missionDebrief['absorb-water'][0])
+    expect(STRINGS.ko.missionDebrief['drone-mine'][0]).not.toBe(STRINGS.ja.missionDebrief['drone-mine'][0])
+  })
+
+  it('tells the drone-mine warning the same way in all three languages', () => {
+    // The warning exists to name the beam's one exception and the safe order
+    // around it: laser first, beam after. A translation that drops either half
+    // leaves the pilot with a hazard and no answer to it.
+    for (const language of LANGUAGES) {
+      const lines = STRINGS[language].missionDebrief['drone-mine'].join(' ')
+      expect(lines, `${language}: laser`).toMatch(/Q/)
+      expect(lines, `${language}: beam`).toMatch(/E/)
+      // And the part that must not be skimmed past is marked for RichText.
+      expect(lines, `${language}: emphasis`).toMatch(/\[\[.+\]\]/)
+    }
   })
 
   /** Every rendered string in one language, flattened - the term guards below
@@ -147,7 +162,7 @@ describe('interface languages', () => {
       const general = [
         strings.tutorialMissionLead,
         ...strings.tutorialBriefing.flatMap((beat) => beat.lines),
-        ...MISSION_DEBRIEF_IDS.flatMap((id) => strings.missionDebrief[id]),
+        ...GENERAL_WORD_IDS.flatMap((id) => strings.missionDebrief[id]),
         ...Object.values(strings.endingRemark),
       ]
       for (const line of general) {

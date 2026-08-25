@@ -141,6 +141,55 @@ describe('tractor beam physics', () => {
     expect(heavy.position.y).toBeGreaterThan(0.7)
   })
 
+  it('never keeps hold of a load it cannot lift, so growth does not summon the city', () => {
+    // The bug this guards: `hold` used to be stamped on anything the cone
+    // touched, liftable or not, and never lapsed while the beam was on. Fly
+    // around with the beam open - which is the whole game - and every tree,
+    // pylon and shelter the cone had grazed over the entire run stayed flagged
+    // as caught, from any distance. Strength only ever climbs, so the moment
+    // growth raised the band they all became liftable at once and came sailing
+    // in from off-screen, the spring pulling harder the further away they
+    // stood.
+    const pylon = makeCar('pylon', 0, 0.65, 0)
+    pylon.mass = 7
+
+    const weak = field()
+    weak.gripStrength = 5
+    expect(beamLiftScale(pylon.mass, 5)).toBe(0)
+    stepBeamObjects([pylon], weak, 1 / 60)
+    // Still lit by the cone that is physically on it - that is what the player
+    // sees - but not gripped.
+    expect(pylon.inBeam).toBe(true)
+    expect(pylon.hold ?? 0).toBe(0)
+
+    // Flown away from, beam still on: the graze leaves nothing behind.
+    const passed = field()
+    passed.gripStrength = 5
+    passed.position.x = 120
+    stepBeamObjects([pylon], passed, 1 / 60)
+    expect(pylon.inBeam).toBe(false)
+
+    // Now the craft grows a rung, 120m away and facing nothing. The pylon must
+    // stay exactly where the city put it rather than be reeled in from there.
+    const grown = field()
+    grown.gripStrength = 7
+    grown.position.x = 120
+    expect(beamLiftScale(pylon.mass, 7)).toBeGreaterThan(0)
+    for (let frame = 0; frame < 120; frame += 1) stepBeamObjects([pylon], grown, 1 / 60)
+    expect(pylon.inBeam).toBe(false)
+    expect(pylon.tether).toBe(0)
+    expect(pylon.position.x).toBe(0)
+    expect(pylon.position.y).toBeCloseTo(0.65)
+
+    // Flying over it again with the stronger beam is how it gets caught - the
+    // rung opened the object up, the pass is still what picks it up.
+    const sweep = field()
+    sweep.gripStrength = 7
+    for (let frame = 0; frame < 60; frame += 1) stepBeamObjects([pylon], sweep, 1 / 60)
+    expect(pylon.inBeam).toBe(true)
+    expect(pylon.position.y).toBeGreaterThan(0.65)
+  })
+
   it('keeps hold of what it caught until the beam is cut', () => {
     // It used to let go the moment an object left the cone, which made the
     // beam a geometric test rather than a tractor beam. At cruising speed a

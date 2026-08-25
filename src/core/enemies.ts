@@ -1,4 +1,4 @@
-import type { BeamObject } from './beam'
+import { isInsideBeam, type BeamField, type BeamObject } from './beam'
 import type { Aabb, Vec3 } from './drone'
 
 export type EnemyKind = 'drone' | 'helicopter' | 'fighter' | 'boss'
@@ -410,7 +410,7 @@ const MINE_FORWARD_SHARE = 0.72
 const MINE_FORWARD_ARC = 1.7
 
 /** Mines drift up and down a little so they read as alive, not as scenery. */
-const MINE_BOB = 1.4
+export const MINE_BOB = 1.4
 
 /**
  * How fast a mine closes once the craft is inside its blast radius.
@@ -740,11 +740,22 @@ function makeSlot(kind: EnemyKind, slot: number): EnemySlot {
     // weight ladder's answer (ENEMY_MASS against beam strength) and whether it
     // can be swallowed is the hull's, exactly as for a car or a bus shelter.
     //
-    // The mine is still the one that is never banked as a meal: it can be
-    // caught and dragged, and what a dragged bomb does is go off - the arming
-    // and strike rules in stepEnemies fire exactly as if it was flown into, so
-    // `isAbsorbable` refuses it by kind rather than by weight.
-    beamImmune: false,
+    // The beam does not HAUL a mine. It still lights its fuse - see
+    // armMinesInBeam - it simply never drags one home.
+    //
+    // The cone used to tow them in, which read well while it was a few metres
+    // wide. It is not a few metres wide any more: at the size cap it covers a
+    // circle fifty-seven metres across at street level, and holding the beam
+    // over a late-run minefield pulled in 269 mines a minute and set off 252
+    // of them against the hull. Four explosions a second, on the one button
+    // the whole game is about, and none of it a decision anybody made.
+    //
+    // Now the cone is a fuse rather than a tow rope: what it touches goes off
+    // where it stands. Which is the same trade the mine always offered, priced
+    // by altitude instead of by luck - sweep a street from height and you
+    // clear it for free, do it from low down and you are inside your own
+    // blast.
+    beamImmune: kind === 'drone',
     freePhysics: false,
     target: { x: 0, y: 0, z: 0 },
     phase: slot / Math.max(1, ENEMY_CAPS[kind]) * Math.PI * 2,
@@ -785,6 +796,7 @@ function resetSlot(enemy: EnemySlot, player: Vec3, heading: number, state: Enemy
   enemy.aiming = false
   enemy.inBeam = false
   enemy.tether = 0
+  enemy.beamImmune = enemy.kind === 'drone'
   enemy.playerTouched = false
   enemy.destroying = false
   enemy.destroyTimer = 0
@@ -1024,6 +1036,48 @@ function stepDroneMine(enemy: EnemySlot, player: Vec3, d: number) {
   enemy.position.y = enemy.target.y + Math.sin(enemy.age * 1.3 + enemy.phase) * MINE_BOB
   // Mines are only cleared by leaving them far behind, never by waiting.
   if (!enemy.mineArmed && distanceToPlayer(enemy, player) > AIR_DESPAWN_DISTANCE) enemy.active = false
+}
+
+/**
+ * How close a mine has to be, and how far off the nose, before the pilot can
+ * be said to have *seen* one.
+ *
+ * A hundred and ten metres is well inside the fog (near 150) and eleven times
+ * the blast field, so the warning that hangs off this arrives while the shell
+ * is still a red dot ahead rather than something already being flown into.
+ * The arc is a fifty-degree cone around the direction of travel: mines behind
+ * the craft were never spotted, and a warning about one of those would be a
+ * warning about nothing on screen.
+ */
+export const DRONE_SIGHT_DISTANCE = 110
+export const DRONE_SIGHT_ARC = 0.87
+
+/**
+ * True when a live mine is ahead of the craft and near enough to read.
+ *
+ * Used once per run, for the general's word about what the beam does to a
+ * bomb (see queueMissionAdvisory) - so it answers "has the pilot met one of
+ * these yet", not "is one dangerous right now", which is what the blast
+ * radius is for.
+ */
+export function droneMineInSight(state: EnemyState, player: Vec3, heading: number) {
+  const forwardX = Math.sin(heading)
+  const forwardZ = Math.cos(heading)
+  const cone = Math.cos(DRONE_SIGHT_ARC)
+  for (const enemy of state.slots) {
+    if (!enemy.active || enemy.kind !== 'drone') continue
+    const dx = enemy.position.x - player.x
+    const dy = enemy.position.y - player.y
+    const dz = enemy.position.z - player.z
+    const distance = Math.hypot(dx, dy, dz)
+    if (distance > DRONE_SIGHT_DISTANCE || distance < 0.0001) continue
+    // Bearing only: a mine directly above or below the nose is still a mine
+    // the pilot is looking at, and the craft pitches without turning.
+    const flat = Math.hypot(dx, dz)
+    if (flat < 0.0001) return true
+    if ((dx * forwardX + dz * forwardZ) / flat >= cone) return true
+  }
+  return false
 }
 
 /**
@@ -1308,6 +1362,27 @@ function stepBattleshipGuns(state: EnemyState, enemy: EnemySlot, player: Vec3, d
   enemy.turret += 1
   enemy.burstLeft -= 1
   enemy.attackTimer = enemy.burstLeft > 0 ? BATTLESHIP_TURRET_GAP : BATTLESHIP_RELOAD
+}
+
+/**
+ * Lights the fuse on every mine the beam is playing over.
+ *
+ * Separate from `stepEnemies` because the beam field is only assembled after
+ * the craft has moved, and separate from the beam physics because a mine is
+ * the one thing the cone touches without taking hold of it (`beamImmune`).
+ * The fuse it starts is the same `DRONE_MINE_FUSE` a proximity approach gets,
+ * burning down in `stepEnemies` like any other - so a mine lit by the beam
+ * goes off where it stands, on its own count, and the distance between it and
+ * the hull is the player's to have chosen.
+ */
+export function armMinesInBeam(state: EnemyState, field: BeamField) {
+  if (!field.active) return
+  for (const enemy of state.slots) {
+    if (!enemy.active || enemy.kind !== 'drone' || enemy.mineArmed) continue
+    if (!isInsideBeam(enemy, field)) continue
+    enemy.mineArmed = true
+    enemy.mineFuse = DRONE_MINE_FUSE
+  }
 }
 
 export function stepEnemies(state: EnemyState, player: Vec3, dt: number, playerVelocity: Vec3 = STILL, playerRadius = 1.4) {
