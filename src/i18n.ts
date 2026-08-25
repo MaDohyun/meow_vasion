@@ -1,5 +1,6 @@
 import type { GeneralWordId, MissionQuestId } from './core/missions'
 import type { RunEnding } from './core/ending'
+import type { EnemyKind } from './core/enemies'
 /**
  * UI strings, in one dictionary.
  *
@@ -70,6 +71,13 @@ export type Strings = {
   options: string
   close: string
   howTo: string
+  enemyIntel: string
+  enemyIntelEyebrow: string
+  enemyIntelTitle: string
+  enemyIntelLead: string
+  enemyIntelAppears: string
+  enemyIntelNames: Record<EnemyKind, string>
+  enemyIntelCopy: Record<EnemyKind, string>
   /** The developer drill, which only appears where the dev entrances are on.
    *  Translated like everything else: whoever is testing the game reads the
    *  lobby in their own language too. */
@@ -314,6 +322,23 @@ export const STRINGS: Record<Language, Strings> = {
     options: '옵션',
     close: '닫기',
     howTo: '하는 방법',
+    enemyIntel: '적 도감',
+    enemyIntelEyebrow: '지구 방위군 // 위협 자료',
+    enemyIntelTitle: '조금 이상한 적들',
+    enemyIntelLead: '정찰 시간이 흐를수록 투입되는 적들의 최초 등장 시각과 관측된 행동입니다.',
+    enemyIntelAppears: '최초 등장',
+    enemyIntelNames: {
+      drone: '자폭 드론',
+      helicopter: '공격 헬리콥터',
+      fighter: '전투기',
+      boss: '공중전함',
+    },
+    enemyIntelCopy: {
+      drone: '공중에 멈춰 있다가 기체가 가까이 오면 잠시 후 폭발한다. 빔에 닿아도 그 자리에서 불이 붙으니 레이저로 먼저 없애자.',
+      helicopter: '기체가 가까이 오면 갑자기 달려들어 충돌한다. 한 번 들이받으면 물러났다가 다시 순찰한다. 왜 굳이 들이받는지는 미스터리.',
+      fighter: '하늘을 빠르게 가로지르며, 기체가 가까이 있으면 현재 위치를 향해 느린 에너지 볼트를 한 발씩 발사한다.',
+      boss: '지구의 최종 병기. 사방과 위아래로 느린 에너지 볼트를 흩뿌리고, 주기적으로 자폭 드론·헬리콥터·전투기를 주변에 띄운다.',
+    },
     devDrill: '공중전함 모드',
     devRunNote: '공중전함 모드로 시작한 판은 랭킹에 올리지 않습니다.',
     howToTitle: 'UFO 조작법',
@@ -404,8 +429,8 @@ export const STRINGS: Record<Language, Strings> = {
       ],
       'drone-mine': [
         '대원, 앞에 붉은 구체가 보이나? 지구인들이 뿌린 자폭 드론이다.',
-        '조심해라. 저것도 [[빔에 그대로 빨려 들어온다]]. 하지만 표본이 아니라 폭탄이라, 끌려온 자리에서 [[터진다]].',
-        '안전한 순서는 하나다. 레이저(Q)로 드론을 먼저 지우고, 그 다음에 빔(E)으로 그 일대를 훑어라.',
+        '조심해라. 저건 가까이 가거나 빔에 닿으면 [[잠시 후 그 자리에서 폭발한다]]. 끌려오지는 않지만 가까이에 있다면 충분히 위험하다.',
+        '안전한 순서는 하나다. 레이저(Q 또는 좌클릭)로 드론을 먼저 지우고, 그 다음에 빔(W 또는 우클릭)으로 그 일대를 훑어라.',
       ],
     },
     endingRemark: {
@@ -510,6 +535,23 @@ export const STRINGS: Record<Language, Strings> = {
     options: 'オプション',
     close: '閉じる',
     howTo: '遊び方',
+    enemyIntel: '敵図鑑',
+    enemyIntelEyebrow: '地球防衛軍 // 脅威資料',
+    enemyIntelTitle: 'ちょっと変な敵たち',
+    enemyIntelLead: '偵察時間の経過とともに投入される敵の、初出時刻と観測済みの行動です。',
+    enemyIntelAppears: '初出',
+    enemyIntelNames: {
+      drone: '自爆ドローン',
+      helicopter: '攻撃ヘリコプター',
+      fighter: '戦闘機',
+      boss: '空中戦艦',
+    },
+    enemyIntelCopy: {
+      drone: '空中で静止し、機体が近づくと少しして爆発する。ビームに触れてもその場で点火するので、先にレーザーで片づけよう。',
+      helicopter: '機体が近づくと突然突進して体当たりする。一度ぶつかると離れてから哨戒へ戻る。なぜそこまで体当たりしたがるのかは謎。',
+      fighter: '空を高速で横切り、機体が近くにいると現在位置へ向けて遅いエネルギーボルトを一発ずつ撃つ。',
+      boss: '地球の最終兵器。全方向と上下へ遅いエネルギーボルトをばら撒き、定期的に自爆ドローン・ヘリコプター・戦闘機を周囲へ展開する。',
+    },
     devDrill: '空中戦艦モード',
     devRunNote: '空中戦艦モードで始めたプレイはランキングに登録されません。',
     howToTitle: 'UFO操作方法',
@@ -600,8 +642,8 @@ export const STRINGS: Record<Language, Strings> = {
       ],
       'drone-mine': [
         '隊員、前方の赤い球が見えるか。地球人がばら撒いた自爆ドローンだ。',
-        '気をつけろ。あれも[[そのままビームに吸い込まれる]]。だが標本ではなく爆弾だ。引き寄せたその場で[[爆発する]]。',
-        '安全な手順はひとつだけだ。まずレーザー（Q）でドローンを消し、それからビーム（E）でその一帯を吸い上げろ。',
+        '気をつけろ。あれは近づくかビームに触れると、[[少ししてその場で爆発する]]。引き寄せられはしないが、近くにいれば十分危険だ。',
+        '安全な手順はひとつだけだ。まずレーザー（Qまたは左クリック）でドローンを消し、それからビーム（Wまたは右クリック）でその一帯を吸い上げろ。',
       ],
     },
     endingRemark: {
@@ -706,6 +748,23 @@ export const STRINGS: Record<Language, Strings> = {
     options: 'OPTIONS',
     close: 'CLOSE',
     howTo: 'HOW TO PLAY',
+    enemyIntel: 'ENEMY INTEL',
+    enemyIntelEyebrow: 'EARTH DEFENCE // THREAT FILES',
+    enemyIntelTitle: 'SOME SLIGHTLY ODD ENEMIES',
+    enemyIntelLead: 'First sightings and observed behaviour for each threat deployed as the recon clock advances.',
+    enemyIntelAppears: 'FIRST SEEN',
+    enemyIntelNames: {
+      drone: 'SUICIDE DRONE',
+      helicopter: 'ATTACK HELICOPTER',
+      fighter: 'FIGHTER',
+      boss: 'SKY BATTLESHIP',
+    },
+    enemyIntelCopy: {
+      drone: 'Hangs motionless, then explodes shortly after the craft gets close. The beam also lights it in place, so clear it with the laser first.',
+      helicopter: 'Suddenly charges and rams when the craft comes near. After one hit it backs off and returns to patrol. Why it insists on ramming remains a mystery.',
+      fighter: 'Cuts quickly across the sky and fires slow energy bolts one at a time toward the craft’s current position whenever it is nearby.',
+      boss: 'Earth’s final weapon. It scatters slow energy bolts in every direction, above and below, and regularly deploys suicide drones, helicopters and fighters around itself.',
+    },
     devDrill: 'SKY BATTLESHIP MODE',
     devRunNote: 'A sky battleship mode run is not ranked.',
     howToTitle: 'UFO CONTROLS',
@@ -796,8 +855,8 @@ export const STRINGS: Record<Language, Strings> = {
       ],
       'drone-mine': [
         'Pilot, that red sphere ahead of you - that is one of the suicide drones the humans seeded.',
-        'Careful. The beam [[pulls one straight in]] like anything else. But it is a bomb, not a sample, and it [[goes off]] the moment it reaches you.',
-        'There is one safe order. Clear the drone with the laser (Q) first, then sweep the area with the beam (E).',
+        'Careful. Get close or touch it with the beam and it [[explodes in place a moment later]]. It will not be pulled in, but it is still dangerous if you are nearby.',
+        'There is one safe order. Clear the drone with the laser (Q or left-click) first, then sweep the area with the beam (W or right-click).',
       ],
     },
     endingRemark: {

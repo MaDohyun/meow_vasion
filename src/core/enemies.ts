@@ -68,6 +68,19 @@ export const ENEMY_WAVE_STAGES = [
 ] as const
 
 /**
+ * First appearance of one enemy family on the run clock.
+ *
+ * Lobby intel reads this instead of copying the four wave times into the UI,
+ * so a balance pass cannot move a wave while leaving the field guide behind.
+ */
+export function enemyLaunchSeconds(kind: EnemyKind) {
+  const stage = ENEMY_WAVE_STAGES.find((wave) => (
+    (wave.targets as Partial<Record<EnemyKind, number>>)[kind] ?? 0
+  ) > 0)
+  return stage?.at ?? null
+}
+
+/**
  * When the dreadnought's wave lands, read off the table above.
  *
  * Exported because the sky is on the same clock as the waves - see
