@@ -1964,7 +1964,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
           game.pickupPulse = 1
           game.mysteryFlash = Math.max(game.mysteryFlash, 0.65)
           if (granted.kind === 'stat') {
-            setMessage(game, BOON_MESSAGE_KEY[granted.id], 2.2, granted.level)
+            // No level argument: every stat caps at one, so the callout names
+            // the stat and stops there.
+            setMessage(game, BOON_MESSAGE_KEY[granted.id], 2.2)
             tone('upgrade')
           } else if (game.health.current < game.health.max) {
             // Every stat is capped, so there is nothing left to raise and the

@@ -43,9 +43,11 @@ export const ENEMY_MAX_HP: Record<EnemyKind, number> = {
   drone: 1,
   helicopter: 3,
   fighter: 4,
-  // Fifty seconds of fighting. An unupgraded laser can just about do it; a
-  // maxed laser-power does it with time to spare, which is the whole point of
-  // putting a laser-only target in the game.
+  // Fifty seconds of fighting. An unupgraded laser can just about do it; the
+  // laser pickup takes about a third of the shots off that, which is the
+  // whole point of putting a laser-only target in the game - it is the one
+  // thing in the sky that cannot be eaten, so the one stat that answers it
+  // has to be worth flying for.
   boss: 64,
 }
 

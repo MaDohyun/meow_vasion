@@ -41,43 +41,55 @@ export type BoonDefinition = {
    *  capacity. */
   step: number
   /**
-   * Where the stat stops. Without a cap the correct play is to farm circles
-   * forever; with one, a run that clears all nineteen levels has actually
-   * finished something and the pickups move on to healing.
+   * Where the stat stops - one level on every stat now. Without a cap the
+   * correct play is to farm circles forever; with one, a run that has eaten
+   * eight items has actually finished something and the pickups move on to
+   * healing.
+   *
+   * One level each rather than a ladder on a few: with eight stats a ladder
+   * meant the same circle handing you a fifth of a laser over and over while
+   * the beam and the turbo stayed where they started. One-and-done makes
+   * every item a different sentence - you can read what you are still missing
+   * off the list of what you have, and no circle is ever a repeat.
    */
   maxLevel: number
 }
 
 /**
- * The handling stats are capped low - one level on turn, cone and reach, two
- * on pull - and their steps are sized so that single level is still worth
- * flying to.
+ * One level each, so every step is the whole of what that stat will ever get
+ * and is sized to be felt the moment it lands.
  *
- * These are the stats that change how the craft *handles* rather than what it
- * is worth, so a big number on any of them rewrites the game rather than
- * improving it. Three of them are also stats size already owns, and a pickup
- * that out-ran growth would be saying the craft is bigger than it looks - so
- * each is a slice of the range growth covers, never a replacement for it:
- * size takes the cone to 1.75x and the reach to 2.75x over a whole run (see
- * core/size), and the pickup adds a sixth or a fifth on top of wherever the
- * hull has got to.
+ * The laser is the big one at 1.5x, because it is the stat with a target that
+ * only it can answer - the dreadnought cannot be eaten (see core/enemies).
+ * The rest sit in a 15-30% band, which is where a change is read from the
+ * cockpit without retuning the game around itself: these are stats that
+ * change how the craft *handles*, and a big number on any of them rewrites
+ * the run rather than improving it.
  *
- * At the caps: a sixth quicker round a corner, a cone a sixth wider (so ~1.3x
- * the ground swept per pass, area going as the square), a fifth further down
- * the beam, and a haul about half again as fast - pull feeds the spring twice
- * (once in the spring constant, once in the vertical drive - see core/beam),
- * so its felt speed-up is roughly the multiplier squared. Each is read
- * instantly from the cockpit and none retunes the game around itself.
+ * Three of them - cone, reach and pull - are stats size already owns, and a
+ * pickup that out-ran growth would be saying the craft is bigger than it
+ * looks. So each is a slice of the range growth covers, never a replacement
+ * for it: size takes the cone to 1.75x and the reach to 2.75x over a whole
+ * run (see core/size), and the item adds its sixth or fifth on top of
+ * wherever the hull has got to.
+ *
+ * What each is worth: half again the laser damage; a sixth quicker round a
+ * corner; a cone a sixth wider, which is ~1.3x the ground swept per pass
+ * because area goes as the square; a fifth further down the beam; a haul
+ * about a third faster - pull feeds the spring twice (once in the spring
+ * constant, once in the vertical drive - see core/beam), so its felt
+ * speed-up is roughly the multiplier squared; a turbo gauge that refills
+ * a third faster; and two more seconds of turbo on the base five.
  */
 export const BOON_DEFINITIONS: Record<BoonId, BoonDefinition> = {
-  'laser-power': { id: 'laser-power', step: 0.2, maxLevel: 5 },
-  speed: { id: 'speed', step: 0.08, maxLevel: 3 },
+  'laser-power': { id: 'laser-power', step: 0.5, maxLevel: 1 },
+  speed: { id: 'speed', step: 0.15, maxLevel: 1 },
   'turn-rate': { id: 'turn-rate', step: 0.15, maxLevel: 1 },
   'beam-radius': { id: 'beam-radius', step: 0.15, maxLevel: 1 },
   'beam-reach': { id: 'beam-reach', step: 0.2, maxLevel: 1 },
-  'beam-pull': { id: 'beam-pull', step: 0.12, maxLevel: 2 },
-  'turbo-recharge': { id: 'turbo-recharge', step: 0.2, maxLevel: 3 },
-  'turbo-capacity': { id: 'turbo-capacity', step: 1.5, maxLevel: 3 },
+  'beam-pull': { id: 'beam-pull', step: 0.15, maxLevel: 1 },
+  'turbo-recharge': { id: 'turbo-recharge', step: 0.3, maxLevel: 1 },
+  'turbo-capacity': { id: 'turbo-capacity', step: 2, maxLevel: 1 },
 }
 
 export const BOON_IDS = Object.keys(BOON_DEFINITIONS) as BoonId[]

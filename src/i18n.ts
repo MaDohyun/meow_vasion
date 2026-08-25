@@ -211,16 +211,23 @@ export type Strings = {
   msgVehicleDestroyed: (reward: number) => string
   msgTurbo: string
   msgTurboOverload: string
-  /** The mystery-circle pickup callouts. One per stat, one for the patch a
-   *  fully-upgraded craft gets instead, one for the score fallback. */
-  msgBoonLaser: (level: number) => string
-  msgBoonSpeed: (level: number) => string
-  msgBoonTurnRate: (level: number) => string
-  msgBoonBeamRadius: (level: number) => string
-  msgBoonBeamReach: (level: number) => string
-  msgBoonBeamPull: (level: number) => string
-  msgBoonTurboRecharge: (level: number) => string
-  msgBoonTurboCapacity: (level: number) => string
+  /**
+   * The mystery-circle pickup callouts. One per stat, one for the patch a
+   * fully-upgraded craft gets instead, one for the score fallback.
+   *
+   * No level number in any of them: every stat caps at one level (see
+   * core/boons), so "Lv.1" would be printed on all eight and would never say
+   * anything. The callout names the stat, which is the whole of what a player
+   * needs off a two-second line.
+   */
+  msgBoonLaser: string
+  msgBoonSpeed: string
+  msgBoonTurnRate: string
+  msgBoonBeamRadius: string
+  msgBoonBeamReach: string
+  msgBoonBeamPull: string
+  msgBoonTurboRecharge: string
+  msgBoonTurboCapacity: string
   msgBoonHeal: string
   msgBoonScore: (reward: number) => string
   /** Flying through a circle: surge and a turbo refill, never a repair. */
@@ -451,14 +458,14 @@ export const STRINGS: Record<Language, Strings> = {
     msgVehicleDestroyed: (reward) => `차량 파괴 · +${reward}`,
     msgTurbo: '터보 가동',
     msgTurboOverload: '터보 과부하 · 잠시 사용 불가',
-    msgBoonLaser: (level) => `레이저 위력 Lv.${level}`,
-    msgBoonSpeed: (level) => `속도 Lv.${level}`,
-    msgBoonTurnRate: (level) => `회전력 Lv.${level}`,
-    msgBoonBeamRadius: (level) => `빔 범위 Lv.${level}`,
-    msgBoonBeamReach: (level) => `빔 사거리 Lv.${level}`,
-    msgBoonBeamPull: (level) => `빔 흡수 속도 Lv.${level}`,
-    msgBoonTurboRecharge: (level) => `터보 게이지 충전 Lv.${level}`,
-    msgBoonTurboCapacity: (level) => `터보 양 Lv.${level}`,
+    msgBoonLaser: '레이저 위력 강화',
+    msgBoonSpeed: '속도 강화',
+    msgBoonTurnRate: '회전력 강화',
+    msgBoonBeamRadius: '빔 범위 확대',
+    msgBoonBeamReach: '빔 사거리 연장',
+    msgBoonBeamPull: '빔 흡수 속도 강화',
+    msgBoonTurboRecharge: '터보 게이지 충전 강화',
+    msgBoonTurboCapacity: '터보 양 증가',
     msgBoonHeal: '생명력 회복',
     msgBoonScore: (reward) => `보너스 +${reward}`,
     msgMysteryCircle: '미스터리 서클 · 가속 · 터보 충전',
@@ -642,14 +649,14 @@ export const STRINGS: Record<Language, Strings> = {
     msgVehicleDestroyed: (reward) => `車両を破壊 · +${reward}`,
     msgTurbo: 'ターボ作動',
     msgTurboOverload: 'ターボ過負荷 · 一時使用不可',
-    msgBoonLaser: (level) => `レーザー威力 Lv.${level}`,
-    msgBoonSpeed: (level) => `速度 Lv.${level}`,
-    msgBoonTurnRate: (level) => `旋回力 Lv.${level}`,
-    msgBoonBeamRadius: (level) => `ビーム範囲 Lv.${level}`,
-    msgBoonBeamReach: (level) => `ビーム射程 Lv.${level}`,
-    msgBoonBeamPull: (level) => `ビーム吸収速度 Lv.${level}`,
-    msgBoonTurboRecharge: (level) => `ターボ充填 Lv.${level}`,
-    msgBoonTurboCapacity: (level) => `ターボ容量 Lv.${level}`,
+    msgBoonLaser: 'レーザー威力 強化',
+    msgBoonSpeed: '速度 強化',
+    msgBoonTurnRate: '旋回力 強化',
+    msgBoonBeamRadius: 'ビーム範囲 拡大',
+    msgBoonBeamReach: 'ビーム射程 延長',
+    msgBoonBeamPull: 'ビーム吸収速度 強化',
+    msgBoonTurboRecharge: 'ターボ充填 強化',
+    msgBoonTurboCapacity: 'ターボ容量 増加',
     msgBoonHeal: 'ライフを回復',
     msgBoonScore: (reward) => `ボーナス +${reward}`,
     msgMysteryCircle: 'ミステリーサークル · 加速 · ターボ満タン',
@@ -833,14 +840,14 @@ export const STRINGS: Record<Language, Strings> = {
     msgVehicleDestroyed: (reward) => `VEHICLE DESTROYED · +${reward}`,
     msgTurbo: 'TURBO ENGAGED',
     msgTurboOverload: 'TURBO OVERLOAD · OFFLINE BRIEFLY',
-    msgBoonLaser: (level) => `LASER POWER LV.${level}`,
-    msgBoonSpeed: (level) => `SPEED LV.${level}`,
-    msgBoonTurnRate: (level) => `TURN RATE LV.${level}`,
-    msgBoonBeamRadius: (level) => `BEAM SPREAD LV.${level}`,
-    msgBoonBeamReach: (level) => `BEAM RANGE LV.${level}`,
-    msgBoonBeamPull: (level) => `BEAM PULL LV.${level}`,
-    msgBoonTurboRecharge: (level) => `TURBO RECHARGE LV.${level}`,
-    msgBoonTurboCapacity: (level) => `TURBO CAPACITY LV.${level}`,
+    msgBoonLaser: 'LASER POWER UP',
+    msgBoonSpeed: 'SPEED UP',
+    msgBoonTurnRate: 'TURN RATE UP',
+    msgBoonBeamRadius: 'BEAM SPREAD UP',
+    msgBoonBeamReach: 'BEAM RANGE UP',
+    msgBoonBeamPull: 'BEAM PULL UP',
+    msgBoonTurboRecharge: 'TURBO RECHARGE UP',
+    msgBoonTurboCapacity: 'TURBO CAPACITY UP',
     msgBoonHeal: 'LIFE RESTORED',
     msgBoonScore: (reward) => `BONUS +${reward}`,
     msgMysteryCircle: 'MYSTERY CIRCLE · SURGE · TURBO REFILLED',
