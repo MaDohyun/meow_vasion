@@ -634,9 +634,37 @@ export const ENEMY_DIAMETER: Record<EnemyKind, number> = {
  */
 const ENEMY_MASS: Record<EnemyKind, number> = {
   drone: 3,
-  helicopter: 6,
-  fighter: 10,
+  // Four and eight, down from six and ten. Both are aircraft the player is
+  // being shot at by, and both used to open so late that answering them with
+  // the beam was theory: a fighter needed a 48m hull, which is most of a good
+  // run, while the fighter wave itself lands at 2:05. The sky ladder is meant
+  // to be the answer to the sky, so it has to open while the sky is still
+  // shooting.
+  helicopter: 4,
+  fighter: 8,
   boss: 30,
+}
+
+/**
+ * What each aircraft is worth swallowed, in points and therefore in hull.
+ *
+ * Aircraft are priced above anything on the ground of comparable bulk, because
+ * unlike a parked car they are shooting back: the fighter at 420 sits between
+ * the gas station and the communications mast, and the dreadnought is in a
+ * class of its own.
+ *
+ * The dreadnought's figure has one job beyond being large. Shooting it down
+ * pays 10000 flat (see the laser's reward), and swallowing it is the harder
+ * thing by a distance - it needs the full weight ladder, which is the whole
+ * growth range - so it has to pay more. It does: absorption is multiplied by
+ * the hull that earned it, and any craft that can lift thirty units of ship
+ * is multiplying by at least fifteen.
+ */
+export const ENEMY_VALUE: Record<EnemyKind, number> = {
+  drone: 35,
+  helicopter: 260,
+  fighter: 420,
+  boss: 2600,
 }
 
 export function waveStageForTime(elapsed: number) {
@@ -760,7 +788,7 @@ function makeSlot(kind: EnemyKind, slot: number): EnemySlot {
     absorbing: false,
     absorbTimer: 0,
     diameter: ENEMY_DIAMETER[kind],
-    scoreValue: kind === 'boss' ? 1200 : kind === 'fighter' ? 140 : kind === 'helicopter' ? 80 : 35,
+    scoreValue: ENEMY_VALUE[kind],
     // Nothing in the sky is immune to the beam. Whether it can be moved is the
     // weight ladder's answer (ENEMY_MASS against beam strength) and whether it
     // can be swallowed is the hull's, exactly as for a car or a bus shelter.

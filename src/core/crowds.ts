@@ -1,4 +1,5 @@
 import { BEAM_ABSORB_TIME, beginNearbyBeamObjectAbsorption, type BeamObject } from './beam'
+import { CROWD_VALUE } from './size'
 import type { CrowdSpawnZone } from './cityLandmarks'
 import type { Aabb, Vec3 } from './drone'
 import { isLakeAt, isTutorialCell, parkClusterForCell, seedForWorldCell, WORLD_CELL_SIZE, worldCellCenter, worldCellCoord } from './world'
@@ -276,7 +277,7 @@ function makeCrowdObject(kind: CrowdKind, slot: number): CrowdObject {
     absorbing: false,
     absorbTimer: 0,
     diameter: kind === 'cat' ? 0.55 : 0.78,
-    scoreValue: kind === 'cat' ? 40 : 15,
+    scoreValue: kind === 'cat' ? CROWD_VALUE.cat : CROWD_VALUE.pedestrian,
     heading: 0,
     roams: true,
     targetX: 0,

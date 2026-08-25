@@ -61,13 +61,18 @@ describe('time-based enemy waves', () => {
   it('prices the sky on the same weight ladder as the city', () => {
     // The three numbers a player actually feels, and the size each one asks
     // for. A helicopter is the first machine a growing craft can pluck out of
-    // the air, a fighter is a supertall block's weight, and the dreadnought is
-    // the top of the ladder - only a craft within a whisker of the size cap
-    // can shift it.
+    // the air, a fighter is a mid-rise block's weight, and the dreadnought is
+    // the top of the ladder - only a craft within a whisker of full growth can
+    // shift it.
+    //
+    // The first two came down from six and ten. The sky ladder is meant to be
+    // the answer to the sky, and at the old weights it opened long after the
+    // wave that it answers: a fighter needed a 48m hull against a fighter wave
+    // that lands at 2:05.
     const state = createEnemyState()
     const weightOf = (kind: EnemyKind) => state.slots.find((enemy) => enemy.kind === kind)!.mass
-    expect(weightOf('helicopter')).toBe(6)
-    expect(weightOf('fighter')).toBe(10)
+    expect(weightOf('helicopter')).toBe(4)
+    expect(weightOf('fighter')).toBe(8)
     expect(weightOf('boss')).toBe(BEAM_STRENGTH_MAX)
 
     const liftableAt = (weight: number) => {

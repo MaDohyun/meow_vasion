@@ -41,6 +41,15 @@ export const TRUCK_DIAMETER = 4.2
  *  beam can pick up and should be the slowest to come up. */
 export const HAZARD_MASS = 5
 /**
+ * What the two heavy road vehicles pay, in points and therefore in hull.
+ *
+ * The tanker is the prize of the street: it is the one thing down there that
+ * can take a block with it, and swallowing it instead of shooting it is the
+ * riskier read of the same object.
+ */
+export const TANKER_VALUE = 240
+export const TRUCK_VALUE = 140
+/**
  * Laser hits before a heavy vehicle goes up, like a small building.
  *
  * One shot used to be enough, which made the tanker hunt trivial and gave the
@@ -128,7 +137,7 @@ function makeHazard(slot: number): Hazard {
     absorbing: false,
     absorbTimer: 0,
     diameter: 5.1,
-    scoreValue: 240,
+    scoreValue: TANKER_VALUE,
     hp: HAZARD_HP,
   }
 }
@@ -201,7 +210,7 @@ function spawnHazard(state: HazardState, view: HazardView, kind: HeavyVehicleKin
   hazard.kind = kind
   hazard.mass = kind === 'truck' ? TRUCK_MASS : HAZARD_MASS
   hazard.diameter = kind === 'truck' ? TRUCK_DIAMETER : 5.1
-  hazard.scoreValue = kind === 'truck' ? 160 : 240
+  hazard.scoreValue = kind === 'truck' ? TRUCK_VALUE : TANKER_VALUE
   hazard.color = kind === 'truck' ? '#7f93b8' : '#ff4a3d'
   hazard.cellX = Math.floor(x / WORLD_CELL_SIZE)
   hazard.cellZ = Math.floor(z / WORLD_CELL_SIZE)

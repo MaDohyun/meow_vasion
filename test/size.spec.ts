@@ -17,9 +17,9 @@ import {
   LASER_POWER_GROWN,
   LASER_POWER_SIZE,
   LIFT_CAPACITY_MIN,
-  OBJECT_GAIN_BASE,
+  CROWD_VALUE,
+  GROWTH_PER_POINT,
   OBJECT_GAIN_HULL_SHARE,
-  OBJECT_GAIN_PER_METRE,
   SIZE_GAIN,
   SIZE_MATURE,
   SIZE_MAX,
@@ -115,48 +115,70 @@ describe('craft size as growth, not as health', () => {
     )
   })
 
+  it('pays score and growth from the same number', () => {
+    // One value per meal. What a thing is worth to the survey is what it is
+    // worth to the hull, so a player who reads the score popup has been told
+    // what is growing them. They used to be separate figures, and every gap
+    // was a hole: rubble grew the craft four times faster than the tower it
+    // fell off while paying a sixth of the points.
+    // Priced at the hull's own width, so the share cap in the next test is not
+    // what is being measured here.
+    const growthOf = (value: number) => objectSizeGain(value, ufoDiameter(SIZE_START), SIZE_START)
+    expect(growthOf(CROWD_VALUE.pedestrian)).toBeCloseTo(SIZE_GAIN.pedestrian, 10)
+    expect(growthOf(40) / growthOf(20)).toBeCloseTo(2, 10)
+    expect(growthOf(45) / growthOf(9)).toBeCloseTo(5, 10)
+    expect(SIZE_GAIN.cat / SIZE_GAIN.pedestrian).toBeCloseTo(CROWD_VALUE.cat / CROWD_VALUE.pedestrian, 10)
+    // Weight is deliberately outside the relation - a boulder, a bin and a
+    // heap of rubble are heavy things worth nearly nothing, which is a fact
+    // about the city rather than an inconsistency.
+    expect(objectSizeGain(8, 1.7, SIZE_START)).toBeLessThan(SIZE_GAIN.pedestrian)
+  })
+
   it('never pays a meal more than its share of the hull it goes into', () => {
     // The loop this closes: growing opens heavier and wider objects, so a craft
     // that grew ate towers instead of people - and a tower used to pay the same
-    // five pedestrians at every size. Growing bought a faster way of growing,
-    // which no taper on the meal itself can see, because the taper prices meals
-    // and this was a change of menu.
-    const TOWER = 18
+    // growth at every size. Growing bought a faster way of growing, which no
+    // taper on the meal itself can see, because the taper prices meals and this
+    // was a change of menu.
+    const TOWER = { value: 380, metres: 18 }
     const pedestrian = SIZE_GAIN.pedestrian
-    const at = (metres: number) => objectSizeGain(TOWER, metres / UFO_BASE_DIAMETER)
-    // Dormant over the whole opening game. The things a street-sized saucer can
-    // actually swallow - a bin, a bench, a car - are close enough to its own
-    // width that their own value is the lower of the two, so nothing about the
-    // first minutes changes. A bin is priced on itself until the hull is 9m,
-    // a car until 11m.
-    const ownValue = (metres: number) => OBJECT_GAIN_BASE + metres * OBJECT_GAIN_PER_METRE
-    expect(objectSizeGain(1.7, SIZE_START)).toBeCloseTo(ownValue(1.7), 5)
-    expect(objectSizeGain(1.7, 8 / UFO_BASE_DIAMETER)).toBeCloseTo(ownValue(1.7), 5)
-    expect(objectSizeGain(2.9, 10 / UFO_BASE_DIAMETER)).toBeCloseTo(ownValue(2.9), 5)
-    // A tower is the other case: it cannot be swallowed until the hull is
-    // wider than it is, so by the time it is a legal meal the hull share is
-    // already the binding term. That is the point - the biggest meals in the
-    // game are exactly the ones the loop was built on.
-    expect(at(18.1)).toBeLessThan(ownValue(TOWER))
+    const at = (hullMetres: number) => objectSizeGain(TOWER.value, TOWER.metres, hullMetres / UFO_BASE_DIAMETER)
+    // Dormant over the whole opening game: the things a street-sized saucer can
+    // actually swallow are close enough to its own width that their own price
+    // is the lower of the two.
+    expect(objectSizeGain(8, 1.7, SIZE_START)).toBeCloseTo(8 * GROWTH_PER_POINT, 10)
+    expect(objectSizeGain(70, 2.9, 6 / UFO_BASE_DIAMETER)).toBeLessThan(70 * GROWTH_PER_POINT)
     // ...and biting hard once the hull dwarfs its food.
-    expect(at(20) / pedestrian).toBeGreaterThan(3)
-    expect(at(60) / pedestrian).toBeLessThan(1.5)
-    expect(at(150) / pedestrian).toBeLessThan(0.75)
+    expect(at(36) / pedestrian).toBeGreaterThan(0.9)
+    expect(at(36) / pedestrian).toBeLessThan(1.5)
+    expect(at(150) / pedestrian).toBeLessThan(0.35)
     // Monotonic in both arguments: bigger meals are always worth more, and the
     // same meal is always worth less to a bigger craft.
     let previous = Infinity
-    for (let metres = 10; metres <= SIZE_MAX_DIAMETER; metres += 2) {
+    for (let metres = 18; metres <= SIZE_MAX_DIAMETER; metres += 2) {
       const gain = at(metres)
       expect(gain).toBeLessThanOrEqual(previous)
       expect(gain).toBeGreaterThan(0)
       previous = gain
     }
     for (const hull of [SIZE_START, 4, 12, SIZE_MATURE]) {
-      expect(objectSizeGain(9, hull)).toBeGreaterThan(objectSizeGain(3, hull))
+      expect(objectSizeGain(400, 9, hull)).toBeGreaterThan(objectSizeGain(40, 3, hull))
     }
     // A meal can never exceed the hull share, because the swallow gate already
     // refuses anything wider than the hull.
-    expect(objectSizeGain(ufoDiameter(SIZE_MATURE), SIZE_MATURE)).toBeCloseTo(OBJECT_GAIN_HULL_SHARE, 5)
+    expect(objectSizeGain(99999, ufoDiameter(SIZE_MATURE), SIZE_MATURE)).toBeCloseTo(OBJECT_GAIN_HULL_SHARE, 10)
+  })
+
+  it('nerfs the rubble that used to outrun the building it fell off', () => {
+    // Rubble is five units of dead lift for eighteen points. The hole was that
+    // growth read its eighteen metres of footprint instead of its price.
+    const RUBBLE = { value: 18, metres: 18 }
+    const TOWER = { value: 380, metres: 18 }
+    const hull = 18 / UFO_BASE_DIAMETER
+    expect(objectSizeGain(RUBBLE.value, RUBBLE.metres, hull))
+      .toBeLessThan(objectSizeGain(TOWER.value, TOWER.metres, hull))
+    // ...and less than the pedestrian it is a thousand times the size of.
+    expect(objectSizeGain(RUBBLE.value, RUBBLE.metres, hull)).toBeLessThan(SIZE_GAIN.pedestrian)
   })
 
   it('leaves a beginner about sixty metres across when the five minutes run out', () => {
@@ -308,10 +330,12 @@ describe('craft size as growth, not as health', () => {
     // travel into the saucer before it counts.
     expect(start.absorbDistance).toBeLessThanOrEqual(ABSORB_DISTANCE_MAX)
     expect(big.absorbDistance).toBeCloseTo(ABSORB_DISTANCE_MAX + ABSORB_DISTANCE_GROWN_BONUS)
-    // And growing buys hearts: none at the start, the full +2 at the ceiling.
+    // And growing buys hearts: none at the start, the full +3 by full growth,
+    // one at each quarter of the way up. Five base plus three is an eight
+    // heart craft, which is what a hull that cannot weave any more needs.
     expect(bonusHeartsForSize(SIZE_START)).toBe(0)
     expect(bonusHeartsForSize(SIZE_MATURE)).toBe(HEALTH_BONUS_HEARTS_MAX)
-    expect(bonusHeartsForSize(SIZE_START + (SIZE_MATURE - SIZE_START) * 0.5)).toBe(1)
+    expect(bonusHeartsForSize(SIZE_START + (SIZE_MATURE - SIZE_START) * 0.5)).toBe(2)
     expect(big.scoreMultiplier).toBeGreaterThan(start.scoreMultiplier)
     // ...and pays only by being a bigger target. Speed is deliberately not a
     // cost of growth; that tax belongs to beam ballast instead.

@@ -97,30 +97,64 @@ export const ABSORB_DISTANCE_GROWN_BONUS = 10.5
 export const SIZE_CAMERA_LIFT_MAX = 7.5
 
 /**
+ * Points per absorbed thing, and the one number each meal owns.
+ *
+ * Score and growth are the same fact told twice: what a thing is worth is what
+ * it does to the hull. They used to be set apart from each other, and every
+ * mismatch was a hole - rubble grew the craft four times faster than the tower
+ * it fell off while paying a sixth of the points, and a lakeside pebble priced
+ * at three points fed better than a pedestrian. A player reads the score
+ * popup and learns nothing about what is actually growing them.
+ *
+ * So there is one value per meal, in points, and growth is that value times
+ * GROWTH_PER_POINT. Everything absorbable now carries it: crowds here, props
+ * and vehicles and aircraft where their score already lived.
+ *
+ * Weight is deliberately NOT in this relation. A bin, a boulder, a park tree
+ * and a heap of rubble are heavy, awkward things worth nearly nothing, and
+ * that is a fact about the city rather than an inconsistency: what the beam
+ * strains to lift and what the survey pays for are different questions.
+ */
+export const CROWD_VALUE = {
+  /** The staple, and the anchor the whole growth curve is tuned against. */
+  pedestrian: 20,
+  /**
+   * A cat is worth a person and two thirds, in points and in hull alike -
+   * which is what makes chasing the fast, evasive target worthwhile.
+   */
+  cat: 33,
+} as const
+
+/**
+ * Hull growth bought by one point, as a fraction of current size.
+ *
+ * Set from the one anchor that cannot move: a pedestrian is 20 points and has
+ * to stay worth 0.026, because that is what growthFalloff's whole pacing
+ * ladder is cut against. Every other price in the game is then free to say
+ * what it means - a 500 point mast IS a bigger meal than a 30 point bin, and
+ * by exactly that ratio, up to the hull share cap in objectSizeGain.
+ */
+export const GROWTH_PER_POINT = 0.0013
+
+/**
  * Growth per absorbed body, as a **fraction of current size**.
  *
  * Proportional rather than flat, for two reasons. It is how the fantasy
  * actually works - one person is an enormous meal for a saucer two metres wide
  * and nothing at all for one that is eighty - and flat gains cannot span the
- * range: reaching the ceiling from the new starting size would take two
- * hundred pedestrians at the old rate, which no run will ever deliver.
+ * range at all.
  *
- * Cats are worth more than people, which is what makes chasing the fast,
- * evasive target worthwhile.
- *
- * These are the rates a *small* craft eats at. They are the top of the curve,
- * not the whole of it - growthFalloff below tapers them as the hull fills out.
+ * Derived rather than written, so the crowd cannot drift away from its own
+ * price: these are CROWD_VALUE at GROWTH_PER_POINT, and they come out at 0.026
+ * and 0.043, which is where the pacing was tuned.
  *
  * These are only the opening rates. What a meal is actually worth is this
  * times growthFalloff, which steps down every twenty metres of hull - the
  * pacing lives in that ladder, and the anchor it is cut to is stated there.
- *
- * They were 0.046/0.076 when the run shipped, and that run was 81m across
- * inside ninety seconds.
  */
 export const SIZE_GAIN = {
-  pedestrian: 0.026,
-  cat: 0.043,
+  pedestrian: CROWD_VALUE.pedestrian * GROWTH_PER_POINT,
+  cat: CROWD_VALUE.cat * GROWTH_PER_POINT,
 } as const
 
 export type SizeGainKind = keyof typeof SIZE_GAIN
@@ -384,10 +418,31 @@ export function beamPullForSize(size: number) {
  * creeping decimal is not. The base five stay in core/health; this is only
  * the growth bonus, capped at +2 for a seven-heart ceiling.
  */
-export const HEALTH_BONUS_HEARTS_MAX = 2
+export const HEALTH_BONUS_HEARTS_MAX = 3
 
 export function bonusHeartsForSize(size: number) {
   return Math.min(HEALTH_BONUS_HEARTS_MAX, Math.floor(sizeGrowthProgress(size) * (HEALTH_BONUS_HEARTS_MAX + 1)))
+}
+
+/**
+ * How much faster a grown craft patches itself up, as a multiplier on
+ * REGEN_RATE.
+ *
+ * The other half of what growing buys the pilot. Hearts are the ceiling and
+ * this is the floor: a bigger craft is a bigger target and takes more hits by
+ * simply existing, so a regeneration rate set for a saucer that could weave
+ * through a street reads as a slow bleed once the hull cannot. Doubling by
+ * full growth means the extra hearts are hearts the pilot can actually get
+ * back rather than a longer bar to watch stay empty.
+ *
+ * A multiplier rather than a rung, unlike the hearts, because there is nothing
+ * to announce - the pilot feels this as the bar coming back, and a number
+ * appearing on the HUD would be telling them something they can see.
+ */
+export const HEALTH_REGEN_GROWN = 2
+
+export function healthRegenForSize(size: number) {
+  return 1 + sizeGrowthProgress(size) * (HEALTH_REGEN_GROWN - 1)
 }
 
 /**
@@ -486,34 +541,30 @@ export function sizeCameraLift(size: number) {
  *
  * Two terms, and the smaller one wins.
  *
- * The first is what the meal is worth in its own right - a tower is a bigger
- * mouthful than a bin, and always was. The second is the one that had to be
- * added: **a meal is never worth more than a tenth of how much of the hull it
- * fills.** Without it the game had a loop that ran away from the player.
- * Growing opens heavier and wider objects, so a craft that grew ate towers
- * instead of people, and a tower paid five pedestrians at every size - which
- * meant growing bought a faster way of growing. The step ladder in
- * growthFalloff cannot see that, because it prices meals, not menus.
+ * The first is the meal's own price - `value` is the points it pays, and
+ * points and hull are the same fact (see CROWD_VALUE). A 520 point mast grows
+ * the craft twenty-six times what an 8 point bin does, which is what the
+ * player already believed from watching the score.
  *
- * The hull term is dormant while the craft is small: everything a 10m saucer
- * can get its beam around is close enough to its own width that the object's
- * own value is the lower of the two, so the opening game is untouched. It only
- * bites once the craft is much bigger than its food, which is exactly the
- * situation the loop was feeding on. A tower is 3.5 pedestrians to a 20m hull,
- * 1.2 to a 60m one, and half a pedestrian to a hull of 150m.
+ * The second is the one the game needs to stay honest: **a meal is never
+ * worth more than its share of the hull it fills.** Without it, growing opens
+ * heavier and wider objects, so a craft that grew ate towers instead of
+ * people, and a tower paid the same at every size - growing bought a faster
+ * way of growing. The step ladder in growthFalloff cannot see that, because it
+ * prices meals, not menus.
  *
- * The tower is still worth eating up there. It is worth eating for *points* -
- * absorptionScore prices the same object on its diameter squared times the
- * score multiplier the hull has earned - and points are what the late run is
- * playing for. Growth and score being paid by different rules is the whole
- * reason the craft can afford to stop growing off buildings.
+ * The two terms swap over where the craft outgrows its food. Everything the
+ * street-sized saucer can get its beam around is close to its own width, so
+ * its price is the lower term and the opening game is the price list. Once the
+ * hull dwarfs a thing, the share is what is left: a tower is worth a whole
+ * pedestrian's growth to a 36m craft and a fifth of one to a 150m craft, and
+ * it goes on paying its full points either way, because points are what the
+ * late run is playing for.
  */
-export const OBJECT_GAIN_BASE = 0.007
-export const OBJECT_GAIN_PER_METRE = 0.007
-export const OBJECT_GAIN_HULL_SHARE = 0.10
+export const OBJECT_GAIN_HULL_SHARE = 0.06
 
-export function objectSizeGain(objectDiameter: number, size: number) {
-  const own = OBJECT_GAIN_BASE + Math.max(0, objectDiameter) * OBJECT_GAIN_PER_METRE
+export function objectSizeGain(value: number, objectDiameter: number, size: number) {
+  const own = Math.max(0, value) * GROWTH_PER_POINT
   const hullShare = OBJECT_GAIN_HULL_SHARE * (Math.max(0, objectDiameter) / ufoDiameter(size))
   return Math.min(own, hullShare)
 }

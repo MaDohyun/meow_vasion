@@ -14,7 +14,7 @@ import {
   raiseHealthMax,
   stepHealth,
 } from '../src/core/health'
-import { HEALTH_BONUS_HEARTS_MAX, SIZE_GAIN, SIZE_MATURE, SIZE_MIN, SIZE_START, bonusHeartsForSize, clampSize, growSize } from '../src/core/size'
+import { HEALTH_BONUS_HEARTS_MAX, HEALTH_REGEN_GROWN, SIZE_GAIN, SIZE_MATURE, SIZE_MIN, SIZE_START, bonusHeartsForSize, clampSize, growSize, healthRegenForSize } from '../src/core/size'
 
 describe('health as the survival resource', () => {
   it('starts full and ends the run only at zero', () => {
@@ -99,6 +99,34 @@ describe('health as the survival resource', () => {
     // formality.
     expect(MAX_HEALTH / HEALTH_LOSS.orb).toBeGreaterThanOrEqual(8)
     expect(MAX_HEALTH / HEALTH_LOSS.explosive).toBeGreaterThanOrEqual(2)
+  })
+
+  it('buys hearts and healing with growth, to eight', () => {
+    // Growing is what makes the craft a bigger target - the hull is the hit
+    // radius - so the same growth has to pay for surviving it. Five base plus
+    // three earned is an eight heart craft at full growth, one heart per
+    // quarter of the way up.
+    expect(MAX_HEALTH + bonusHeartsForSize(SIZE_MATURE)).toBe(8)
+    expect(bonusHeartsForSize(SIZE_START)).toBe(0)
+    let previous = -1
+    for (let size = SIZE_START; size <= SIZE_MATURE; size += 0.05) {
+      const hearts = bonusHeartsForSize(size)
+      expect(hearts).toBeGreaterThanOrEqual(previous)
+      previous = hearts
+    }
+    // And the bar fills faster as it lengthens, or the extra hearts are just a
+    // longer bar to watch stay empty.
+    expect(healthRegenForSize(SIZE_START)).toBeCloseTo(1, 5)
+    expect(healthRegenForSize(SIZE_MATURE)).toBeCloseTo(HEALTH_REGEN_GROWN, 5)
+    const pipsIn = (seconds: number, size: number) => {
+      const state = createHealthState()
+      damageHealth(state, 'explosive')
+      const before = state.current
+      state.sinceHit = REGEN_DELAY
+      stepHealth(state, seconds, healthRegenForSize(size))
+      return state.current - before
+    }
+    expect(pipsIn(4, SIZE_MATURE)).toBeCloseTo(pipsIn(4, SIZE_START) * HEALTH_REGEN_GROWN, 5)
   })
 
   it('leaves the growth ceiling reachable', () => {

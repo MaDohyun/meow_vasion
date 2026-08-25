@@ -282,13 +282,26 @@ export function beamObjectDiameter(object: Pick<BeamObject, 'kind' | 'diameter'>
   return object.diameter ?? DEFAULT_DIAMETER[object.kind]
 }
 
-export function absorptionScore(object: Pick<BeamObject, 'kind' | 'diameter' | 'mass' | 'scoreValue'>, scoreMultiplier = 1) {
+/**
+ * What one absorbed thing is worth, before the craft's score multiplier.
+ *
+ * The single number a meal owns: the score is this times the multiplier, and
+ * the growth is this times GROWTH_PER_POINT (see objectSizeGain). Anything
+ * that reprices a thing therefore reprices it in both, which is the point -
+ * they were separate figures once, and every gap between them was a hole for
+ * the player to fall into.
+ *
+ * The fallback exists for objects that never got a price of their own. It is
+ * bulk-led rather than weight-led on purpose: what the survey pays for is what
+ * the thing *is*, and the beam's straining is priced by the weight ladder.
+ */
+export function absorptionValue(object: Pick<BeamObject, 'kind' | 'diameter' | 'mass' | 'scoreValue'>) {
   const diameter = beamObjectDiameter(object)
-  // The mass coefficient came down when masses went up. That change was a unit
-  // change - how long a thing rides the beam - and a unit change must not
-  // quietly reprice everything in the game.
-  const base = object.scoreValue ?? 8 + diameter * diameter * 7 + object.mass * 1.7
-  return Math.max(1, Math.round(base * Math.max(0.1, scoreMultiplier)))
+  return object.scoreValue ?? 8 + diameter * diameter * 7 + object.mass * 1.7
+}
+
+export function absorptionScore(object: Pick<BeamObject, 'kind' | 'diameter' | 'mass' | 'scoreValue'>, scoreMultiplier = 1) {
+  return Math.max(1, Math.round(absorptionValue(object) * Math.max(0.1, scoreMultiplier)))
 }
 
 /**

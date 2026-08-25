@@ -7,6 +7,7 @@ import {
   type BeamWorldProp,
   CAR_MASS,
   absorptionScore,
+  absorptionValue,
   beamLiftScale,
   beamObjectDiameter,
   beamProfile,
@@ -26,7 +27,7 @@ import {
   stepHazards,
   type HazardState,
 } from './core/hazards'
-import { SIZE_MIN, SIZE_START, type SizeGainKind, type SizeProfile, bonusHeartsForSize, clampSize, growSize, growSizeBy, objectSizeGain, sizeProfile, ufoDiameter } from './core/size'
+import { SIZE_MIN, SIZE_START, type SizeGainKind, type SizeProfile, bonusHeartsForSize, clampSize, healthRegenForSize, growSize, growSizeBy, objectSizeGain, sizeProfile, ufoDiameter } from './core/size'
 import { MAX_HEALTH, createHealthState, damageHealth, healHealth, healthRatio, isDead, isRegenerating, raiseHealthMax, stepHealth, type HealthLossKind, type HealthState } from './core/health'
 import { BATTLESHIP_ALTITUDE, BATTLESHIP_LAUNCH_SECONDS, BATTLESHIP_TURRETS, activeEnemyCount, armMinesInBeam, battleshipTurretPoint, createEnemyState, droneMineInSight, hitEnemy, resolveEnemyContacts, stepEnemies, stepEnemyProjectiles, syncEnemyTiers, waveLabelForTime, waveStageForTime, type EnemyKind, type EnemyState } from './core/enemies'
 import {
@@ -580,6 +581,7 @@ function makeBeamObject(car: ProceduralCar): BeamObject {
     absorbing: false,
     absorbTimer: 0,
     diameter: 2.9,
+    // A parked car, and the first thing in the city bigger than a person.
     scoreValue: 70,
   }
 }
@@ -631,26 +633,40 @@ const WORLD_PROP_DIAMETERS: Record<BeamWorldProp['kind'], number> = {
   'gas-station': 18,
 }
 
+/**
+ * What each prop is worth swallowed - in points, and therefore in hull too
+ * (see CROWD_VALUE and objectSizeGain, which read this same number).
+ *
+ * The city is mostly junk, and junk is now priced as junk. A bin, a bench, a
+ * boulder, a park tree, a rooftop plant room and a heap of rubble are awkward,
+ * often heavy things that a survey of this planet has no use for; they sit
+ * under a pedestrian. What is worth points is what is *singular* - the mast on
+ * the hill, the station mouth, the forecourt - and those are the ones worth
+ * growing on.
+ *
+ * Weight is not in this at all. The rubble is five units of dead lift for
+ * eighteen points, and that is the correct shape of the joke: the beam
+ * straining is not the survey paying.
+ */
 const WORLD_PROP_SCORES: Record<BeamWorldProp['kind'], number> = {
-  'rooftop-structure': 110,
-  tree: 65,
-  'utility-pole': 45,
-  'power-pylon': 180,
-  communications: 520,
-  'trash-bin': 30,
-  'park-bench': 35,
-  'bus-stop': 140,
-  subway: 220,
-  // Far under a bin, and cut again once the sample rung doubled. They are the
-  // cheapest thing in the city and there are hundreds of them around one lake,
-  // so a pilot parked on a shoreline was clearing an objective the city is
-  // supposed to charge for. A pond must not out-score a street: sweeping the
-  // waterline is a snack the opening saucer can reach, never a living.
-  'shore-rock': 5,
+  // Junk, under a pedestrian's twenty. Heavy junk, in some cases.
   'shore-reed': 3,
-  // Between the mast (520) and the station mouth (220): rarer than either as
-  // a sight, and the heaviest thing in the city that is not a building.
-  'gas-station': 420,
+  'shore-rock': 4,
+  'trash-bin': 8,
+  'park-bench': 10,
+  'utility-pole': 12,
+  tree: 12,
+  // A plant room is a shed on a roof. Five units of it, and worth a bin and a
+  // half - the height it was standing at is not a property of the shed.
+  'rooftop-structure': 24,
+  // Fixtures with a use: a stop is street furniture, a pylon carries the grid.
+  'bus-stop': 90,
+  'power-pylon': 170,
+  // The three landmarks, and the reason to detour. Rarer than anything above
+  // as a sight, and the top of the city's price list.
+  subway: 210,
+  'gas-station': 430,
+  communications: 520,
 }
 
 /**
@@ -1110,10 +1126,17 @@ function grabRuins(game: GameRuntime, field: BeamField) {
       explosionPending: false,
       absorbing: false,
       absorbTimer: 0,
-      // Under a bin's worth of the block it came from: clearing a lot is
-      // tidying, not a second demolition, and the score for knocking the
-      // building down was already paid once.
-      scoreValue: 60,
+      // Rubble. Five units of dead lift for less than a pedestrian, because
+      // clearing a lot is tidying rather than a second demolition and the
+      // score for knocking the building down was already paid once.
+      //
+      // This is also the hole that used to be here. Growth read the rubble's
+      // eighteen metres of footprint rather than its price, so lasering a
+      // block and swallowing the pile grew the craft four times faster than
+      // eating the tower whole - at half the hull, for a sixth of the points.
+      // Now that growth is priced off this number, the ruin cannot outrun the
+      // building it fell off.
+      scoreValue: 18,
       ruin,
     })
     triggerLaserBurst(game.laserBursts, 'impact', ruin.position)
@@ -1557,11 +1580,11 @@ function absorbBeamObject(game: GameRuntime, object: BeamObject) {
       game.destroyedLandmarks.add(object.worldProp.id)
     }
   }
-  // Larger meals grow the craft more, as a fraction of current size like every
-  // other gain - but never more than their share of the hull they are going
-  // into, which is what stops growing from buying a faster way of growing.
-  // See objectSizeGain.
-  growBy(game, objectSizeGain(diameter, game.size))
+  // Score and growth are the same fact told twice: this is the very number
+  // `reward` above was priced from, so a thing that pays well grows the craft
+  // well and a heavy piece of junk does neither. The hull share inside
+  // objectSizeGain is the one thing that can cut it, and only downwards.
+  growBy(game, objectSizeGain(absorptionValue(object), diameter, game.size))
   game.absorbedCount += 1
   bankAbsorbScore(game, reward)
   game.pickupPulse = 1
@@ -2041,7 +2064,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     game.collisionCooldown = Math.max(0, game.collisionCooldown - d)
     game.laserCooldown = Math.max(0, game.laserCooldown - d)
     game.broadcastTime = Math.max(0, game.broadcastTime - d)
-    stepHealth(game.health, d)
+    stepHealth(game.health, d, healthRegenForSize(game.size))
     // Ten seconds of game time, which the tutorial holds at zero: the report
     // is about a craft loose over the city, and during the tutorial the craft
     // is parked over a cat with its flight controls inert. Nothing has
