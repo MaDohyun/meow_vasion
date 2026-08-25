@@ -17,7 +17,7 @@ import {
   stepBeamObjects,
 } from './core/beam'
 import { createCrowdState, finishTutorialCrowd, prepareTutorialCrowd, primeCrowds, stepCrowds, type CrowdState } from './core/crowds'
-import { type CrowdSpawnZone, GAS_STATION_BEAM_MASS, canAbsorbBuilding, crowdSpawnZonesAround, damageLandmark, destructibleLandmarksAround, parkingCarsAround, type DestructibleLandmark } from './core/cityLandmarks'
+import { type CrowdSpawnZone, canAbsorbBuilding, crowdSpawnZonesAround, damageLandmark, destructibleLandmarksAround, parkingCarsAround, type DestructibleLandmark } from './core/cityLandmarks'
 import { STRINGS, readStoredLanguage, storeLanguage, type Language, type MessageKey, type TutorialControl } from './i18n'
 import { createDaylightSample, daylightClock, sampleDaylight, type DaylightSample } from './core/daylight'
 import {
@@ -78,7 +78,7 @@ import {
   type BoonId,
   type BoonState,
 } from './core/boons'
-import { buildingDestructionScore, createBuildingRuin, damageBuilding, ruinCollider, type BuildingRuin } from './core/buildings'
+import { RUIN_BEAM_MASS, buildingDestructionScore, createBuildingRuin, damageBuilding, ruinBulk, ruinCollider, type BuildingRuin } from './core/buildings'
 import { stepLakeAbsorption } from './core/lakes'
 import {
   MISSION_COUNT,
@@ -101,7 +101,7 @@ import { DRONE_BLAST_TRAUMA, HELICOPTER_RAM_TRAUMA, HIT_TRAUMA, addShakeTrauma, 
 import { worldPropMass, worldPropsAround } from './core/worldProps'
 import { endingForTimeUp, isVictory, type RunEnding } from './core/ending'
 import { overloadCruiseScale } from './core/overload'
-import { TANKER_EXPLOSION_SCALE, playBoosterSound, playBuildingCollapseSound, playDroneExplosionSound, playLaserSound, playMysteryCircleSound, playNearbyCatCrySound, playVehicleExplosionSound, startBeamSound, startGameplayMusic, stopBeamSound, stopGameplayMusic, stopLobbyMusic, tone, unlockAudio } from './audio'
+import { TANKER_EXPLOSION_SCALE, playBattleshipExplosionSound, playBoosterSound, playBuildingCollapseSound, playDroneExplosionSound, playLaserSound, playMysteryCircleSound, playNearbyCatCrySound, playVehicleExplosionSound, startBeamSound, startGameplayMusic, stopBeamSound, stopGameplayMusic, stopLobbyMusic, tone, unlockAudio } from './audio'
 
 export type GamePhase = 'intro' | 'playing' | 'results'
 
@@ -574,6 +574,13 @@ const WORLD_PROP_COLORS: Record<BeamWorldProp['kind'], string> = {
   'park-bench': '#c58b68',
   'bus-stop': '#78aebc',
   subway: '#78aebc',
+  // GROUND.SHORE_ROCK and GROUND.SHORE_REED, written out like every other
+  // entry here: a boulder must not change colour on its way up the beam.
+  'shore-rock': '#b4b1ac',
+  'shore-reed': '#7fbe7d',
+  // The forecourt's own paint, so a station carried off keeps the colour it
+  // had on the corner.
+  'gas-station': '#f0eee6',
 }
 
 const WORLD_PROP_DIAMETERS: Record<BeamWorldProp['kind'], number> = {
@@ -586,6 +593,13 @@ const WORLD_PROP_DIAMETERS: Record<BeamWorldProp['kind'], number> = {
   'park-bench': 3.4,
   'bus-stop': 7.2,
   subway: 8.6,
+  // Both clear the opening saucer's 2.48m hull, so weight and bulk open
+  // together and a pond is food from the first second of a run.
+  'shore-rock': 1.6,
+  'shore-reed': 1.4,
+  // Canopy corner to canopy corner - the same figure the laser's landmark
+  // sphere uses for its radius, doubled.
+  'gas-station': 18,
 }
 
 const WORLD_PROP_SCORES: Record<BeamWorldProp['kind'], number> = {
@@ -598,6 +612,13 @@ const WORLD_PROP_SCORES: Record<BeamWorldProp['kind'], number> = {
   'park-bench': 35,
   'bus-stop': 140,
   subway: 220,
+  // Under a bin. They are the cheapest thing in the city and there are
+  // hundreds of them around one lake; a pond must not out-score a street.
+  'shore-rock': 18,
+  'shore-reed': 12,
+  // Between the mast (520) and the station mouth (220): rarer than either as
+  // a sight, and the heaviest thing in the city that is not a building.
+  'gas-station': 420,
 }
 
 /**
@@ -654,7 +675,7 @@ const ENEMY_BLAST: Partial<Record<EnemyKind, BlastKind>> = {
   drone: 'aircraft',
   helicopter: 'aircraft',
   fighter: 'aircraft',
-  boss: 'landmark',
+  boss: 'battleship',
 }
 
 /** Varies one blast from the next without the caller having to carry a
@@ -994,6 +1015,67 @@ function grabBuildings(game: GameRuntime, field: BeamField) {
   game.worldColliders = activeWorldColliders(game.world)
 }
 
+/**
+ * Clears rubble, on the same terms as everything else.
+ *
+ * A ruin is what the laser leaves behind, and until now that was the end of
+ * it: a permanent low slab with a collider and no way to shift it, sitting on
+ * a lot the player themself emptied. Rubble weighs five - see RUIN_BEAM_MASS -
+ * so a craft a fifth of the way up the run can pick the mess up, which is
+ * about when the hull first grows wide enough to swallow a footprint that
+ * broad.
+ *
+ * Written against grabBuildings rather than the prop path on purpose. A ruin
+ * is runtime state, not world generation - it exists because the player
+ * brought a block down - so there is no deterministic list to stream it from
+ * and no static pool to hand it back to. Like a building, it leaves the world
+ * the moment it is caught: out of `ruinedBuildings`, out of the colliders, and
+ * into the beam as an ordinary object. One drawer at a time, and no way for
+ * the rubble to snap home.
+ */
+function grabRuins(game: GameRuntime, field: BeamField) {
+  if (!game.beamActive) return
+  if (beamLiftScale(RUIN_BEAM_MASS, beamStrength(game)) <= 0) return
+  let taken = false
+  for (const ruin of [...game.ruinedBuildings.values()]) {
+    if (!isInsideBeam({ position: ruin.position }, field)) continue
+    game.ruinedBuildings.delete(ruin.id)
+    game.beamObjects.unshift({
+      id: `ruin:${ruin.id}`,
+      kind: 'ruin',
+      mass: RUIN_BEAM_MASS,
+      diameter: ruinBulk(ruin),
+      color: ruin.color,
+      position: { ...ruin.position },
+      velocity: { x: 0, y: 0, z: 0 },
+      rotation: { x: 0, y: 0, z: 0 },
+      angularVelocity: { x: 0, y: 0.6, z: 0 },
+      scale: { ...ruin.size },
+      active: true,
+      inBeam: true,
+      hold: 1,
+      tether: 1,
+      playerTouched: true,
+      destroying: false,
+      destroyTimer: 0,
+      explosionPending: false,
+      absorbing: false,
+      absorbTimer: 0,
+      // Under a bin's worth of the block it came from: clearing a lot is
+      // tidying, not a second demolition, and the score for knocking the
+      // building down was already paid once.
+      scoreValue: 60,
+      ruin,
+    })
+    triggerLaserBurst(game.laserBursts, 'impact', ruin.position)
+    tone('impact')
+    taken = true
+  }
+  // The collider list carries a box per ruin, so one that is now hanging off
+  // the beam has to stop being something the craft can fly into.
+  if (taken) refreshWorldGeometry(game)
+}
+
 function syncBeamObjects(game: GameRuntime) {
   const existing = new Map(game.beamObjects.map((object) => [object.id, object]))
   const retained = game.beamObjects.filter((object) => object.active && (object.inBeam || object.tether > 0.02 || object.playerTouched) && Math.hypot(object.position.x - game.drone.position.x, object.position.z - game.drone.position.z) <= WORLD_REMOVE_RADIUS)
@@ -1001,7 +1083,7 @@ function syncBeamObjects(game: GameRuntime) {
   const sourceCars = [...parkingCarsAround(game.drone.position), ...game.world.cars]
   const sourceProps = worldPropsAround(game.world, game.drone.position)
     .filter((prop) => !game.destroyedWorldProps.has(prop.id))
-    .filter((prop) => prop.kind !== 'communications' || !game.destroyedLandmarks.has(prop.id))
+    .filter((prop) => (prop.kind !== 'communications' && prop.kind !== 'gas-station') || !game.destroyedLandmarks.has(prop.id))
   // Buildings in flight are not sourced from anywhere - they were torn out of
   // the world - so they are retained on their own rather than rebuilt.
   const lifted = retained.filter((object) => object.kind === 'building')
@@ -1164,7 +1246,10 @@ function registerEnemyHit(game: GameRuntime, id: string, damage: number) {
   }
   if (!result.destroyed || !result.kind) return
   if (result.kind === 'drone') playDroneExplosionSound()
-  if (result.kind === 'boss') game.bossDestroyed = true
+  if (result.kind === 'boss') {
+    game.bossDestroyed = true
+    playBattleshipExplosionSound()
+  }
   if (result.kind === 'boss' && result.enemy) {
     // Seventy-four metres of ship does not go up in one puff. A burst at every
     // gun station breaks along the whole length.
@@ -1412,7 +1497,12 @@ function absorbBeamObject(game: GameRuntime, object: BeamObject) {
   const reward = absorptionScore(object, game.sizeProfile.scoreMultiplier)
   if (object.worldProp) {
     game.destroyedWorldProps.add(object.worldProp.id)
-    if (object.worldProp.kind === 'communications') game.destroyedLandmarks.add(object.worldProp.id)
+    // The two props the laser also knows as landmarks. Eating one has to tell
+    // that half of the game it is gone, or the shot list keeps aiming at a
+    // forecourt that is inside the craft.
+    if (object.worldProp.kind === 'communications' || object.worldProp.kind === 'gas-station') {
+      game.destroyedLandmarks.add(object.worldProp.id)
+    }
   }
   // Larger meals grow the craft more, as a fraction of current size like every
   // other gain. Bounded so no single meal - not even a tower - skips a run.
@@ -2101,7 +2191,16 @@ export function GameProvider({ children }: { children: ReactNode }) {
         mineExplosion.position.y - game.drone.position.y,
         mineExplosion.position.z - game.drone.position.z,
       )
-      if (distance <= mineExplosion.radius) registerImpact(game, 'ENEMY', 'contact', DRONE_BLAST_TRAUMA)
+      // Sphere against sphere, not point in sphere. The blast is ten metres
+      // around the mine and the craft grows past fifteen, so measuring to the
+      // centre made a grown saucer immune to the one enemy that detonates on
+      // contact: the mine went off against the hull, at a distance from the
+      // centre that was already outside its own blast, and nothing happened.
+      // Past a hull radius of ten - a bit over half the growth range - mines
+      // stopped being able to hurt the player at all.
+      if (distance <= mineExplosion.radius + game.sizeProfile.hitRadius) {
+        registerImpact(game, 'ENEMY', 'contact', DRONE_BLAST_TRAUMA)
+      }
     }
     if (collision.hit && collision.impulse > 2.5 && game.collisionCooldown <= 0) { game.collisionCooldown = 0.45; registerImpact(game, 'BUILDING') }
 
@@ -2141,28 +2240,15 @@ export function GameProvider({ children }: { children: ReactNode }) {
       // falling through it into the street.
       colliders: game.worldColliders,
     }
-    // What the beam does to a rare landmark, and what it takes.
+    // Nothing the beam touches is detonated by touching it.
     //
-    // Touching one used to detonate it: sweep the cone across a forecourt or a
-    // comms mast and it went up in a full blast, at any craft size, from a
-    // graze nobody aimed. The beam is a tractor beam, so contact alone must
-    // never be a demolition.
-    //
-    // A comms mast is city dressing with a weight in WORLD_PROP_MASS, so it is
-    // not handled here at all any more - a beam strong enough tears it out of
-    // the ground and carries it off like any other prop (see the lifted comms
-    // pool), and the laser is what blows it up. A gas station has no lifted
-    // model to carry, so the beam route for it stays a demolition - but it now
-    // costs the same weight ladder everything else does, rather than a brush
-    // of the cone.
-    if (game.beamActive && beamLiftScale(GAS_STATION_BEAM_MASS, beamStrength(game)) > 0) {
-      for (const landmark of destructibleLandmarksAround(game.drone.position, 1)) {
-        if (landmark.kind !== 'gas-station') continue
-        if (game.destroyedLandmarks.has(landmark.id)) continue
-        const contact = { position: { x: landmark.position.x, y: 0.65, z: landmark.position.z } }
-        if (isInsideBeam(contact, beamField)) detonateLandmark(game, landmark)
-      }
-    }
+    // A forecourt and a comms mast both used to go up in a full blast from a
+    // graze nobody aimed, at any craft size. The mast lost that first: it is
+    // city dressing with a weight in WORLD_PROP_MASS, so a beam strong enough
+    // tears it out of the ground and carries it off like any other prop. The
+    // station kept a demolition route for one reason - it had no lifted model
+    // to carry - and now it has one, so it is a prop on the same terms: weight
+    // nine, hauled or eaten, and the laser is what blows one up.
     // No pickup cap: hanging mass is its own limit, and a craft that grabbed
     // too much should feel it rather than be quietly protected from it.
     //
@@ -2180,6 +2266,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     }
     if (!tutorialAtStart) stepHazards(game.hazards, { position: game.drone.position, heading: game.drone.heading, elapsed: game.sessionTime }, d)
     grabBuildings(game, beamField)
+    grabRuins(game, beamField)
     stepBeamObjects(game.beamObjects, beamField, d)
     // Crowd movement owns its absorption timer; beam physics only handles the
     // pull so the shrink animation is not advanced twice per frame.

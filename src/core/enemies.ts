@@ -594,11 +594,24 @@ export const ENEMY_DIAMETER: Record<EnemyKind, number> = {
   boss: 13.6,
 }
 
+/**
+ * Beam weight, on the same integer ladder as every car and tower.
+ *
+ * The sky is food now, and these are the prices. A helicopter at 6 sits just
+ * above a power pylon, so it opens around a quarter of the way up the run - the
+ * first machine a growing craft can pluck out of the air. A fighter at 10 is
+ * a supertall block's weight, late-run work. The dreadnought at 30 is the top
+ * of the whole ladder (see BEAM_STRENGTH_MAX): only a craft within a whisker
+ * of the size cap can shift it, which is the point - eating the ship is the
+ * last thing a run can do, not something it does on the way past.
+ *
+ * The mine keeps its 3. It is the one thing the beam catches and never eats.
+ */
 const ENEMY_MASS: Record<EnemyKind, number> = {
   drone: 3,
-  helicopter: 4,
-  fighter: 4,
-  boss: 12,
+  helicopter: 6,
+  fighter: 10,
+  boss: 30,
 }
 
 export function waveStageForTime(elapsed: number) {
@@ -723,13 +736,15 @@ function makeSlot(kind: EnemyKind, slot: number): EnemySlot {
     absorbTimer: 0,
     diameter: ENEMY_DIAMETER[kind],
     scoreValue: kind === 'boss' ? 1200 : kind === 'fighter' ? 140 : kind === 'helicopter' ? 80 : 35,
-    // No enemy is food, but the mine is the one thing the beam may touch: it
-    // can be caught and dragged, and what a dragged bomb does is go off - the
-    // arming and strike rules in stepEnemies fire exactly as if it was flown
-    // into. Everything else stays immune - the battleship most of all, which
-    // is not "too big to eat yet" but simply not food, however far the craft
-    // has grown.
-    beamImmune: kind !== 'drone',
+    // Nothing in the sky is immune to the beam. Whether it can be moved is the
+    // weight ladder's answer (ENEMY_MASS against beam strength) and whether it
+    // can be swallowed is the hull's, exactly as for a car or a bus shelter.
+    //
+    // The mine is still the one that is never banked as a meal: it can be
+    // caught and dragged, and what a dragged bomb does is go off - the arming
+    // and strike rules in stepEnemies fire exactly as if it was flown into, so
+    // `isAbsorbable` refuses it by kind rather than by weight.
+    beamImmune: false,
     freePhysics: false,
     target: { x: 0, y: 0, z: 0 },
     phase: slot / Math.max(1, ENEMY_CAPS[kind]) * Math.PI * 2,
@@ -1313,7 +1328,12 @@ export function stepEnemies(state: EnemyState, player: Vec3, dt: number, playerV
       // One arming rule, on the beam or off it. A mine reeled in by the beam
       // crosses the blast field like any other approach, arms there, and
       // the fuse does the rest - catching a bomb does not make it politer.
-      if (!enemy.mineArmed && (struck || distance <= DRONE_MINE_BLAST_RADIUS)) {
+      //
+      // Measured to the hull, not to the centre of the craft. The blast field
+      // is ten metres of air around the mine and a grown saucer is wider than
+      // that on its own, so a centre-to-centre test had the field being
+      // entered by a hull that was already through it.
+      if (!enemy.mineArmed && (struck || distance <= DRONE_MINE_BLAST_RADIUS + playerRadius)) {
         enemy.mineArmed = true
         enemy.mineFuse = DRONE_MINE_FUSE
       }

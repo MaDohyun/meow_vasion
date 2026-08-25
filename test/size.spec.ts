@@ -5,6 +5,8 @@ import {
   BEAM_APERTURE_MAX,
   BEAM_PULL_MAX,
   BEAM_REACH_MAX,
+  BEAM_STRENGTH_CITY_PROGRESS,
+  BEAM_STRENGTH_CITY_RUNG,
   BEAM_STRENGTH_MAX,
   CAMERA_GROWTH_PULL_BACK,
   CAMERA_REST_DISTANCE,
@@ -14,6 +16,7 @@ import {
   SIZE_MAX,
   SIZE_MIN,
   SIZE_START,
+  beamStrengthForSize,
   bonusHeartsForSize,
   clampSize,
   growSize,
@@ -106,6 +109,32 @@ describe('craft size as growth, not as health', () => {
       expect(altitude).toBeGreaterThanOrEqual(previous)
       previous = altitude
     }
+  })
+
+  it('climbs the city ladder first and the sky ladder last', () => {
+    // Two storeys, deliberately unequal. The first eighty-five percent of
+    // growing buys rungs 1..12 - the street, the park and the skyline - and
+    // the last fifteen buys 12..30, which is nothing but the dreadnought and
+    // its escorts.
+    const at = (progress: number) => beamStrengthForSize(SIZE_START + (SIZE_MAX - SIZE_START) * progress)
+    expect(at(0)).toBe(1)
+    expect(at(BEAM_STRENGTH_CITY_PROGRESS)).toBe(BEAM_STRENGTH_CITY_RUNG)
+    expect(at(1)).toBe(BEAM_STRENGTH_MAX)
+
+    // Never falls, and never skips the city on the way up.
+    let previous = 0
+    for (let progress = 0; progress <= 1; progress += 0.002) {
+      const strength = at(progress)
+      expect(strength).toBeGreaterThanOrEqual(previous)
+      expect(strength - previous).toBeLessThanOrEqual(1)
+      previous = strength
+    }
+
+    // The last rungs are the steep ones: half the ladder is spent in the last
+    // sixth of the growth range, which is what keeps eating the ship the final
+    // thing a run can do rather than something it passes on the way.
+    expect(at(0.5)).toBeLessThan(BEAM_STRENGTH_CITY_RUNG)
+    expect(at(0.9)).toBeLessThan(BEAM_STRENGTH_MAX - 10)
   })
 
   it('grows strength, lift and aperture off the hull alone', () => {

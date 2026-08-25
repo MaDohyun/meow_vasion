@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  createActiveWorld,
   getProceduralCell,
   isLakeAt,
   lakeClusterForCell,
@@ -9,12 +10,15 @@ import {
   worldCellCoord,
   type ProceduralBuilding,
 } from '../src/core/world'
-import { beamLiftScale } from '../src/core/beam'
-import { WORLD_PROP_MASS } from '../src/core/worldProps'
+import { beamLiftScale, isAbsorbable } from '../src/core/beam'
+import { WORLD_PROP_MASS, worldPropMass, worldPropsAround } from '../src/core/worldProps'
+import { SIZE_MAX, SIZE_START, sizeProfile, ufoDiameter } from '../src/core/size'
 import {
   GAS_STATION_BEAM_MASS,
   LANDMARK_LASER_HITS,
   damageLandmark,
+  destructibleLandmarksAround,
+  type DestructibleLandmark,
   groundLandmarkForCell,
   hasBusStop,
   NEWS_SCREEN_HEIGHT,
@@ -116,6 +120,38 @@ describe('render-only city landmarks', () => {
     expect(beamLiftScale(GAS_STATION_BEAM_MASS, 8)).toBeGreaterThan(0)
     expect(GAS_STATION_BEAM_MASS).toBeGreaterThan(WORLD_PROP_MASS['power-pylon'])
     expect(GAS_STATION_BEAM_MASS).toBeLessThan(WORLD_PROP_MASS.communications)
+    // And it is that ladder, not a copy of it: the beam reads the station
+    // through WORLD_PROP_MASS like every other prop.
+    expect(WORLD_PROP_MASS['gas-station']).toBe(GAS_STATION_BEAM_MASS)
+  })
+
+  it('hands the beam a forecourt to carry instead of a forecourt to detonate', () => {
+    // The station is one object with two readings: a prop to the beam, a
+    // landmark to the laser. They have to agree on its id, or eating one
+    // leaves the shot list aiming at a station that is inside the craft.
+    let station: DestructibleLandmark | null = null
+    let props: ReturnType<typeof worldPropsAround> = []
+    for (let step = 0; step < 40 && !station; step += 1) {
+      const centre = { x: step * WORLD_CELL_SIZE * 5, z: 0 }
+      props = worldPropsAround(createActiveWorld(centre), centre)
+      station = destructibleLandmarksAround(centre, 6).find((landmark) => landmark.kind === 'gas-station') ?? null
+    }
+    expect(station).not.toBeNull()
+    const prop = props.find((candidate) => candidate.id === station!.id)
+    expect(prop, 'the landmark id is the prop id').toBeDefined()
+    expect(prop!.kind).toBe('gas-station')
+    expect(worldPropMass(prop!)).toBe(GAS_STATION_BEAM_MASS)
+
+    // Both gates, run against real craft. The opening saucer flies over one
+    // without moving it; a craft half way up the run takes the whole forecourt.
+    const takes = (size: number) =>
+      beamLiftScale(worldPropMass(prop!), sizeProfile(size).beamStrength) > 0
+      && isAbsorbable('gas-station', undefined, ufoDiameter(size))
+    expect(takes(SIZE_START)).toBe(false)
+    expect(takes(SIZE_MAX)).toBe(true)
+
+    // The laser keeps its demolition: two hits, exactly as before.
+    expect(damageLandmark(new Map(), station!.id, LANDMARK_LASER_HITS).destroyed).toBe(true)
   })
 
   it('keeps at least three interactive cars in every generated parking lot', () => {

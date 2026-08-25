@@ -15,6 +15,10 @@ let vehicleExplosionBuffer: AudioBuffer | null = null
 let vehicleExplosionLoad: Promise<AudioBuffer | null> | null = null
 let vehicleExplosionPlaybackQueued = false
 let vehicleExplosionLoadFailed = false
+let battleshipExplosionBuffer: AudioBuffer | null = null
+let battleshipExplosionLoad: Promise<AudioBuffer | null> | null = null
+let battleshipExplosionPlaybackQueued = false
+let battleshipExplosionLoadFailed = false
 let lobbyMusic: HTMLAudioElement | null = null
 let gameplayMusic: HTMLAudioElement | null = null
 let beamSound: HTMLAudioElement | null = null
@@ -43,6 +47,9 @@ const VEHICLE_EXPLOSION_VOLUME = 0.14
 /** A tanker is a fuel load, not sheet metal. Same sample, played harder so the
  * rarest and highest-scoring kill in the city is the one that is heard. */
 export const TANKER_EXPLOSION_SCALE = 1.55
+/** The last ship goes down once per run, after a long boss fight. It should
+ * own the mix without pushing its already-hot supplied sample into clipping. */
+const BATTLESHIP_EXPLOSION_VOLUME = 0.82
 const BGM_VOLUME_STORAGE_KEY = 'beam-bandit-bgm-volume'
 const SFX_VOLUME_STORAGE_KEY = 'beam-bandit-sfx-volume'
 
@@ -513,6 +520,7 @@ export function unlockAudio() {
   void loadDroneExplosionSound()
   void loadBuildingCollapseSound()
   void loadVehicleExplosionSound()
+  void loadBattleshipExplosionSound()
 }
 
 /** Load the supplied laser sample once, then fan out short overlapping buffer
@@ -685,6 +693,46 @@ export function playVehicleExplosionSound(volumeScale = 1) {
   // later cannot push the blast into clipping the effects bus on its way out.
   const level = Math.min(0.98, VEHICLE_EXPLOSION_VOLUME * Math.max(0, volumeScale))
   gain.gain.setValueAtTime(level, context.currentTime)
+  source.connect(gain)
+  gain.connect(effectsDestination() ?? context.destination)
+  source.start()
+}
+
+/** Decode and retain the supplied capital-ship blast. Unlike road vehicles,
+ * the battleship has its own sample: it only dies once and has to sound larger
+ * than every reusable street explosion beneath it. */
+function loadBattleshipExplosionSound() {
+  if (!context || battleshipExplosionBuffer || battleshipExplosionLoadFailed) return Promise.resolve(battleshipExplosionBuffer)
+  if (battleshipExplosionLoad) return battleshipExplosionLoad
+  battleshipExplosionLoad = fetch('/audio/battleship-explosion.wav')
+    .then((response) => response.arrayBuffer())
+    .then((data) => context ? context.decodeAudioData(data) : null)
+    .then((buffer) => {
+      battleshipExplosionBuffer = buffer
+      return buffer
+    })
+    .catch(() => {
+      battleshipExplosionLoadFailed = true
+      return null
+    })
+  return battleshipExplosionLoad
+}
+
+export function playBattleshipExplosionSound() {
+  if (!context || context.state !== 'running' || battleshipExplosionLoadFailed) return
+  if (!battleshipExplosionBuffer) {
+    if (battleshipExplosionPlaybackQueued) return
+    battleshipExplosionPlaybackQueued = true
+    void loadBattleshipExplosionSound().then(() => {
+      battleshipExplosionPlaybackQueued = false
+      playBattleshipExplosionSound()
+    })
+    return
+  }
+  const source = context.createBufferSource()
+  const gain = context.createGain()
+  source.buffer = battleshipExplosionBuffer
+  gain.gain.setValueAtTime(BATTLESHIP_EXPLOSION_VOLUME, context.currentTime)
   source.connect(gain)
   gain.connect(effectsDestination() ?? context.destination)
   source.start()
