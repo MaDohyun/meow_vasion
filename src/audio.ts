@@ -703,7 +703,10 @@ export function tone(kind: 'pickup' | 'delivery' | 'warning' | 'impact' | 'upgra
   oscillator.type = kind === 'impact' ? 'sawtooth' : kind === 'warning' ? 'square' : 'triangle'
   oscillator.frequency.setValueAtTime(frequencies[kind][0], now)
   oscillator.frequency.exponentialRampToValueAtTime(frequencies[kind][1], now + 0.12)
-  gain.gain.setValueAtTime(kind === 'impact' ? 0.11 : 0.07, now)
+  // The absorb "boing" is the cue a player hears most, and at the shared level
+  // it sat under the beam loop it plays on top of - so pickup carries 1.5x the
+  // ordinary cue level while every other tone keeps its old mix.
+  gain.gain.setValueAtTime(kind === 'impact' ? 0.11 : kind === 'pickup' ? 0.105 : 0.07, now)
   gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18)
   oscillator.connect(gain)
   gain.connect(effectsDestination() ?? context.destination)

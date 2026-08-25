@@ -63,3 +63,38 @@ export function dragAim(
     y: clampAxis(aim.y + ((to.y - from.y) / halfExtent(bounds.height)) * gain),
   }
 }
+
+/**
+ * How far off centre the reticle has to sit before the craft turns.
+ *
+ * A cursor is never exactly centred and a thumb never lets go on a clean zero,
+ * so without a dead band the ship drifts in whichever direction the last pixel
+ * happened to fall.
+ */
+export const AIM_STEER_DEADZONE = 0.08
+
+/**
+ * The yaw the reticle asks for: the craft turns towards where it is looking.
+ *
+ * The curve is eased rather than linear so the first degrees past the dead band
+ * are a lean and the edge of the screen is a hard turn.
+ */
+export function aimSteer(x: number, deadzone = AIM_STEER_DEADZONE): number {
+  const magnitude = Math.abs(x)
+  if (magnitude < deadzone) return 0
+  return -Math.sign(x) * Math.pow((magnitude - deadzone) / (1 - deadzone), 1.18)
+}
+
+/**
+ * Who owns the yaw when a touch HUD is on screen.
+ *
+ * The movement stick wins while a thumb is on it - that is the control the
+ * player is deliberately holding. The moment it returns to rest the aim drag
+ * takes over, so a swipe turns the craft towards the reticle exactly as a mouse
+ * does on a desktop. Handing the drag the yaw unconditionally would fight the
+ * stick; handing the stick a resting zero would freeze the gaze, which is the
+ * bug this exists to prevent.
+ */
+export function steerWithStick(stick: number, aim: number): number {
+  return stick !== 0 ? stick : aim
+}

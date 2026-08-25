@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { TOUCH_AIM_GAIN, absoluteAim, dragAim, type AimPoint } from '../src/core/aim'
+import { AIM_STEER_DEADZONE, TOUCH_AIM_GAIN, absoluteAim, aimSteer, dragAim, steerWithStick, type AimPoint } from '../src/core/aim'
 
 const BOUNDS = { left: 0, top: 0, width: 800, height: 600 }
 const PHONE = { left: 0, top: 0, width: 390, height: 780 }
@@ -90,5 +90,44 @@ describe('touch drag aiming', () => {
     const across = dragAim({ x: 0, y: 0 }, { x: 0, y: 0 }, { x: PHONE.width / 4, y: 0 }, PHONE)
     const down = dragAim({ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: PHONE.height / 4 }, PHONE)
     expect(across.x).toBeCloseTo(down.y, 6)
+  })
+})
+
+describe('the craft follows its gaze', () => {
+  it('turns towards the side the reticle is on', () => {
+    // The mouse rule, and now the finger rule: the ship goes where you look.
+    // Both signs are pinned because a flipped yaw is the one bug here that
+    // still looks like it works.
+    expect(aimSteer(0.6)).toBeLessThan(0)
+    expect(aimSteer(-0.6)).toBeGreaterThan(0)
+    expect(Math.abs(aimSteer(1))).toBeCloseTo(1, 6)
+  })
+
+  it('holds still while the reticle is near the middle', () => {
+    expect(aimSteer(0)).toBe(0)
+    expect(aimSteer(AIM_STEER_DEADZONE * 0.99)).toBe(0)
+    expect(aimSteer(-AIM_STEER_DEADZONE * 0.99)).toBe(0)
+    expect(aimSteer(AIM_STEER_DEADZONE * 1.01)).not.toBe(0)
+  })
+
+  it('leans before it hauls', () => {
+    // Eased, not linear: half a screen out is less than half a turn, so the
+    // first degrees past the dead band are a correction rather than a swerve.
+    expect(Math.abs(aimSteer(0.5))).toBeLessThan(Math.abs(aimSteer(1)) * 0.5)
+  })
+
+  it('lets a drag steer once the stick is at rest', () => {
+    // The regression this guards: the touch HUD spreads over the pointer
+    // input, and its resting zero used to overwrite the drag's yaw. The ship
+    // then stared straight ahead however far the reticle had been dragged.
+    const dragged = aimSteer(-0.7)
+    expect(steerWithStick(0, dragged)).toBe(dragged)
+  })
+
+  it('gives the stick the yaw while a thumb is on it', () => {
+    // A thumb on the stick is a deliberate turn. It must not be blended with,
+    // or fought by, wherever the aiming hand last left the reticle.
+    expect(steerWithStick(0.8, aimSteer(-0.7))).toBe(0.8)
+    expect(steerWithStick(-0.35, aimSteer(0.9))).toBe(-0.35)
   })
 })
