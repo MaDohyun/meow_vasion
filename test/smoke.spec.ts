@@ -51,6 +51,12 @@ test('loads first frame and validates combat and high-altitude flight', async ({
   await advanceBriefing(() => page.locator('.briefing-touch').click())
   // Both hands-on steps hold their key rather than tapping it: the runtime
   // samples the keyboard once a frame, and a tap can fall between two of them.
+  // D used to be an unprinted laser alias; it must no longer clear the step.
+  const laserStep = await briefingStep()
+  await page.keyboard.down('d')
+  await page.waitForTimeout(300)
+  await page.keyboard.up('d')
+  expect(await briefingStep()).toBe(laserStep)
   await advanceBriefing(async () => {
     await page.keyboard.down('q')
     await page.waitForTimeout(600)
@@ -63,14 +69,21 @@ test('loads first frame and validates combat and high-altitude flight', async ({
   })
   await advanceBriefing(() => page.locator('.briefing-touch').click())
   // The cat step: the tutorial's own gate, which the run waits behind.
-  await expect(page.locator('.tutorial-e-prompt')).toBeVisible()
+  await expect(page.locator('.tutorial-beam-prompt')).toBeVisible()
 
   // Held, not tapped: the beam latches on the first press and the cat has to
   // come all the way up the cone before the gate opens. How long that takes is
   // a matter of frame rate, so this waits on the gate rather than on a clock.
-  await page.keyboard.down('e')
+  // E and F used to be unprinted beam aliases; neither may start the rescue.
+  for (const key of ['e', 'f']) {
+    await page.keyboard.down(key)
+    await page.waitForTimeout(300)
+    await page.keyboard.up(key)
+    expect((await readMetrics()).missionStage).toBe(0)
+  }
+  await page.keyboard.down('w')
   await expect.poll(async () => (await readMetrics()).missionStage, { timeout: 60000 }).toBe(1)
-  await page.keyboard.up('e')
+  await page.keyboard.up('w')
   await page.waitForTimeout(900)
   const missionMetrics = await readMetrics()
   expect(missionMetrics.missionStage).toBe(1)
@@ -126,10 +139,10 @@ test('SKIP ends the tutorial outright and starts the run', async ({ page }) => {
   await page.locator('.briefing-skip').click()
 
   // The briefing is gone, and so is everything that only exists while the
-  // tutorial holds the run: its mission card and its "press E" prompt.
+  // tutorial holds the run: its mission card and beam prompt.
   await expect(page.locator('.briefing-box')).toHaveCount(0)
   await expect(page.locator('.tutorial-mission')).toHaveCount(0)
-  await expect(page.locator('.tutorial-e-prompt')).toHaveCount(0)
+  await expect(page.locator('.tutorial-beam-prompt')).toHaveCount(0)
   await expect(page.locator('.mission-panel')).toContainText('미션 1')
 
   await page.waitForTimeout(1500)

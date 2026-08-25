@@ -1981,13 +1981,11 @@ export function GameProvider({ children }: { children: ReactNode }) {
       // no longer anchored on the movement keys, the two verbs can sit on
       // adjacent keys instead of straddling a dead one.
       //
-      // E, F and D still answer, unprinted. Nothing is taken away from anyone
-      // who already learned a different pair.
-      beam: Boolean(keys.current.KeyE || keys.current.KeyF || keys.current.KeyW) || mouseFire.current.beam,
-      // Holding either key keeps the laser firing on its normal cooldown
+      beam: Boolean(keys.current.KeyW) || mouseFire.current.beam,
+      // Holding the key keeps the laser firing on its normal cooldown
       // cadence instead of requiring repeated presses.
-      laser: Boolean(keys.current.KeyQ || keys.current.KeyD) || mouseFire.current.laser,
-      laserContinuous: Boolean(keys.current.KeyQ || keys.current.KeyD) || mouseFire.current.laser,
+      laser: Boolean(keys.current.KeyQ) || mouseFire.current.laser,
+      laserContinuous: Boolean(keys.current.KeyQ) || mouseFire.current.laser,
     }
     if (!mobile.current.active) return keyboard
     const { active: _active, ...mobileInput } = mobile.current
