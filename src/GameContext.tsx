@@ -1868,11 +1868,23 @@ export function GameProvider({ children }: { children: ReactNode }) {
       lookPitch: -pointer.current.y,
       vertical: 0,
       special: Boolean(keys.current.Space),
-      beam: Boolean(keys.current.KeyE),
-      // E remains the tractor beam. Holding Q keeps the laser firing on its
-      // normal cooldown cadence instead of requiring repeated key presses.
-      laser: Boolean(keys.current.KeyQ),
-      laserContinuous: Boolean(keys.current.KeyQ),
+      // Two keys each, because the hand that holds them is no longer pinned.
+      //
+      // Q and E were chosen around WASD: with the left hand anchored on the
+      // movement keys the top row was the only place a second and third verb
+      // could go. There are no movement keys now, so the hand can sit where a
+      // hand actually rests - F and D, home row, index and middle finger, and
+      // F has the locating bump so the beam is found without looking. On a
+      // laptop keyboard that is a real difference for a key held for minutes
+      // at a time, which the beam is.
+      //
+      // The old pair still answers. Nothing is taken away from anyone who
+      // already knows where the beam lives.
+      beam: Boolean(keys.current.KeyE || keys.current.KeyF),
+      // Holding either key keeps the laser firing on its normal cooldown
+      // cadence instead of requiring repeated presses.
+      laser: Boolean(keys.current.KeyQ || keys.current.KeyD),
+      laserContinuous: Boolean(keys.current.KeyQ || keys.current.KeyD),
     }
     if (!mobile.current.active) return keyboard
     const { active: _active, ...mobileInput } = mobile.current
