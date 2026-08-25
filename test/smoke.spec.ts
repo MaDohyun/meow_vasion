@@ -237,10 +237,21 @@ test.describe('touch aiming', () => {
     await page.waitForTimeout(120)
     expect(await aim()).toEqual({ x: 50, y: 50 })
 
+    const restingPose = await page.evaluate(() => ({ ...window.__BEAM_BANDIT_POSE__! }))
     await drag(middle, { x: middle.x + view.width * 0.22, y: middle.y - view.height * 0.14 })
     const dragged = await aim()
     expect(dragged.x).toBeGreaterThan(60)
     expect(dragged.y).toBeLessThan(40)
+
+    // The reticle is not a decal on the glass - the craft looks where it is
+    // pointed, exactly as it follows a cursor on a desktop. The touch HUD
+    // spreads over the pointer input, so a stick sitting at its resting zero
+    // used to overwrite this and leave the ship staring dead ahead however far
+    // the finger had dragged. Up and to the right, so the nose lifts and the
+    // hull turns that way.
+    const pointed = await page.evaluate(() => ({ ...window.__BEAM_BANDIT_POSE__! }))
+    expect(pointed.pitch).toBeGreaterThan(0.1)
+    expect(pointed.heading).not.toBeCloseTo(restingPose.heading, 3)
 
     // The finger is gone and the reticle stays: aim with one thumb, fire with
     // the other.

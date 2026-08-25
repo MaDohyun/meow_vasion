@@ -473,7 +473,7 @@ declare global {
   interface Window {
     /** Dev-only live pose, refreshed every frame (the metrics block below is
      *  throttled to 0.5s, which is too coarse to steer a scripted flight). */
-    __BEAM_BANDIT_POSE__?: { x: number; y: number; z: number; heading: number }
+    __BEAM_BANDIT_POSE__?: { x: number; y: number; z: number; heading: number; pitch: number }
     __BEAM_BANDIT_METRICS__?: {
       activeBuildings: number
       activeCars: number
@@ -2149,11 +2149,12 @@ function PerformanceProbe() {
   const elapsed = useRef(0)
   useFrame(({ gl, scene }, dt) => {
     if (!import.meta.env.DEV) return
-    const pose = (window.__BEAM_BANDIT_POSE__ ??= { x: 0, y: 0, z: 0, heading: 0 })
+    const pose = (window.__BEAM_BANDIT_POSE__ ??= { x: 0, y: 0, z: 0, heading: 0, pitch: 0 })
     pose.x = runtime.current.drone.position.x
     pose.y = runtime.current.drone.position.y
     pose.z = runtime.current.drone.position.z
     pose.heading = runtime.current.drone.heading
+    pose.pitch = runtime.current.drone.pitch
     elapsed.current += dt
     if (elapsed.current < 0.5) return
     elapsed.current = 0

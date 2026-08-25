@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { collideDrone, createDroneState, DRONE_DEFAULTS, stepDrone, type Aabb, type DroneInput, type DroneState, type Vec3 } from './core/drone'
-import { absoluteAim, dragAim, type AimPoint } from './core/aim'
+import { absoluteAim, aimSteer, dragAim, steerWithStick, type AimPoint } from './core/aim'
 import {
   type BeamField,
   type BeamObject,
@@ -1652,11 +1652,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const readInput = useCallback((): PlayerInput => {
-    const pointerMagnitude = Math.abs(pointer.current.x)
-    const mouseSteer = pointerMagnitude < 0.08 ? 0 : -Math.sign(pointer.current.x) * Math.pow((pointerMagnitude - 0.08) / 0.92, 1.18)
     const keyboard: PlayerInput = {
       throttle: (keys.current.KeyW || keys.current.ArrowUp ? 1 : 0) - (keys.current.KeyS || keys.current.ArrowDown ? 1 : 0),
-      steer: mouseSteer,
+      steer: aimSteer(pointer.current.x),
       strafe: (keys.current.KeyA || keys.current.ArrowLeft ? 1 : 0) - (keys.current.KeyD || keys.current.ArrowRight ? 1 : 0),
       lookPitch: -pointer.current.y,
       vertical: 0,
@@ -1669,7 +1667,18 @@ export function GameProvider({ children }: { children: ReactNode }) {
     }
     if (!mobile.current.active) return keyboard
     const { active: _active, ...mobileInput } = mobile.current
-    return { ...keyboard, ...mobileInput }
+    // A finger points the craft the same way a cursor does. The touch HUD only
+    // speaks for the axes it actually owns - the stick's yaw while a thumb is
+    // on it - and everything the aim drag decides has to survive the spread.
+    // Letting the stick's resting zero through was what left the ship staring
+    // dead ahead no matter how far the reticle had been dragged, and nothing on
+    // the HUD sets a pitch at all, so the drag owns that outright.
+    return {
+      ...keyboard,
+      ...mobileInput,
+      steer: steerWithStick(mobileInput.steer, keyboard.steer),
+      lookPitch: keyboard.lookPitch,
+    }
   }, [])
 
   const advance = useCallback((dt: number) => {
