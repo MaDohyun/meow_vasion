@@ -5,9 +5,12 @@ import {
   DRONE_MINE_BLAST_RADIUS,
   DRONE_MINE_FUSE,
   DRONE_MINE_HIT_RADIUS,
+  DRONE_SIGHT_ARC,
+  DRONE_SIGHT_DISTANCE,
   ENEMY_CONTACT_DAMAGE,
   ENEMY_WAVE_STAGES,
   createEnemyState,
+  droneMineInSight,
   mineTargetForTime,
   resolveEnemyContacts,
   stepEnemies,
@@ -220,6 +223,51 @@ describe('suicide drones', () => {
     expect(drone.active).toBe(false)
     expect(state.contactKills).toBe(1)
     expect(state.lastContactPoint).toEqual({ x: 4, y: 9, z: -2 })
+  })
+
+  it('counts as sighted only while a live mine is ahead and close', () => {
+    // What the general's one-off warning hangs on: it has to fire while the
+    // shell is still a dot in front of the craft, never for one behind it and
+    // never for empty sky.
+    const state = createEnemyState()
+    const player = { x: 0, y: 12, z: 0 }
+    const mine = state.slots.find((enemy) => enemy.kind === 'drone')!
+    expect(droneMineInSight(state, player, 0)).toBe(false)
+
+    // Heading 0 points down +z (forward is sin/cos of the heading).
+    mine.active = true
+    mine.position = { x: 0, y: 12, z: 60 }
+    expect(droneMineInSight(state, player, 0)).toBe(true)
+    // Same mine, craft turned around.
+    expect(droneMineInSight(state, player, Math.PI)).toBe(false)
+    // Just outside the cone, at the same range.
+    const outside = DRONE_SIGHT_ARC + 0.15
+    mine.position = { x: Math.sin(outside) * 60, y: 12, z: Math.cos(outside) * 60 }
+    expect(droneMineInSight(state, player, 0)).toBe(false)
+
+    // Dead ahead but beyond reading distance, then inside it.
+    mine.position = { x: 0, y: 12, z: DRONE_SIGHT_DISTANCE + 20 }
+    expect(droneMineInSight(state, player, 0)).toBe(false)
+    mine.position = { x: 0, y: 12, z: DRONE_SIGHT_DISTANCE - 20 }
+    expect(droneMineInSight(state, player, 0)).toBe(true)
+
+    // Only mines. A fighter in the same spot is not what the warning is about.
+    mine.active = false
+    const fighter = state.slots.find((enemy) => enemy.kind === 'fighter')!
+    fighter.active = true
+    fighter.position = { x: 0, y: 12, z: 40 }
+    expect(droneMineInSight(state, player, 0)).toBe(false)
+  })
+
+  it('sights a mine hanging well above or below the nose', () => {
+    // The craft pitches without turning, so altitude is not part of the arc -
+    // only the bearing is. A mine directly overhead is still one the pilot is
+    // flying at.
+    const state = createEnemyState()
+    const mine = state.slots.find((enemy) => enemy.kind === 'drone')!
+    mine.active = true
+    mine.position = { x: 0, y: 40, z: 30 }
+    expect(droneMineInSight(state, { x: 0, y: 12, z: 0 }, 0)).toBe(true)
   })
 
   it('never shoots', () => {

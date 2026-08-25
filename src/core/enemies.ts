@@ -1027,6 +1027,48 @@ function stepDroneMine(enemy: EnemySlot, player: Vec3, d: number) {
 }
 
 /**
+ * How close a mine has to be, and how far off the nose, before the pilot can
+ * be said to have *seen* one.
+ *
+ * A hundred and ten metres is well inside the fog (near 150) and eleven times
+ * the blast field, so the warning that hangs off this arrives while the shell
+ * is still a red dot ahead rather than something already being flown into.
+ * The arc is a fifty-degree cone around the direction of travel: mines behind
+ * the craft were never spotted, and a warning about one of those would be a
+ * warning about nothing on screen.
+ */
+export const DRONE_SIGHT_DISTANCE = 110
+export const DRONE_SIGHT_ARC = 0.87
+
+/**
+ * True when a live mine is ahead of the craft and near enough to read.
+ *
+ * Used once per run, for the general's word about what the beam does to a
+ * bomb (see queueMissionAdvisory) - so it answers "has the pilot met one of
+ * these yet", not "is one dangerous right now", which is what the blast
+ * radius is for.
+ */
+export function droneMineInSight(state: EnemyState, player: Vec3, heading: number) {
+  const forwardX = Math.sin(heading)
+  const forwardZ = Math.cos(heading)
+  const cone = Math.cos(DRONE_SIGHT_ARC)
+  for (const enemy of state.slots) {
+    if (!enemy.active || enemy.kind !== 'drone') continue
+    const dx = enemy.position.x - player.x
+    const dy = enemy.position.y - player.y
+    const dz = enemy.position.z - player.z
+    const distance = Math.hypot(dx, dy, dz)
+    if (distance > DRONE_SIGHT_DISTANCE || distance < 0.0001) continue
+    // Bearing only: a mine directly above or below the nose is still a mine
+    // the pilot is looking at, and the craft pitches without turning.
+    const flat = Math.hypot(dx, dz)
+    if (flat < 0.0001) return true
+    if ((dx * forwardX + dz * forwardZ) / flat >= cone) return true
+  }
+  return false
+}
+
+/**
  * Roam, chase, peel off. `phase` doubles as the travel heading in every mode,
  * which is also what the renderer faces the fuselage along - a patrolling
  * helicopter looks where it is going, not at the player it has not seen.

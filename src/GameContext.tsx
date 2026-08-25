@@ -28,7 +28,7 @@ import {
 } from './core/hazards'
 import { SIZE_MIN, SIZE_START, type SizeGainKind, type SizeProfile, bonusHeartsForSize, clampSize, growSize, growSizeBy, sizeProfile, ufoDiameter } from './core/size'
 import { MAX_HEALTH, createHealthState, damageHealth, healHealth, healthRatio, isDead, isRegenerating, raiseHealthMax, stepHealth, type HealthLossKind, type HealthState } from './core/health'
-import { BATTLESHIP_ALTITUDE, BATTLESHIP_LAUNCH_SECONDS, BATTLESHIP_TURRETS, activeEnemyCount, battleshipTurretPoint, createEnemyState, hitEnemy, resolveEnemyContacts, stepEnemies, stepEnemyProjectiles, syncEnemyTiers, waveLabelForTime, waveStageForTime, type EnemyKind, type EnemyState } from './core/enemies'
+import { BATTLESHIP_ALTITUDE, BATTLESHIP_LAUNCH_SECONDS, BATTLESHIP_TURRETS, activeEnemyCount, battleshipTurretPoint, createEnemyState, droneMineInSight, hitEnemy, resolveEnemyContacts, stepEnemies, stepEnemyProjectiles, syncEnemyTiers, waveLabelForTime, waveStageForTime, type EnemyKind, type EnemyState } from './core/enemies'
 import {
   createLaserPool,
   createLaserBurstPool,
@@ -95,13 +95,15 @@ import {
   createMissionState,
   isReconComplete,
   missionHasQuest,
+  missionAdvisoryGiven,
   peekMissionDebrief,
+  queueMissionAdvisory,
   recordMissionEvent,
   startFinalMission,
   startMissionOne,
   syncMissionState,
   takeMissionDebrief,
-  type MissionDebriefId,
+  type GeneralWordId,
   type MissionQuest,
   type MissionState,
 } from './core/missions'
@@ -375,9 +377,10 @@ export type GameSnapshot = {
   missionQuest: MissionQuest | null
   /** Published so the HUD's "1/5" counter never hard-codes the ladder length. */
   missionCount: number
-  /** The mission the general is still owed a word about. While this is set
-   *  the simulation is frozen: see the debrief gate in advance(). */
-  missionDebrief: MissionDebriefId | null
+  /** What the general is still owed a word about - a finished mission, or a
+   *  field advisory like the first drone mine sighted. While this is set the
+   *  simulation is frozen: see the debrief gate in advance(). */
+  missionDebrief: GeneralWordId | null
   missionPulse: number
   missionBanner: MissionBanner | null
   tutorial: boolean
@@ -2233,6 +2236,22 @@ export function GameProvider({ children }: { children: ReactNode }) {
     // The craft's velocity goes in with its position: enemies lead the shot,
     // and the lead is computed from how it is actually moving.
     if (!tutorialAtStart) stepEnemies(game.enemies, game.drone.position, d, game.drone.velocity, game.sizeProfile.hitRadius)
+    // The first mine the pilot flies toward buys a word from the general.
+    // Checked here, right after the mines have moved, so the shell the
+    // warning is about is the one on screen behind the box - and skipped on
+    // the developer drill, which opens on the dreadnought and is not talked
+    // through anything. A queued advisory freezes the world exactly as a
+    // debrief does, so the beam has to be let go with it.
+    if (
+      !tutorialAtStart && !game.devRun &&
+      !missionAdvisoryGiven(game.mission, 'drone-mine') &&
+      droneMineInSight(game.enemies, game.drone.position, game.drone.heading)
+    ) {
+      if (queueMissionAdvisory(game.mission, 'drone-mine') && game.beamActive) {
+        game.beamActive = false
+        stopBeamSound()
+      }
+    }
     const mineExplosion = game.enemies.mineExplosion
     if (mineExplosion) {
       playDroneExplosionSound()

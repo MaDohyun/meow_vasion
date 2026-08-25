@@ -1,4 +1,4 @@
-import type { MissionDebriefId, MissionQuestId } from './core/missions'
+import type { GeneralWordId, MissionQuestId } from './core/missions'
 import type { RunEnding } from './core/ending'
 /**
  * UI strings, in one dictionary.
@@ -143,14 +143,16 @@ export type Strings = {
   mission: string
   missionCopy: Record<MissionQuestId, string>
   /**
-   * The general's word after each of the first four missions, one paragraph
-   * per line.
+   * The general's word after each of the first four missions, plus the field
+   * advisories he raises unprompted, one paragraph per line.
    *
    * These freeze the game while they are on screen, so they are written to be
    * read once and remembered: each one names a rule the pilot has just met by
-   * doing it rather than by being told about it in the opening briefing.
+   * doing it rather than by being told about it in the opening briefing. The
+   * one exception is `drone-mine`, which is said *before* the lesson can be
+   * paid for - the mine teaches itself at the cost of five life otherwise.
    */
-  missionDebrief: Record<MissionDebriefId, readonly string[]>
+  missionDebrief: Record<GeneralWordId, readonly string[]>
   /** The general's closing word on the results screen, one per ending. */
   endingRemark: Record<RunEnding, string>
   tutorialMissionEyebrow: string
@@ -392,6 +394,11 @@ export const STRINGS: Record<Language, Strings> = {
         '하지만 여기서 멈추지 마라. 계속해서 가능한 한 많이 레이저로 도시를 난장판으로 만들어서, 우리가 침략하기 쉽도록 해 놓고 돌아오도록!',
         '지구인들이 다시 세우기 전에 최대한 부숴라.',
       ],
+      'drone-mine': [
+        '대원, 앞에 붉은 구체가 보이나? 지구인들이 뿌린 자폭 드론이다.',
+        '조심해라. 저것도 [[빔에 그대로 빨려 들어온다]]. 하지만 표본이 아니라 폭탄이라, 끌려온 자리에서 [[터진다]].',
+        '안전한 순서는 하나다. 레이저(Q)로 드론을 먼저 지우고, 그 다음에 빔(E)으로 그 일대를 훑어라.',
+      ],
     },
     endingRemark: {
       recon: '완벽한 정찰이었다, 대원. 지구는 이제 우리 손안이다. 귀환을 허가한다!',
@@ -581,6 +588,11 @@ export const STRINGS: Record<Language, Strings> = {
         'だがここで止まるな。引き続き、できる限りレーザーで街をめちゃくちゃにして、我々が侵略しやすい状態にしてから帰還しろ！',
         '地球人が建て直す前に壊せるだけ壊せ。',
       ],
+      'drone-mine': [
+        '隊員、前方の赤い球が見えるか。地球人がばら撒いた自爆ドローンだ。',
+        '気をつけろ。あれも[[そのままビームに吸い込まれる]]。だが標本ではなく爆弾だ。引き寄せたその場で[[爆発する]]。',
+        '安全な手順はひとつだけだ。まずレーザー（Q）でドローンを消し、それからビーム（E）でその一帯を吸い上げろ。',
+      ],
     },
     endingRemark: {
       recon: '完璧な偵察だった、隊員。地球はもう我々のものだ。帰還を許可する！',
@@ -769,6 +781,11 @@ export const STRINGS: Record<Language, Strings> = {
         'Well done! The city demolition mission is complete too.',
         'But do not stop here. Keep tearing the city apart with the laser so the invasion is easy for us, and then come home!',
         'Break everything you can before the humans rebuild it.',
+      ],
+      'drone-mine': [
+        'Pilot, that red sphere ahead of you - that is one of the suicide drones the humans seeded.',
+        'Careful. The beam [[pulls one straight in]] like anything else. But it is a bomb, not a sample, and it [[goes off]] the moment it reaches you.',
+        'There is one safe order. Clear the drone with the laser (Q) first, then sweep the area with the beam (E).',
       ],
     },
     endingRemark: {
