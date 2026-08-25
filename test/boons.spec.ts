@@ -17,7 +17,7 @@ import { buildingMaxHealth, damageBuilding } from '../src/core/buildings'
 import { type BeamField, type BeamObject, beamProfile, isInsideBeam, stepBeamObjects } from '../src/core/beam'
 import { BEAM_APERTURE_MAX, BEAM_PULL_MAX, BEAM_REACH_MAX } from '../src/core/size'
 import { createDroneState, stepDrone } from '../src/core/drone'
-import { SPEED_GROWN } from '../src/core/size'
+import { SIZE_MATURE, speedPowerForSize } from '../src/core/size'
 import { mysteryCircleForCell, mysteryCirclesNear, worldCellCenter, worldCellCoord, type MysteryCircleSite, type ProceduralBuilding } from '../src/core/world'
 
 /** Levels a state to the cap on the given stats. */
@@ -171,8 +171,8 @@ describe('mystery-circle boon pickups', () => {
     expect(shotsToDestroy(boonMultiplier(state, 'laser-power'))).toBe(Math.ceil(buildingMaxHealth(tower) / 1.5))
   })
 
-  it('tops out 15% faster once grown, and 32% with the part too, through stepDrone', () => {
-    // The craft's width and the pickup compose multiplicatively, then get
+  it('tops out 35% faster at maturity, and 55% with the part too, through stepDrone', () => {
+    // The craft's bulk and the pickup compose multiplicatively, then get
     // divided back through stepDrone's own additive throttle lever (0.12 a
     // level). That round trip is where the number can quietly land somewhere
     // else, so this flies it rather than trusting the arithmetic.
@@ -190,15 +190,16 @@ describe('mystery-circle boon pickups', () => {
       return drone.speed
     }
     const base = topSpeed(lever(1, createBoonState()))
-    const grown = topSpeed(lever(SPEED_GROWN, createBoonState()))
+    const grown = topSpeed(lever(speedPowerForSize(SIZE_MATURE), createBoonState()))
     const part = topSpeed(lever(1, withPart))
-    const both = topSpeed(lever(SPEED_GROWN, withPart))
-    expect(grown / base).toBeCloseTo(1.15, 4)
-    // Growing is worth exactly what finding the part is worth.
-    expect(part / base).toBeCloseTo(grown / base, 4)
-    // And together they multiply rather than add: 1.15 x 1.15, not 1.30.
-    expect(both / base).toBeCloseTo(1.15 * 1.15, 4)
-    expect(both / base).toBeGreaterThan(1.3)
+    const both = topSpeed(lever(speedPowerForSize(SIZE_MATURE), withPart))
+    // A fully grown craft is worth more than two speed parts on its own.
+    expect(grown / base).toBeCloseTo(1.35, 4)
+    expect(part / base).toBeCloseTo(1.15, 4)
+    expect(grown / base).toBeGreaterThan(part / base)
+    // And together they multiply rather than add: 1.35 x 1.15, not 1.50.
+    expect(both / base).toBeCloseTo(1.35 * 1.15, 4)
+    expect(both / base).toBeGreaterThan(1.5)
   })
 
   it('turns exactly the promised 15% quicker at a maxed turn-rate, through stepDrone', () => {

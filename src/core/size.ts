@@ -334,7 +334,7 @@ export const LIFT_CAPACITY_MAX = 40
 export const LIFT_GROWTH_EXPONENT = 0.75
 
 /**
- * The one line the craft crosses on its way up, and what crossing it buys.
+ * What the craft's own bulk is worth on the laser and the throttle.
  *
  * The beam was the only thing growth ever paid for - the cone widens, the
  * reach lengthens, the haul quickens - while the laser and the throttle sat
@@ -342,50 +342,53 @@ export const LIFT_GROWTH_EXPONENT = 0.75
  * through a mystery circle spent the back half of the run plinking at
  * fighters with a starter gun and flying at starter speed.
  *
- * Written as the saucer's width across, because that is the thing being
- * described: a craft wide enough to shadow a street is what has earned a
- * heavier gun and a faster cruise. Forty metres is a little over halfway up
- * the growth range - the opening saucer is 2.5m across and the ceiling is 81m
- * - so it lands in the stretch of the run where the sky stops being empty.
- * Deriving the size from it rather than writing both keeps the two from
- * drifting apart if the base diameter ever moves.
+ * These were a step at forty metres across, and a step is the wrong shape for
+ * the thing it is describing. Growth is continuous and every other stat it
+ * feeds ramps with it; a lone cliff meant the same eighty-metre saucer and
+ * forty-metre saucer shot identically while the metre between 39 and 41 was
+ * worth more than the twenty after it. Now they ramp like beamPull does, off
+ * the same progress, so every meal is worth something on both.
  *
- * One threshold for both stats rather than two that happen to be equal. They
- * are the same beat - the craft is grown now - and two constants sitting at 40
- * would be two places to change and one of them to forget.
+ * The ceilings are set from the far end - what a run that actually gets there
+ * should be able to do - and the two ramps deliberately run to different
+ * places.
  *
- * A step rather than a curve. A ramp spread over the growth range would be a
- * laser and a throttle that are always slightly different and never actually
- * better; this is a line crossed once, after which fighters die in two shots
- * instead of three.
+ * The laser runs the whole way to SIZE_MAX. At 4.0 a helicopter falls to one
+ * shot at 52m across and a fighter at 101m (see ENEMY_MAX_HP), which is past
+ * maturity and well past where most runs end - so the one-shot fighter is the
+ * last thing a great run earns, not something maturity hands out. The
+ * mystery-circle laser item brings both forward, which is the item doing its
+ * job rather than a second ladder. The dreadnought still takes seventeen shots
+ * at maturity and eleven at the ceiling.
  *
- * Crossing it is not announced, for the same reason beam strength is not: what
+ * Speed stops at SIZE_MATURE like everything else, so it arrives while a run
+ * can still use it rather than trickling in over a stretch most runs never
+ * see. It is also the ramp with a cost attached: speed buys turn radius, so
+ * its ceiling is held where the yaw can still cover it.
+ *
+ * Crossing is not announced, for the same reason beam strength is not: what
  * growth buys is meant to be felt in the flying and the shooting, not read off
  * a banner. The pickups get callouts because they are a thing you flew to and
  * took; this is just the craft being bigger.
  */
-export const GROWN_DIAMETER = 40
-export const GROWN_SIZE = GROWN_DIAMETER / UFO_BASE_DIAMETER
-export const LASER_POWER_GROWN = 1.5
-/** Matched to one level of the speed pickup (see core/boons), so "the craft
- *  grew" and "you found a speed part" are worth the same on the throttle. */
-export const SPEED_GROWN = 1.15
+export const LASER_POWER_MAX = 4.0
+/** Roughly two speed pickups' worth by maturity. Held down rather than matched
+ *  to the laser because speed buys turn radius as well - at this ceiling a
+ *  grown craft's turbo turn is already about a block and a half wide (see
+ *  DRONE_DEFAULTS.turnRateHigh), and more would need the yaw raised with it. */
+export const SPEED_MAX = 1.35
 
-export function isGrownCraft(size: number) {
-  return ufoDiameter(size) >= GROWN_DIAMETER
-}
-
-/** 1 below the threshold, LASER_POWER_GROWN at or above it. Multiplies with
- *  the mystery-circle laser pickup rather than replacing it, the same way the
- *  beam stats compose: a grown craft carrying the item hits for 2.25. */
+/** Ramps 1 -> LASER_POWER_MAX all the way to the ceiling. Multiplies with the
+ *  mystery-circle laser pickup rather than replacing it, the same way the beam
+ *  stats compose. */
 export function laserPowerForSize(size: number) {
-  return isGrownCraft(size) ? LASER_POWER_GROWN : 1
+  return 1 + sizeCeilingProgress(size) * (LASER_POWER_MAX - 1)
 }
 
-/** Same line, on the throttle. Multiplies with the speed pickup, so a grown
- *  craft that also found one tops out around 1.32x rather than 1.30x. */
+/** The throttle's ramp, which stops at maturity with the rest. Multiplies with
+ *  the speed pickup. */
 export function speedPowerForSize(size: number) {
-  return isGrownCraft(size) ? SPEED_GROWN : 1
+  return 1 + sizeGrowthProgress(size) * (SPEED_MAX - 1)
 }
 
 /** Beam cone multiplier at the ceiling, absorbing the old radius cards'
@@ -422,6 +425,21 @@ export const BEAM_PULL_MAX = 1.55
  */
 function sizeGrowthProgress(size: number) {
   return Math.max(0, Math.min(1, (clampSize(size) - SIZE_START) / (SIZE_MATURE - SIZE_START)))
+}
+
+/**
+ * The same climb measured against the real ceiling rather than maturity.
+ *
+ * Every other growth stat saturates at SIZE_MATURE, which is the right call
+ * for them: past 81m across a run is already strong and does not need a wider
+ * beam to prove it. The laser is the one exception, because the thing it is
+ * paying out - deleting a fighter in one shot - is meant to be the last thing
+ * a run earns rather than something maturity hands over. Measuring it against
+ * SIZE_MAX is what leaves that reward out past the point where everything else
+ * has stopped moving.
+ */
+function sizeCeilingProgress(size: number) {
+  return Math.max(0, Math.min(1, (clampSize(size) - SIZE_START) / (SIZE_MAX - SIZE_START)))
 }
 
 export function beamReachForSize(size: number) {
