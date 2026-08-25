@@ -5,6 +5,8 @@ import { busStopAnchor } from '../src/core/cityLandmarks'
 import {
   busStopsAround,
   isWorldPropDisplaced,
+  isWorldPropHidden,
+  isWorldPropLifted,
   lakeShorePropsAround,
   LAKE_SHORE_PROP_RADIUS_CELLS,
   LANDMARK_RADIUS_CELLS,
@@ -189,6 +191,39 @@ describe('beam-capable city dressing', () => {
     }
     const props = worldPropsAround(createActiveWorld({ x: 0, z: 0 }), { x: 0, z: 0 })
     expect(props.some((prop) => prop.kind === 'trash-bin')).toBe(true)
+  })
+
+  it('hands a prop to exactly one pool at a time', () => {
+    // One prop, two pools: the static one where the world put it and the
+    // lifted one once the beam owns it. Every frame in which neither draws it
+    // or both do is a bug, so the two tests have to be exact complements.
+    const home = { x: 10, y: 0, z: 20 }
+    const prop = { id: 'trash-bin:1:2', kind: 'trash-bin' as const, position: home, rotation: 0, scale: { x: 1, y: 1, z: 1 }, variant: 0 }
+    const object = { id: prop.id, active: true, absorbing: false, position: { ...home }, worldProp: prop }
+    const none = new Set<string>()
+    const check = (destroyed: ReadonlySet<string>) => ({
+      hidden: isWorldPropHidden(prop.id, destroyed, [object]),
+      lifted: isWorldPropLifted(object, destroyed),
+    })
+
+    // Standing where it was put: the static pool draws it, the lifted one
+    // does not. This is the case the lifted pools used to get wrong - several
+    // asked only whether the object was alive, and drew a second copy of every
+    // standing prop inside the first.
+    expect(check(none)).toEqual({ hidden: false, lifted: false })
+
+    // On the beam.
+    object.position.x += 3
+    expect(check(none)).toEqual({ hidden: true, lifted: true })
+
+    // Struck off by the laser but not yet moved - a launched bin's first
+    // frame. Displacement alone would drop it exactly when it is most visible.
+    object.position.x = home.x
+    expect(check(new Set([prop.id]))).toEqual({ hidden: true, lifted: true })
+
+    // Gone: neither pool draws it.
+    object.active = false
+    expect(check(new Set([prop.id]))).toEqual({ hidden: true, lifted: false })
   })
 
   it('makes the lakeside boulders and reeds the opening craft\'s first scenery', () => {

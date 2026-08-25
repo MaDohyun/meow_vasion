@@ -17,8 +17,8 @@ import {
 } from '../core/cityLandmarks'
 import {
   hiddenWorldPropIds,
-  isWorldPropDisplaced,
   isWorldPropHidden,
+  isWorldPropLifted,
   lakeShorePropsAround,
   trashBinsAround,
   utilityPolesAround,
@@ -1330,6 +1330,19 @@ const sharedFacade: { material: THREE.MeshToonMaterial | null; geometry: THREE.B
 /** At most a handful are ever in the air at once. */
 const LIFTED_BUILDING_CAPACITY = 8
 
+/**
+ * The one question every lifted pool asks, bound to this run's demolition set.
+ *
+ * A prop is drawn by exactly one pool at a time: the static one where the world
+ * put it, this one once the beam has moved it or the laser has struck it off.
+ * Both halves read the same rule from core/worldProps so neither can drift.
+ */
+function useLiftedProp() {
+  const { runtime } = useGame()
+  return (object: Parameters<typeof isWorldPropLifted>[0]) =>
+    isWorldPropLifted(object, runtime.current.destroyedWorldProps)
+}
+
 function LiftedBuildingPool() {
   const { runtime } = useGame()
   const ref = useRef<THREE.InstancedMesh>(null)
@@ -1957,6 +1970,7 @@ const LIFTED_WORLD_PROP_CAPACITY = WORLD_MAX_BUILDINGS * 3
 
 function LiftedRoofStructurePool({ variant }: { variant: number }) {
   const { runtime } = useGame()
+  const lifted = useLiftedProp()
   const ref = useRef<THREE.InstancedMesh>(null)
   const matrix = useMemo(() => new THREE.Matrix4(), [])
   const position = useMemo(() => new THREE.Vector3(), [])
@@ -1969,7 +1983,7 @@ function LiftedRoofStructurePool({ variant }: { variant: number }) {
     if (!mesh) return
     let count = 0
     for (const object of runtime.current.beamObjects) {
-      if (!object.active || object.kind !== 'rooftop-structure' || object.worldProp?.variant !== variant) continue
+      if (!lifted(object) || object.kind !== 'rooftop-structure' || object.worldProp?.variant !== variant) continue
       if (count >= LIFTED_WORLD_PROP_CAPACITY) break
       const swallow = object.absorbing ? Math.max(0.05, object.absorbTimer / BEAM_ABSORB_TIME) : 1
       position.set(object.position.x, object.position.y, object.position.z)
@@ -1992,6 +2006,7 @@ function LiftedRoofStructurePool({ variant }: { variant: number }) {
 
 function LiftedTreePool({ variant }: { variant: number }) {
   const { runtime } = useGame()
+  const lifted = useLiftedProp()
   const ref = useRef<THREE.InstancedMesh>(null)
   const matrix = useMemo(() => new THREE.Matrix4(), [])
   const position = useMemo(() => new THREE.Vector3(), [])
@@ -2003,7 +2018,7 @@ function LiftedTreePool({ variant }: { variant: number }) {
     if (!mesh) return
     let count = 0
     for (const object of runtime.current.beamObjects) {
-      if (!isWorldPropDisplaced(object) || object.kind !== 'tree' || object.worldProp?.variant !== variant) continue
+      if (!lifted(object) || object.kind !== 'tree' || object.worldProp?.variant !== variant) continue
       if (count >= LIFTED_WORLD_PROP_CAPACITY) break
       const swallow = object.absorbing ? Math.max(0.05, object.absorbTimer / BEAM_ABSORB_TIME) : 1
       position.set(object.position.x, object.position.y, object.position.z)
@@ -2026,6 +2041,7 @@ function LiftedTreePool({ variant }: { variant: number }) {
 
 function LiftedUtilityPolePool() {
   const { runtime } = useGame()
+  const lifted = useLiftedProp()
   const ref = useRef<THREE.InstancedMesh>(null)
   const matrix = useMemo(() => new THREE.Matrix4(), [])
   const position = useMemo(() => new THREE.Vector3(), [])
@@ -2038,7 +2054,7 @@ function LiftedUtilityPolePool() {
     if (!mesh) return
     let count = 0
     for (const object of runtime.current.beamObjects) {
-      if (!object.active || object.kind !== 'utility-pole') continue
+      if (!lifted(object) || object.kind !== 'utility-pole') continue
       if (count >= LIFTED_WORLD_PROP_CAPACITY) break
       const swallow = object.absorbing ? Math.max(0.05, object.absorbTimer / BEAM_ABSORB_TIME) : 1
       position.set(object.position.x, object.position.y, object.position.z)
@@ -2115,6 +2131,7 @@ function TrashBinPool() {
 
 function LiftedTrashBinPool() {
   const { runtime } = useGame()
+  const lifted = useLiftedProp()
   const ref = useRef<THREE.InstancedMesh>(null)
   const matrix = useMemo(() => new THREE.Matrix4(), [])
   const position = useMemo(() => new THREE.Vector3(), [])
@@ -2126,7 +2143,7 @@ function LiftedTrashBinPool() {
     if (!mesh) return
     let count = 0
     for (const object of runtime.current.beamObjects) {
-      if (!object.active || object.kind !== 'trash-bin') continue
+      if (!lifted(object) || object.kind !== 'trash-bin') continue
       if (count >= LIFTED_WORLD_PROP_CAPACITY) break
       const swallow = object.absorbing ? Math.max(0.05, object.absorbTimer / BEAM_ABSORB_TIME) : 1
       position.set(object.position.x, object.position.y, object.position.z)
@@ -2427,6 +2444,7 @@ function LakeShoreDecorPool() {
  */
 function LiftedLakeShorePool({ kind }: { kind: 'shore-rock' | 'shore-reed' }) {
   const { runtime } = useGame()
+  const lifted = useLiftedProp()
   const ref = useRef<THREE.InstancedMesh>(null)
   const matrix = useMemo(() => new THREE.Matrix4(), [])
   const position = useMemo(() => new THREE.Vector3(), [])
@@ -2440,7 +2458,7 @@ function LiftedLakeShorePool({ kind }: { kind: 'shore-rock' | 'shore-reed' }) {
     if (!mesh) return
     let count = 0
     for (const object of runtime.current.beamObjects) {
-      if (object.kind !== kind || !isWorldPropDisplaced(object)) continue
+      if (object.kind !== kind || !lifted(object)) continue
       if (count >= LIFTED_WORLD_PROP_CAPACITY) break
       const swallow = object.absorbing ? Math.max(0.05, object.absorbTimer / BEAM_ABSORB_TIME) : 1
       position.set(object.position.x, object.position.y, object.position.z)

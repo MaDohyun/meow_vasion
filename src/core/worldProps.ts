@@ -458,6 +458,31 @@ export function isWorldPropDisplaced(
     || Math.abs(object.position.z - home.z) > WORLD_PROP_SETTLE_EPSILON
 }
 
+/**
+ * Whether the lifted pools own this prop rather than the static ones.
+ *
+ * The exact complement of `isWorldPropHidden`, and that is the whole point:
+ * one prop, two pools, and every frame in which neither draws it or both do is
+ * a bug. Several lifted pools used to ask only whether the object was alive,
+ * which drew a second copy of every standing pylon, mast, bin, roof kit and
+ * lamp post inside the first - invisible, because the two copies shared a
+ * transform, and paid for on every frame regardless.
+ *
+ * Displacement alone is not enough either. A bin launched by the laser is
+ * struck off the static pool the instant it is hit (`destroyedWorldProps`) but
+ * has not travelled anywhere yet, so a displacement-only test drops it for the
+ * frame it is most visible in.
+ */
+export function isWorldPropLifted(
+  object: Pick<BeamObject, 'active' | 'absorbing' | 'position' | 'worldProp'>,
+  destroyed: ReadonlySet<string>,
+) {
+  if (!object.active) return false
+  const id = object.worldProp?.id
+  if (id !== undefined && destroyed.has(id)) return true
+  return isWorldPropDisplaced(object)
+}
+
 export function isWorldPropHidden(
   id: string,
   destroyed: ReadonlySet<string>,
