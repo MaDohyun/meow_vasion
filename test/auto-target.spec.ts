@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   AUTO_TARGET_GRAB,
   AUTO_TARGET_RELEASE,
+  AUTO_TARGET_SILHOUETTE_MAX,
   aimDistance,
   collectAutoTargets,
   pickAutoTarget,
@@ -137,6 +138,24 @@ describe('picking a contact', () => {
     const offset = AUTO_TARGET_GRAB + 0.05
     expect(pickAutoTarget([contact({ y: offset, radius: 0.002 })], CENTRE, ASPECT)).toBeNull()
     expect(pickAutoTarget([contact({ y: offset, kind: 'boss', radius: 0.12 })], CENTRE, ASPECT)).not.toBeNull()
+  })
+
+  it('caps what a silhouette may add', () => {
+    // A dreadnought station at close quarters projects a sphere a third of the
+    // screen wide. Uncapped, the sky beside the ship would snap onto a gun; the
+    // cap keeps even the biggest thing in the game asking to be pointed at.
+    const alongside = contact({ kind: 'boss', radius: 0.5, y: AUTO_TARGET_GRAB + AUTO_TARGET_SILHOUETTE_MAX + 0.02 })
+    expect(pickAutoTarget([alongside], CENTRE, ASPECT)).toBeNull()
+    expect(pickAutoTarget([{ ...alongside, y: AUTO_TARGET_GRAB + 0.05 }], CENTRE, ASPECT)).not.toBeNull()
+  })
+
+  it('never reaches a quarter of the way across the screen', () => {
+    // The magnet pays for the pixel the cursor missed by, not for an aim the
+    // player never took. Whatever is on screen and however close it is, the
+    // ring stays a short reach - this is the number to look at first if it
+    // ever reads as the game taking the hand.
+    expect(AUTO_TARGET_GRAB + AUTO_TARGET_SILHOUETTE_MAX).toBeLessThan(0.28)
+    expect(AUTO_TARGET_RELEASE).toBeLessThan(AUTO_TARGET_GRAB * 2)
   })
 
   it('takes the one the cursor is most on', () => {

@@ -274,16 +274,14 @@ button { font: inherit; }
 /* Locked on something flying. The brackets close in and go gold, and a thin
    ring says the snap was the game's doing rather than the hand's - without it
    a player who never noticed the assist reads the reticle jumping as drift. */
-.reticle.locked { opacity:1; border-radius:50%; animation: lock-ring .48s steps(2) infinite; }
-.reticle.locked::before, .reticle.locked::after, .reticle.locked i::before, .reticle.locked i::after { background: var(--yellow); box-shadow: 0 0 6px rgba(255,224,95,.85), 1px 1px 0 var(--ink); }
-/* The ring is drawn as the element's own shadow rather than as a fifth box:
-   the four ticks are the ::before/::after pairs of the reticle and its two
-   <i>s, so an extra child would renumber :last-child and take the vertical
-   ticks with it. */
-@keyframes lock-ring {
-  0%,100% { box-shadow: 0 0 0 2px rgba(255,224,95,.6), 0 0 10px rgba(255,224,95,.3); }
-  50% { box-shadow: 0 0 0 3px rgba(255,224,95,.95), 0 0 14px rgba(255,224,95,.5); }
-}
+/* Locked on something flying: the same four brackets in the same place, a
+   pixel heavier and gold. It used to grow a pulsing ring, and that read as a
+   second HUD element arriving over the city rather than as the reticle
+   changing state - which is all this is. */
+.reticle.locked { opacity:1; }
+.reticle.locked::before, .reticle.locked::after, .reticle.locked i::before, .reticle.locked i::after { background: var(--yellow); }
+.reticle.locked::before, .reticle.locked::after, .reticle.locked i:first-child::before, .reticle.locked i:first-child::after { height:3px; }
+.reticle.locked i:last-child::before, .reticle.locked i:last-child::after { width:3px; }
 
 .tutorial-beam-prompt { position:absolute; display:flex; align-items:center; gap:6px; transform:translate(-50%, 24px); pointer-events:none; animation: warning-pulse .6s steps(2) infinite; }
 .tutorial-beam-prompt b { display:flex; align-items:center; justify-content:center; min-width:32px; padding:0 8px; height:32px; background:var(--cream); color:var(--ink); border:2px solid var(--ink); border-radius:6px; font-size:18px; font-weight:1000; box-shadow:2px 2px 0 rgba(0,0,0,.4); }
