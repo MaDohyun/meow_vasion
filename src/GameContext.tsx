@@ -879,6 +879,20 @@ function laserDamage(game: GameRuntime) {
 }
 
 /**
+ * Top speed as a multiplier: what the craft's width gives times what the
+ * pickup gives, exactly as the laser and the beam stats compose.
+ *
+ * stepDrone's own throttle lever is additive at 0.12 a level, so this divides
+ * back through it - feed the lever what makes it land on this number rather
+ * than trusting the two coefficients to agree. Get that wrong and the stat
+ * quietly arrives at some other value than the one core/size promises.
+ */
+function craftSpeedUpgrade(game: GameRuntime) {
+  const multiplier = game.sizeProfile.speedPower * boonMultiplier(game.boons, 'speed')
+  return (multiplier - 1) / 0.12
+}
+
+/**
  * The beam's shape: what the hull gives, times what the pickups add.
  *
  * One source for the physics field, the drawn cone and the smoke snapshot.
@@ -2256,11 +2270,11 @@ export function GameProvider({ children }: { children: ReactNode }) {
       : Math.min(1, (game.ballast - warningAt) / Math.max(1, capacity - warningAt))
     const stepped = stepDrone(game.drone, flightInput, d, game.ballast * BALLAST_DRAG + (game.daze > 0 ? DAZE_DRAG : 0), {
       ...UFO_UPGRADES,
-      // stepDrone's own coefficients are 0.12 on speed and 0.15 on yaw;
-      // dividing each pickup's bonus by its own lever feeds through exactly
-      // what core/boons promises - +15% on both - rather than whatever those
-      // internal coefficients happen to be.
-      speed: boonBonus(game.boons, 'speed') / 0.12,
+      // Both levers are additive inside stepDrone (0.12 a level on the
+      // throttle, 0.15 on the yaw), so each bonus is divided back through its
+      // own coefficient - what comes out is what core/boons and core/size
+      // promise rather than whatever those internals happen to be.
+      speed: craftSpeedUpgrade(game),
       stability: boonBonus(game.boons, 'turn-rate') / 0.15,
     })
     const nextWorld = updateActiveWorld(game.world, stepped.position, false, game.destroyedBuildings)
