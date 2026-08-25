@@ -211,21 +211,24 @@ test('keeps the reticle at its last position when the mouse leaves the page', as
 })
 
 /**
- * A finger aims by dragging, not by pointing: see src/core/aim. The maths is
- * unit tested; what only a browser can show is the wiring - that a drag on the
- * open city moves the reticle, and that a drag on the stick or a fire button
- * belongs to that control and leaves the reticle where it was.
+ * Mobile flight now lives entirely on the two-axis direction stick. The maths
+ * is unit tested; what only a browser can show is the wiring and layout: open
+ * city swipes do not aim, the old altitude buttons are gone, and the right-hand
+ * actions sit at their raised phone offset.
  */
-test.describe('touch aiming', () => {
-  // A phone-sized viewport with a real touchscreen, which is what both the
-  // .mobile-controls media query and the drag reticle key off.
+test.describe('mobile direction stick', () => {
+  // A phone-sized viewport with a real touchscreen, which is what reveals the
+  // mobile control layer.
   test.use({ viewport: { width: 412, height: 915 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true })
 
-  test('drags the reticle with the finger and leaves the HUD controls alone', async ({ context, page }) => {
+  test('owns yaw and pitch without the old altitude or screen-drag controls', async ({ context, page }) => {
     await page.goto('/')
     await page.locator('.intro-actions .primary-button').tap()
     await expect(page.locator('canvas').first()).toBeVisible()
     await expect(page.locator('.joystick')).toBeVisible()
+    await expect(page.locator('.mobile-altitude')).toHaveCount(0)
+    await expect(page.locator('.alt-button')).toHaveCount(0)
+    await expect(page.locator('.mobile-actions')).toHaveCSS('bottom', '76px')
 
     // Percentages straight off the reticle, which is positioned from the same
     // aim the laser raycast uses.
@@ -238,7 +241,7 @@ test.describe('touch aiming', () => {
     }
 
     // Playwright's touchscreen only taps, and a mouse drag would arrive as a
-    // mouse pointer and take the cursor path instead.
+    // mouse pointer and exercise the desktop reticle instead.
     const touch = await context.newCDPSession(page)
     const drag = async (from: { x: number; y: number }, to: { x: number; y: number }) => {
       await touch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: from.x, y: from.y, id: 1 }] })
@@ -256,40 +259,25 @@ test.describe('touch aiming', () => {
     const middle = { x: view.width / 2, y: view.height * 0.4 }
     expect(await aim()).toEqual({ x: 50, y: 50 })
 
-    // Landing is not aiming. An absolute mapping would snap the reticle onto
-    // the thumb here, which is how it used to end up parked on a fire button.
+    // Neither a tap nor the old open-city swipe is an aiming surface now.
     await page.touchscreen.tap(view.width * 0.8, view.height * 0.2)
     await page.waitForTimeout(120)
     expect(await aim()).toEqual({ x: 50, y: 50 })
+    await drag(middle, { x: middle.x + view.width * 0.22, y: middle.y - view.height * 0.14 })
+    expect(await aim()).toEqual({ x: 50, y: 50 })
 
     const restingPose = await page.evaluate(() => ({ ...window.__BEAM_BANDIT_POSE__! }))
-    await drag(middle, { x: middle.x + view.width * 0.22, y: middle.y - view.height * 0.14 })
-    const dragged = await aim()
-    expect(dragged.x).toBeGreaterThan(60)
-    expect(dragged.y).toBeLessThan(40)
-
-    // The reticle is not a decal on the glass - the craft looks where it is
-    // pointed, exactly as it follows a cursor on a desktop. The touch HUD
-    // spreads over the pointer input, so a stick sitting at its resting zero
-    // used to overwrite this and leave the ship staring dead ahead however far
-    // the finger had dragged. Up and to the right, so the nose lifts and the
-    // hull turns that way.
-    const pointed = await page.evaluate(() => ({ ...window.__BEAM_BANDIT_POSE__! }))
-    expect(pointed.pitch).toBeGreaterThan(0.1)
-    expect(pointed.heading).not.toBeCloseTo(restingPose.heading, 3)
-
-    // The finger is gone and the reticle stays: aim with one thumb, fire with
-    // the other.
-    await page.waitForTimeout(400)
-    expect(await aim()).toEqual(dragged)
-
     const stick = (await page.locator('.joystick').boundingBox())!
     const knob = { x: stick.x + stick.width / 2, y: stick.y + stick.height / 2 }
     await drag(knob, { x: knob.x + 38, y: knob.y - 38 })
-    expect(await aim()).toEqual(dragged)
+    const pointed = await page.evaluate(() => ({ ...window.__BEAM_BANDIT_POSE__! }))
+    expect(pointed.pitch).toBeGreaterThan(0.05)
+    expect(pointed.heading).not.toBeCloseTo(restingPose.heading, 3)
+    await expect(page.locator('.joystick-knob')).toHaveAttribute('style', 'transform: translate(0px, 0px);')
+    expect(await aim()).toEqual({ x: 50, y: 50 })
 
     await page.locator('.laser-button').tap()
     await page.waitForTimeout(120)
-    expect(await aim()).toEqual(dragged)
+    expect(await aim()).toEqual({ x: 50, y: 50 })
   })
 })

@@ -465,8 +465,6 @@ button { font: inherit; }
 .beam-button { width:72px; height:72px; background:var(--green); }
 .laser-button { background:var(--coral); }
 .boost-button { background:var(--yellow); }
-.mobile-altitude { position:absolute; right:22px; bottom:109px; display:flex; gap:6px; pointer-events:auto; }
-.alt-button { width:44px; height:37px; color:var(--cream); background:rgba(41,35,63,.88); border:3px solid var(--cream); font-weight:1000; }
 
 /* Wave bulletin, as a broadcast card.
    Narrower and taller than a chyron strip: at 10:1 it lay flat along the
@@ -575,13 +573,12 @@ button { font: inherit; }
   .system-meter > span, .ballast-meter > span { font-size:9px; letter-spacing:.8px; }
   .system-meter > b, .ballast-meter > b { font-size:10px; }
   .joystick { bottom:64px; }
-  .mobile-actions { bottom:62px; }
-  .mobile-altitude { bottom:147px; }
+  .mobile-actions { bottom:76px; }
   /* No dial to pair with here - it is hidden - so the corner wrapper drops out
      of the layout and the pilot takes its own place again. */
   .hud-corner { display:contents; }
-  /* Above the fire buttons and clear of the altitude arrows: the pilot is the
-     one panel here that is read rather than pressed. */
+  /* Above the fire buttons: the pilot is the one panel here that is read
+     rather than pressed. */
   .pilot-card { --say:52px; --say-drop:0px; position:absolute; left:auto; right:14px; bottom:196px; align-items:flex-end; gap:6px; }
   .pilot-portrait { width:70px; height:62px; }
   /* Pinned to the card's right edge, like everything else on this side of the

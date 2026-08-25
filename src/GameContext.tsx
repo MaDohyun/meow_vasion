@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { collideDrone, createDroneState, DRONE_DEFAULTS, stepDrone, type Aabb, type DroneInput, type DroneState, type Vec3 } from './core/drone'
-import { absoluteAim, aimSteer, dragAim, steerWithStick, type AimPoint } from './core/aim'
+import { absoluteAim, aimSteer, type AimPoint } from './core/aim'
 import {
   type BeamField,
   type BeamObject,
@@ -428,13 +428,6 @@ export type RenderQuality = 'high' | 'low'
 const QUALITY_STORAGE_KEY = 'ufo-attack-quality'
 
 /**
- * HUD surfaces that own the touches landing on them: the movement stick, the
- * altitude arrows, the fire buttons, and every overlay control. A drag that
- * starts on one of these is that control's input, not an aiming swipe.
- */
-const HUD_CONTROLS = '.mobile-controls, button, input, select, textarea, label, a'
-
-/**
  * Where a mouse button is a click rather than a trigger.
  *
  * The fire buttons live on the mouse now, which means every click on the city
@@ -445,14 +438,6 @@ const HUD_CONTROLS = '.mobile-controls, button, input, select, textarea, label, 
  * Same for the lobby and the results sheet.
  */
 const POINTER_FIRE_BLOCKERS = '.mobile-controls, .briefing-touch, .overlay, button, input, select, textarea, label, a'
-
-/**
- * Mirrors the query that reveals `.mobile-controls` in styles.css. The drag
- * reticle is part of that control scheme, so it turns up exactly where the
- * stick and the fire buttons do; a desktop that happens to have a touchscreen
- * keeps the cursor mapping for its taps.
- */
-const TOUCH_CONTROL_QUERY = '(pointer: coarse), (max-width: 760px)'
 
 function readStoredQuality(): RenderQuality {
   if (typeof window === 'undefined') return 'high'
@@ -1783,9 +1768,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const [language, setLanguageState] = useState<Language>(readStoredLanguage)
   const keys = useRef<Record<string, boolean>>({})
   const pointer = useRef<AimPoint>({ x: 0, y: 0 })
-  // The finger that currently owns the reticle, and where it last was. Null
-  // whenever no drag is in flight, which is most of the time on a phone.
-  const touchAim = useRef<{ pointerId: number; x: number; y: number } | null>(null)
   const mobile = useRef<MobileInput>({ throttle: 1, steer: 0, lookPitch: 0, vertical: 0, special: false, beam: false, laser: false, active: false })
   /**
    * The mouse's own trigger fingers.
@@ -1830,23 +1812,13 @@ export function GameProvider({ children }: { children: ReactNode }) {
       if (event.key.length === 1) keys.current[`Key${event.key.toUpperCase()}`] = false
     }
     const aimBounds = () => document.querySelector<HTMLCanvasElement>('.game-shell canvas')?.getBoundingClientRect() ?? null
-    // `matches` stays live, so this is read rather than re-queried per event.
-    const touchControls = window.matchMedia?.(TOUCH_CONTROL_QUERY) ?? null
-    // See core/aim: a cursor puts the reticle where it is, a finger pushes the
-    // reticle by how far it moved.
-    const drags = (event: PointerEvent) => event.pointerType === 'touch' && Boolean(touchControls?.matches)
     const move = (event: PointerEvent) => {
+      // Touch and pen gestures belong to the on-screen direction stick. Only
+      // a mouse moves the free reticle; otherwise a thumb on any HUD control
+      // would also steer the raycaster behind it.
+      if (event.pointerType !== 'mouse') return
       const bounds = aimBounds()
       if (!bounds) return
-      if (drags(event)) {
-        const drag = touchAim.current
-        if (!drag || drag.pointerId !== event.pointerId) return
-        const to = { x: event.clientX, y: event.clientY }
-        pointer.current = dragAim(pointer.current, drag, to, bounds)
-        drag.x = to.x
-        drag.y = to.y
-        return
-      }
       pointer.current = absoluteAim({ x: event.clientX, y: event.clientY }, bounds)
     }
     const firing = (event: PointerEvent) =>
@@ -1857,21 +1829,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
     }
     const press = (event: PointerEvent) => {
       if (event.pointerType === 'mouse' && firing(event)) setFire(event.button, true)
-      if (!drags(event)) { move(event); return }
-      // A thumb on the stick or a fire button is already saying something; it
-      // must not drag the reticle across the city on the way.
-      if (event.target instanceof Element && event.target.closest(HUD_CONTROLS)) return
-      touchAim.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY }
-      // An aiming drag is a mobile control like any other. Without this the
-      // same swipe would also reach the mouse-steer path below and bank the
-      // craft towards whichever side of the screen the thumb ended up on.
-      mobile.current.active = true
+      move(event)
     }
     const lift = (event: PointerEvent) => {
       if (event.pointerType === 'mouse') setFire(event.button, false)
-      // The reticle stays where the finger left it: aim with one thumb, fire
-      // with the other.
-      if (touchAim.current?.pointerId === event.pointerId) touchAim.current = null
     }
     /** A button released outside the window never sends its pointerup here, so
      *  the bitmask on the next move is the only thing that can clear it. */
@@ -1949,17 +1910,12 @@ export function GameProvider({ children }: { children: ReactNode }) {
     }
     if (!mobile.current.active) return keyboard
     const { active: _active, ...mobileInput } = mobile.current
-    // A finger points the craft the same way a cursor does. The touch HUD only
-    // speaks for the axes it actually owns - the stick's yaw while a thumb is
-    // on it - and everything the aim drag decides has to survive the spread.
-    // Letting the stick's resting zero through was what left the ship staring
-    // dead ahead no matter how far the reticle had been dragged, and nothing on
-    // the HUD sets a pitch at all, so the drag owns that outright.
+    // On touch, the two-axis direction stick owns yaw and pitch. Its springing
+    // zero deliberately levels the craft when the thumb lifts; the centred
+    // reticle then remains aligned with the chase camera and forward laser.
     return {
       ...keyboard,
       ...mobileInput,
-      steer: steerWithStick(mobileInput.steer, keyboard.steer),
-      lookPitch: keyboard.lookPitch,
     }
   }, [])
 
@@ -2612,7 +2568,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
     stopLobbyMusic()
     startGameplayMusic()
     pointer.current = { x: 0, y: 0 }
-    touchAim.current = null
     const game = runtime.current
     game.phase = 'playing'
     publish()
@@ -2670,7 +2625,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
     stopLobbyMusic()
     startGameplayMusic()
     pointer.current = { x: 0, y: 0 }
-    touchAim.current = null
     runtime.current = makeRuntime()
     runtime.current.phase = 'playing'
     publish()
@@ -2707,7 +2661,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
     stopLobbyMusic()
     startGameplayMusic()
     pointer.current = { x: 0, y: 0 }
-    touchAim.current = null
     const game = makeRuntime()
     game.devRun = true
     game.sessionTime = BATTLESHIP_WAVE_AT

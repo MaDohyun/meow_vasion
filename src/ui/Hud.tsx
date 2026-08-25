@@ -13,6 +13,7 @@ import { Radar } from './Radar'
 import { pilotFrameStyle } from '../render/pilotArt'
 import { MISSION_ICONS } from './missionIcons'
 import { getAudioVolumes, isLobbyMusicBlocked, onLobbyMusicBlockedChange, playMenuHoverSound, setBgmVolume, setSfxVolume, startLobbyMusic, stopLobbyMusic, unlockAudio } from '../audio'
+import { directionStick } from '../core/aim'
 
 const formatTime = (seconds: number) => {
   const safe = Math.max(0, Math.ceil(seconds))
@@ -68,28 +69,25 @@ function Joystick() {
     if (!event.currentTarget.hasPointerCapture(event.pointerId)) return
     const dx = event.clientX - origin.current.x
     const dy = event.clientY - origin.current.y
-    const length = Math.hypot(dx, dy)
-    const scale = length > 44 ? 44 / length : 1
-    const x = dx * scale
-    const y = dy * scale
+    const { x, y, steer, lookPitch } = directionStick(dx, dy)
     setKnob({ x, y })
-    // Yaw only. The craft supplies its own forward, so the stick's other axis
-    // has nothing left to say - and a stick that quietly halved the speed when
-    // a thumb rested low on it would be a throttle nobody knew they were
-    // holding.
-    setMobileInput({ active: true, steer: -x / 44 })
+    // The craft supplies its own forward, so the two stick axes are both gaze:
+    // horizontal turns the nose and vertical pitches it. Moving the thumb up
+    // must produce the same positive pitch that moving the desktop reticle up
+    // does, hence the inverted screen-space Y.
+    setMobileInput({ active: true, steer, lookPitch })
   }
 
   const release = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
     setKnob({ x: 0, y: 0 })
-    setMobileInput({ steer: 0 })
+    setMobileInput({ steer: 0, lookPitch: 0 })
   }
 
   return (
     <div
       className="joystick"
-      aria-label="steering joystick"
+      aria-label="flight direction joystick"
       onPointerDown={(event) => {
         event.currentTarget.setPointerCapture(event.pointerId)
         origin.current = { x: event.clientX, y: event.clientY }
@@ -372,20 +370,10 @@ function PilotComms() {
 }
 
 function MobileControls() {
-  const { setMobileInput, t } = useGame()
-  const altitude = (value: number) => ({
-    onPointerDown: () => setMobileInput({ active: true, vertical: value }),
-    onPointerUp: () => setMobileInput({ vertical: 0 }),
-    onPointerCancel: () => setMobileInput({ vertical: 0 }),
-    onPointerLeave: () => setMobileInput({ vertical: 0 }),
-  })
+  const { t } = useGame()
   return (
     <div className="mobile-controls">
       <Joystick />
-      <div className="mobile-altitude">
-        <button className="alt-button" {...altitude(1)}>▲</button>
-        <button className="alt-button" {...altitude(-1)}>▼</button>
-      </div>
       <div className="mobile-actions">
         {/* Translated like every other label. A player who picked Korean or
             Japanese in the lobby should not meet three English words the
