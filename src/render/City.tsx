@@ -1,5 +1,5 @@
 import { BEAM_ABSORB_TIME } from '../core/beam'
-import { lakeCellDrained, lakeCellKey } from '../core/lakes'
+import { lakeCellDrained } from '../core/lakes'
 import { useFrame } from '@react-three/fiber'
 import { memo, useMemo, useRef } from 'react'
 import * as THREE from 'three'
@@ -916,7 +916,7 @@ function WaterPool() {
       // Pumped dry. The cell stays a lake cell everywhere else - no buildings
       // grow in the basin and the shore dressing keeps its waterline - so
       // what is left reads as the bed the water used to sit in.
-      if (lakeCellDrained(runtime.current.lakes, lakeCellKey(cell.cellX, cell.cellZ))) continue
+      if (lakeCellDrained(runtime.current.lakes, cell.cellX, cell.cellZ)) continue
       if (slot >= GROUND_CELL_COUNT) break
       const { minX, maxX, minZ, maxZ } = rect
       position.set((minX + maxX) * 0.5, 0.055, (minZ + maxZ) * 0.5)

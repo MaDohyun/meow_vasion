@@ -83,11 +83,10 @@ import { buildingDestructionScore, createBuildingRuin, damageBuilding, ruinColli
 import {
   createLakeDrainState,
   drawFromLakeCell,
-  lakeCellKey,
   lakeCellRemaining,
+  lakeDrainSizeGain,
   lakeScorePayout,
   stepLakeAbsorption,
-  LAKE_DRAIN_SIZE_GAIN,
   type LakeDrainState,
 } from './core/lakes'
 import {
@@ -1975,8 +1974,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
     // The tile under the craft, not the lake: water is spent a cell at a time
     // so a drained tile is a hole the pilot has to fly out of, rather than a
     // whole body of water blinking out from under them at once.
-    const lakeKey = lakeCellKey(worldCellCoord(game.drone.position.x), worldCellCoord(game.drone.position.z))
-    const lakeRemaining = lakeCellRemaining(game.lakes, lakeKey)
+    const lakeCellX = worldCellCoord(game.drone.position.x)
+    const lakeCellZ = worldCellCoord(game.drone.position.z)
+    const lakeRemaining = lakeCellRemaining(game.lakes, lakeCellX, lakeCellZ)
     // A dry tile is simply not water. Zeroing the depth rather than special
     // casing further down means the beam takes nothing, the drag lets go and
     // the mission stops counting, all from the one fact.
@@ -1986,7 +1986,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     // the whole points the crossing owes rather than a fraction of a point
     // that would round away every frame.
     const lakeReward = lakeScorePayout(game.waterAbsorbed, lake.litres)
-    const lakeDrained = drawFromLakeCell(game.lakes, lakeKey, lake.absorbed)
+    const lakeDrained = drawFromLakeCell(game.lakes, lakeCellX, lakeCellZ, lake.absorbed)
     game.waterAbsorbed = lake.litres
     game.waterAnchored = lake.anchored
     if (lake.absorbed > 0) reportMissionEvent(game, { type: 'absorb-water', litres: lake.absorbed })
@@ -1997,9 +1997,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
     if (lakeReward > 0) bankAbsorbScore(game, lakeReward)
     if (lakeDrained) {
       // The tile is the meal, so the growth lands here and not on the litre.
-      // Paying per litre would pulse the size readout on every frame of a
-      // five-second pump; paying on the swallow reads like every other one.
-      growBy(game, LAKE_DRAIN_SIZE_GAIN)
+      // Paying per litre would pulse the size readout on every frame of the
+      // pump; paying on the swallow reads like every other one. A deep tile
+      // grows the craft more than a shallow one - see lakeDrainSizeGain.
+      growBy(game, lakeDrainSizeGain(lakeCellX, lakeCellZ))
       game.lakesRevision += 1
       game.pickupPulse = 1
       setMessage(game, 'msgLakeDrained', 1.6)

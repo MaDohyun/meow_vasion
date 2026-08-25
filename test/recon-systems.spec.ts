@@ -3,19 +3,21 @@ import { BUILDING_SCORE, buildingDestructionScore, buildingMaxHealth, createBuil
 import {
   LAKE_ABSORPTION_LITRES_PER_SECOND,
   LAKE_BEAM_SPEED_SCALE,
-  LAKE_CELL_CAPACITY,
-  LAKE_DRAIN_SIZE_GAIN,
+  LAKE_CELL_CAPACITY_MAX,
+  LAKE_CELL_CAPACITY_MIN,
   LAKE_SCORE_PER_LITRE,
   createLakeDrainState,
   drawFromLakeCell,
+  lakeCellCapacity,
   lakeCellDrained,
-  lakeCellKey,
   lakeCellRemaining,
+  lakeDrainSizeGain,
   lakeScorePayout,
   stepLakeAbsorption,
+  LAKE_DRAIN_SIZE_GAIN_PER_LITRE,
 } from '../src/core/lakes'
 import { MISSION_TARGETS } from '../src/core/missions'
-import { SIZE_GAIN, growSizeBy } from '../src/core/size'
+import { SIZE_GAIN } from '../src/core/size'
 import { shouldCrashFromOverload } from '../src/core/overload'
 import type { ProceduralBuilding } from '../src/core/world'
 
@@ -57,15 +59,18 @@ describe('recon overhaul support systems', () => {
   })
 
   it('pays whole points for pumped water without ever paying a frame twice', () => {
-    // A sixtieth of a second of pumping is 0.83 litres, and a fraction of a
-    // litre never pays on its own: the payout waits for the whole litre to
-    // land, whatever the frame boundaries were on the way there.
-    expect(lakeScorePayout(0, 0.83)).toBe(0)
-    expect(lakeScorePayout(0.83, 1.66)).toBe(1)
+    // Fractions of a point never ship: the payout is what floor() crossed, so
+    // the split across frames always sums to the same total as one long step.
+    // At two a litre a sixtieth of a second is 1.66 points, so the frames
+    // alternate between one and two rather than paying 1.66 each.
+    expect(lakeScorePayout(0, 0.83)).toBe(1)
+    expect(lakeScorePayout(0.83, 1.66)).toBe(2)
     expect(lakeScorePayout(1.66, 2.49)).toBe(1)
-    expect(lakeScorePayout(2.49, 3.32)).toBe(1)
-    // Four frames, 3.32 litres, three points - the fourth is still owed.
-    expect(lakeScorePayout(0, 3.32)).toBe(3)
+    expect(lakeScorePayout(2.49, 3.32)).toBe(2)
+    // Four frames, 3.32 litres: six points banked, the seventh still owed.
+    expect(lakeScorePayout(0, 3.32)).toBe(6)
+    // A tenth of a litre owes nothing at all on its own.
+    expect(lakeScorePayout(0, 0.1)).toBe(0)
     // Sixty frames of pumping pay exactly what one long step of the same
     // duration pays - no drift, no free point at the seams.
     let litres = 0
@@ -77,9 +82,9 @@ describe('recon overhaul support systems', () => {
     }
     expect(litres).toBeCloseTo(LAKE_ABSORPTION_LITRES_PER_SECOND)
     expect(framed).toBe(lakeScorePayout(0, LAKE_ABSORPTION_LITRES_PER_SECOND))
-    // A point a litre, so a second of held beam is the 50 litres it pumped.
-    expect(LAKE_SCORE_PER_LITRE).toBe(1)
-    expect(framed).toBe(LAKE_ABSORPTION_LITRES_PER_SECOND)
+    // Two a litre, so a second of held beam is a hundred points.
+    expect(LAKE_SCORE_PER_LITRE).toBe(2)
+    expect(framed).toBe(LAKE_ABSORPTION_LITRES_PER_SECOND * LAKE_SCORE_PER_LITRE)
     // Never negative, and a still craft owes nothing.
     expect(lakeScorePayout(200, 200)).toBe(0)
     expect(lakeScorePayout(200, 0)).toBe(0)
@@ -87,64 +92,84 @@ describe('recon overhaul support systems', () => {
 
   it('empties a lake tile after its capacity and never refills it', () => {
     const lakes = createLakeDrainState()
-    const key = lakeCellKey(3, -7)
-    expect(lakeCellRemaining(lakes, key)).toBe(LAKE_CELL_CAPACITY)
-    expect(lakeCellDrained(lakes, key)).toBe(false)
+    const [cellX, cellZ] = [3, -7]
+    const capacity = lakeCellCapacity(cellX, cellZ)
+    expect(lakeCellRemaining(lakes, cellX, cellZ)).toBe(capacity)
+    expect(lakeCellDrained(lakes, cellX, cellZ)).toBe(false)
 
-    // Five seconds of held beam at 50 L/s is exactly one tile.
     let litres = 0
     let drained = false
     let seconds = 0
     while (!drained && seconds < 60) {
-      const remaining = lakeCellRemaining(lakes, key)
+      const remaining = lakeCellRemaining(lakes, cellX, cellZ)
       const step = stepLakeAbsorption(litres, 1 / 60, true, 20, remaining)
-      drained = drawFromLakeCell(lakes, key, step.absorbed)
+      drained = drawFromLakeCell(lakes, cellX, cellZ, step.absorbed)
       litres = step.litres
       seconds += 1 / 60
     }
     expect(drained).toBe(true)
-    expect(seconds).toBeCloseTo(LAKE_CELL_CAPACITY / LAKE_ABSORPTION_LITRES_PER_SECOND, 1)
+    expect(seconds).toBeCloseTo(capacity / LAKE_ABSORPTION_LITRES_PER_SECOND, 1)
     // Never over-draws: the last frame is clipped to what the tile had left.
-    expect(litres).toBe(LAKE_CELL_CAPACITY)
-    expect(lakeCellRemaining(lakes, key)).toBe(0)
-    expect(lakeCellDrained(lakes, key)).toBe(true)
+    expect(litres).toBeCloseTo(capacity, 6)
+    expect(lakeCellRemaining(lakes, cellX, cellZ)).toBe(0)
+    expect(lakeCellDrained(lakes, cellX, cellZ)).toBe(true)
 
     // Dry for the rest of the run. Holding the beam over it takes nothing,
     // and the drain never reports a second time - the growth is paid once.
-    expect(stepLakeAbsorption(litres, 1, true, 20, lakeCellRemaining(lakes, key)).absorbed).toBe(0)
-    expect(drawFromLakeCell(lakes, key, 500)).toBe(false)
-    expect(lakeCellRemaining(lakes, key)).toBe(0)
+    expect(stepLakeAbsorption(litres, 1, true, 20, lakeCellRemaining(lakes, cellX, cellZ)).absorbed).toBe(0)
+    expect(drawFromLakeCell(lakes, cellX, cellZ, 500)).toBe(false)
+    expect(lakeCellRemaining(lakes, cellX, cellZ)).toBe(0)
 
     // A neighbouring tile is untouched: the lake drains a cell at a time.
-    expect(lakeCellDrained(lakes, lakeCellKey(4, -7))).toBe(false)
+    expect(lakeCellDrained(lakes, cellX + 1, cellZ)).toBe(false)
   })
 
-  it('prices a lake tile so the water rung cannot be finished standing still', () => {
-    // The rung asks for more than one tile holds, so the pilot has to drain
-    // one and move to the next. This is the whole reason for the capacity.
-    expect(MISSION_TARGETS['absorb-water']).toBeGreaterThan(LAKE_CELL_CAPACITY)
-    // ...but not so much more that it needs a third tile, which would be a
-    // fetch quest rather than a lesson about drag.
-    expect(MISSION_TARGETS['absorb-water']).toBeLessThanOrEqual(LAKE_CELL_CAPACITY * 2)
-    // A tile is a bounded meal however long anyone parks on it.
-    expect(LAKE_CELL_CAPACITY * LAKE_SCORE_PER_LITRE).toBe(250)
+  it('rolls every tile a capacity from its own coordinates, and only its own', () => {
+    // The world stores no terrain, so a tile's depth has to come back the same
+    // after the pilot leaves the district and returns. A capacity that
+    // re-rolled would refill a tile that had already been half drunk.
+    for (let cellX = -40; cellX <= 40; cellX += 1) {
+      for (let cellZ = -40; cellZ <= 40; cellZ += 7) {
+        const capacity = lakeCellCapacity(cellX, cellZ)
+        expect(capacity).toBeGreaterThanOrEqual(LAKE_CELL_CAPACITY_MIN)
+        expect(capacity).toBeLessThanOrEqual(LAKE_CELL_CAPACITY_MAX)
+        expect(lakeCellCapacity(cellX, cellZ)).toBe(capacity)
+      }
+    }
+    // Actually varied, not a constant wearing a function's clothes.
+    const seen = new Set<number>()
+    for (let cellX = 0; cellX < 200; cellX += 1) seen.add(lakeCellCapacity(cellX, 11))
+    expect(seen.size).toBeGreaterThan(80)
+    // The shallowest tile in the world still finishes the water rung alone.
+    expect(LAKE_CELL_CAPACITY_MIN).toBeGreaterThanOrEqual(MISSION_TARGETS['absorb-water'])
   })
 
-  it('grows the hull for a drained tile at a rate the city still beats', () => {
-    // Bigger than a cat, smaller than the largest tower absorbBeamObject can
-    // pay - a tile costs five seconds pinned at half speed.
-    expect(LAKE_DRAIN_SIZE_GAIN).toBeGreaterThan(SIZE_GAIN.cat)
-    expect(LAKE_DRAIN_SIZE_GAIN).toBeLessThan(0.2)
+  it('grows the hull per tile at a rate the city still beats per second', () => {
+    // The honest comparison is per second of play, not per tile: a deep tile
+    // grows more only because it took longer to drink.
+    const cityPerSecond = Math.pow(1 + SIZE_GAIN.pedestrian, 0.8) - 1
+    for (const capacity of [LAKE_CELL_CAPACITY_MIN, 400, LAKE_CELL_CAPACITY_MAX]) {
+      const gain = capacity * LAKE_DRAIN_SIZE_GAIN_PER_LITRE
+      const seconds = capacity / LAKE_ABSORPTION_LITRES_PER_SECOND
+      const lakePerSecond = Math.pow(1 + gain, 1 / seconds) - 1
+      // Water is a real meal - bigger than a cat, never bigger than the
+      // largest tower absorbBeamObject can pay.
+      expect(gain).toBeGreaterThan(SIZE_GAIN.cat)
+      expect(gain).toBeLessThanOrEqual(0.2)
+      // ...but eating the city stays the faster way to grow, at every roll.
+      expect(lakePerSecond).toBeLessThan(cityPerSecond)
+      expect(lakePerSecond).toBeGreaterThan(cityPerSecond * 0.5)
+    }
+    // The gain a tile actually pays is the one derived from its capacity.
+    expect(lakeDrainSizeGain(3, -7)).toBeCloseTo(lakeCellCapacity(3, -7) * LAKE_DRAIN_SIZE_GAIN_PER_LITRE, 10)
+  })
 
-    // Fifteen seconds of pumping is an average three-tile lake. Fifteen
-    // seconds of eating the city at the rate test/feeding.spec.ts measures
-    // (about 0.8 pedestrians a second) has to stay ahead of it, or the lake
-    // becomes the better way to grow and the core loop moves into the water.
-    const lakeSize = growSizeBy(growSizeBy(growSizeBy(1, LAKE_DRAIN_SIZE_GAIN), LAKE_DRAIN_SIZE_GAIN), LAKE_DRAIN_SIZE_GAIN)
-    let citySize = 1
-    for (let bite = 0; bite < 12; bite += 1) citySize = growSizeBy(citySize, SIZE_GAIN.pedestrian)
-    expect(lakeSize).toBeGreaterThan(1.3)
-    expect(citySize).toBeGreaterThan(lakeSize)
+  it('prices a lake as a budget rather than a rate', () => {
+    // Water pays well per second precisely because it runs out: the most any
+    // one tile can ever pay is fixed, however long anyone parks on it.
+    expect(LAKE_SCORE_PER_LITRE).toBe(2)
+    expect(LAKE_CELL_CAPACITY_MAX * LAKE_SCORE_PER_LITRE).toBe(1000)
+    expect(LAKE_CELL_CAPACITY_MIN * LAKE_SCORE_PER_LITRE).toBe(600)
   })
 
   it('crashes only with beam on, overload and ground contact together', () => {

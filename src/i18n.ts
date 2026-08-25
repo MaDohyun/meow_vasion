@@ -351,10 +351,10 @@ export const STRINGS: Record<Language, Strings> = {
         '정찰 내내 서클을 경유해서 날아라. 그게 살아 돌아오는 길이다.',
       ],
       'absorb-water': [
-        '물을 퍼 올렸군, 대원. 그럼 이제 몸으로 알았을 거다.',
+        '물을 퍼 올렸군, 대원.',
         '물 타일 위에서 빔을 쓰면 [[UFO의 속도가 대폭 저하된다]]. 물이 그만큼 무겁기 때문이다.',
-        '대신 한 칸을 [[끝까지 비우면 물이 말라 없어지고 선체가 자란다]]. 한 칸은 250리터가 전부다 — 다 마셨으면 옆 칸으로 옮겨라.',
-        '다만 마시는 동안 어디에 있는지는 잊지 마라. 도망칠 수 없는 자리에서 느려지는 거다. 하늘이 조용할 때 마셔라.',
+        '하지만 물은 소중한 지구의 연구 데이터다. 많은 스코어를 얻을 수 있으니 보인다면 적극 흡수하도록.',
+        '대신 한 칸을 [[끝까지 비우면 물이 말라 없어지고 만다]]. 유의하도록!',
       ],
       'absorb-samples': [
         '잘했다! 표본 수집 임무는 완수다.',
@@ -546,10 +546,10 @@ export const STRINGS: Record<Language, Strings> = {
         '偵察の間はサークルを経由して飛べ。それが生きて帰る道だ。',
       ],
       'absorb-water': [
-        '水を汲み上げたな、隊員。これで身体でわかっただろう。',
+        '水を汲み上げたな、隊員。',
         '水タイルの上でビームを使うと[[UFOの速度が大幅に低下する]]。それだけ水が重いということだ。',
-        '代わりに一枚を[[飲み干せば水は涸れ、船体が成長する]]。一枚は250リットルで打ち止めだ — 干上がったら隣へ移れ。',
-        'ただし飲んでいる間、自分がどこにいるかは忘れるな。逃げられない場所で遅くなるということだ。空が静かなときに飲め。',
+        'だが水は貴重な地球の研究データだ。多くのスコアが得られる、見つけたら積極的に吸収しろ。',
+        'ただし一枚を[[飲み干すと水は涸れて消えてしまう]]。留意するように！',
       ],
       'absorb-samples': [
         'よくやった！ 標本収集の任務は完了だ。',
@@ -741,10 +741,10 @@ export const STRINGS: Record<Language, Strings> = {
         'Route the whole recon through the circles. That is how you get home.',
       ],
       'absorb-water': [
-        'Water pumped, pilot. Now you have felt it for yourself.',
+        'Water pumped, pilot.',
         'Running the beam over a water tile [[slows the craft down badly]]. Water is that heavy.',
-        'Drink a tile [[dry and the water is gone for good - and the hull grows for it]]. A tile holds 250 litres, no more. Empty one, move to the next.',
-        'But do not forget where you are while you drink. Slow, in the one place you cannot run from. Drink when the sky is quiet.',
+        'But water is precious Earth research data. It is worth a great deal of score - absorb it wherever you see it.',
+        'Only know that once a tile is [[drunk dry, its water is gone for good]]. Bear that in mind!',
       ],
       'absorb-samples': [
         'Well done! The sample collection mission is complete.',

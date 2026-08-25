@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useGame } from '../GameContext'
 import { WORLD_CELL_SIZE, lakeCellsNear, mysteryCirclesNear, type LakeCell, type MysteryCircleSite } from '../core/world'
-import { lakeCellDrained, lakeCellKey } from '../core/lakes'
+import { lakeCellDrained } from '../core/lakes'
 import { clampToRadarRim, projectToRadar } from './radarProjection'
 
 /**
@@ -136,7 +136,7 @@ export function Radar() {
       for (const cell of lakeCellsNear(player, RADAR_RANGE, lakes)) {
         // A drained tile is no longer somewhere to route to for water, and
         // painting it blue would send the pilot back to a dry basin.
-        if (lakeCellDrained(game.lakes, lakeCellKey(cell.cellX, cell.cellZ))) continue
+        if (lakeCellDrained(game.lakes, cell.cellX, cell.cellZ)) continue
         const x0 = cell.cellX * WORLD_CELL_SIZE - player.x
         const z0 = cell.cellZ * WORLD_CELL_SIZE - player.z
         const x1 = x0 + WORLD_CELL_SIZE

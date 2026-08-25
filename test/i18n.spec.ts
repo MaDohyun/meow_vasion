@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_LANGUAGE, LANGUAGES, LANGUAGE_LABELS, STRINGS } from '../src/i18n'
 import { MISSION_DEBRIEF_IDS, MISSION_ORDER, MISSION_RUN_SECONDS } from '../src/core/missions'
-import { LAKE_CELL_CAPACITY } from '../src/core/lakes'
+import { LAKE_CELL_CAPACITY_MAX, LAKE_CELL_CAPACITY_MIN } from '../src/core/lakes'
 
 describe('interface languages', () => {
   it('defaults to Korean', () => {
@@ -89,13 +89,15 @@ describe('interface languages', () => {
     expect(STRINGS.ko.missionDebrief['absorb-water'][0]).not.toBe(STRINGS.en.missionDebrief['absorb-water'][0])
   })
 
-  it('quotes the real tile capacity in the water debrief, in every language', () => {
-    // The general tells the pilot how much a tile holds, which is the one
-    // number in the script that is also a balance constant. Retuning the
-    // constant without the line would leave him quoting the old lake.
+  it('never quotes a fixed tile capacity, which no tile has', () => {
+    // A tile's capacity is rolled per cell now, so any litre figure in the
+    // general's script would be right about one tile and wrong about the rest.
+    // He talks about what happens, not about how much.
     for (const language of LANGUAGES) {
       const lines = STRINGS[language].missionDebrief['absorb-water'].join(' ')
-      expect(lines, language).toContain(String(LAKE_CELL_CAPACITY))
+      for (let litres = LAKE_CELL_CAPACITY_MIN; litres <= LAKE_CELL_CAPACITY_MAX; litres += 1) {
+        expect(lines, `${language} quotes ${litres}`).not.toContain(String(litres))
+      }
     }
   })
 

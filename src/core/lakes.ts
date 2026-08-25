@@ -1,3 +1,5 @@
+import { seedForWorldCell } from './world'
+
 export const LAKE_ABSORPTION_LITRES_PER_SECOND = 50
 // The floor the drag ramps down to at full depth: half speed.
 //
@@ -44,37 +46,62 @@ export function stepLakeAbsorption(
 }
 
 /**
- * Litres one lake tile holds before its water is gone for the rest of the run.
+ * The range one lake tile holds, in litres. Rolled per cell, never stored.
  *
- * Five seconds of held beam at 50 L/s. Two things are priced into that number.
- * The water rung asks for 300 litres, so it cannot be finished standing on one
- * tile - the pilot drains one, moves, and finishes on the next, which is the
- * house rule about sitting still applied to the one surface that most invites
- * it. And a tile is a bounded meal: a lake is 2-4 tiles, so the best a body of
- * water can ever pay is 500-1000 points, however long anyone parks on it.
+ * A fixed number made every tile the same five seconds, and a lake read as a
+ * row of identical tanks. Rolling it means the pilot cannot know from above
+ * which tile is the deep one - a lake is worth flying along rather than
+ * measuring, and a fat tile is something to be glad about rather than a number
+ * to count out.
  *
- * No refill. A drained tile stays drained for the run, which is what makes
- * the number a budget rather than a rate limit.
+ * The floor is the water rung's own target, so even the shallowest tile in the
+ * world can finish that rung on its own.
  */
-export const LAKE_CELL_CAPACITY = 250
+export const LAKE_CELL_CAPACITY_MIN = 300
+export const LAKE_CELL_CAPACITY_MAX = 500
 
 /**
- * Hull growth for draining one tile dry, as a fraction of current size.
+ * Litres this tile holds before its water is gone for the rest of the run.
+ *
+ * Derived from the cell's coordinates like everything else in this world, not
+ * from Math.random and not from stored terrain: leaving a district and coming
+ * back has to find the same lake, and a capacity that re-rolled on the way
+ * back would quietly refill a tile the pilot had already half drunk.
+ *
+ * The salt is this module's own, so how deep a tile is stays independent of
+ * everything else the cell's seed already decides.
+ */
+export function lakeCellCapacity(cellX: number, cellZ: number) {
+  const span = LAKE_CELL_CAPACITY_MAX - LAKE_CELL_CAPACITY_MIN + 1
+  return LAKE_CELL_CAPACITY_MIN + (seedForWorldCell(cellX, cellZ, 0x7a1e) % span)
+}
+
+/**
+ * Hull growth for draining a tile dry, as a fraction of current size per litre
+ * the tile held.
  *
  * Paid on the tile, not on the litre. Water is the one thing the beam takes in
  * continuously, and growing continuously would mean a size pulse on every
- * frame of a five-second pump - the readout would strobe rather than react.
- * Draining a tile is the swallow, and it lands the way swallowing anything
- * else does: once, with a pop.
+ * frame of a pump - the readout would strobe rather than react. Draining a
+ * tile is the swallow, and it lands the way swallowing anything else does:
+ * once, with a pop.
  *
- * Sized between the two ends of the existing ladder. A cat is +5.8% and the
- * largest tower `absorbBeamObject` can grow you by is +20%, so a tile sits
- * nearer the tower - it costs five seconds pinned at half speed in the one
- * place the craft cannot run from. An average three-tile lake compounds to
- * about +40%, which is still under what fifteen seconds of eating the city
- * pays; the lake is the safer-looking, slower option, not the better one.
+ * Scaled by what the tile actually held, so a deep tile is a bigger meal in
+ * every sense rather than only a longer one. Across the capacity range that
+ * puts a tile between +12% and +20%: the bottom sits above a cat (+5.8%) and
+ * the top lands exactly on the largest tower `absorbBeamObject` can pay.
+ *
+ * Per second of held beam it comes out a flat ~1.9% whatever the tile rolled,
+ * against roughly 2.8% for eating the city at the rate test/feeding.spec.ts
+ * measures. The lake is deliberately about two thirds of the city's rate - a
+ * safer-looking, finite option, never the better one.
  */
-export const LAKE_DRAIN_SIZE_GAIN = 0.12
+export const LAKE_DRAIN_SIZE_GAIN_PER_LITRE = 0.0004
+
+/** Growth for draining this particular tile. */
+export function lakeDrainSizeGain(cellX: number, cellZ: number) {
+  return lakeCellCapacity(cellX, cellZ) * LAKE_DRAIN_SIZE_GAIN_PER_LITRE
+}
 
 /** Litres drawn per lake tile, keyed by cell. Absent means untouched. */
 export type LakeDrainState = { drawn: Map<string, number> }
@@ -88,25 +115,28 @@ export function lakeCellKey(cellX: number, cellZ: number) {
 }
 
 /** What the tile still holds. Zero once it is dry. */
-export function lakeCellRemaining(state: LakeDrainState, key: string) {
-  return Math.max(0, LAKE_CELL_CAPACITY - (state.drawn.get(key) ?? 0))
+export function lakeCellRemaining(state: LakeDrainState, cellX: number, cellZ: number) {
+  const drawn = state.drawn.get(lakeCellKey(cellX, cellZ)) ?? 0
+  return Math.max(0, lakeCellCapacity(cellX, cellZ) - drawn)
 }
 
-export function lakeCellDrained(state: LakeDrainState, key: string) {
-  return lakeCellRemaining(state, key) <= 0
+export function lakeCellDrained(state: LakeDrainState, cellX: number, cellZ: number) {
+  return lakeCellRemaining(state, cellX, cellZ) <= 0
 }
 
 /**
  * Banks litres against a tile. Returns true only on the draw that empties it,
  * so the caller can pay the growth once rather than every frame after.
  */
-export function drawFromLakeCell(state: LakeDrainState, key: string, litres: number) {
+export function drawFromLakeCell(state: LakeDrainState, cellX: number, cellZ: number, litres: number) {
   if (!(litres > 0)) return false
+  const capacity = lakeCellCapacity(cellX, cellZ)
+  const key = lakeCellKey(cellX, cellZ)
   const before = state.drawn.get(key) ?? 0
-  if (before >= LAKE_CELL_CAPACITY) return false
-  const after = Math.min(LAKE_CELL_CAPACITY, before + litres)
+  if (before >= capacity) return false
+  const after = Math.min(capacity, before + litres)
   state.drawn.set(key, after)
-  return after >= LAKE_CELL_CAPACITY
+  return after >= capacity
 }
 
 /**
@@ -117,18 +147,22 @@ export function drawFromLakeCell(state: LakeDrainState, key: string, litres: num
  * game that is not worth doing, which is a strange thing to build a rung of
  * the ladder out of.
  *
- * A point a litre is fifty a second - the water rung pays 300 on its own, and
- * the sample rung's 3000 is a minute of held beam over open water. That is a
- * real rate rather than a trickle, and it is set deliberately: a lake is the
- * one place the craft cannot run from, so the pilot is buying the score with
- * half their top speed and whatever the sky sends while they sit there.
+ * Two a litre is a hundred a second. The general sells water as research data
+ * worth diverting for, so it has to actually be worth the detour: an average
+ * tile pays about 800 and an average lake about 2500, for eight and twenty-six
+ * seconds of held beam.
+ *
+ * The rate can be this high because the supply is not a rate at all, it is a
+ * budget. Tiles do not refill, so a body of water pays what it pays once and
+ * is a dry basin from then on. What the pilot spends for it is half their top
+ * speed in the one place the craft cannot run from.
  *
  * Deliberately NOT scaled by the size multiplier, unlike every other beam
  * payout. Water comes in at a flat 50 L/s whatever the craft weighs, so the
  * multiplier would be pure profit with no extra work behind it - at the size
- * cap it would pay 750 a second, which is the whole run in twenty seconds.
+ * cap it would pay 1500 a second.
  */
-export const LAKE_SCORE_PER_LITRE = 1
+export const LAKE_SCORE_PER_LITRE = 2
 
 /**
  * Whole points owed for crossing from one running litre total to the next.
