@@ -121,8 +121,8 @@ export type Strings = {
   beamAmplified: string
   /** The ballast gauge. It reads as weight rather than as drag because that
    *  is what fills it and what the overload warning names - the slowdown is
-   *  the symptom, not the thing on the bar. Full still means the craft sinks;
-   *  what it no longer means is that the run ends when it reaches the road. */
+   *  the symptom, not the thing on the bar. Past full the craft both slows and
+   *  sinks; what it no longer does is end the run when it reaches the road. */
   weight: string
   turbo: string
   turboActive: string
@@ -301,7 +301,7 @@ export const STRINGS: Record<Language, Strings> = {
     soundBlocked: '소리 켜기',
     controlFly: '보는 방향으로 자동 비행',
     controlAim: '조종 · 조준',
-    controlBeam: '빔 유지 · 흡수 · 감속',
+    controlBeam: '빔 유지 · 흡수',
     controlLaser: '레이저',
     controlBoost: '터보',
     touchTurbo: '터보',
@@ -314,12 +314,12 @@ export const STRINGS: Record<Language, Strings> = {
     collapseAt: '붕괴',
     life: '생명력',
     hazardBuildings: '건물에 부딪히면 [[생명력 감소]]',
-    overloadHint: '무게가 가득 차면 [[고도 하강]]',
+    overloadHint: '무게가 가득 차면 [[느려지고 가라앉음]]',
     bossName: '공중전함',
     repairing: '수리 중',
     ceiling: '상승 한계',
     overloaded: '과적',
-    overloadAlarm: '[[무게 초과 · 고도 하강]] 빔을 놓아라!',
+    overloadAlarm: '[[무게 초과 · 감속 · 하강]] 빔을 놓아라!',
     waterAlarm: '호수 물을 빨아들이는 중 · 속도 저하',
     clock: '남은 시간',
     score: '점수',
@@ -484,7 +484,7 @@ export const STRINGS: Record<Language, Strings> = {
     soundBlocked: 'サウンドをオン',
     controlFly: '見ている方向へ自動飛行',
     controlAim: '操縦 · 照準',
-    controlBeam: 'ビーム維持 · 吸収 · 減速',
+    controlBeam: 'ビーム維持 · 吸収',
     controlLaser: 'レーザー',
     controlBoost: 'ターボ',
     touchTurbo: 'ターボ',
@@ -497,12 +497,12 @@ export const STRINGS: Record<Language, Strings> = {
     collapseAt: '崩壊',
     life: 'ライフ',
     hazardBuildings: '建物にぶつかると[[ライフが減る]]',
-    overloadHint: '積載オーバーで[[高度低下]]',
+    overloadHint: '積載オーバーで[[減速 · 高度低下]]',
     bossName: '空中戦艦',
     repairing: '修理中',
     ceiling: '上昇限界',
     overloaded: '過積載',
-    overloadAlarm: '[[重量超過 · 高度低下]] ビームを離せ！',
+    overloadAlarm: '[[重量超過 · 減速 · 高度低下]] ビームを離せ！',
     waterAlarm: '湖の水を吸収中 · 速度低下',
     clock: '残り時間',
     score: 'スコア',
@@ -667,7 +667,7 @@ export const STRINGS: Record<Language, Strings> = {
     soundBlocked: 'TAP FOR SOUND',
     controlFly: 'ALWAYS FLYING WHERE YOU LOOK',
     controlAim: 'STEER / AIM',
-    controlBeam: 'HOLD BEAM · ABSORB · SLOW DOWN',
+    controlBeam: 'HOLD BEAM · ABSORB',
     controlLaser: 'LASER',
     controlBoost: 'TURBO',
     touchTurbo: 'TURBO',
@@ -680,12 +680,12 @@ export const STRINGS: Record<Language, Strings> = {
     collapseAt: 'COLLAPSE',
     life: 'LIFE',
     hazardBuildings: 'HITTING A BUILDING [[COSTS YOU LIFE]]',
-    overloadHint: 'WEIGHT FULL MEANS [[YOU SINK]]',
+    overloadHint: 'WEIGHT FULL MEANS [[SLOW AND SINKING]]',
     bossName: 'SKY BATTLESHIP',
     repairing: 'REPAIRING',
     ceiling: 'CEILING',
     overloaded: 'OVERLOADED',
-    overloadAlarm: '[[OVERWEIGHT · SINKING]] RELEASE THE BEAM!',
+    overloadAlarm: '[[OVERWEIGHT · SLOW AND SINKING]] RELEASE THE BEAM!',
     waterAlarm: 'DRAWING LAKE WATER · SLOWED',
     clock: 'CLOCK',
     score: 'SCORE',

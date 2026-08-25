@@ -10,6 +10,7 @@ import {
   CAMERA_REST_DISTANCE,
   GROWTH_FALLOFF_MIN,
   HEALTH_BONUS_HEARTS_MAX,
+  LIFT_CAPACITY_MIN,
   SIZE_MAX,
   SIZE_MIN,
   SIZE_START,
@@ -24,6 +25,7 @@ import {
   sizeCameraLift,
   ufoDiameter,
 } from '../src/core/size'
+import { PEDESTRIAN_MASS } from '../src/core/crowds'
 
 describe('craft size as growth, not as health', () => {
   it('starts small enough that one person is a real meal', () => {
@@ -115,7 +117,10 @@ describe('craft size as growth, not as health', () => {
     expect(big.beamScale).toBeCloseTo(BEAM_APERTURE_MAX)
     expect(start.beamStrength).toBe(1)
     expect(big.beamStrength).toBe(BEAM_STRENGTH_MAX)
-    expect(start.liftCapacity).toBe(1)
+    expect(start.liftCapacity).toBe(LIFT_CAPACITY_MIN)
+    // One body, and one body only: the opening craft's first catch must be a
+    // full load rather than an overload.
+    expect(LIFT_CAPACITY_MIN).toBe(PEDESTRIAN_MASS)
     expect(big.liftCapacity).toBe(40)
     expect(big.beamPower).toBeGreaterThan(start.beamPower)
     // Reach and pull ride on size too: the opening saucer keeps the stock
@@ -140,11 +145,11 @@ describe('craft size as growth, not as health', () => {
     expect(big.hitRadius).toBeGreaterThan(start.hitRadius)
   })
 
-  it('front-loads lift so the opening craft escapes one-bin capacity quickly', () => {
+  it('front-loads lift so the opening craft escapes one-body capacity quickly', () => {
     // The curve's exponent sits below 1: early growth buys proportionally
-    // more capacity than late growth, but the 1..40 endpoints are exact.
+    // more capacity than late growth, but the endpoints are exact.
     const quarter = SIZE_START + (SIZE_MAX - SIZE_START) * 0.25
-    const linearQuarter = 1 + 0.25 * 39
+    const linearQuarter = LIFT_CAPACITY_MIN + 0.25 * (40 - LIFT_CAPACITY_MIN)
     expect(liftCapacityForSize(quarter)).toBeGreaterThan(linearQuarter)
     let previous = 0
     for (let size = SIZE_START; size <= SIZE_MAX; size += 0.2) {

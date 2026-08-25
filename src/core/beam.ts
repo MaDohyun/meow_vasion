@@ -23,23 +23,6 @@ export type BeamWorldProp = {
 export const BEAM_ABSORB_TIME = 0.24
 
 /**
- * Top speed while the beam is out, as a share of the craft's own.
- *
- * The saucer cruises by itself now, which leaves the player no throttle to
- * ease off with - and lining a cone up on a single pedestrian at full cruise
- * is a different game from flying over the street. The beam is the brake: hold
- * E and the craft settles into something you can aim, let go and it is back up
- * to speed. One button doing both is the point, and it is the same button the
- * whole game is already about.
- *
- * A quarter off, not a stop. Slow enough to feel the moment it comes on, fast
- * enough that sweeping a street with the beam open is still the way the beam
- * is meant to be flown. Ballast stacks on top of this - what you have caught
- * goes on slowing you down whether the beam is on or off.
- */
-export const BEAM_CRUISE_SCALE = 0.75
-
-/**
  * Seconds of grip left after the beam is cut.
  *
  * Short: cutting the beam is how you drop a load, and it has to work at once.

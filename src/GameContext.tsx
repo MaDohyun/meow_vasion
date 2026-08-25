@@ -5,7 +5,6 @@ import {
   type BeamField,
   type BeamObject,
   type BeamWorldProp,
-  BEAM_CRUISE_SCALE,
   CAR_MASS,
   absorptionScore,
   beamLiftScale,
@@ -101,6 +100,7 @@ import { MYSTERY_BOOST_DURATION, MYSTERY_BOOST_MAX_MULTIPLIER, mysteryBoostMulti
 import { DRONE_BLAST_TRAUMA, HELICOPTER_RAM_TRAUMA, HIT_TRAUMA, addShakeTrauma, createShakeState, stepShake, type ShakeState } from './core/shake'
 import { worldPropMass, worldPropsAround } from './core/worldProps'
 import { endingForTimeUp, isVictory, type RunEnding } from './core/ending'
+import { overloadCruiseScale } from './core/overload'
 import { TANKER_EXPLOSION_SCALE, playBoosterSound, playBuildingCollapseSound, playDroneExplosionSound, playLaserSound, playMysteryCircleSound, playNearbyCatCrySound, playVehicleExplosionSound, startBeamSound, startGameplayMusic, stopBeamSound, stopGameplayMusic, stopLobbyMusic, tone, unlockAudio } from './audio'
 
 export type GamePhase = 'intro' | 'playing' | 'results'
@@ -504,17 +504,19 @@ const BOON_MESSAGE_KEY: Record<BoonId, MessageKey> = {
 const BALLAST_DRAG = 0.31
 
 /**
- * Hanging mass the craft can still hold altitude against.
+ * Hanging mass the craft can still fly properly with.
  *
- * Past it the beam is carrying more than the engines can lift: climb dies and
- * the craft starts sinking. Weight only slowed you down before, which meant
- * there was no ceiling on greed - a decision needs a limit to be a decision.
+ * Past it the beam is carrying more than the engines are rated for: climb
+ * dies, the craft starts sinking, and top speed falls away with how far over
+ * the line the load is (see overloadCruiseScale). It is the one line in the
+ * game that prices greed, which is why greed needs a line at all - a decision
+ * needs a limit to be a decision.
  *
  * What it no longer does is kill. Touching down while overloaded used to end
  * the run, and a trapdoor the player finds by falling through it teaches
- * nothing the sinking had not already said. Sinking is the whole penalty now:
- * it is visible, it is survivable, and finishing the meal or cutting the beam
- * clears it, so the answer is always in the player's hands.
+ * nothing the sinking had not already said. Slow and low is the whole penalty
+ * now: it is visible, it is survivable, and finishing the meal or cutting the
+ * beam clears it, so the answer is always in the player's hands.
  */
 /**
  * A detonation makes the craft sluggish; it never takes the controls away.
@@ -1984,10 +1986,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
     // pinned the craft to the spot, which read as the beam being broken over
     // water rather than as water being heavy.
     if (game.waterAnchored) flightInput.throttle *= lake.speedScale
-    // The beam is the brake. With no throttle key left, holding E is how a
-    // player slows down to line a cone up on one pedestrian - and it is the
-    // same press that then swallows them.
-    if (game.beamActive) flightInput.throttle *= BEAM_CRUISE_SCALE
     // Only ballast slows the craft. Size is deliberately absent: growth is what
     // the player is good at, and taxing it directly punishes them for winning.
     // Soft ceiling. The climb input fades out as the craft nears the height its
@@ -2008,9 +2006,22 @@ export function GameProvider({ children }: { children: ReactNode }) {
     // an overloaded craft sinks, scrapes along the rooftops and the road, and
     // flies badly until it eats the load or cuts the beam - all of which the
     // player can see happening and undo.
+    //
+    // It is also the brake. Holding the beam used to cost speed on its own,
+    // which priced the verb instead of the greed - an empty pass with the cone
+    // open was billed like one that came away with three cars. Opening the
+    // beam is free now; what is charged for is what is still hanging off it,
+    // and only past what the hull is rated to lift. Which means the loop feeds
+    // itself: the more you snag, the slower you fly, and the slower you fly
+    // the easier the next thing is to catch - right up until you are sinking
+    // through the traffic at half speed and have to decide whether to swallow
+    // it or let go.
     const capacity = liftLimit(game)
     const overload = Math.max(0, game.ballast - capacity)
-    if (overload > 0) flightInput.vertical = Math.min(flightInput.vertical, 0) - Math.min(1, overload / 12)
+    if (overload > 0) {
+      flightInput.vertical = Math.min(flightInput.vertical, 0) - Math.min(1, overload / 12)
+      flightInput.throttle *= overloadCruiseScale(game.ballast, capacity)
+    }
     const warningAt = capacity * 0.6
     game.overloadWarn = game.ballast <= warningAt
       ? 0

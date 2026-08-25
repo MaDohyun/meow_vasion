@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { BEAM_CRUISE_SCALE } from '../src/core/beam'
 import { collideDrone, createDroneState, DRONE_DEFAULTS, stepDrone } from '../src/core/drone'
 import { rewardForDelivery } from '../src/core/economy'
+import { OVERLOAD_CRUISE_FLOOR, overloadCruiseScale } from '../src/core/overload'
 
 const upgrades = { speed: 0, stability: 0, rack: 0, special: 'none' as const }
 
@@ -34,10 +34,10 @@ describe('balance', () => {
     expect(Math.abs(state.position.x - -68)).toBeLessThan(0.5)
   })
 
-  it('makes the beam the brake, not a handbrake', () => {
-    // With no throttle key left, holding the beam is how a player slows down
-    // to line the cone up on one pedestrian. It has to be felt and it has to
-    // leave the craft flying.
+  it('charges the greed, not the verb', () => {
+    // Opening the beam is free: an empty pass with the cone out must cost the
+    // same as no beam at all, or the game is pricing the one thing it is
+    // teaching. What costs is what is still hanging off it, past the rating.
     const cruise = (throttle: number) => {
       let state = createDroneState()
       for (let i = 0; i < 120; i += 1) {
@@ -46,9 +46,23 @@ describe('balance', () => {
       return state.speed
     }
     const open = cruise(1)
-    const beaming = cruise(BEAM_CRUISE_SCALE)
-    expect(beaming).toBeLessThan(open * 0.85)
-    expect(beaming).toBeGreaterThan(open * 0.6)
+    // Exactly at the rating is exactly full speed - the penalty eases in from
+    // the line rather than snapping on when the gauge pins.
+    expect(overloadCruiseScale(10, 10)).toBe(1)
+    expect(cruise(overloadCruiseScale(10, 10))).toBeCloseTo(open, 5)
+    // Twice the rating is a craft you can feel dragging, and it is the same
+    // fraction whatever size the craft is: capacity grows, so the rule must be
+    // relative or it reads as a tax on growing.
+    expect(overloadCruiseScale(20, 10)).toBeCloseTo(overloadCruiseScale(80, 40), 10)
+    const doubled = cruise(overloadCruiseScale(20, 10))
+    expect(doubled).toBeLessThan(open * 0.8)
+    // Never a standstill: the way out of overload is to fly somewhere and
+    // finish the meal, so the floor has to leave the craft moving.
+    expect(overloadCruiseScale(10_000, 1)).toBeGreaterThanOrEqual(OVERLOAD_CRUISE_FLOOR)
+    expect(cruise(OVERLOAD_CRUISE_FLOOR)).toBeGreaterThan(open * 0.4)
+    // Monotonic all the way down - more load is never less penalty.
+    const scales = [0, 1, 4, 9, 30].map((excess) => overloadCruiseScale(10 + excess, 10))
+    expect(scales).toEqual([...scales].sort((left, right) => right - left))
   })
 
   it('moves vertically in the direction of mouse pitch', () => {
