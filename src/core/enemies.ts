@@ -1,10 +1,9 @@
 import type { BeamObject } from './beam'
 import type { Aabb, Vec3 } from './drone'
-import { seedForWorldCell, type ProceduralBuilding } from './world'
 
-export type EnemyKind = 'drone' | 'helicopter' | 'fighter' | 'anti-air' | 'boss'
+export type EnemyKind = 'drone' | 'helicopter' | 'fighter' | 'boss'
 export type EnemyMode = 'roam' | 'chase' | 'strafe' | 'outbound' | 'fixed'
-export type EnemyProjectileKind = 'boss-beam' | 'flak' | 'orb'
+export type EnemyProjectileKind = 'orb'
 
 /**
  * When each wave lands, in seconds.
@@ -30,27 +29,13 @@ export const ENEMY_WAVE_STAGES = [
   { at: 30, tempo: 1, label: 'DRONE MINES', targets: { drone: 14 } },
   { at: 70, tempo: 2, label: 'HELICOPTERS UP', targets: { drone: 20, helicopter: 8 } },
   { at: 110, tempo: 3, label: 'FIGHTERS SCRAMBLED', targets: { drone: 25, helicopter: 11, fighter: 4 } },
-  { at: 145, tempo: 4, label: 'AA NETWORK', targets: { drone: 30, helicopter: 12, fighter: 5, 'anti-air': 6 } },
-  { at: 180, tempo: 5, label: 'SKY DREADNOUGHT', targets: { drone: 34, helicopter: 14, fighter: 6, 'anti-air': 6, boss: 1 } },
+  { at: 180, tempo: 4, label: 'SKY DREADNOUGHT', targets: { drone: 34, helicopter: 14, fighter: 6, boss: 1 } },
 ] as const
-
-/**
- * When the anti-air network comes online.
- *
- * The emplacements are bolted to buildings rather than handed out by the
- * spawner, so they need the wave time as a figure of their own - read back off
- * the table rather than written out again, so moving the wave moves the
- * network with it.
- */
-export const ANTI_AIR_WAVE_AT = ENEMY_WAVE_STAGES.find(
-  (stage) => ((stage.targets as Partial<Record<EnemyKind, number>>)['anti-air'] ?? 0) > 0,
-)!.at
 
 export const ENEMY_TIER: Record<EnemyKind, number> = {
   drone: 0,
   helicopter: 2,
   fighter: 4,
-  'anti-air': 5,
   boss: 7,
 }
 
@@ -58,10 +43,6 @@ export const ENEMY_MAX_HP: Record<EnemyKind, number> = {
   drone: 1,
   helicopter: 3,
   fighter: 4,
-  // Down from 10. A static emplacement that soaked ten hits read as
-  // invincible and got ignored; four makes clearing a rooftop before the
-  // next lock lands an actual play.
-  'anti-air': 4,
   // Fifty seconds of fighting. An unupgraded laser can just about do it; a
   // maxed laser-power does it with time to spare, which is the whole point of
   // putting a laser-only target in the game.
@@ -83,7 +64,6 @@ export const ENEMY_CAPS: Record<EnemyKind, number> = {
   drone: 42,
   helicopter: 20,
   fighter: 10,
-  'anti-air': 6,
   boss: 1,
 }
 
@@ -94,8 +74,8 @@ export const ENEMY_CAPS: Record<EnemyKind, number> = {
  * elevation layers deep rather than one flat circle, and a full flurry is
  * seventy-odd orbs in the air at once. At 96 the last layers of a flurry were
  * simply never fired - `fireOrb` finds no free slot and returns quietly - and
- * with the pool empty the anti-air network and the fighters went mute too, so
- * the biggest moment of the fight was also the quietest. The pool has to hold
+ * and with the pool empty the fighters went mute too, so the biggest moment of
+ * the fight was also the quietest. The pool has to hold
  * the loudest thing the game can do plus everything still shooting around it.
  */
 export const ENEMY_MAX_PROJECTILES = 160
@@ -129,50 +109,6 @@ export const BATTLESHIP_TURRETS = [-0.74, -0.44, -0.15, 0.16, 0.45, 0.72] as con
  *  fight is a wall of shells with no rhythm. */
 export const BATTLESHIP_TURRET_GAP = 0.34
 export const BATTLESHIP_RELOAD = 4.4
-/** Every third broadside is replaced by the bow gun: a long telegraph, a
- *  visible aim line, and a shot that hurts. */
-export const BATTLESHIP_MAIN_GUN_EVERY = 3
-export const BATTLESHIP_MAIN_GUN_TELEGRAPH = 1.9
-
-/**
- * The ship's flak: the anti-air network's move, fired in pairs.
- *
- * The emplacements bolted to the rooftops have the one attack in the game that
- * asks the player to move rather than to dodge - three seconds of lock on a
- * single point, then a stream of heavy shells into exactly that point. A
- * capital ship has no business being worse at that than a rooftop gun, so it
- * borrows the move outright and answers with two barrels: each round of the
- * stream is a shell from each of two turrets, walking down the flank as the
- * stream runs. The lock is the same three seconds, because the whole fairness
- * of the move is that the mark is shown before anything leaves.
- *
- * Every second volley, so it alternates with the halo rather than replacing
- * it: rings, flak, bow gun, flak, rings.
- */
-/**
- * The ship's lock-and-stream, and the roster's only telegraphed burst.
- *
- * These used to be the rooftop network's numbers, under `ANTI_AIR_*` names,
- * back when the emplacements were snipers. The network fires the curtain now
- * like everything else, so the lock lives here - it is the dreadnought's move,
- * and naming it after a unit that no longer performs it left the ship's second
- * weapon hostage to whatever happened to the rooftops.
- *
- * Three seconds of lock on one point, then paired shells rattling into it.
- * Leave the marked point inside the window and the whole string sails past;
- * sit on it and the stream keeps arriving.
- */
-export const BATTLESHIP_FLAK_TELEGRAPH = 3
-/** Seconds between rounds of the stream. */
-export const BATTLESHIP_FLAK_INTERVAL = 0.13
-/** Each round is big - a shell you watch coming, not a tracer. Three seconds
- *  of blinking lock promise something heavy on the way. */
-export const BATTLESHIP_FLAK_SHELL_RADIUS = 1.5
-export const BATTLESHIP_FLAK_EVERY = 2
-/** Rounds in one stream, and shells per round. */
-export const BATTLESHIP_FLAK_ROUNDS = 3
-export const BATTLESHIP_FLAK_PAIR = 2
-
 /**
  * How far the ship may fall behind before it stops keeping station and simply
  * runs the player down.
@@ -253,7 +189,7 @@ export const BATTLESHIP_ESCORT_DROP = 68
  * range. Then it commits - full speed, straight at the craft, altitude
  * included - and rams. Its guns are gone: the collision is the attack, so the
  * threat it makes is spatial, like the mines, rather than another stream of
- * projectiles on top of the fighters and the anti-air network.
+ * projectiles on top of the fighters' curtains.
  *
  * A ram that connects peels off rather than grinding: the helicopter breaks
  * back out past its own detection range and settles into a patrol there, so
@@ -294,18 +230,18 @@ export const HELICOPTER_PEEL_RANGE = 58
  * where the orbs are and where they are going, which is the only question a
  * curtain ever asks.
  *
- * The lead-aimed, telegraphed shot is gone with them. Aiming was a second
- * grammar bolted onto the first: the anti-air network locked for three
- * seconds, drew a line, and streamed heavy rounds down it, so the answer to it
- * was reading a warning rather than reading the air. Now a gun with the craft
- * in range simply fires one orb at it, every cooldown, and the dodge is the
- * same dodge everywhere - move, and keep moving.
+ * The lead-aimed, telegraphed shot is gone with them, and so is every unit
+ * that fired one. Aiming was a second grammar bolted onto the first: a gun
+ * locked for three seconds, drew a line, and streamed heavy rounds down it, so
+ * the answer to it was reading a warning rather than reading the air. Nothing
+ * in the sky aims now, and the dodge is the same dodge everywhere - move, and
+ * keep moving.
  *
- * Fighters and the anti-air network fire one orb at a time down the bearing to
- * the craft. The battleship still scatters full rings in every direction - a
- * halo that makes closing on the hull a navigation problem - and keeps the bow
- * gun as its one aimed, telegraphed shot, which is the whole reason the ship
- * reads as a boss and not as a large fighter.
+ * Fighters fire one orb at a time down the bearing to the craft. The
+ * battleship scatters full rings in every direction and on three pitches - a
+ * halo that makes closing on the hull a navigation problem - and that halo is
+ * its whole armoury, which is the reason the ship reads as a boss and not as a
+ * large fighter: it fills the air rather than out-shooting you.
  */
 /**
  * How fast a curtain round travels: less than half the craft's cruise of 30,
@@ -451,7 +387,6 @@ export const ENEMY_CONTACT_DAMAGE: Record<EnemyKind, number> = {
   drone: 5,
   helicopter: 4,
   fighter: 5,
-  'anti-air': 4,
   boss: 8,
 }
 
@@ -473,7 +408,6 @@ export type EnemySlot = BeamObject & {
   radius: number
   hitRadius: number
   respawn: number
-  sourceId: string | null
   mode: EnemyMode
   attackTimer: number
   telegraph: number
@@ -492,18 +426,13 @@ export type EnemySlot = BeamObject & {
    *  actual wait rather than over a per-kind guess. */
   telegraphLength: number
   /**
-   * Battleship only. Which turret fires next, how many rings are left in this
-   * flurry, and how many volleys have gone by - every second is replaced by
-   * the flak stream and every third by the bow gun.
-   *
-   * `flakLeft` is that stream's own counter, kept apart from `burstLeft`
-   * because it is also what tells an expiring telegraph which of the ship's
-   * two aimed moves it belonged to.
+   * Battleship only. Which ring of the flurry comes next, how many are left in
+   * it, and how many flurries have gone by. The last two both nudge the halo's
+   * bearing offset, so no ring ever retraces the one before it.
    */
   turret: number
   burstLeft: number
   volley: number
-  flakLeft: number
   /** Drone mines arm on proximity and cannot be disarmed once the fuse starts. */
   mineArmed: boolean
   mineFuse: number
@@ -530,7 +459,6 @@ export type EnemyProjectile = {
 export type EnemyState = {
   slots: EnemySlot[]
   projectiles: EnemyProjectile[]
-  destroyedAntiAir: Set<string>
   waveStage: number
   spawnTimer: number
   /** Seconds until the dreadnought's next launch. Held at a full interval
@@ -563,7 +491,7 @@ export type EnemyState = {
   mineExplosion: { position: Vec3; radius: number; damage: number } | null
 }
 
-const ORDER: EnemyKind[] = ['drone', 'helicopter', 'fighter', 'anti-air', 'boss']
+const ORDER: EnemyKind[] = ['drone', 'helicopter', 'fighter', 'boss']
 
 /**
  * Who gets the next free spawn.
@@ -587,7 +515,6 @@ function neediestKind(state: EnemyState, elapsed: number) {
   let bestShare = 0
   let bestShort = 0
   for (const kind of ORDER) {
-    if (kind === 'anti-air') continue
     const target = targetForKind(kind, elapsed)
     if (target <= 0) continue
     const short = target - activeCount(state, kind)
@@ -608,7 +535,6 @@ export const ENEMY_DIAMETER: Record<EnemyKind, number> = {
   drone: 1.6,
   helicopter: 4.6,
   fighter: 4.4,
-  'anti-air': 5.2,
   boss: 13.6,
 }
 
@@ -616,7 +542,6 @@ const ENEMY_MASS: Record<EnemyKind, number> = {
   drone: 3,
   helicopter: 4,
   fighter: 4,
-  'anti-air': 7,
   boss: 12,
 }
 
@@ -711,7 +636,6 @@ function makeSlot(kind: EnemyKind, slot: number): EnemySlot {
     radius: 80,
     hitRadius: 1,
     respawn: 0,
-    sourceId: null,
     mode: 'roam',
     attackTimer: 1,
     telegraph: 0,
@@ -721,7 +645,6 @@ function makeSlot(kind: EnemyKind, slot: number): EnemySlot {
     turret: 0,
     burstLeft: 0,
     volley: 0,
-    flakLeft: 0,
     mineArmed: false,
     mineFuse: 0,
     anchor: { x: 0, y: 0, z: 0 },
@@ -732,11 +655,7 @@ export function createEnemyState(seed = 0x91eab7): EnemyState {
   const slots: EnemySlot[] = []
   for (const kind of ORDER) for (let slot = 0; slot < ENEMY_CAPS[kind]; slot += 1) slots.push(makeSlot(kind, slot))
   const projectiles = Array.from({ length: ENEMY_MAX_PROJECTILES }, (_, slot) => makeProjectile(slot))
-  return { slots, projectiles, destroyedAntiAir: new Set<string>(), waveStage: 0, spawnTimer: 0, escortTimer: BATTLESHIP_ESCORT_INTERVAL, randomState: seed >>> 0 || 1, contactKills: 0, helicopterRams: 0, lastHitKind: null, lastHitPoint: { x: 0, y: 0, z: 0 }, projectileHit: false, lastContactPoint: { x: 0, y: 0, z: 0 }, mineExplosion: null } satisfies EnemyState
-}
-
-export function isAntiAirBuilding(building: Pick<ProceduralBuilding, 'cellX' | 'cellZ'>) {
-  return seedForWorldCell(building.cellX, building.cellZ, 0xa17a1) % 5 === 0
+  return { slots, projectiles, waveStage: 0, spawnTimer: 0, escortTimer: BATTLESHIP_ESCORT_INTERVAL, randomState: seed >>> 0 || 1, contactKills: 0, helicopterRams: 0, lastHitKind: null, lastHitPoint: { x: 0, y: 0, z: 0 }, projectileHit: false, lastContactPoint: { x: 0, y: 0, z: 0 }, mineExplosion: null } satisfies EnemyState
 }
 
 function resetSlot(enemy: EnemySlot, player: Vec3, heading: number, state: EnemyState) {
@@ -745,7 +664,6 @@ function resetSlot(enemy: EnemySlot, player: Vec3, heading: number, state: Enemy
   enemy.hp = enemy.maxHp
   enemy.hurt = 0
   enemy.active = true
-  enemy.sourceId = null
   enemy.age = 0
   enemy.telegraph = 0
   enemy.aiming = false
@@ -764,14 +682,13 @@ function resetSlot(enemy: EnemySlot, player: Vec3, heading: number, state: Enemy
   enemy.angularVelocity.y = 0
   enemy.angularVelocity.z = 0
   enemy.phase = heading + (enemy.slot + 1) * 2.399963
-  enemy.mode = enemy.kind === 'fighter' ? 'strafe' : enemy.kind === 'anti-air' ? 'fixed' : enemy.kind === 'boss' ? 'chase' : 'roam'
+  enemy.mode = enemy.kind === 'fighter' ? 'strafe' : enemy.kind === 'boss' ? 'chase' : 'roam'
   enemy.radius = enemy.kind === 'fighter' ? 110 : enemy.kind === 'boss' ? BATTLESHIP_ORBIT : enemy.kind === 'helicopter' ? 92 : 82
-  enemy.hitRadius = enemy.kind === 'drone' ? DRONE_MINE_HIT_RADIUS : enemy.kind === 'helicopter' ? 2.4 : enemy.kind === 'fighter' ? 2.2 : enemy.kind === 'anti-air' ? 2.2 : 9.5
+  enemy.hitRadius = enemy.kind === 'drone' ? DRONE_MINE_HIT_RADIUS : enemy.kind === 'helicopter' ? 2.4 : enemy.kind === 'fighter' ? 2.2 : 9.5
   enemy.attackTimer = enemy.kind === 'boss' ? 3.2 : 0.7 + (enemy.slot % 5) * 0.22
   enemy.turret = 0
   enemy.burstLeft = 0
   enemy.volley = 0
-  enemy.flakLeft = 0
   enemy.mineArmed = false
   enemy.mineFuse = 0
   enemy.velocity.x = 0
@@ -932,7 +849,7 @@ export function syncEnemyTiers(state: EnemyState, elapsed: number, player: Vec3,
   for (const enemy of state.slots) {
     if (enemy.respawn > 0) enemy.respawn = Math.max(0, enemy.respawn - dt)
     const target = targetForKind(enemy.kind, elapsed)
-    if (target === 0 && enemy.active && enemy.kind !== 'anti-air') enemy.active = false
+    if (target === 0 && enemy.active) enemy.active = false
   }
   let spawned = 0
   while ((state.spawnTimer <= 0 || (initialBurst && spawned < 2)) && spawned < SPAWN_BURST_LIMIT) {
@@ -944,42 +861,6 @@ export function syncEnemyTiers(state: EnemyState, elapsed: number, player: Vec3,
   }
   stepBattleshipEscort(state, player, heading, dt)
   return state
-}
-
-export function syncAntiAirEnemies(state: EnemyState, elapsed: number, buildings: ProceduralBuilding[]) {
-  const target = targetForKind('anti-air', elapsed)
-  for (const enemy of state.slots) {
-    if (enemy.kind !== 'anti-air' || !enemy.active || !enemy.sourceId) continue
-    let found = false
-    for (const building of buildings) if (building.id === enemy.sourceId) { found = true; break }
-    if (!found || elapsed < ANTI_AIR_WAVE_AT) enemy.active = false
-  }
-  if (elapsed < ANTI_AIR_WAVE_AT) return
-  for (const building of buildings) {
-    if (activeCount(state, 'anti-air') >= target) break
-    if (!isAntiAirBuilding(building) || state.destroyedAntiAir.has(building.id)) continue
-    let exists = false
-    for (const enemy of state.slots) if (enemy.kind === 'anti-air' && enemy.active && enemy.sourceId === building.id) { exists = true; break }
-    if (exists) continue
-    const slot = state.slots.find((enemy) => enemy.kind === 'anti-air' && !enemy.active && enemy.respawn <= 0)
-    if (!slot) break
-    slot.generation += 1
-    slot.id = `enemy:anti-air:${slot.slot}:${slot.generation}`
-    slot.active = true
-    slot.hp = slot.maxHp
-    slot.hurt = 0
-    slot.sourceId = building.id
-    slot.mode = 'fixed'
-    slot.beamImmune = true
-    slot.inBeam = false
-    slot.tether = 0
-    slot.absorbing = false
-    slot.position.x = building.position.x
-    slot.position.y = building.size.y + 2.3
-    slot.position.z = building.position.z
-    slot.hitRadius = 2.2
-    slot.attackTimer = 1.4
-  }
 }
 
 function distanceToPlayer(enemy: EnemySlot, player: Vec3) {
@@ -1001,165 +882,7 @@ function distanceToPlayer(enemy: EnemySlot, player: Vec3) {
  * bullet-curtain block above.
  */
 export const PROJECTILE_SPEED: Record<EnemyProjectileKind, number> = {
-  'boss-beam': 40,
-  flak: 52,
   orb: ORB_SPEED,
-}
-
-/**
- * How well each enemy leads a moving target, 0 (shoots where you are) to 1
- * (shoots exactly where you will be).
- *
- * One unit carries a real figure: the battleship's bow gun, at full lead,
- * because by the time the ship is on the field flying straight is supposed to
- * be fatal. Everything else attacks without aiming at all - contact, rams, and
- * curtains of orbs fired down the bearing to wherever the craft happens to be
- * - so their entries are zero and exist only because the table is keyed by
- * every kind. The anti-air network used to sit at full lead beside the boss
- * and it was the roster's second grammar; it fires the curtain now like
- * everyone else.
- *
- * A lower tier would still lead the target properly - it would just put the
- * shot down beside the answer. Scaling the lead instead was the first attempt
- * and it was wrong: an eighty-percent lead is a twenty-percent shortfall,
- * which at a hundred metres is a twenty-metre miss every single time.
- */
-export const AIM_ERROR_METRES = 16
-
-export const LEAD_ACCURACY: Record<EnemyKind, number> = {
-  drone: 0,
-  helicopter: 0,
-  fighter: 0,
-  'anti-air': 0,
-  boss: 1,
-}
-
-/**
- * Where to shoot so a shot travelling at `speed` meets a target moving at
- * `velocity`.
- *
- * Solves the quadratic for time-to-intercept. When there is no solution - the
- * target is outrunning the shot - it returns null and the caller fires at the
- * target's current position instead, because an enemy that holds its fire
- * whenever the maths fails just goes mute.
- */
-export function interceptTime(toTarget: Vec3, velocity: Vec3, speed: number) {
-  const a = velocity.x * velocity.x + velocity.y * velocity.y + velocity.z * velocity.z - speed * speed
-  const b = 2 * (toTarget.x * velocity.x + toTarget.y * velocity.y + toTarget.z * velocity.z)
-  const c = toTarget.x * toTarget.x + toTarget.y * toTarget.y + toTarget.z * toTarget.z
-  if (Math.abs(a) < 1e-6) {
-    if (Math.abs(b) < 1e-6) return null
-    const linear = -c / b
-    return linear > 0 ? linear : null
-  }
-  const discriminant = b * b - 4 * a * c
-  if (discriminant < 0) return null
-  const root = Math.sqrt(discriminant)
-  const first = (-b + root) / (2 * a)
-  const second = (-b - root) / (2 * a)
-  const candidates = [first, second].filter((value) => value > 0)
-  if (candidates.length === 0) return null
-  return Math.min(...candidates)
-}
-
-function aimProjectile(state: EnemyState, enemy: EnemySlot, player: Vec3, playerVelocity: Vec3, kind: EnemyProjectileKind, speed: number, damage: number, telegraph: number, muzzle?: Vec3) {
-  enemy.telegraph = telegraph
-  enemy.telegraphLength = Math.max(0.01, telegraph)
-  enemy.aiming = true
-  const accuracy = LEAD_ACCURACY[enemy.kind]
-  // Most enemies shoot from where they are. The battleship shoots from
-  // whichever turret is next, which is what turns one big gun into a broadside.
-  enemy.muzzle.x = muzzle ? muzzle.x : enemy.position.x
-  enemy.muzzle.y = muzzle ? muzzle.y : enemy.position.y
-  enemy.muzzle.z = muzzle ? muzzle.z : enemy.position.z
-  // The shot leaves after the telegraph, so the prediction has to cover the
-  // wait as well as the flight. Leading only for flight time leaves every shot
-  // a telegraph's worth of travel behind - at cruising speed that is fifteen
-  // metres of error against a target one metre wide, which is why simply
-  // predicting was not enough on its own.
-  const atFire = {
-    x: player.x + playerVelocity.x * telegraph,
-    y: player.y + playerVelocity.y * telegraph,
-    z: player.z + playerVelocity.z * telegraph,
-  }
-  const toTarget = {
-    x: atFire.x - enemy.muzzle.x,
-    y: atFire.y - enemy.muzzle.y,
-    z: atFire.z - enemy.muzzle.z,
-  }
-  // Predicted at aim time, not at fire time. The telegraph window is the whole
-  // dodge: change course inside it and the prediction is wrong, hold course and
-  // the shot arrives.
-  const flight = interceptTime(toTarget, playerVelocity, speed) ?? 0
-  const lead = telegraph + flight
-  // Full lead, then a bounded scatter for anything below the top tier. The
-  // scatter is in metres and does not grow with range, so a low tier is
-  // inaccurate rather than useless.
-  const spread = (1 - accuracy) * AIM_ERROR_METRES
-  enemy.target.x = player.x + playerVelocity.x * lead + (random(state) - 0.5) * 2 * spread
-  enemy.target.y = player.y + playerVelocity.y * lead + (random(state) - 0.5) * spread
-  enemy.target.z = player.z + playerVelocity.z * lead + (random(state) - 0.5) * 2 * spread
-  enemy.velocity.x = speed
-  enemy.velocity.y = damage
-  enemy.velocity.z = kind === 'boss-beam' ? 1 : 0
-  return state
-}
-
-/**
- * The anti-air gun, now a curtain piece like everything else.
- *
- * It used to be the roster's sniper: a three-second orange lock, a blinking
- * beam drawn to the point it had committed to, and then five heavy shells
- * streamed into that spot. It worked, and it was a second game. The exchange
- * was read a warning, then leave the marked spot - which has nothing to do
- * with the dodge the rest of the sky asks for, and the warning had to be
- * enormous or the shells were unfair. Two grammars for one verb.
- *
- * So the gun lost its lock and its lead. It now does the plainest thing a gun
- * can do: while the craft is in range, one orb every cooldown, fired straight
- * at where the craft is. Slow enough to be its own warning, which is what
- * makes the three seconds of telegraph unnecessary rather than merely absent.
- *
- * The reach is far shorter than the old missile envelope of 145 metres,
- * because a slow round fired from that far away is one the player has already
- * flown out from under before it arrives - a gun shooting at a dot on the
- * horizon is just litter in the air. Eighty metres is under five seconds of
- * flight: a shot you watch coming and answer.
- */
-export const ANTI_AIR_ORB_RANGE = 80
-/**
- * A shade faster than a fighter's orb and still half the craft's cruise. The
- * gun is emplaced and cannot close the distance itself, so its round carries
- * a little of the difference; a craft that simply leaves still leaves.
- */
-export const ANTI_AIR_ORB_SPEED = 17
-/** Enough to cover the full range and no more, so a missed shot dies in the
- *  air rather than sailing on across the city. */
-export const ANTI_AIR_ORB_LIFE = ANTI_AIR_ORB_RANGE / ANTI_AIR_ORB_SPEED + 0.4
-/** Seconds between rounds. One gun is a metronome; a rooftop network of them
- *  is the pressure that makes altitude cost something. */
-export const ANTI_AIR_ORB_INTERVAL = 1.5
-
-function fireProjectile(state: EnemyState, enemy: EnemySlot, kind: EnemyProjectileKind) {
-  const projectile = state.projectiles.find((item) => !item.active)
-  if (!projectile) return false
-  const dx = enemy.target.x - enemy.muzzle.x
-  const dy = enemy.target.y - enemy.muzzle.y
-  const dz = enemy.target.z - enemy.muzzle.z
-  const distance = Math.max(0.001, Math.hypot(dx, dy, dz))
-  const speed = enemy.velocity.x
-  projectile.active = true
-  projectile.kind = kind
-  projectile.position.x = enemy.muzzle.x
-  projectile.position.y = enemy.muzzle.y
-  projectile.position.z = enemy.muzzle.z
-  projectile.velocity.x = dx / distance * speed
-  projectile.velocity.y = dy / distance * speed
-  projectile.velocity.z = dz / distance * speed
-  projectile.life = kind === 'boss-beam' ? 4 : 5.5
-  projectile.damage = enemy.velocity.y
-  projectile.radius = kind === 'boss-beam' ? 1.1 : kind === 'flak' ? BATTLESHIP_FLAK_SHELL_RADIUS : ORB_HIT_RADIUS
-  return true
 }
 
 /**
@@ -1441,88 +1164,27 @@ function fireBattleshipRing(state: EnemyState, enemy: EnemySlot, player: Vec3) {
 
 const STILL: Vec3 = { x: 0, y: 0, z: 0 }
 
-const TURRET_POINT: Vec3 = { x: 0, y: 0, z: 0 }
-
 /**
- * One round of the ship's flak stream: a shell out of each of two turrets,
- * both into the point the lock already marked.
+ * A flurry of orb rings, then a reload. That is the ship's whole armoury.
  *
- * Two at a time is what makes this a broadside rather than a single gun, and
- * the pair walks down the flank as the stream
- * runs, so the answer arrives from a hull's length of sky rather than from one
- * spot on it.
- */
-function fireBattleshipFlakRound(state: EnemyState, enemy: EnemySlot) {
-  for (let shell = 0; shell < BATTLESHIP_FLAK_PAIR; shell += 1) {
-    battleshipTurretPoint(enemy, enemy.turret + shell, TURRET_POINT)
-    enemy.muzzle.x = TURRET_POINT.x
-    enemy.muzzle.y = TURRET_POINT.y
-    enemy.muzzle.z = TURRET_POINT.z
-    fireProjectile(state, enemy, 'flak')
-  }
-  enemy.turret += BATTLESHIP_FLAK_PAIR
-}
-
-/**
- * A flurry of orb rings, then a reload; every second cycle the flak, every
- * third the bow gun.
+ * It carried two aimed moves as well - a telegraphed bow gun and a
+ * lock-and-stream flak battery - and between them and the rooftop network the
+ * late game asked the player to read three separate warnings while threading a
+ * curtain. The curtain is the better half of the fight and the one that reads
+ * at a glance, so it is the half that stayed: rings of slow orbs scattered in
+ * every direction and on three pitches, which turn the air around the hull
+ * into a navigation problem rather than a marksman's duel.
  *
- * The aimed broadside is gone: the ship's ordinary fire is now the halo -
- * rings of slow orbs scattered in every direction and on three pitches, which
- * turn the air around the hull into a navigation problem rather than a
- * marksman's duel. The two aimed moves are what keep it from being only that.
- * The bow gun is one heavy shot behind a long telegraph and a visible aim
- * line; the flak is a lock on one point and a stream of paired shells into it. Both are
- * shown before anything leaves, which is the whole of their fairness. And it
- * is the reload, not the flurry, that is the actual fight: that gap is when
- * the laser gets used.
+ * Nothing the ship fires is aimed at the player any more, and nothing it fires
+ * needs a telegraph - a curtain slow enough to be flown through is its own
+ * warning. It is the reload, not the flurry, that is the actual fight: that
+ * gap is when the laser gets used.
  */
-function stepBattleshipGuns(state: EnemyState, enemy: EnemySlot, player: Vec3, playerVelocity: Vec3, d: number) {
-  if (enemy.telegraph > 0) {
-    enemy.telegraph = Math.max(0, enemy.telegraph - d)
-    if (enemy.telegraph > 0) return
-    enemy.aiming = false
-    // Which lock just expired is written in `flakLeft`: a stream that has
-    // rounds owing is the flak's, and anything else is the bow gun's. The
-    // rings never come through here at all - they announce themselves by being
-    // slow enough to watch arrive.
-    if (enemy.flakLeft > 0) {
-      fireBattleshipFlakRound(state, enemy)
-      enemy.flakLeft -= 1
-      enemy.attackTimer = enemy.flakLeft > 0 ? BATTLESHIP_FLAK_INTERVAL : BATTLESHIP_RELOAD
-      return
-    }
-    fireProjectile(state, enemy, 'boss-beam')
-    enemy.attackTimer = BATTLESHIP_RELOAD
-    return
-  }
+function stepBattleshipGuns(state: EnemyState, enemy: EnemySlot, player: Vec3, d: number) {
+  enemy.attackTimer -= d
   if (enemy.attackTimer > 0) return
-  // The rest of the stream, rattling into the point the lock marked.
-  if (enemy.flakLeft > 0) {
-    fireBattleshipFlakRound(state, enemy)
-    enemy.flakLeft -= 1
-    enemy.attackTimer = enemy.flakLeft > 0 ? BATTLESHIP_FLAK_INTERVAL : BATTLESHIP_RELOAD
-    return
-  }
   if (enemy.burstLeft <= 0) {
     enemy.volley += 1
-    if (enemy.volley % BATTLESHIP_MAIN_GUN_EVERY === 0) {
-      // The bow gun. Long telegraph and a visible aim line, so it is always a
-      // shot the player was shown before it left.
-      battleshipTurretPoint(enemy, BATTLESHIP_TURRETS.length - 1, TURRET_POINT)
-      aimProjectile(state, enemy, player, playerVelocity, 'boss-beam', PROJECTILE_SPEED['boss-beam'], 7, BATTLESHIP_MAIN_GUN_TELEGRAPH, TURRET_POINT)
-      return
-    }
-    if (enemy.volley % BATTLESHIP_FLAK_EVERY === 0) {
-      // The flak: three seconds of lock on one point, then a stream
-      // of paired shells into it. Aimed from the aftmost turret, which is
-      // where the pair starts walking from.
-      enemy.turret = 0
-      battleshipTurretPoint(enemy, 0, TURRET_POINT)
-      aimProjectile(state, enemy, player, playerVelocity, 'flak', PROJECTILE_SPEED.flak, 10, BATTLESHIP_FLAK_TELEGRAPH, TURRET_POINT)
-      enemy.flakLeft = BATTLESHIP_FLAK_ROUNDS
-      return
-    }
     enemy.burstLeft = BATTLESHIP_ORB_RINGS
     enemy.turret = 0
   }
@@ -1570,37 +1232,23 @@ export function stepEnemies(state: EnemyState, player: Vec3, dt: number, playerV
       enemy.telegraph = 0
       continue
     }
-    if (enemy.kind === 'anti-air') {
-      // Emplaced: nothing to step. The gun does not turn, track or lock any
-      // more - it either has the craft in range on its firing tick or it does
-      // not.
-    } else if (enemy.kind === 'boss') stepBattleship(enemy, player, playerVelocity, d)
+    if (enemy.kind === 'boss') stepBattleship(enemy, player, playerVelocity, d)
     else if (enemy.kind === 'fighter') stepFighter(enemy, player, d)
     else if (enemy.kind === 'drone') stepDroneMine(enemy, player, d)
     else stepHelicopter(enemy, player, d)
 
+    if (enemy.kind === 'boss') { stepBattleshipGuns(state, enemy, player, d); continue }
     enemy.attackTimer -= d
-    if (enemy.kind === 'boss') { stepBattleshipGuns(state, enemy, player, playerVelocity, d); continue }
     // Drones and helicopters never fire at all: both deal contact damage only.
     // Drones because thirty-odd of them shooting would bury the screen;
-    // helicopters because the ram is the whole attack. What is left is two
-    // guns that share one rule - in range on the firing tick, one orb leaves.
+    // helicopters because the ram is the whole attack. That leaves the fighter
+    // as the sky's only gun outside the ship's own halo.
     if (enemy.attackTimer > 0) continue
-    if (enemy.kind === 'fighter') {
-      // The cadence only counts shots that actually left: with the pool full
-      // the timer stays cocked rather than quietly eating the shot.
-      if (distanceToPlayer(enemy, player) > FIGHTER_ORB_RANGE) continue
-      if (fireOrbAt(state, enemy.position, player, ORB_SPEED, FIGHTER_ORB_LIFE)) enemy.attackTimer = FIGHTER_ORB_INTERVAL
-      continue
-    }
-    if (enemy.kind !== 'anti-air') continue
-    // A rooftop gun cannot shoot down through its own building, and that is
-    // the whole altitude rule now: fly under the emplacement and it has no
-    // shot. It replaces a flat "above 28 metres" gate, which said the same
-    // thing for a short tower and something arbitrary for a tall one.
-    if (player.y < enemy.position.y) continue
-    if (distanceToPlayer(enemy, player) > ANTI_AIR_ORB_RANGE) continue
-    if (fireOrbAt(state, enemy.position, player, ANTI_AIR_ORB_SPEED, ANTI_AIR_ORB_LIFE)) enemy.attackTimer = ANTI_AIR_ORB_INTERVAL
+    if (enemy.kind !== 'fighter') continue
+    // The cadence only counts shots that actually left: with the pool full the
+    // timer stays cocked rather than quietly eating the shot.
+    if (distanceToPlayer(enemy, player) > FIGHTER_ORB_RANGE) continue
+    if (fireOrbAt(state, enemy.position, player, ORB_SPEED, FIGHTER_ORB_LIFE)) enemy.attackTimer = FIGHTER_ORB_INTERVAL
   }
   return state
 }
@@ -1625,8 +1273,8 @@ function orbBlocked(projectile: EnemyProjectile, colliders: Aabb[]) {
  * round is slow enough that flying it into a wall - or putting a wall between
  * yourself and the fan - is a decision the player visibly makes, so buildings
  * are real cover from it. The aimed shots keep passing through: their fairness
- * is the telegraph, and letting a tower blank the anti-air network would turn
- * every rooftop into an off switch for the late game.
+ * is that they are slow enough to be seen coming, and the buildings are what
+ * a player uses to answer them.
  */
 export function stepEnemyProjectiles(state: EnemyState, player: Vec3, dt: number, playerRadius = 1.25, colliders: Aabb[] = []) {
   const d = Math.min(Math.max(0, dt), 0.05)
@@ -1677,8 +1325,7 @@ export function hitEnemy(state: EnemyState, id: string, damage = 1) {
     enemy.hp = Math.max(0, enemy.hp - damage)
     if (enemy.hp > 0) return { hit: true, destroyed: false, kind: enemy.kind, enemy }
     enemy.active = false
-    if (enemy.kind === 'anti-air' && enemy.sourceId) state.destroyedAntiAir.add(enemy.sourceId)
-    else enemy.respawn = enemy.kind === 'boss' ? 999 : 4.5
+    enemy.respawn = enemy.kind === 'boss' ? 999 : 4.5
     return { hit: true, destroyed: true, kind: enemy.kind, enemy }
   }
   return { hit: false, destroyed: false, kind: null, enemy: null }
@@ -1694,7 +1341,7 @@ export function nearbyEnemyThreats(state: EnemyState, player: Vec3) {
   let count = 0
   for (const enemy of state.slots) {
     if (!enemy.active || enemy.absorbing || enemy.inBeam || enemy.tether > 0.02) continue
-    const range = enemy.kind === 'anti-air' ? ANTI_AIR_ORB_RANGE : enemy.kind === 'drone' ? 32 : enemy.kind === 'helicopter' ? HELICOPTER_DETECT_RANGE : enemy.hitRadius + 2.4
+    const range = enemy.kind === 'drone' ? 32 : enemy.kind === 'helicopter' ? HELICOPTER_DETECT_RANGE : enemy.hitRadius + 2.4
     if (distanceToPlayer(enemy, player) <= range) count += 1
   }
   return count

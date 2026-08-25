@@ -28,7 +28,7 @@ import {
 } from './core/hazards'
 import { SIZE_MIN, SIZE_START, type SizeGainKind, type SizeProfile, bonusHeartsForSize, clampSize, growSize, growSizeBy, sizeProfile, ufoDiameter } from './core/size'
 import { MAX_HEALTH, createHealthState, damageHealth, healHealth, healthRatio, isDead, isRegenerating, raiseHealthMax, stepHealth, type HealthLossKind, type HealthState } from './core/health'
-import { BATTLESHIP_ALTITUDE, BATTLESHIP_TURRETS, ENEMY_WAVE_STAGES, activeEnemyCount, battleshipTurretPoint, createEnemyState, hitEnemy, resolveEnemyContacts, stepEnemies, stepEnemyProjectiles, syncAntiAirEnemies, syncEnemyTiers, waveLabelForTime, waveStageForTime, type EnemyKind, type EnemyState } from './core/enemies'
+import { BATTLESHIP_ALTITUDE, BATTLESHIP_TURRETS, ENEMY_WAVE_STAGES, activeEnemyCount, battleshipTurretPoint, createEnemyState, hitEnemy, resolveEnemyContacts, stepEnemies, stepEnemyProjectiles, syncEnemyTiers, waveLabelForTime, waveStageForTime, type EnemyKind, type EnemyState } from './core/enemies'
 import {
   createLaserPool,
   createLaserBurstPool,
@@ -597,7 +597,6 @@ const ENEMY_BLAST: Partial<Record<EnemyKind, BlastKind>> = {
   drone: 'aircraft',
   helicopter: 'aircraft',
   fighter: 'aircraft',
-  'anti-air': 'vehicle',
   boss: 'landmark',
 }
 
@@ -1075,7 +1074,7 @@ function registerEnemyHit(game: GameRuntime, id: string, damage: number) {
   // The ship is worth about two and a half times what it was: it now takes
   // sixty-four laser hits instead of twenty-five, and a reward that did not
   // move with that would make the fight cost more than it pays.
-  const reward = result.kind === 'boss' ? 3200 : result.kind === 'anti-air' ? 180 : result.kind === 'fighter' ? 140 : result.kind === 'helicopter' ? 80 : 35
+  const reward = result.kind === 'boss' ? 3200 : result.kind === 'fighter' ? 140 : result.kind === 'helicopter' ? 80 : 35
   game.enemiesDown += 1
   game.score += reward
   reportMissionEvent(game, { type: 'destroy-enemy', kind: result.kind })
@@ -1394,8 +1393,8 @@ function updateNearbyCatCry(game: GameRuntime, dt: number) {
  * Every hit answers the same way: the red flash, the freeze, and a kick.
  *
  * The shake used to be reserved for explosions, so a helicopter ram and a
- * drone going off moved the screen while a fighter's orb, an anti-air shell or
- * the dreadnought's bow gun took health off a craft that sat perfectly still.
+ * drone going off moved the screen while a fighter's orb or one of the
+ * dreadnought's took health off a craft that sat perfectly still.
  * A hit the player cannot feel is a hit they have to read off the health bar,
  * which is the one place they are not looking during a fight. `HIT_TRAUMA`
  * prices the kick by what landed it, and `trauma` only overrides it where the
@@ -1955,7 +1954,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
     }
     if (!tutorialAtStart) {
       syncEnemyTiers(game.enemies, game.sessionTime, game.drone.position, game.drone.heading, d)
-      syncAntiAirEnemies(game.enemies, game.sessionTime, game.world.buildings)
     }
     // The craft's velocity goes in with its position: enemies lead the shot,
     // and the lead is computed from how it is actually moving.

@@ -1,7 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import {
-  ANTI_AIR_ORB_INTERVAL,
-  ANTI_AIR_ORB_RANGE,
   DRONE_MINE_HIT_RADIUS,
   ENEMY_CAPS,
   ENEMY_MAX_HP,
@@ -10,27 +8,13 @@ import {
   createEnemyState,
   helicopterBandForSlot,
   hitEnemy,
-  isAntiAirBuilding,
   resolveEnemyContacts,
   stepEnemies,
-  syncAntiAirEnemies,
   syncEnemyTiers,
   waveStageForTime,
   type EnemyKind,
 } from '../src/core/enemies'
 import { isAbsorbable } from '../src/core/beam'
-import { getProceduralCell, type ProceduralBuilding } from '../src/core/world'
-
-function antiAirBuildings(count: number) {
-  const result: ProceduralBuilding[] = []
-  for (let z = -40; z <= 40 && result.length < count; z += 1) {
-    for (let x = -40; x <= 40 && result.length < count; x += 1) {
-      const building = getProceduralCell(x, z).building
-      if (building && isAntiAirBuilding(building)) result.push(building)
-    }
-  }
-  return result
-}
 
 function fillWave(time: number) {
   const state = createEnemyState()
@@ -44,7 +28,6 @@ function fillWave(time: number) {
 // the table means the next respacing carries the tests with it.
 const MID_WAVE_AT = ENEMY_WAVE_STAGES[2]!.at
 const FIGHTER_WAVE_AT = ENEMY_WAVE_STAGES[3]!.at
-const AA_WAVE_AT = ENEMY_WAVE_STAGES[4]!.at
 const LAST_WAVE_AT = ENEMY_WAVE_STAGES[ENEMY_WAVE_STAGES.length - 1]!.at
 
 describe('time-based enemy waves', () => {
@@ -136,40 +119,6 @@ describe('time-based enemy waves', () => {
     expect(hitEnemy(state, boss.id).destroyed).toBe(true)
   })
 
-  it('answers a craft in range with one orb per cooldown, and nothing else', () => {
-    const state = createEnemyState()
-    const emplacement = state.slots.find((enemy) => enemy.kind === 'anti-air')!
-    emplacement.active = true
-    emplacement.position = { x: 0, y: 20, z: 0 }
-    emplacement.attackTimer = 0
-    // A craft above the emplacement, inside range, holding still - far enough
-    // that no round reaches it inside this test's window.
-    const player = { x: 60, y: 40, z: 0 }
-    // The gun is worth shooting back at: four hits, not ten.
-    expect(ENEMY_MAX_HP['anti-air']).toBe(4)
-    // The first round leaves on the first tick it has a target. No lock, no
-    // wind-up, and nothing on the gun that says it is about to fire.
-    stepEnemies(state, player, 1 / 60)
-    expect(emplacement.aiming).toBe(false)
-    expect(emplacement.telegraph).toBe(0)
-    const opening = state.projectiles.filter((projectile) => projectile.active)
-    expect(opening.length).toBe(1)
-    expect(opening[0]!.kind).toBe('orb')
-    // Then one more every cooldown for as long as the craft stays in range:
-    // a metronome, not a burst and a reload.
-    for (let tick = 0; tick < Math.ceil(ANTI_AIR_ORB_INTERVAL * 3 * 60) + 6; tick += 1) {
-      stepEnemies(state, player, 1 / 60)
-    }
-    const shots = state.projectiles.filter((projectile) => projectile.active)
-    expect(shots.length).toBe(4)
-    for (const shot of shots) expect(shot.kind).toBe('orb')
-    // Out of range, the gun goes quiet rather than firing at the horizon.
-    for (let tick = 0; tick < Math.ceil(ANTI_AIR_ORB_INTERVAL * 3 * 60); tick += 1) {
-      stepEnemies(state, { x: ANTI_AIR_ORB_RANGE + 40, y: 40, z: 0 }, 1 / 60)
-    }
-    expect(state.projectiles.filter((projectile) => projectile.active).length).toBe(4)
-  })
-
   it('flashes a survivor on every laser hit, fading in a fifth of a second', () => {
     const { state } = fillWave(LAST_WAVE_AT)
     const boss = state.slots.find((enemy) => enemy.kind === 'boss' && enemy.active)!
@@ -182,19 +131,6 @@ describe('time-based enemy waves', () => {
     expect(boss.hurt).toBeLessThan(1)
     for (let tick = 0; tick < 20; tick += 1) stepEnemies(state, player, 1 / 60)
     expect(boss.hurt).toBe(0)
-  })
-
-  it('enables deterministic anti-air sites only at the late high-altitude wave', () => {
-    const buildings = antiAirBuildings(ENEMY_CAPS['anti-air'] + 2)
-    const first = createEnemyState()
-    const second = createEnemyState()
-    syncAntiAirEnemies(first, FIGHTER_WAVE_AT, buildings)
-    expect(activeEnemyCount(first, 'anti-air')).toBe(0)
-    syncAntiAirEnemies(first, AA_WAVE_AT, buildings)
-    syncAntiAirEnemies(second, AA_WAVE_AT, buildings)
-    const sources = first.slots.filter((enemy) => enemy.active && enemy.kind === 'anti-air').map((enemy) => enemy.sourceId)
-    expect(sources).toEqual(second.slots.filter((enemy) => enemy.active && enemy.kind === 'anti-air').map((enemy) => enemy.sourceId))
-    expect(sources).toHaveLength(Math.min(ENEMY_CAPS['anti-air'], buildings.length))
   })
 
   it('uses the fighter pool for repeated strafing runs instead of balloon pursuers', () => {

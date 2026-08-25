@@ -357,21 +357,6 @@ function helicopterGeometry() {
   ])
 }
 
-function antiAirGeometry() {
-  return mergeModel([
-    coloredPart(new THREE.CylinderGeometry(1.12, 1.28, 1.2, 8).translate(0, 0.45, 0), '#514d62'),
-    coloredPart(new THREE.SphereGeometry(0.78, 8, 5).scale(1, 0.65, 1).translate(0, 1.22, 0), '#736481'),
-    coloredPart(new THREE.CylinderGeometry(0.13, 0.18, 2.8, 7).rotateX(Math.PI / 2).rotateZ(-0.16).translate(-0.26, 1.62, 1.25), '#282b38'),
-    coloredPart(new THREE.CylinderGeometry(0.13, 0.18, 2.8, 7).rotateX(Math.PI / 2).rotateZ(0.16).translate(0.26, 1.62, 1.25), '#282b38'),
-    // An emplacement sits on a roof, which is the busiest surface in the city
-    // at night. A warning lamp on the mount and two on the base rim are what
-    // separate it from the plant and aerials it is standing among.
-    coloredPart(new THREE.SphereGeometry(0.17, 7, 5).translate(0, 1.84, -0.15), LAMP.ALERT, 1),
-    coloredPart(new THREE.SphereGeometry(0.11, 6, 5).translate(-0.94, 1.02, 0.42), LAMP.BEACON, 0.7),
-    coloredPart(new THREE.SphereGeometry(0.11, 6, 5).translate(0.94, 1.02, 0.42), LAMP.BEACON, 0.7),
-  ])
-}
-
 function fighterGeometry() {
   return mergeModel([
     coloredPart(new THREE.ConeGeometry(0.68, 4.5, 7).rotateX(Math.PI / 2), '#e9e1da'),
@@ -1480,7 +1465,6 @@ type PooledEnemyKind = Exclude<EnemyKind, 'drone'>
 
 const enemyGeometry: Record<PooledEnemyKind, THREE.BufferGeometry> = {
   helicopter: helicopterGeometry(),
-  'anti-air': antiAirGeometry(),
   fighter: fighterGeometry(),
   boss: bossGeometry(),
 }
@@ -1506,7 +1490,6 @@ const enemyAlert: Record<EnemyKind, THREE.InstancedBufferAttribute> = {
   drone: alertAttribute(ENEMY_CAPS.drone),
   helicopter: alertAttribute(ENEMY_CAPS.helicopter),
   fighter: alertAttribute(ENEMY_CAPS.fighter),
-  'anti-air': alertAttribute(ENEMY_CAPS['anti-air']),
   boss: alertAttribute(ENEMY_CAPS.boss),
 }
 for (const kind of Object.keys(enemyGeometry) as PooledEnemyKind[]) {
@@ -1550,7 +1533,7 @@ function EnemyPool({ kind }: { kind: PooledEnemyKind }) {
       // The battleship's geometry is authored at true scale, so it is the one
       // pool that must not be scaled - the turret positions the guns fire from
       // are in world metres.
-      const size = kind === 'boss' ? 1 : kind === 'helicopter' ? 0.82 : kind === 'fighter' ? 1.18 : kind === 'anti-air' ? 2.35 : 1.8
+      const size = kind === 'boss' ? 1 : kind === 'helicopter' ? 0.82 : 1.18
       const absorbScale = enemy.absorbing ? Math.max(0.04, enemy.absorbTimer / BEAM_ABSORB_TIME) : 1
       scale.setScalar(size * absorbScale)
       matrix.compose(position, quaternion, scale)
@@ -1559,11 +1542,8 @@ function EnemyPool({ kind }: { kind: PooledEnemyKind }) {
       // not a flash - a helicopter holds it for the whole chase - and writing
       // red here multiplied through every baked vertex colour and left one flat
       // red shape. It goes out on the alert channel instead, which lights the
-      // edge and the running lights and leaves the paint alone. The battleship
-      // stays out of it entirely: it fires almost continuously, so an
-      // always-on warning says nothing.
-      if (kind === 'anti-air') color.set('#7f8765')
-      else if (kind === 'boss') color.set('#eef2f6')
+      // edge and the running lights and leaves the paint alone.
+      if (kind === 'boss') color.set('#eef2f6')
       else color.setRGB(0.84 + (enemy.slot % 3) * 0.07, 0.84 + (enemy.slot % 3) * 0.07, 0.84 + (enemy.slot % 3) * 0.07)
       // A laser hit still answers on the body, because that one *is* a flash:
       // it lasts a moment and has to be unmistakable. Lighter than it was, now
@@ -1664,7 +1644,6 @@ function EnemyPools() {
   return (
     <group>
       <EnemyPool kind="helicopter" />
-      <EnemyPool kind="anti-air" />
       <EnemyPool kind="fighter" />
       <EnemyPool kind="boss" />
       <MinePool />
@@ -1674,218 +1653,6 @@ function EnemyPools() {
   )
 }
 
-const ENEMY_WARNING_CAPACITY = Object.values(ENEMY_CAPS).reduce((sum, value) => sum + value, 0)
-
-/**
- * The charge ring under a gun that is about to fire, which is now only ever
- * the battleship's bow gun - nothing else in the roster telegraphs. The ring
- * goes round the turret that is charging rather than on the street below it: a
- * mark ninety metres under the ship points at nothing the player can act on.
- */
-function EnemyWarnings() {
-  const { runtime } = useGame()
-  const ref = useRef<THREE.InstancedMesh>(null)
-  const matrix = useMemo(() => new THREE.Matrix4(), [])
-  const position = useMemo(() => new THREE.Vector3(), [])
-  const scale = useMemo(() => new THREE.Vector3(), [])
-  const quaternion = useMemo(() => new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0)), [])
-  const color = useMemo(() => new THREE.Color(), [])
-  useFrame(({ clock }) => {
-    const mesh = ref.current
-    if (!mesh) return
-    let count = 0
-    for (const enemy of runtime.current.enemies.slots) {
-      if (!enemy.active || enemy.telegraph <= 0) continue
-      // The ship telegraphs two different things and they want different
-      // marks. The bow gun gets a ring around the turret that is charging - a
-      // mark on the street ninety metres below the hull points at nothing the
-      // player can act on. The flak stream gets an orange aim point at the
-      // locked target instead, because that stream lands up in the sky and the
-      // warning has to be exactly where the rounds will arrive.
-      const locked = enemy.flakLeft > 0
-      if (locked) position.set(enemy.target.x, enemy.target.y, enemy.target.z)
-      else position.set(enemy.muzzle.x, enemy.muzzle.y, enemy.muzzle.z)
-      const pulse = 1 + Math.sin(clock.elapsedTime * 18) * 0.12
-      scale.setScalar(3.4 * pulse)
-      matrix.compose(position, quaternion, scale)
-      mesh.setMatrixAt(count, matrix)
-      color.set(locked ? '#ff9a3d' : '#ff5f7c')
-      mesh.setColorAt(count, color)
-      count += 1
-    }
-    mesh.count = count
-    mesh.instanceMatrix.needsUpdate = true
-    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
-  })
-  return (
-    <instancedMesh ref={ref} args={[undefined, undefined, ENEMY_WARNING_CAPACITY]} frustumCulled={false} renderOrder={4}>
-      <ringGeometry args={[0.82, 1, 20]} />
-      {/* No vertexColors - the same pitfall City.tsx documents on its lot and
-          beacon materials: this ring geometry carries no per-vertex colour
-          attribute, so the flag makes the shader multiply by one that isn't
-          there and the whole warning comes out black. The per-ring colour is
-          setColorAt above, which works on its own; it is the flag that has to
-          go, not the tint. Not tone-mapped: this is the player's only warning
-          and must not dim with the rest of the scene at night. */}
-      <meshBasicMaterial transparent opacity={0.9} depthWrite={false} side={THREE.DoubleSide} toneMapped={false} />
-    </instancedMesh>
-  )
-}
-
-/**
- * The aim line: where a shot is about to go.
- *
- * The ring on the turret says the bow gun is charging. It does not say at
- * what, and at the range this fight is held that is most of the warning
- * missing. The line runs from the muzzle to the point the shot is predicted to
- * meet the craft, so getting off it is the dodge.
- *
- * Only the battleship draws one. It is the last weapon in the game that aims;
- * everything else fires the curtain, which announces itself by being slow.
- *
- * It exists only while the enemy is aiming. Once the shot leaves, the line goes
- * with it: a trajectory drawn after the fact is information arriving too late
- * to use, and at these speeds it would only clutter the screen. Everything the
- * player gets to decide happens inside the telegraph.
- */
-const AIM_LINE_CAPACITY = ENEMY_WARNING_CAPACITY
-
-function EnemyAimLines() {
-  const { runtime } = useGame()
-  const ref = useRef<THREE.InstancedMesh>(null)
-  const matrix = useMemo(() => new THREE.Matrix4(), [])
-  const position = useMemo(() => new THREE.Vector3(), [])
-  const scale = useMemo(() => new THREE.Vector3(), [])
-  const quaternion = useMemo(() => new THREE.Quaternion(), [])
-  const axis = useMemo(() => new THREE.Vector3(0, 1, 0), [])
-  const direction = useMemo(() => new THREE.Vector3(), [])
-  useFrame(() => {
-    const mesh = ref.current
-    if (!mesh) return
-    let count = 0
-    for (const enemy of runtime.current.enemies.slots) {
-      if (!enemy.active || !enemy.aiming || enemy.telegraph <= 0) continue
-      // Drawn from the frozen muzzle, which is exactly where the shot will
-      // leave from - so the line the player reacts to is the line they get.
-      direction.set(
-        enemy.target.x - enemy.muzzle.x,
-        enemy.target.y - enemy.muzzle.y,
-        enemy.target.z - enemy.muzzle.z,
-      )
-      const length = direction.length()
-      if (length < 0.5) continue
-      direction.divideScalar(length)
-      quaternion.setFromUnitVectors(axis, direction)
-      position.set(
-        enemy.muzzle.x + direction.x * length * 0.5,
-        enemy.muzzle.y + direction.y * length * 0.5,
-        enemy.muzzle.z + direction.z * length * 0.5,
-      )
-      // Thickens as the telegraph runs out, so "about to fire" is legible
-      // without reading a number. Measured against this shot's own telegraph -
-      // the bow gun waits far longer than a turret did, and a fixed per-kind
-      // figure would show both as the same warning.
-      const charge = Math.min(1, Math.max(0, 1 - enemy.telegraph / enemy.telegraphLength))
-      const girth = 0.09 + charge * 0.16
-      scale.set(girth, length, girth)
-      matrix.compose(position, quaternion, scale)
-      mesh.setMatrixAt(count, matrix)
-      count += 1
-    }
-    mesh.count = count
-    mesh.instanceMatrix.needsUpdate = true
-  })
-  return (
-    <instancedMesh ref={ref} args={[undefined, undefined, AIM_LINE_CAPACITY]} frustumCulled={false} renderOrder={4}>
-      <cylinderGeometry args={[1, 1, 1, 5]} />
-      {/* No vertexColors: plain cylinder geometry, no per-vertex colour
-          attribute - see the ring above. Additive on top of that would have
-          made the line not merely wrong but invisible, since black adds
-          nothing. Like the ring, it must not dim with the night. */}
-      <meshBasicMaterial color="#ff5f7c" transparent opacity={0.55} depthWrite={false} blending={THREE.AdditiveBlending} toneMapped={false} />
-    </instancedMesh>
-  )
-}
-
-function EnemyProjectiles() {
-  const { runtime } = useGame()
-  const ref = useRef<THREE.InstancedMesh>(null)
-  const matrix = useMemo(() => new THREE.Matrix4(), [])
-  const position = useMemo(() => new THREE.Vector3(), [])
-  const scale = useMemo(() => new THREE.Vector3(), [])
-  const quaternion = useMemo(() => new THREE.Quaternion(), [])
-  const travel = useMemo(() => new THREE.Vector3(), [])
-  const shotAxis = useMemo(() => new THREE.Vector3(0, 1, 0), [])
-  useFrame(() => {
-    const mesh = ref.current
-    if (!mesh) return
-    let count = 0
-    for (const projectile of runtime.current.enemies.projectiles) {
-      // Orbs live in their own pool: they are slow curtain rounds, and the
-      // additive tracer look that suits the bow gun washes out against a
-      // bright sky exactly when a curtain most needs to be readable. With the
-      // rest of the roster on curtain fire, the bow gun is all that is left
-      // here - one shell at a time, and the only shot the player was warned
-      // about before it left.
-      if (!projectile.active || projectile.kind === 'orb') continue
-      position.set(projectile.position.x, projectile.position.y, projectile.position.z)
-      const size = 1.35
-      // Stretched along travel rather than a round dot: at these speeds a
-      // sphere gives no sense of which way a shot is going, and which way it
-      // is going is the only thing the player can act on once it is out.
-      travel.set(projectile.velocity.x, projectile.velocity.y, projectile.velocity.z)
-      const speed = travel.length()
-      if (speed > 0.001) {
-        travel.divideScalar(speed)
-        quaternion.setFromUnitVectors(shotAxis, travel)
-        scale.set(size, size * (1 + speed * 0.05), size)
-      } else {
-        quaternion.identity()
-        scale.setScalar(size)
-      }
-      matrix.compose(position, quaternion, scale)
-      mesh.setMatrixAt(count, matrix)
-      count += 1
-    }
-    mesh.count = count
-    mesh.instanceMatrix.needsUpdate = true
-  })
-  return (
-    <instancedMesh ref={ref} args={[undefined, undefined, ENEMY_MAX_PROJECTILES]} frustumCulled={false} renderOrder={5}>
-      <sphereGeometry args={[1, 6, 4]} />
-      {/* No vertexColors: plain sphere geometry, no per-vertex colour
-          attribute - see EnemyWarnings above. Additive blending on a black
-          result is an invisible shot, which is what this was. One weapon is
-          left in this pool, so the material carries its colour outright. */}
-      <meshBasicMaterial color="#ff5f7c" transparent opacity={0.94} depthWrite={false} blending={THREE.AdditiveBlending} toneMapped={false} />
-    </instancedMesh>
-  )
-}
-
-/**
- * The curtain rounds.
- *
- * Every gun outside the boss fires this now, so it is the single thing the
- * player reads the sky by, and it earns a real picture rather than a dot: a
- * white-hot centre with fire curling off it, tinted a soft red. See
- * `orbFlareTexture` for the drawing; here it is a camera-facing quad with a
- * slow per-orb spin, so the filaments turn as the round travels and it reads
- * as burning rather than as a decal being carried through the air.
- *
- * Red because red is the only colour the city's fire has ever been - the mine
- * shells, the boss's bow gun, the hull flash - and muted rather than hot,
- * because a saturated red at the size of a full curtain turns the screen into
- * an alarm. It should look like something burning at a distance; what carries
- * the urgency is how many of them there are.
- *
- * Two fixed 96-slot instanced meshes, reusing the projectile pool's own slots:
- * the flare, and an opaque core inside it. Deliberately NOT additive, unlike
- * every other shot. Additive blending buys glow at night and pays for it at
- * noon - against a bright sky it converges on white-on-white, which is how the
- * first pass of these was on screen for five seconds at a time without being
- * seen at all. A normal-blended opaque core is visible against anything the
- * sky can be.
- */
 /**
  * How big the round draws, against a hit radius of 0.7.
  *
@@ -2759,9 +2526,6 @@ export function DroneScene() {
       <TutorialCatMarker />
       <HazardPool />
       <EnemyPools />
-      <EnemyWarnings />
-      <EnemyAimLines />
-      <EnemyProjectiles />
       <OrbPool />
       <LaserProjectiles />
       <LaserBursts />

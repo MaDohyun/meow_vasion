@@ -9,12 +9,7 @@ import {
   BATTLESHIP_ESCORT_INTERVAL,
   BATTLESHIP_ESCORT_MINES,
   BATTLESHIP_ESCORT_RADIUS,
-  BATTLESHIP_FLAK_EVERY,
-  BATTLESHIP_FLAK_TELEGRAPH,
-  BATTLESHIP_FLAK_PAIR,
-  BATTLESHIP_FLAK_ROUNDS,
   BATTLESHIP_LENGTH,
-  BATTLESHIP_MAIN_GUN_TELEGRAPH,
   BATTLESHIP_ORBIT,
   BATTLESHIP_ORB_PITCHES,
   BATTLESHIP_ORB_RING_COUNT,
@@ -103,6 +98,29 @@ describe("earth's last resort", () => {
     }
   })
 
+  it('has the halo as its whole armoury: nothing it fires is aimed', () => {
+    // The ship used to carry a telegraphed bow gun and a lock-and-stream flak
+    // battery as well, and between them and the rooftop network the late game
+    // asked the player to read three separate warnings while threading a
+    // curtain. The curtain is the half that reads at a glance, so it is the
+    // half that stayed.
+    const { state, player, ship } = launch()
+    for (const enemy of state.slots) if (enemy !== ship) enemy.active = false
+    // Gathered rather than asserted per tick: a minute of ticks times a pool
+    // of shots is a quarter of a million assertions and a test that times out.
+    const kinds = new Set<string>()
+    let telegraphed = false
+    for (let tick = 0; tick < 60 * 60; tick += 1) {
+      stepEnemies(state, player, 1 / 60)
+      if (ship.telegraph > 0 || ship.aiming) telegraphed = true
+      for (const projectile of state.projectiles) if (projectile.active) kinds.add(projectile.kind)
+    }
+    // Nothing is ever shown before it leaves, because nothing needs to be: an
+    // orb slow enough to be flown through is its own warning.
+    expect(telegraphed).toBe(false)
+    expect([...kinds]).toEqual(['orb'])
+  })
+
   it('reloads between flurries, which is when the laser gets used', () => {
     const { state, player, ship } = launch()
     for (const enemy of state.slots) if (enemy !== ship) enemy.active = false
@@ -121,62 +139,6 @@ describe("earth's last resort", () => {
     // At least one long pause per handful of rings: the fight has a rhythm
     // rather than being a continuous wall.
     expect(Math.max(...gaps)).toBeGreaterThan(3)
-  })
-
-  it('shows both of its aimed shots before either leaves', () => {
-    const { state, player, ship } = launch()
-    for (const enemy of state.slots) if (enemy !== ship) enemy.active = false
-    const telegraphs: number[] = []
-    let previousTelegraph = ship.telegraph
-    for (let tick = 0; tick < 60 * 60; tick += 1) {
-      stepEnemies(state, player, 1 / 60)
-      if (ship.telegraph > previousTelegraph) telegraphs.push(ship.telegraphLength)
-      previousTelegraph = ship.telegraph
-    }
-    // The rings fire without warning - they are their own warning - so every
-    // telegraph that appears belongs to one of the two aimed moves, and over a
-    // minute of fighting both of them come round.
-    expect(telegraphs.length).toBeGreaterThan(1)
-    for (const length of telegraphs) expect([BATTLESHIP_MAIN_GUN_TELEGRAPH, BATTLESHIP_FLAK_TELEGRAPH]).toContain(length)
-    expect(telegraphs).toContain(BATTLESHIP_MAIN_GUN_TELEGRAPH)
-    expect(telegraphs).toContain(BATTLESHIP_FLAK_TELEGRAPH)
-  })
-
-  it('locks one point and answers it two barrels at a time', () => {
-    const { state, player, ship } = launch()
-    for (const enemy of state.slots) if (enemy !== ship) enemy.active = false
-    const shells = () => state.projectiles.filter((projectile) => projectile.active && projectile.kind === 'flak')
-    // Cocked one volley short of the flak, so the next cycle is the move under
-    // test rather than whatever the fight happened to be up to.
-    ship.telegraph = 0
-    ship.burstLeft = 0
-    ship.flakLeft = 0
-    ship.attackTimer = 0
-    ship.volley = BATTLESHIP_FLAK_EVERY - 1
-    stepEnemies(state, player, 1 / 60)
-    // Three seconds of lock, and nothing in the air yet: the mark is the whole
-    // fairness of the move.
-    expect(ship.aiming).toBe(true)
-    expect(ship.telegraphLength).toBeCloseTo(BATTLESHIP_FLAK_TELEGRAPH, 5)
-    expect(shells()).toHaveLength(0)
-    const rounds: number[] = []
-    let firstPair: { x: number; y: number; z: number }[] = []
-    for (let tick = 0; tick < 60 * 5 && rounds.length < BATTLESHIP_FLAK_ROUNDS; tick += 1) {
-      const before = shells().length
-      stepEnemies(state, player, 1 / 60)
-      const after = shells()
-      if (after.length > before) {
-        rounds.push(after.length - before)
-        if (firstPair.length === 0) firstPair = after.map((projectile) => ({ ...projectile.position }))
-      }
-    }
-    expect(rounds).toHaveLength(BATTLESHIP_FLAK_ROUNDS)
-    for (const round of rounds) expect(round).toBe(BATTLESHIP_FLAK_PAIR)
-    // Out of two turrets, not one barrel twice: the pair leaves from points a
-    // good part of the hull apart.
-    expect(firstPair).toHaveLength(BATTLESHIP_FLAK_PAIR)
-    const spread = Math.hypot(firstPair[0]!.x - firstPair[1]!.x, firstPair[0]!.y - firstPair[1]!.y, firstPair[0]!.z - firstPair[1]!.z)
-    expect(spread).toBeGreaterThan(BATTLESHIP_LENGTH * 0.1)
   })
 
   it('scatters the halo above and below itself as well as around', () => {

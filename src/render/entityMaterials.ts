@@ -87,7 +87,6 @@ export const ENEMY_GLOW: Record<EnemyKind, string> = {
   drone: ENTITY.DRONE_GLOW,
   helicopter: ENTITY.HELICOPTER_GLOW,
   fighter: ENTITY.FIGHTER_GLOW,
-  'anti-air': ENTITY.ANTI_AIR_GLOW,
   boss: ENTITY.BOSS_GLOW,
 }
 
@@ -151,7 +150,6 @@ export const enemyMaterial: Record<EnemyKind, THREE.Material> = {
   drone: makeEnemyMaterial('drone'),
   helicopter: makeEnemyMaterial('helicopter'),
   fighter: makeEnemyMaterial('fighter'),
-  'anti-air': makeEnemyMaterial('anti-air'),
   boss: makeEnemyMaterial('boss'),
 }
 
@@ -175,7 +173,6 @@ export const ENEMY_HALO: Record<EnemyKind, { radius: number; strength: number; h
   fighter: { radius: 6.2, strength: 0.46, height: 0 },
   // The emplacement's position is its footing on the roof; its mount and lamp
   // are most of three metres above that.
-  'anti-air': { radius: 6, strength: 0.44, height: 2.8 },
   // Seventy metres of hull. The radius is set so the ring clears the beam
   // rather than landing on the deck, and the strength is the lowest in the
   // set - anything more and the fight is played inside a blue cloud.

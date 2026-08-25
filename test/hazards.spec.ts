@@ -25,7 +25,8 @@ describe('ground explosives', () => {
     expect(isAbsorbable('car', 2.9, 3)).toBe(true)
     expect(isAbsorbable('pedestrian', 0.78, 1.8)).toBe(true)
     expect(isAbsorbable('cat', 0.55, 1.8)).toBe(true)
-    expect(isAbsorbable('anti-air', 1, 20)).toBe(false)
+    // The battleship is refused by kind, however small a figure is passed for it.
+    expect(isAbsorbable('boss', 1, 20)).toBe(false)
   })
 
   it('stays out of the opening minute and then builds up', () => {
