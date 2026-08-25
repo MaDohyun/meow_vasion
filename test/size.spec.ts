@@ -14,6 +14,10 @@ import {
   GROWTH_STEP,
   HEALTH_BONUS_HEARTS_MAX,
   LIFT_CAPACITY_MIN,
+  OBJECT_GAIN_BASE,
+  OBJECT_GAIN_HULL_SHARE,
+  OBJECT_GAIN_PER_METRE,
+  SIZE_GAIN,
   SIZE_MATURE,
   SIZE_MAX,
   SIZE_MAX_DIAMETER,
@@ -29,6 +33,7 @@ import {
   growthStep,
   liftCapacityForSize,
   maxAltitude,
+  objectSizeGain,
   sizeProfile,
   sizeCameraLift,
   ufoDiameter,
@@ -102,6 +107,50 @@ describe('craft size as growth, not as health', () => {
     expect(growSize(SIZE_MATURE * 0.5, 'pedestrian') - SIZE_MATURE * 0.5).toBeGreaterThan(
       growSize(SIZE_START, 'pedestrian') - SIZE_START,
     )
+  })
+
+  it('never pays a meal more than its share of the hull it goes into', () => {
+    // The loop this closes: growing opens heavier and wider objects, so a craft
+    // that grew ate towers instead of people - and a tower used to pay the same
+    // five pedestrians at every size. Growing bought a faster way of growing,
+    // which no taper on the meal itself can see, because the taper prices meals
+    // and this was a change of menu.
+    const TOWER = 18
+    const pedestrian = SIZE_GAIN.pedestrian
+    const at = (metres: number) => objectSizeGain(TOWER, metres / UFO_BASE_DIAMETER)
+    // Dormant over the whole opening game. The things a street-sized saucer can
+    // actually swallow - a bin, a bench, a car - are close enough to its own
+    // width that their own value is the lower of the two, so nothing about the
+    // first minutes changes. A bin is priced on itself until the hull is 9m,
+    // a car until 11m.
+    const ownValue = (metres: number) => OBJECT_GAIN_BASE + metres * OBJECT_GAIN_PER_METRE
+    expect(objectSizeGain(1.7, SIZE_START)).toBeCloseTo(ownValue(1.7), 5)
+    expect(objectSizeGain(1.7, 8 / UFO_BASE_DIAMETER)).toBeCloseTo(ownValue(1.7), 5)
+    expect(objectSizeGain(2.9, 10 / UFO_BASE_DIAMETER)).toBeCloseTo(ownValue(2.9), 5)
+    // A tower is the other case: it cannot be swallowed until the hull is
+    // wider than it is, so by the time it is a legal meal the hull share is
+    // already the binding term. That is the point - the biggest meals in the
+    // game are exactly the ones the loop was built on.
+    expect(at(18.1)).toBeLessThan(ownValue(TOWER))
+    // ...and biting hard once the hull dwarfs its food.
+    expect(at(20) / pedestrian).toBeGreaterThan(3)
+    expect(at(60) / pedestrian).toBeLessThan(1.5)
+    expect(at(150) / pedestrian).toBeLessThan(0.75)
+    // Monotonic in both arguments: bigger meals are always worth more, and the
+    // same meal is always worth less to a bigger craft.
+    let previous = Infinity
+    for (let metres = 10; metres <= SIZE_MAX_DIAMETER; metres += 2) {
+      const gain = at(metres)
+      expect(gain).toBeLessThanOrEqual(previous)
+      expect(gain).toBeGreaterThan(0)
+      previous = gain
+    }
+    for (const hull of [SIZE_START, 4, 12, SIZE_MATURE]) {
+      expect(objectSizeGain(9, hull)).toBeGreaterThan(objectSizeGain(3, hull))
+    }
+    // A meal can never exceed the hull share, because the swallow gate already
+    // refuses anything wider than the hull.
+    expect(objectSizeGain(ufoDiameter(SIZE_MATURE), SIZE_MATURE)).toBeCloseTo(OBJECT_GAIN_HULL_SHARE, 5)
   })
 
   it('leaves a beginner about sixty metres across when the five minutes run out', () => {

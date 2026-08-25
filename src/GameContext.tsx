@@ -26,7 +26,7 @@ import {
   stepHazards,
   type HazardState,
 } from './core/hazards'
-import { SIZE_MIN, SIZE_START, type SizeGainKind, type SizeProfile, bonusHeartsForSize, clampSize, growSize, growSizeBy, sizeProfile, ufoDiameter } from './core/size'
+import { SIZE_MIN, SIZE_START, type SizeGainKind, type SizeProfile, bonusHeartsForSize, clampSize, growSize, growSizeBy, objectSizeGain, sizeProfile, ufoDiameter } from './core/size'
 import { MAX_HEALTH, createHealthState, damageHealth, healHealth, healthRatio, isDead, isRegenerating, raiseHealthMax, stepHealth, type HealthLossKind, type HealthState } from './core/health'
 import { BATTLESHIP_ALTITUDE, BATTLESHIP_LAUNCH_SECONDS, BATTLESHIP_TURRETS, activeEnemyCount, armMinesInBeam, battleshipTurretPoint, createEnemyState, droneMineInSight, hitEnemy, resolveEnemyContacts, stepEnemies, stepEnemyProjectiles, syncEnemyTiers, waveLabelForTime, waveStageForTime, type EnemyKind, type EnemyState } from './core/enemies'
 import {
@@ -1528,13 +1528,10 @@ function absorbBeamObject(game: GameRuntime, object: BeamObject) {
     }
   }
   // Larger meals grow the craft more, as a fraction of current size like every
-  // other gain. Bounded so no single meal - not even a tower - skips a run.
-  //
-  // The slope came down with SIZE_GAIN, and for the same reason: a street of
-  // parked cars was worth more hull than the street was worth flying down. The
-  // cap did not, so the largest tower still pays what it always paid - the
-  // trim lands on the everyday meal, not on the once-a-run one.
-  growBy(game, Math.min(0.2, 0.007 + diameter * 0.007))
+  // other gain - but never more than their share of the hull they are going
+  // into, which is what stops growing from buying a faster way of growing.
+  // See objectSizeGain.
+  growBy(game, objectSizeGain(diameter, game.size))
   game.absorbedCount += 1
   bankAbsorbScore(game, reward)
   game.pickupPulse = 1

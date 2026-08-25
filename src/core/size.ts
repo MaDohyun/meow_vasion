@@ -426,6 +426,43 @@ export function sizeCameraLift(size: number) {
   return SIZE_CAMERA_LIFT_MAX * Math.pow(progress, 0.6)
 }
 
+/**
+ * Growth for swallowing one beam object, as a fraction of current size.
+ *
+ * Two terms, and the smaller one wins.
+ *
+ * The first is what the meal is worth in its own right - a tower is a bigger
+ * mouthful than a bin, and always was. The second is the one that had to be
+ * added: **a meal is never worth more than a tenth of how much of the hull it
+ * fills.** Without it the game had a loop that ran away from the player.
+ * Growing opens heavier and wider objects, so a craft that grew ate towers
+ * instead of people, and a tower paid five pedestrians at every size - which
+ * meant growing bought a faster way of growing. The step ladder in
+ * growthFalloff cannot see that, because it prices meals, not menus.
+ *
+ * The hull term is dormant while the craft is small: everything a 10m saucer
+ * can get its beam around is close enough to its own width that the object's
+ * own value is the lower of the two, so the opening game is untouched. It only
+ * bites once the craft is much bigger than its food, which is exactly the
+ * situation the loop was feeding on. A tower is 3.5 pedestrians to a 20m hull,
+ * 1.2 to a 60m one, and half a pedestrian to a hull of 150m.
+ *
+ * The tower is still worth eating up there. It is worth eating for *points* -
+ * absorptionScore prices the same object on its diameter squared times the
+ * score multiplier the hull has earned - and points are what the late run is
+ * playing for. Growth and score being paid by different rules is the whole
+ * reason the craft can afford to stop growing off buildings.
+ */
+export const OBJECT_GAIN_BASE = 0.007
+export const OBJECT_GAIN_PER_METRE = 0.007
+export const OBJECT_GAIN_HULL_SHARE = 0.10
+
+export function objectSizeGain(objectDiameter: number, size: number) {
+  const own = OBJECT_GAIN_BASE + Math.max(0, objectDiameter) * OBJECT_GAIN_PER_METRE
+  const hullShare = OBJECT_GAIN_HULL_SHARE * (Math.max(0, objectDiameter) / ufoDiameter(size))
+  return Math.min(own, hullShare)
+}
+
 export function growSize(size: number, kind: SizeGainKind) {
   return growSizeBy(size, SIZE_GAIN[kind])
 }
