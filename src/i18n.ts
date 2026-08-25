@@ -42,6 +42,11 @@ export type Strings = {
   titleLine1: string
   titleLine2: string
   tagline: string
+  /** The lobby's standing order, shown under the title. The run is a timed
+   *  recon sortie rather than an open-ended sandbox, and the lobby is the only
+   *  place a player can read that before the clock is already running. */
+  lobbyOrdersTag: string
+  lobbyOrders: string
   start: string
   options: string
   close: string
@@ -227,7 +232,7 @@ export type Bulletin = {
 
 /** Exactly one bulletin per wave stage. A tuple rather than an array so a
  *  language that forgets a stage fails to compile. */
-type BulletinSet = readonly [Bulletin, Bulletin, Bulletin, Bulletin, Bulletin, Bulletin]
+type BulletinSet = readonly [Bulletin, Bulletin, Bulletin, Bulletin, Bulletin]
 
 /** Keys the simulation may raise as a mid-run callout. */
 export type MessageKey = {
@@ -249,6 +254,8 @@ export const STRINGS: Record<Language, Strings> = {
     titleLine1: '침략할',
     titleLine2: '거냥',
     tagline: '5분 안에 지구 정찰을 끝내고 유유히 튀세요',
+    lobbyOrdersTag: '작전 명령',
+    lobbyOrders: '5분 동안 정찰대 임무를 완수하세요!',
     start: '게임 시작',
     options: '옵션',
     close: '닫기',
@@ -413,7 +420,6 @@ export const STRINGS: Record<Language, Strings> = {
       { headline: '자폭 드론 투입', line: '속보입니다. 정부가 미확인 비행체를 격추하기 위해\n자폭 드론을 도심 상공에 살포했습니다.' },
       { headline: '공격 헬기 투입', line: '속보입니다. 군이 공격 헬기를 상공에 투입했습니다.\n시민 여러분은 실내로 대피하십시오.' },
       { headline: '전투기 긴급 발진', line: '속보입니다. 공군이 미확인 비행체 격추를 위해\n전투기를 긴급 발진시켰습니다.' },
-      { headline: '대공 방어망 가동', line: '속보입니다. 도심 전역에 대공 방어망이 가동됐습니다.\n고공의 비행체를 요격합니다.' },
       { headline: '공중전함 출격', line: '속보입니다. 더는 두고 볼 수 없다며 군이\n최종 병기 공중전함을 출격시켰습니다.' },
     ],
   },
@@ -422,6 +428,8 @@ export const STRINGS: Record<Language, Strings> = {
     titleLine1: 'しんりゃく',
     titleLine2: 'するにゃん',
     tagline: 'できるだけ長く生き延びて街を破壊しよう',
+    lobbyOrdersTag: '作戦命令',
+    lobbyOrders: '5分間で偵察隊の任務を完遂せよ！',
     start: 'ゲーム開始',
     options: 'オプション',
     close: '閉じる',
@@ -586,7 +594,6 @@ export const STRINGS: Record<Language, Strings> = {
       { headline: '自爆ドローンを投入', line: '速報です。政府は未確認飛行物体を撃墜するため、\n自爆ドローンを都心上空に散布しました。' },
       { headline: '攻撃ヘリを投入', line: '速報です。軍が攻撃ヘリを上空に投入しました。\n市民の皆さまは屋内に避難してください。' },
       { headline: '戦闘機が緊急発進', line: '速報です。空軍が未確認飛行物体の撃墜のため、\n戦闘機を緊急発進させました。' },
-      { headline: '対空防衛網が稼働', line: '速報です。都心全域で対空防衛網が稼働しました。\n高空の飛行体を迎撃します。' },
       { headline: '空中戦艦が出撃', line: '速報です。もはや看過できないとして、軍が\n最終兵器の空中戦艦を出撃させました。' },
     ],
   },
@@ -595,6 +602,8 @@ export const STRINGS: Record<Language, Strings> = {
     titleLine1: 'MEOW',
     titleLine2: 'VASION',
     tagline: 'Survive as long as you can and tear the city apart',
+    lobbyOrdersTag: 'STANDING ORDERS',
+    lobbyOrders: 'Complete the recon squad mission within 5 minutes!',
     start: 'START SURVIVAL',
     options: 'OPTIONS',
     close: 'CLOSE',
@@ -759,7 +768,6 @@ export const STRINGS: Record<Language, Strings> = {
       { headline: 'SUICIDE DRONES DEPLOYED', line: 'Breaking news. The government has seeded the sky with suicide\ndrones to bring the unidentified craft down.' },
       { headline: 'ATTACK HELICOPTERS UP', line: 'Breaking news. The military has put attack helicopters\nin the air. Residents are urged to stay indoors.' },
       { headline: 'FIGHTERS SCRAMBLED', line: 'Breaking news. The air force has scrambled fighters\nto shoot the unidentified craft down.' },
-      { headline: 'AIR DEFENCE ONLINE', line: 'Breaking news. The city-wide air defence network is online\nand engaging craft at altitude.' },
       { headline: 'SKY DREADNOUGHT LAUNCHED', line: 'Breaking news. Unwilling to stand by any longer, the military\nhas launched its last resort - a flying battleship.' },
     ],
   },

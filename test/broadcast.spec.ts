@@ -91,8 +91,7 @@ describe('wave bulletins', () => {
     const named: [number, string, string][] = [
       [2, '헬기', 'helicopter'],
       [3, '전투기', 'fighter'],
-      [4, '대공', 'air defence'],
-      [5, '공중전함', 'battleship'],
+      [4, '공중전함', 'battleship'],
     ]
     for (const [stage, korean, english] of named) {
       const at = ENEMY_WAVE_STAGES[stage]!.at

@@ -4,6 +4,7 @@ import { leaderboard, type LeaderboardSource } from '../net/leaderboard'
 import { useGame } from '../GameContext'
 import { LANGUAGES, LANGUAGE_LABELS, bulletinFor, formatMessage, type Strings } from '../i18n'
 import { broadcastPhase, broadcastProgress } from '../core/broadcast'
+import { MISSION_RUN_SECONDS } from '../core/missions'
 import type { RunEnding } from '../core/ending'
 import { HowToPlay } from './HowToPlay'
 import { LifeHearts } from './LifeHearts'
@@ -292,9 +293,15 @@ function FlightBar() {
  *
  * The callouts - what was just absorbed, what a pickup upgraded, that the
  * turbo has overheated - used to be a card in the middle of the screen, over
- * the city the player is flying through. They are a speech bubble over the
+ * the city the player is flying through. They are a speech bubble under the
  * pilot instead: it is the one place on the HUD that is already a voice, and
  * an empty bubble simply is not drawn, so nothing sits there saying nothing.
+ *
+ * The bubble hangs below the portrait in a slot that is always there, empty
+ * or not. A bubble that took its space from the layout when it arrived pushed
+ * the face off the spot the eye had just learnt, which reads as the portrait
+ * jumping rather than as a line being spoken - so the slot holds the space
+ * whether or not there is anything to say, and the face never moves.
  */
 function PilotComms() {
   const { snapshot, t } = useGame()
@@ -307,8 +314,10 @@ function PilotComms() {
       data-expression={snapshot.pilotExpression}
       aria-label={`${t.pilotCam} ${snapshot.pilotExpression}`}
     >
-      {line && <p className="pilot-line" role="status" aria-live="polite">{line}</p>}
       <div className="pilot-portrait" style={pilotFrameStyle(snapshot.pilotExpression)} />
+      <div className="pilot-line-slot">
+        {line && <p className="pilot-line" role="status" aria-live="polite">{line}</p>}
+      </div>
     </section>
   )
 }
@@ -461,6 +470,19 @@ function Intro() {
           <span>{t.titleKicker}</span>
         </div>
         <h1>{t.titleLine1}{t.titleLine2}</h1>
+        {/* The standing order, directly under the title. A run is a five minute
+            recon sortie, and the lobby is the last moment a player can read
+            that without the clock already running. Built as an order slip -
+            tag, line, countdown chip - so it reads as fleet paperwork rather
+            than as a fourth button. */}
+        <div className="lobby-orders">
+          <span className="lobby-orders-tag">
+            <span className="paw-sigil" aria-hidden="true"><i /><i /><i /><i /><b /></span>
+            {t.lobbyOrdersTag}
+          </span>
+          <p>{t.lobbyOrders}</p>
+          <span className="lobby-orders-clock" aria-hidden="true"><i />T-{formatTime(MISSION_RUN_SECONDS)}</span>
+        </div>
         <div className="intro-actions">
           <button className="primary-button" onMouseEnter={playMenuHoverSound} onClick={start}><span>{t.start}</span><b aria-hidden="true">▶</b></button>
           <button className="secondary-button" onMouseEnter={playMenuHoverSound} onClick={() => setHowToOpen(true)}>{t.howTo}</button>

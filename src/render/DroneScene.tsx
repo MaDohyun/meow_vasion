@@ -14,6 +14,9 @@ import {
   carLampMaterial,
   carShadowMaterial,
   crowdMaterial,
+  ENEMY_GLOW,
+  ENEMY_HALO,
+  enemyHaloOpacity,
   enemyMaterial,
   makeBlastFieldMaterial,
 } from './entityMaterials'
@@ -27,7 +30,7 @@ import {
   sampleShake,
 } from '../core/shake'
 import { setNightVisibility } from './nightVisibility'
-import { orbFlareTexture, radialGlowTexture } from './textures'
+import { entityHaloTexture, orbFlareTexture, radialGlowTexture } from './textures'
 import { BEAM_ABSORB_TIME, beamLiftScale, beamObjectDiameter, beamProfile, beamVisualLength, type BeamObject } from '../core/beam'
 import { CAT_MAX, CROWD_ABSORB_TIME, PEDESTRIAN_MAX, pedestrianOutfitForSlot, type CrowdKind } from '../core/crowds'
 import { HAZARD_MAX } from '../core/hazards'
@@ -99,19 +102,55 @@ const beamTargetRingMaterial = new THREE.MeshBasicMaterial({
   toneMapped: false,
 })
 
-function coloredPart(geometry: THREE.BufferGeometry, color: string) {
+/**
+ * One part of a merged model: its colour baked into the vertices, plus how
+ * much of a lamp it is.
+ *
+ * `lamp` is what makes a part a light rather than a surface. The night
+ * material multiplies the part's own colour by it and adds the result on top
+ * of the lit shading, so a value near 1 burns far past everything around it
+ * and reads as a running light, while 0 - every ordinary panel - is untouched.
+ * It rides the geometry rather than a second material because these models are
+ * a single merged `InstancedMesh` each; a separate lamp mesh would be a second
+ * draw call per family for a handful of triangles.
+ *
+ * Lamps are painted pale rather than saturated on purpose. Tone mapping rolls
+ * a bright saturated colour off into that same colour, so a hot red lamp just
+ * looks like flat red paint; a pale one goes white-hot at the core and lets
+ * the post pass's bright filter catch it, which is what gives the lamp a
+ * bloom instead of an outline. The saturated family colour lives in the halo
+ * around the craft, where there is room for it.
+ */
+function coloredPart(geometry: THREE.BufferGeometry, color: string, lamp = 0) {
   const result = geometry.index ? geometry.toNonIndexed() : geometry
   if (result !== geometry) geometry.dispose()
   const tint = new THREE.Color(color)
-  const colors = new Float32Array(result.getAttribute('position').count * 3)
+  const count = result.getAttribute('position').count
+  const colors = new Float32Array(count * 3)
   for (let index = 0; index < colors.length; index += 3) {
     colors[index] = tint.r
     colors[index + 1] = tint.g
     colors[index + 2] = tint.b
   }
   result.setAttribute('color', new THREE.BufferAttribute(colors, 3))
+  // Every part carries the attribute, lamp or not: `mergeGeometries` needs one
+  // attribute set across the whole model.
+  result.setAttribute('aLamp', new THREE.BufferAttribute(new Float32Array(count).fill(lamp), 1))
   return result
 }
+
+/** Pale lamp colours. See `coloredPart` for why they are not saturated. */
+const LAMP = {
+  /** Port and starboard running lights, in the colours aircraft use. */
+  PORT: '#ffd8dd',
+  STARBOARD: '#d6ffe0',
+  /** Anti-collision strobe and tail beacon. */
+  BEACON: '#fff0cf',
+  /** Exhaust and drive glow. */
+  DRIVE: '#cdeeff',
+  /** The one warning lamp: an armed fuse, a tracking gun. */
+  ALERT: '#ffd7cd',
+} as const
 
 function unindexedPart(geometry: THREE.BufferGeometry) {
   if (!geometry.index) return geometry
@@ -301,21 +340,20 @@ function catGeometry() {
 function helicopterGeometry() {
   return mergeModel([
     coloredPart(new THREE.CapsuleGeometry(0.72, 2.1, 5, 9).rotateX(Math.PI / 2), '#6f608b'),
-    coloredPart(new THREE.SphereGeometry(0.76, 10, 7).scale(1, 0.72, 1.08).translate(0, 0.02, 1.25), '#8ed8df'),
+    coloredPart(new THREE.SphereGeometry(0.76, 10, 7).scale(1, 0.72, 1.08).translate(0, 0.02, 1.25), '#8ed8df', 0.3),
     coloredPart(new THREE.BoxGeometry(0.38, 0.38, 3.2).translate(0, 0.12, -2.35), '#5a526c'),
     coloredPart(new THREE.BoxGeometry(6.4, 0.12, 0.22).translate(0, 0.92, 0), '#332f45'),
     coloredPart(new THREE.BoxGeometry(0.22, 0.12, 6.4).translate(0, 0.92, 0), '#332f45'),
     coloredPart(new THREE.BoxGeometry(0.12, 1.9, 0.18).translate(0.08, 0.32, -4), '#332f45'),
     coloredPart(new THREE.BoxGeometry(0.12, 0.18, 1.9).translate(0.08, 0.32, -4), '#332f45'),
-  ])
-}
-
-function antiAirGeometry() {
-  return mergeModel([
-    coloredPart(new THREE.CylinderGeometry(1.12, 1.28, 1.2, 8).translate(0, 0.45, 0), '#514d62'),
-    coloredPart(new THREE.SphereGeometry(0.78, 8, 5).scale(1, 0.65, 1).translate(0, 1.22, 0), '#736481'),
-    coloredPart(new THREE.CylinderGeometry(0.13, 0.18, 2.8, 7).rotateX(Math.PI / 2).rotateZ(-0.16).translate(-0.26, 1.62, 1.25), '#282b38'),
-    coloredPart(new THREE.CylinderGeometry(0.13, 0.18, 2.8, 7).rotateX(Math.PI / 2).rotateZ(0.16).translate(0.26, 1.62, 1.25), '#282b38'),
+    // Running lights: red to port, green to starboard, an amber beacon on the
+    // fin and a strobe under the belly. Four points of light in a fixed
+    // arrangement is how a helicopter is told from a fighter at night, and it
+    // survives a distance where the hull is four pixels of purple.
+    coloredPart(new THREE.SphereGeometry(0.13, 6, 5).translate(-0.7, -0.04, 0.18), LAMP.PORT, 1),
+    coloredPart(new THREE.SphereGeometry(0.13, 6, 5).translate(0.7, -0.04, 0.18), LAMP.STARBOARD, 1),
+    coloredPart(new THREE.SphereGeometry(0.12, 6, 5).translate(0.08, 1.28, -4), LAMP.BEACON, 1),
+    coloredPart(new THREE.SphereGeometry(0.11, 6, 5).translate(0, -0.62, 0.1), LAMP.BEACON, 0.9),
   ])
 }
 
@@ -325,7 +363,13 @@ function fighterGeometry() {
     coloredPart(new THREE.BoxGeometry(4.8, 0.14, 1.45).translate(0, -0.08, -0.28), '#cf7087'),
     coloredPart(new THREE.BoxGeometry(1.7, 0.12, 1).translate(0, 0.02, -1.72), '#76628f'),
     coloredPart(new THREE.BoxGeometry(0.16, 1.15, 0.92).translate(0, 0.48, -1.72), '#655678'),
-    coloredPart(new THREE.SphereGeometry(0.34, 8, 5).scale(0.8, 0.55, 1.5).translate(0, 0.42, 0.78), '#77dce8'),
+    coloredPart(new THREE.SphereGeometry(0.34, 8, 5).scale(0.8, 0.55, 1.5).translate(0, 0.42, 0.78), '#77dce8', 0.34),
+    // Wingtips and a burner. A fighter only ever shows the player one straight
+    // pass, so its night read is a wide pair of tip lights with a hot exhaust
+    // trailing behind them - which is also the direction it is going.
+    coloredPart(new THREE.SphereGeometry(0.14, 6, 5).translate(-2.32, -0.06, -0.28), LAMP.PORT, 1),
+    coloredPart(new THREE.SphereGeometry(0.14, 6, 5).translate(2.32, -0.06, -0.28), LAMP.STARBOARD, 1),
+    coloredPart(new THREE.CylinderGeometry(0.38, 0.3, 0.16, 9).rotateX(Math.PI / 2).translate(0, 0, -2.3), LAMP.DRIVE, 0.75),
   ])
 }
 
@@ -340,7 +384,14 @@ const mineGeometry = mergeModel([
   coloredPart(new THREE.CylinderGeometry(0.18, 0.18, 0.12, 8).translate(0, 0.02, -1.18), '#d4a24b'),
   coloredPart(new THREE.CylinderGeometry(0.18, 0.18, 0.12, 8).translate(0, 0.02, 1.18), '#d4a24b'),
   coloredPart(new THREE.CylinderGeometry(0.38, 0.48, 0.76, 8).translate(0, -0.62, 0), '#7e3a4b'),
-  coloredPart(new THREE.SphereGeometry(0.12, 6, 4).translate(0, -0.18, 0), '#ff5869'),
+  // The fuse. The one lamp on the model, so the thing the eye is drawn to is
+  // the part that decides whether the mine is about to go off.
+  coloredPart(new THREE.SphereGeometry(0.13, 6, 4).translate(0, -0.18, 0), LAMP.ALERT, 1),
+  // Rotor-tip pips. Faint, but they draw the mine's cross at a range where the
+  // frame itself is a couple of pixels.
+  ...[[-1.18, 0], [1.18, 0], [0, -1.18], [0, 1.18]].map(([x, z]) =>
+    coloredPart(new THREE.SphereGeometry(0.075, 5, 4).translate(x, 0.09, z), LAMP.BEACON, 0.55),
+  ),
 ])
 
 /**
@@ -389,10 +440,10 @@ function bossGeometry() {
     ...[-1, 1].map((side) =>
       coloredPart(new THREE.CylinderGeometry(2.5, 2.9, 5, 10).rotateX(Math.PI / 2).translate(side * width * 0.26, -0.6, -half * 0.86 - 1.6), '#333c49'),
     ),
-    coloredPart(new THREE.BoxGeometry(width * 0.66, 1, 0.8).translate(0, -0.6, -half * 0.86 - 4.1), '#7ad4ff'),
+    coloredPart(new THREE.BoxGeometry(width * 0.66, 1, 0.8).translate(0, -0.6, -half * 0.86 - 4.1), '#7ad4ff', 0.8),
     // Anti-gravity strip down the keel. The ship has to be legible from
     // underneath - that is the angle the player spends the fight at.
-    coloredPart(new THREE.BoxGeometry(2.2, 0.5, BATTLESHIP_LENGTH * 0.7).translate(0, -5.2, 0), '#7ad4ff'),
+    coloredPart(new THREE.BoxGeometry(2.2, 0.5, BATTLESHIP_LENGTH * 0.7).translate(0, -5.2, 0), '#7ad4ff', 0.55),
     // Turrets, at exactly the positions the guns fire from.
     ...BATTLESHIP_TURRETS.flatMap((along, index) => {
       const z = along * half
@@ -408,6 +459,13 @@ function bossGeometry() {
     ...[-1, 1].map((side) =>
       coloredPart(new THREE.BoxGeometry(0.4, 0.7, BATTLESHIP_LENGTH * 0.6).translate(side * width * 0.5, 1.4, 0), '#f3b24d'),
     ),
+    // Masthead and running lights. A ship this size is found by its lights
+    // long before its hull resolves, and they are the only part of it that
+    // says which way it is pointing from directly underneath.
+    coloredPart(new THREE.SphereGeometry(0.7, 7, 5).translate(0, 21.6, -2), LAMP.BEACON, 1),
+    coloredPart(new THREE.SphereGeometry(0.6, 7, 5).translate(-width * 0.5, 3.6, half * 0.55), LAMP.PORT, 1),
+    coloredPart(new THREE.SphereGeometry(0.6, 7, 5).translate(width * 0.5, 3.6, half * 0.55), LAMP.STARBOARD, 1),
+    coloredPart(new THREE.SphereGeometry(0.55, 7, 5).translate(0, 3.6, -half * 0.8), LAMP.BEACON, 0.9),
   ])
 }
 
@@ -787,6 +845,50 @@ function UfoGroundPool() {
   )
 }
 
+/**
+ * The saucer's own night glow.
+ *
+ * The ground pool underneath it says where the craft is over the street; this
+ * says where the craft is in the sky. It rides the same rule as the enemies -
+ * nothing at noon, brightest at the floor of the night - so the whole scene
+ * gains its light from one place as the cycle runs down.
+ *
+ * Kept outside the craft's group on purpose: that group carries the hull's
+ * pitch, yaw and roll, and a billboard has to face the camera regardless of
+ * what the ship is doing.
+ */
+function UfoNightGlow() {
+  const { runtime, snapshot } = useGame()
+  const { camera } = useThree()
+  const ref = useRef<THREE.Mesh>(null)
+  useFrame(() => {
+    const mesh = ref.current
+    if (!mesh) return
+    const game = runtime.current
+    mesh.position.set(game.drone.position.x, game.drone.position.y, game.drone.position.z)
+    mesh.quaternion.copy(camera.quaternion)
+    mesh.scale.setScalar(4.6 * game.sizeProfile.size)
+    const material = mesh.material as THREE.MeshBasicMaterial
+    const nightFactor = game.daylight.nightFactor
+    material.opacity = nightFactor * nightFactor * (snapshot.beamActive ? 0.42 : 0.3)
+    mesh.visible = material.opacity > 0.002
+  })
+  return (
+    <mesh ref={ref} frustumCulled={false} renderOrder={2}>
+      <planeGeometry args={[2, 2]} />
+      <meshBasicMaterial
+        color={ENTITY.UFO_RIM}
+        map={entityHaloTexture}
+        transparent
+        opacity={0}
+        depthWrite={false}
+        blending={THREE.AdditiveBlending}
+        toneMapped={false}
+      />
+    </mesh>
+  )
+}
+
 function Ufo() {
   const { runtime, snapshot } = useGame()
   const root = useRef<THREE.Group>(null)
@@ -844,28 +946,23 @@ function Ufo() {
     const impactBlink = impact * (0.6 + 0.4 * Math.sin(game.pilotClock * IMPACT_BLINK_RATE))
     const mysteryFlash = Math.max(0, Math.min(1, game.mysteryFlash / 0.65))
     const goldFlash = mysteryFlash * (0.78 + 0.22 * (0.5 + 0.5 * Math.sin(game.pilotClock * 24)))
-    // The dome lights up after dark; the hull does not.
-    //
-    // This is the city's own rule for windows, applied to the craft: a facade
-    // ramps its window emissive from 0.02 to 1.14 across the cycle and the wall
-    // itself never glows, which is why a lit building reads as a building with
-    // its lights on rather than as a glowing block. The dome is the saucer's
-    // window. The hull keeps the small constant self-light it has always had -
-    // enough that the craft never sinks into a dark street, not enough to be a
-    // lamp.
+    // The craft lights itself further the darker the sky gets. Both emissives
+    // are the craft's *own* colour, so this is the hull turning its lights up
+    // rather than anything being tinted onto it - the same rule the enemies
+    // follow, applied to the one thing on screen that must never be lost.
     const nightFactor = game.daylight.nightFactor
     if (hullMaterial.current) {
       hullColor.copy(hullBaseColor).lerp(hullImpactColor, impactBlink)
       hullColor.lerp(hullMysteryColor, goldFlash)
       hullMaterial.current.color.copy(hullColor)
       hullMaterial.current.emissive.copy(hullColor)
-      hullMaterial.current.emissiveIntensity = 0.2 + impactBlink * 1.8 + goldFlash * 2.2
+      hullMaterial.current.emissiveIntensity = 0.2 + nightFactor * 0.34 + impactBlink * 1.8 + goldFlash * 2.2
     }
     if (domeMaterial.current) {
       domeColor.copy(domeBaseColor).lerp(domeMysteryColor, goldFlash)
       domeMaterial.current.color.copy(domeColor)
       domeMaterial.current.emissive.copy(domeColor)
-      domeMaterial.current.emissiveIntensity = 0.18 + nightFactor * 0.34 + goldFlash * 1.7
+      domeMaterial.current.emissiveIntensity = 0.18 + nightFactor * 0.3 + goldFlash * 1.7
     }
 
     const heading = game.drone.heading
@@ -1368,7 +1465,6 @@ type PooledEnemyKind = Exclude<EnemyKind, 'drone'>
 
 const enemyGeometry: Record<PooledEnemyKind, THREE.BufferGeometry> = {
   helicopter: helicopterGeometry(),
-  'anti-air': antiAirGeometry(),
   fighter: fighterGeometry(),
   boss: bossGeometry(),
 }
@@ -1394,7 +1490,6 @@ const enemyAlert: Record<EnemyKind, THREE.InstancedBufferAttribute> = {
   drone: alertAttribute(ENEMY_CAPS.drone),
   helicopter: alertAttribute(ENEMY_CAPS.helicopter),
   fighter: alertAttribute(ENEMY_CAPS.fighter),
-  'anti-air': alertAttribute(ENEMY_CAPS['anti-air']),
   boss: alertAttribute(ENEMY_CAPS.boss),
 }
 for (const kind of Object.keys(enemyGeometry) as PooledEnemyKind[]) {
@@ -1438,7 +1533,7 @@ function EnemyPool({ kind }: { kind: PooledEnemyKind }) {
       // The battleship's geometry is authored at true scale, so it is the one
       // pool that must not be scaled - the turret positions the guns fire from
       // are in world metres.
-      const size = kind === 'boss' ? 1 : kind === 'helicopter' ? 0.82 : kind === 'fighter' ? 1.18 : kind === 'anti-air' ? 2.35 : 1.8
+      const size = kind === 'boss' ? 1 : kind === 'helicopter' ? 0.82 : 1.18
       const absorbScale = enemy.absorbing ? Math.max(0.04, enemy.absorbTimer / BEAM_ABSORB_TIME) : 1
       scale.setScalar(size * absorbScale)
       matrix.compose(position, quaternion, scale)
@@ -1447,11 +1542,8 @@ function EnemyPool({ kind }: { kind: PooledEnemyKind }) {
       // not a flash - a helicopter holds it for the whole chase - and writing
       // red here multiplied through every baked vertex colour and left one flat
       // red shape. It goes out on the alert channel instead, which lights the
-      // edge and the running lights and leaves the paint alone. The battleship
-      // stays out of it entirely: it fires almost continuously, so an
-      // always-on warning says nothing.
-      if (kind === 'anti-air') color.set('#7f8765')
-      else if (kind === 'boss') color.set('#eef2f6')
+      // edge and the running lights and leaves the paint alone.
+      if (kind === 'boss') color.set('#eef2f6')
       else color.setRGB(0.84 + (enemy.slot % 3) * 0.07, 0.84 + (enemy.slot % 3) * 0.07, 0.84 + (enemy.slot % 3) * 0.07)
       // A laser hit still answers on the body, because that one *is* a flash:
       // it lasts a moment and has to be unmistakable. Lighter than it was, now
@@ -1471,55 +1563,66 @@ function EnemyPool({ kind }: { kind: PooledEnemyKind }) {
   )
 }
 
-function EnemyPools() {
-  return (
-    <group>
-      <EnemyPool kind="helicopter" />
-      <EnemyPool kind="anti-air" />
-      <EnemyPool kind="fighter" />
-      <EnemyPool kind="boss" />
-      <MinePool />
-      <MineBlastFieldPool />
-    </group>
-  )
-}
-
-const ENEMY_WARNING_CAPACITY = Object.values(ENEMY_CAPS).reduce((sum, value) => sum + value, 0)
-
 /**
- * The charge ring under a gun that is about to fire, which is now only ever
- * the battleship's bow gun - nothing else in the roster telegraphs. The ring
- * goes round the turret that is charging rather than on the street below it: a
- * mark ninety metres under the ship points at nothing the player can act on.
+ * The light an enemy carries after dark.
+ *
+ * Lamps on the models give each craft bright points; this gives those points
+ * something to sit inside. It is one additive puff of the family colour per
+ * enemy, billboarded at the craft, off while the sun is up and strongest at
+ * the floor of the night - so the darker the sky gets, the more each enemy
+ * lights itself, which is the only way a purple helicopter stays findable
+ * against a near-black city without being repainted gold.
+ *
+ * It is a glow, not a light: three.js keys every shader program on the scene's
+ * light count, so a real light per enemy would recompile every material in the
+ * city the moment a wave spawned. One pooled instanced quad costs a single
+ * draw call and nothing else.
  */
-function EnemyWarnings() {
+const enemyHaloGeometry = new THREE.PlaneGeometry(2, 2)
+const enemyHaloMaterial = new THREE.MeshBasicMaterial({
+  map: entityHaloTexture,
+  transparent: true,
+  opacity: 0,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending,
+  toneMapped: false,
+})
+const ENEMY_HALO_CAPACITY = Object.values(ENEMY_CAPS).reduce((sum, count) => sum + count, 0)
+
+function EnemyHaloPool() {
   const { runtime } = useGame()
+  const { camera } = useThree()
   const ref = useRef<THREE.InstancedMesh>(null)
   const matrix = useMemo(() => new THREE.Matrix4(), [])
   const position = useMemo(() => new THREE.Vector3(), [])
   const scale = useMemo(() => new THREE.Vector3(), [])
-  const quaternion = useMemo(() => new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0)), [])
   const color = useMemo(() => new THREE.Color(), [])
   useFrame(({ clock }) => {
     const mesh = ref.current
     if (!mesh) return
+    const nightFactor = runtime.current.daylight.nightFactor
+    enemyHaloMaterial.opacity = enemyHaloOpacity(nightFactor)
+    if (enemyHaloMaterial.opacity <= 0.001) {
+      mesh.count = 0
+      return
+    }
     let count = 0
     for (const enemy of runtime.current.enemies.slots) {
-      if (!enemy.active || enemy.telegraph <= 0) continue
-      // The ship telegraphs two different things and they want different
-      // marks. The bow gun gets a ring around the turret that is charging - a
-      // mark on the street ninety metres below the hull points at nothing the
-      // player can act on. The flak stream gets an orange aim point at the
-      // locked target instead, because that stream lands up in the sky and the
-      // warning has to be exactly where the rounds will arrive.
-      const locked = enemy.flakLeft > 0
-      if (locked) position.set(enemy.target.x, enemy.target.y, enemy.target.z)
-      else position.set(enemy.muzzle.x, enemy.muzzle.y, enemy.muzzle.z)
-      const pulse = 1 + Math.sin(clock.elapsedTime * 18) * 0.12
-      scale.setScalar(3.4 * pulse)
-      matrix.compose(position, quaternion, scale)
+      if (!enemy.active) continue
+      const halo = ENEMY_HALO[enemy.kind]
+      position.set(enemy.position.x, enemy.position.y + halo.height, enemy.position.z)
+      // Shrinks with a craft being swallowed, so the glow leaves with the
+      // thing that was casting it instead of hanging in the air.
+      const absorbing = enemy.absorbing ? Math.max(0.04, enemy.absorbTimer / BEAM_ABSORB_TIME) : 1
+      scale.setScalar(halo.radius * absorbing)
+      matrix.compose(position, camera.quaternion, scale)
       mesh.setMatrixAt(count, matrix)
-      color.set(locked ? '#ff9a3d' : '#ff5f7c')
+      // An armed mine pulses its halo with its fuse, so the warning is the
+      // same beat on the model and around it.
+      const pulse = enemy.kind === 'drone' && enemy.mineArmed
+        ? 1.5 + 0.9 * Math.sin(clock.elapsedTime * 15) ** 2
+        : 1
+      color.set(ENEMY_GLOW[enemy.kind]).multiplyScalar(halo.strength * pulse)
       mesh.setColorAt(count, color)
       count += 1
     }
@@ -1528,174 +1631,28 @@ function EnemyWarnings() {
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
   })
   return (
-    <instancedMesh ref={ref} args={[undefined, undefined, ENEMY_WARNING_CAPACITY]} frustumCulled={false} renderOrder={4}>
-      <ringGeometry args={[0.82, 1, 20]} />
-      {/* No vertexColors - the same pitfall City.tsx documents on its lot and
-          beacon materials: this ring geometry carries no per-vertex colour
-          attribute, so the flag makes the shader multiply by one that isn't
-          there and the whole warning comes out black. The per-ring colour is
-          setColorAt above, which works on its own; it is the flag that has to
-          go, not the tint. Not tone-mapped: this is the player's only warning
-          and must not dim with the rest of the scene at night. */}
-      <meshBasicMaterial transparent opacity={0.9} depthWrite={false} side={THREE.DoubleSide} toneMapped={false} />
-    </instancedMesh>
+    <instancedMesh
+      ref={ref}
+      args={[enemyHaloGeometry, enemyHaloMaterial, ENEMY_HALO_CAPACITY]}
+      frustumCulled={false}
+      renderOrder={3}
+    />
   )
 }
 
-/**
- * The aim line: where a shot is about to go.
- *
- * The ring on the turret says the bow gun is charging. It does not say at
- * what, and at the range this fight is held that is most of the warning
- * missing. The line runs from the muzzle to the point the shot is predicted to
- * meet the craft, so getting off it is the dodge.
- *
- * Only the battleship draws one. It is the last weapon in the game that aims;
- * everything else fires the curtain, which announces itself by being slow.
- *
- * It exists only while the enemy is aiming. Once the shot leaves, the line goes
- * with it: a trajectory drawn after the fact is information arriving too late
- * to use, and at these speeds it would only clutter the screen. Everything the
- * player gets to decide happens inside the telegraph.
- */
-const AIM_LINE_CAPACITY = ENEMY_WARNING_CAPACITY
-
-function EnemyAimLines() {
-  const { runtime } = useGame()
-  const ref = useRef<THREE.InstancedMesh>(null)
-  const matrix = useMemo(() => new THREE.Matrix4(), [])
-  const position = useMemo(() => new THREE.Vector3(), [])
-  const scale = useMemo(() => new THREE.Vector3(), [])
-  const quaternion = useMemo(() => new THREE.Quaternion(), [])
-  const axis = useMemo(() => new THREE.Vector3(0, 1, 0), [])
-  const direction = useMemo(() => new THREE.Vector3(), [])
-  useFrame(() => {
-    const mesh = ref.current
-    if (!mesh) return
-    let count = 0
-    for (const enemy of runtime.current.enemies.slots) {
-      if (!enemy.active || !enemy.aiming || enemy.telegraph <= 0) continue
-      // Drawn from the frozen muzzle, which is exactly where the shot will
-      // leave from - so the line the player reacts to is the line they get.
-      direction.set(
-        enemy.target.x - enemy.muzzle.x,
-        enemy.target.y - enemy.muzzle.y,
-        enemy.target.z - enemy.muzzle.z,
-      )
-      const length = direction.length()
-      if (length < 0.5) continue
-      direction.divideScalar(length)
-      quaternion.setFromUnitVectors(axis, direction)
-      position.set(
-        enemy.muzzle.x + direction.x * length * 0.5,
-        enemy.muzzle.y + direction.y * length * 0.5,
-        enemy.muzzle.z + direction.z * length * 0.5,
-      )
-      // Thickens as the telegraph runs out, so "about to fire" is legible
-      // without reading a number. Measured against this shot's own telegraph -
-      // the bow gun waits far longer than a turret did, and a fixed per-kind
-      // figure would show both as the same warning.
-      const charge = Math.min(1, Math.max(0, 1 - enemy.telegraph / enemy.telegraphLength))
-      const girth = 0.09 + charge * 0.16
-      scale.set(girth, length, girth)
-      matrix.compose(position, quaternion, scale)
-      mesh.setMatrixAt(count, matrix)
-      count += 1
-    }
-    mesh.count = count
-    mesh.instanceMatrix.needsUpdate = true
-  })
+function EnemyPools() {
   return (
-    <instancedMesh ref={ref} args={[undefined, undefined, AIM_LINE_CAPACITY]} frustumCulled={false} renderOrder={4}>
-      <cylinderGeometry args={[1, 1, 1, 5]} />
-      {/* No vertexColors: plain cylinder geometry, no per-vertex colour
-          attribute - see the ring above. Additive on top of that would have
-          made the line not merely wrong but invisible, since black adds
-          nothing. Like the ring, it must not dim with the night. */}
-      <meshBasicMaterial color="#ff5f7c" transparent opacity={0.55} depthWrite={false} blending={THREE.AdditiveBlending} toneMapped={false} />
-    </instancedMesh>
+    <group>
+      <EnemyPool kind="helicopter" />
+      <EnemyPool kind="fighter" />
+      <EnemyPool kind="boss" />
+      <MinePool />
+      <MineBlastFieldPool />
+      <EnemyHaloPool />
+    </group>
   )
 }
 
-function EnemyProjectiles() {
-  const { runtime } = useGame()
-  const ref = useRef<THREE.InstancedMesh>(null)
-  const matrix = useMemo(() => new THREE.Matrix4(), [])
-  const position = useMemo(() => new THREE.Vector3(), [])
-  const scale = useMemo(() => new THREE.Vector3(), [])
-  const quaternion = useMemo(() => new THREE.Quaternion(), [])
-  const travel = useMemo(() => new THREE.Vector3(), [])
-  const shotAxis = useMemo(() => new THREE.Vector3(0, 1, 0), [])
-  useFrame(() => {
-    const mesh = ref.current
-    if (!mesh) return
-    let count = 0
-    for (const projectile of runtime.current.enemies.projectiles) {
-      // Orbs live in their own pool: they are slow curtain rounds, and the
-      // additive tracer look that suits the bow gun washes out against a
-      // bright sky exactly when a curtain most needs to be readable. With the
-      // rest of the roster on curtain fire, the bow gun is all that is left
-      // here - one shell at a time, and the only shot the player was warned
-      // about before it left.
-      if (!projectile.active || projectile.kind === 'orb') continue
-      position.set(projectile.position.x, projectile.position.y, projectile.position.z)
-      const size = 1.35
-      // Stretched along travel rather than a round dot: at these speeds a
-      // sphere gives no sense of which way a shot is going, and which way it
-      // is going is the only thing the player can act on once it is out.
-      travel.set(projectile.velocity.x, projectile.velocity.y, projectile.velocity.z)
-      const speed = travel.length()
-      if (speed > 0.001) {
-        travel.divideScalar(speed)
-        quaternion.setFromUnitVectors(shotAxis, travel)
-        scale.set(size, size * (1 + speed * 0.05), size)
-      } else {
-        quaternion.identity()
-        scale.setScalar(size)
-      }
-      matrix.compose(position, quaternion, scale)
-      mesh.setMatrixAt(count, matrix)
-      count += 1
-    }
-    mesh.count = count
-    mesh.instanceMatrix.needsUpdate = true
-  })
-  return (
-    <instancedMesh ref={ref} args={[undefined, undefined, ENEMY_MAX_PROJECTILES]} frustumCulled={false} renderOrder={5}>
-      <sphereGeometry args={[1, 6, 4]} />
-      {/* No vertexColors: plain sphere geometry, no per-vertex colour
-          attribute - see EnemyWarnings above. Additive blending on a black
-          result is an invisible shot, which is what this was. One weapon is
-          left in this pool, so the material carries its colour outright. */}
-      <meshBasicMaterial color="#ff5f7c" transparent opacity={0.94} depthWrite={false} blending={THREE.AdditiveBlending} toneMapped={false} />
-    </instancedMesh>
-  )
-}
-
-/**
- * The curtain rounds.
- *
- * Every gun outside the boss fires this now, so it is the single thing the
- * player reads the sky by, and it earns a real picture rather than a dot: a
- * white-hot centre with fire curling off it, tinted a soft red. See
- * `orbFlareTexture` for the drawing; here it is a camera-facing quad with a
- * slow per-orb spin, so the filaments turn as the round travels and it reads
- * as burning rather than as a decal being carried through the air.
- *
- * Red because red is the only colour the city's fire has ever been - the mine
- * shells, the boss's bow gun, the hull flash - and muted rather than hot,
- * because a saturated red at the size of a full curtain turns the screen into
- * an alarm. It should look like something burning at a distance; what carries
- * the urgency is how many of them there are.
- *
- * Two fixed 96-slot instanced meshes, reusing the projectile pool's own slots:
- * the flare, and an opaque core inside it. Deliberately NOT additive, unlike
- * every other shot. Additive blending buys glow at night and pays for it at
- * noon - against a bright sky it converges on white-on-white, which is how the
- * first pass of these was on screen for five seconds at a time without being
- * seen at all. A normal-blended opaque core is visible against anything the
- * sky can be.
- */
 /**
  * How big the round draws, against a hit radius of 0.7.
  *
@@ -2136,7 +2093,11 @@ function FixedEffectLights() {
     const drone = runtime.current.drone
     if (ufoLight.current) {
       ufoLight.current.position.set(drone.position.x, drone.position.y - 1.1, drone.position.z)
-      ufoLight.current.intensity = snapshot.beamActive ? 1.35 : 0.32
+      // Only the intensity moves with the cycle - the slot itself is mounted
+      // for the whole run, so the scene's light count never changes and no
+      // material gets recompiled when the sky does.
+      const nightFactor = runtime.current.daylight.nightFactor
+      ufoLight.current.intensity = (snapshot.beamActive ? 1.35 : 0.32) + nightFactor * 0.62
       ufoLight.current.color.set(ENTITY.UFO_RIM)
     }
     if (boostLight.current) {
@@ -2565,15 +2526,13 @@ export function DroneScene() {
       <TutorialCatMarker />
       <HazardPool />
       <EnemyPools />
-      <EnemyWarnings />
-      <EnemyAimLines />
-      <EnemyProjectiles />
       <OrbPool />
       <LaserProjectiles />
       <LaserBursts />
       <FireballPool />
       <TractorBeam />
       <UfoGroundPool />
+      <UfoNightGlow />
       <Ufo />
       <PostFx speed={snapshot.speed} impact={snapshot.impactFlash} impactKind={snapshot.impactKind} quality={quality} />
     </>

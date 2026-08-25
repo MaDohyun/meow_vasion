@@ -5,7 +5,7 @@ export type BeamObjectKind =
   | 'rooftop-structure' | 'tree' | 'utility-pole' | 'power-pylon' | 'communications'
   | 'trash-bin' | 'park-bench' | 'bus-stop' | 'subway'
   | 'drone' | 'helicopter'
-  | 'fighter' | 'anti-air' | 'boss'
+  | 'fighter' | 'boss'
 
 export type BeamWorldProp = {
   id: string
@@ -61,7 +61,6 @@ const DEFAULT_DIAMETER: Record<BeamObjectKind, number> = {
   fighter: 4.4,
   helicopter: 4.6,
   explosive: 5.1,
-  'anti-air': 5.2,
   'rooftop-structure': 6.2,
   tree: 4.4,
   'utility-pole': 2.8,
@@ -76,9 +75,8 @@ const DEFAULT_DIAMETER: Record<BeamObjectKind, number> = {
   boss: 16,
 }
 
-/** Building-mounted anti-air emplacements and the battleship are the beam
- *  objects treated as architecture. Everything else is eligible once it is no
- *  wider than the hull itself - `maxDiameter` is the current UFO diameter -
+/** The battleship is the one beam object treated as architecture. Everything
+ *  else is eligible once it is no wider than the hull itself - `maxDiameter` is the current UFO diameter -
  *  though among enemies only the drone mine is even grabbable: the rest are
  *  flagged `beamImmune`.
  *
@@ -96,7 +94,7 @@ export function isAbsorbable(kind: BeamObjectKind, diameter = DEFAULT_DIAMETER[k
   // one, but a bomb is never banked as a meal - drawn to the hull it strikes
   // and detonates through the same rules as flying into it, so the swallow
   // path must never quietly defuse it first.
-  return kind !== 'anti-air' && kind !== 'boss' && kind !== 'drone' && diameter <= maxDiameter
+  return kind !== 'boss' && kind !== 'drone' && diameter <= maxDiameter
 }
 
 export type BeamObject = {

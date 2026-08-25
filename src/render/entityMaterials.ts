@@ -2,7 +2,7 @@ import * as THREE from 'three'
 import { ENTITY, FX } from '../constants/palette'
 import type { CrowdKind } from '../core/crowds'
 import type { EnemyKind } from '../core/enemies'
-import { applyNightVisibility } from './nightVisibility'
+import { applyNightVisibility, type NightRamp } from './nightVisibility'
 
 /**
  * Materials for everything the player has to spot: crowds, enemies and cars.
@@ -15,11 +15,11 @@ import { applyNightVisibility } from './nightVisibility'
  * The glow is deliberately small at noon. It exists to stop things vanishing,
  * not to make the city look like it is full of lanterns at midday.
  *
- * Crowds and cars keep a small flat emissive because their glow colours are
- * near-neutral - they lift a body without recolouring it, and a pedestrian is
- * two pixels of silhouette on a dark street. Enemies carry none: they are big
- * enough to find by shape, and every glow tried on them read as a marker
- * pasted over the city. See `nightVisibility` for what is left.
+ * Crowds and cars keep a flat emissive because their glow colours are already
+ * near-neutral - they lift a body without recolouring it. The enemies could
+ * not: their glows are family colours, and a family colour added flat at night
+ * strength repaints the whole model. Those moved to `nightVisibility`, which
+ * re-emits each surface's own colour instead. See that file for why.
  */
 
 type GlowRamp = { material: THREE.MeshToonMaterial; day: number; night: number }
@@ -81,6 +81,15 @@ function applyPedestrianOutfits(material: THREE.MeshToonMaterial) {
   return material
 }
 
+/** Every enemy family keeps its own glow colour. A single shared colour would
+ *  erase the type read the wave design depends on. */
+export const ENEMY_GLOW: Record<EnemyKind, string> = {
+  drone: ENTITY.DRONE_GLOW,
+  helicopter: ENTITY.HELICOPTER_GLOW,
+  fighter: ENTITY.FIGHTER_GLOW,
+  boss: ENTITY.BOSS_GLOW,
+}
+
 export const crowdMaterial: Record<CrowdKind, THREE.Material> = {
   pedestrian: applyPedestrianOutfits(applyNightVisibility(
     withGlowRamp(new THREE.MeshToonMaterial({ vertexColors: true, emissive: new THREE.Color(PEDESTRIAN_VISIBILITY_GLOW) }), 0.015, 0.16),
@@ -93,35 +102,88 @@ export const crowdMaterial: Record<CrowdKind, THREE.Material> = {
 }
 
 /**
- * Enemies are lit by the scene, and nothing else.
+ * What the night does to an enemy, in one place.
  *
- * They used to carry a family-coloured emissive that climbed to 0.74 at night,
- * then - after that was found to repaint every model gold - a hue-preserving
- * lift, baked running lights and a halo. All of it is gone. The glow read as
- * markers pasted over the city rather than as craft flying through it, and a
- * sky full of them was tiring to look at.
- *
- * What is left is the aiming warning, which is not decoration: it is the only
- * thing that says a helicopter has locked on, and it is completely absent until
- * one has. The battleship stays out of even that - it fires almost
- * continuously, so an always-on warning would say nothing, and its telegraph is
- * the turret ring and the aim line instead.
+ * `flat` is the only term still tinted by the family colour across the whole
+ * body, and it is now a whisper - it used to run to 0.74, which is where the
+ * gold wash came from. The visibility budget it was carrying moved to `lift`,
+ * which re-emits the model's own colours, and to `lamp`, which lights the
+ * running lights tagged in the geometry. All three rise with the night, so a
+ * darker sky means an enemy carries more of its own light, not a different
+ * colour.
  */
+const ENEMY_NIGHT: Record<'small' | 'boss', { flat: NightRamp; lift: NightRamp; rim: NightRamp; lamp: NightRamp }> = {
+  small: { flat: [0.03, 0.1], lift: [0.05, 0.72], rim: [0.1, 0.34], lamp: [0.4, 2.6] },
+  // The battleship is deliberately the least emissive thing in the enemy set.
+  // Everything else is a small silhouette that has to stay findable at night
+  // by glowing; the ship is enormous and finds itself, so glow here only
+  // erases its panelling, turrets and stripes - the only reason it reads as a
+  // ship at all. Its lamps do the night work instead.
+  boss: { flat: [0.03, 0.07], lift: [0.04, 0.38], rim: [0.1, 0.3], lamp: [0.35, 2.4] },
+}
+
 function makeEnemyMaterial(kind: EnemyKind) {
+  const night = ENEMY_NIGHT[kind === 'boss' ? 'boss' : 'small']
   return applyNightVisibility(
-    new THREE.MeshToonMaterial({ vertexColors: true }),
-    { alert: kind !== 'boss' },
+    withGlowRamp(
+      new THREE.MeshToonMaterial({ vertexColors: true, emissive: new THREE.Color(ENEMY_GLOW[kind]) }),
+      night.flat[0],
+      night.flat[1],
+    ),
+    {
+      rimColor: ENEMY_GLOW[kind],
+      rim: night.rim,
+      lift: night.lift,
+      lamp: night.lamp,
+      rimPower: 2.8,
+      // The battleship stays out of the alert channel. It fires almost
+      // continuously, so a lock-on warning that is always on tells the player
+      // nothing; its warning is the turret ring and the aim line.
+      alert: kind !== 'boss',
+    },
   )
 }
 
 /** Mines draw from `drone`: they are the drone family's only member, and
- *  sharing this keeps their behaviour identical to everything else. */
+ *  sharing this keeps their night behaviour identical to everything else. */
 export const enemyMaterial: Record<EnemyKind, THREE.Material> = {
   drone: makeEnemyMaterial('drone'),
   helicopter: makeEnemyMaterial('helicopter'),
   fighter: makeEnemyMaterial('fighter'),
-  'anti-air': makeEnemyMaterial('anti-air'),
   boss: makeEnemyMaterial('boss'),
+}
+
+/**
+ * The halo each enemy carries after dark, in world metres and in strength.
+ *
+ * Lamps are small and bloom is a post-pass luxury that only fires on
+ * near-white pixels, so the family colour needs somewhere it can be seen from
+ * a distance without being painted onto the hull. This is that somewhere: an
+ * additive puff of the family colour around the craft, off at noon and
+ * strongest at the floor of the night. It is drawn from one pooled instanced
+ * quad, so the whole effect is a single draw call and no new scene light -
+ * which is the only way to add light here without recompiling every material
+ * in the scene.
+ */
+export const ENEMY_HALO: Record<EnemyKind, { radius: number; strength: number; height: number }> = {
+  // A mine already carries its blast shell, so its halo only has to say
+  // "something is hanging there", not "look at this".
+  drone: { radius: 2.8, strength: 0.3, height: 0 },
+  helicopter: { radius: 5.4, strength: 0.5, height: 0 },
+  fighter: { radius: 6.2, strength: 0.46, height: 0 },
+  // The emplacement's position is its footing on the roof; its mount and lamp
+  // are most of three metres above that.
+  // Seventy metres of hull. The radius is set so the ring clears the beam
+  // rather than landing on the deck, and the strength is the lowest in the
+  // set - anything more and the fight is played inside a blue cloud.
+  boss: { radius: 44, strength: 0.3, height: 2 },
+}
+
+/** How the halo comes in across the cycle. Squared, so it is genuinely absent
+ *  in daylight and only really arrives once the sky has committed to night. */
+export function enemyHaloOpacity(nightFactor: number) {
+  const t = Math.max(0, Math.min(1, nightFactor))
+  return t * t * 0.92
 }
 
 // Cars are the bulkiest beam target on the street, and with no emissive at all

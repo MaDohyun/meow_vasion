@@ -157,6 +157,18 @@ export function createLaserPool(): LaserProjectile[] {
   }))
 }
 
+/**
+ * One colour for every landed shot.
+ *
+ * The impact flash used to be keyed to what was hit - blue off a wall, amber
+ * off a car, yellow off the pavement - which made the same weapon look like
+ * six of them and left the player reading the surface instead of the hit. The
+ * laser is one thing, so it lands as one thing: the red it already used on a
+ * fighter. What was struck is told by the fireball, the debris and the damage,
+ * not by recolouring the muzzle's punctuation.
+ */
+export const LASER_IMPACT_COLOR = '#ff557f'
+
 export function createLaserBurstPool(): LaserBurst[] {
   return Array.from({ length: LASER_MAX_BURSTS }, (_, slot) => ({
     id: `laser-burst:${slot}`,
@@ -165,11 +177,11 @@ export function createLaserBurstPool(): LaserBurst[] {
     position: { x: 0, y: 0, z: 0 },
     life: 0,
     duration: 0.22,
-    color: '#ff79bd',
+    color: LASER_IMPACT_COLOR,
   }))
 }
 
-export function triggerLaserBurst(pool: LaserBurst[], kind: LaserBurst['kind'], position: Vec3, color = kind === 'muzzle' ? '#fff3a3' : '#ff79bd') {
+export function triggerLaserBurst(pool: LaserBurst[], kind: LaserBurst['kind'], position: Vec3, color = kind === 'muzzle' ? '#fff3a3' : LASER_IMPACT_COLOR) {
   const burst = pool.find((item) => !item.active)
     ?? pool.reduce((oldest, item) => item.life < oldest.life ? item : oldest)
   burst.active = true

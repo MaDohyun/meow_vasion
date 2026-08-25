@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { DRONE_DEFAULTS, type Aabb } from '../src/core/drone'
 import {
-  ANTI_AIR_ORB_INTERVAL,
-  ANTI_AIR_ORB_RANGE,
-  ANTI_AIR_ORB_SPEED,
   FIGHTER_ORB_INTERVAL,
   FIGHTER_ORB_RANGE,
   FIGHTER_PASS_SPEED,
@@ -24,18 +21,6 @@ function attackRun(position: { x: number; y: number; z: number }, bearing: numbe
   fighter.rotation.y = bearing
   fighter.attackTimer = 0
   return { state, fighter }
-}
-
-/** One emplaced gun, timer cocked, with nothing else on the field. */
-function emplacement(position: { x: number; y: number; z: number }) {
-  const state = createEnemyState(0xaa7)
-  const gun = state.slots.find((slot) => slot.kind === 'anti-air')!
-  gun.active = true
-  gun.mode = 'fixed'
-  gun.position = { ...position }
-  gun.hitRadius = 2.2
-  gun.attackTimer = 0
-  return { state, gun }
 }
 
 const activeOrbs = (state: ReturnType<typeof createEnemyState>) =>
@@ -125,7 +110,6 @@ describe('fighter curtain fire', () => {
       expect(Math.hypot(orb.velocity.x, orb.velocity.y, orb.velocity.z)).toBeCloseTo(ORB_SPEED, 3)
     }
     expect(ORB_SPEED).toBeLessThan(DRONE_DEFAULTS.maxSpeed)
-    expect(ANTI_AIR_ORB_SPEED).toBeLessThan(DRONE_DEFAULTS.maxSpeed)
   })
 
   it('dies on a building, so cover is real cover', () => {
@@ -148,65 +132,6 @@ describe('fighter curtain fire', () => {
     // The same parked spot: open air is hit, cover is not.
     expect(hitsBehindWall([])).toBeGreaterThan(0)
     expect(hitsBehindWall([wall])).toBe(0)
-  })
-})
-
-describe('anti-air curtain fire', () => {
-  it('fires one orb per cooldown at a craft inside its range', () => {
-    const { state } = emplacement({ x: 0, y: 30, z: 0 })
-    const player = { x: 0, y: 40, z: 60 }
-    stepEnemies(state, player, 1 / 60)
-    expect(activeOrbs(state)).toHaveLength(1)
-    // Nothing else leaves until the cooldown is up: no lock, no stream.
-    for (let tick = 0; tick < Math.floor(ANTI_AIR_ORB_INTERVAL * 60) - 4; tick += 1) {
-      stepEnemies(state, player, 1 / 60)
-    }
-    expect(activeOrbs(state)).toHaveLength(1)
-    for (let tick = 0; tick < 8; tick += 1) stepEnemies(state, player, 1 / 60)
-    expect(activeOrbs(state)).toHaveLength(2)
-  })
-
-  it('never locks on: no telegraph, no aim line, no lead', () => {
-    // The three-second lock and the blinking beam were a second grammar for
-    // one verb. What is left is a gun that shoots at where you are.
-    const { state, gun } = emplacement({ x: 0, y: 30, z: 0 })
-    const player = { x: 0, y: 40, z: 60 }
-    const velocity = { x: 0, y: 0, z: 25 }
-    for (let tick = 0; tick < 60 * 6; tick += 1) {
-      stepEnemies(state, player, 1 / 60, velocity)
-      expect(gun.aiming).toBe(false)
-      expect(gun.telegraph).toBe(0)
-    }
-    for (const orb of activeOrbs(state)) {
-      // Straight at the craft's own position, so the bearing is exact.
-      const range = Math.hypot(player.x, player.y - 30, player.z)
-      expect(orb.velocity.z / ANTI_AIR_ORB_SPEED).toBeCloseTo(player.z / range, 4)
-    }
-  })
-
-  it('holds its fire past its range, and at anything below the emplacement', () => {
-    const far = emplacement({ x: 0, y: 30, z: 0 })
-    for (let tick = 0; tick < 60; tick += 1) {
-      stepEnemies(far.state, { x: 0, y: 40, z: ANTI_AIR_ORB_RANGE + 15 }, 1 / 60)
-    }
-    expect(activeOrbs(far.state)).toHaveLength(0)
-
-    // A rooftop gun cannot shoot down through its own building.
-    const below = emplacement({ x: 0, y: 30, z: 0 })
-    for (let tick = 0; tick < 60; tick += 1) stepEnemies(below.state, { x: 0, y: 12, z: 40 }, 1 / 60)
-    expect(activeOrbs(below.state)).toHaveLength(0)
-  })
-
-  it('reaches the far edge of its range before it burns out', () => {
-    // A round that dies short of the envelope would make the range a lie.
-    const { state } = emplacement({ x: 0, y: 30, z: 0 })
-    const player = { x: 0, y: 30, z: ANTI_AIR_ORB_RANGE - 1 }
-    stepEnemies(state, player, 1 / 60)
-    let hits = 0
-    for (let tick = 0; tick < 60 * 8; tick += 1) {
-      if (stepEnemyProjectiles(state, player, 1 / 60, 1.05) > 0) hits += 1
-    }
-    expect(hits).toBe(1)
   })
 })
 
