@@ -1,15 +1,19 @@
-import { seedForWorldCell } from './world'
+import { lakeClusterForCell, seedForWorldCell } from './world'
 
 export const LAKE_ABSORPTION_LITRES_PER_SECOND = 50
-// The floor the drag ramps down to at full depth: half speed.
+// The floor the drag ramps down to at full depth: two fifths of top speed.
 //
-// It was 0.2, and on top of that the runtime multiplied the craft's velocity
-// by this every frame as well - a per-frame damping, not a speed limit, which
-// at sixty hertz pinned the craft to the spot. Pumping water read as the beam
-// being broken rather than as water being heavy. The runtime now scales the
-// throttle only (one honest top-speed cap), and the floor is the number the
-// general quotes: half speed, still flying, still able to leave.
-export const LAKE_BEAM_SPEED_SCALE = 0.5
+// It was half, and water took another fifth off that. Water pays well now and
+// drains a whole lake in one sitting, so what it costs has to be felt for the
+// whole sitting rather than noticed once on the way in.
+//
+// It is still a top-speed cap and not a per-frame damping. An earlier version
+// multiplied the craft's velocity by this every frame as well, which at sixty
+// hertz pinned it to the spot - pumping read as the beam being broken rather
+// than as water being heavy. The runtime scales the throttle only, so the
+// craft still accelerates, steers and strafes; it just tops out low. However
+// heavy it gets, the pilot can always fly out of the lake.
+export const LAKE_BEAM_SPEED_SCALE = 0.4
 // Metres of shore-to-craft distance before the drag reaches its floor. Short
 // enough that a real lake (2-4 cells) has room to reach it away from every
 // edge, long enough that stepping just past the shoreline barely slows you.
@@ -103,19 +107,39 @@ export function lakeDrainSizeGain(cellX: number, cellZ: number) {
   return lakeCellCapacity(cellX, cellZ) * LAKE_DRAIN_SIZE_GAIN_PER_LITRE
 }
 
-/** Litres drawn per lake tile, keyed by cell. Absent means untouched. */
-export type LakeDrainState = { drawn: Map<string, number> }
+/**
+ * Litres drawn per lake tile, and the lakes that have gone dry.
+ *
+ * Two structures because they answer two questions. `drawn` is how far into
+ * the tile under the beam the pilot has got; `dryClusters` is which bodies of
+ * water no longer exist. Emptying one tile empties the lake it belongs to, so
+ * the second is not derivable from the first.
+ */
+export type LakeDrainState = { drawn: Map<string, number>; dryClusters: Set<string> }
 
 export function createLakeDrainState(): LakeDrainState {
-  return { drawn: new Map() }
+  return { drawn: new Map(), dryClusters: new Set() }
 }
 
 export function lakeCellKey(cellX: number, cellZ: number) {
   return `${cellX}:${cellZ}`
 }
 
-/** What the tile still holds. Zero once it is dry. */
+/**
+ * What the tile still holds. Zero once it, or the lake it is joined to, is dry.
+ *
+ * Water does not sit in tiles, it sits in a lake - so drinking one tile to the
+ * bottom takes the tiles touching it with it. The alternative was a lake that
+ * empties a square at a time and leaves a checkerboard of puddles standing at
+ * the same level, which is not what draining looks like.
+ *
+ * The pilot is paid for the litres they actually pumped, so a lake is worth
+ * one tile however many tiles it has. That is the cost of the rule and it is
+ * the right way round: the tiles vanish for free, they do not pay for free.
+ */
 export function lakeCellRemaining(state: LakeDrainState, cellX: number, cellZ: number) {
+  const cluster = lakeClusterForCell(cellX, cellZ)
+  if (cluster !== null && state.dryClusters.has(cluster)) return 0
   const drawn = state.drawn.get(lakeCellKey(cellX, cellZ)) ?? 0
   return Math.max(0, lakeCellCapacity(cellX, cellZ) - drawn)
 }
@@ -127,16 +151,20 @@ export function lakeCellDrained(state: LakeDrainState, cellX: number, cellZ: num
 /**
  * Banks litres against a tile. Returns true only on the draw that empties it,
  * so the caller can pay the growth once rather than every frame after.
+ *
+ * The draw that empties the tile empties its whole lake with it.
  */
 export function drawFromLakeCell(state: LakeDrainState, cellX: number, cellZ: number, litres: number) {
   if (!(litres > 0)) return false
+  if (lakeCellRemaining(state, cellX, cellZ) <= 0) return false
   const capacity = lakeCellCapacity(cellX, cellZ)
   const key = lakeCellKey(cellX, cellZ)
-  const before = state.drawn.get(key) ?? 0
-  if (before >= capacity) return false
-  const after = Math.min(capacity, before + litres)
+  const after = Math.min(capacity, (state.drawn.get(key) ?? 0) + litres)
   state.drawn.set(key, after)
-  return after >= capacity
+  if (after < capacity) return false
+  const cluster = lakeClusterForCell(cellX, cellZ)
+  if (cluster !== null) state.dryClusters.add(cluster)
+  return true
 }
 
 /**
@@ -147,17 +175,17 @@ export function drawFromLakeCell(state: LakeDrainState, cellX: number, cellZ: nu
  * game that is not worth doing, which is a strange thing to build a rung of
  * the ladder out of.
  *
- * A point a litre is fifty a second: an average tile pays about 400 and an
- * average lake about 1200, for eight and twenty-six seconds of held beam. It
- * was two a litre and that was too much - the general sells water as research
- * data worth diverting for, and at double this the richest lake in the world
- * cleared the whole sample rung on its own. A detour worth taking should not
- * also be a rung worth skipping.
+ * A point a litre is fifty a second: 300 to 500 for the one tile a lake gets
+ * drunk from, in six to ten seconds of held beam. It was two a litre and that
+ * was too much - the general sells water as research data worth diverting for,
+ * and at double this a lake cleared most of the sample rung on its own. A
+ * detour worth taking should not also be a rung worth skipping.
  *
  * The rate can be a real one rather than a trickle because the supply is not a
- * rate at all, it is a budget. Tiles do not refill, so a body of water pays
- * what it pays once and is a dry basin from then on. What the pilot spends for
- * it is half their top speed in the one place the craft cannot run from.
+ * rate at all, it is a budget - and a small one. Draining a tile takes its
+ * whole lake with it, so a body of water pays for the single tile the pilot
+ * actually pumped and is a dry basin from then on. What they spend for it is
+ * three fifths of their top speed in the one place the craft cannot run from.
  *
  * Deliberately NOT scaled by the size multiplier, unlike every other beam
  * payout. Water comes in at a flat 50 L/s whatever the craft weighs, so the

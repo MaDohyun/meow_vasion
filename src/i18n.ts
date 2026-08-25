@@ -214,8 +214,8 @@ export type Strings = {
    *  worth the same, so the callout takes the score rather than quoting a
    *  car's price at a tanker. */
   msgVehicleDestroyed: (reward: number) => string
-  /** A lake tile pumped dry: the water is gone for the run and the craft grew
-   *  for it. Said once, on the frame the tile empties. */
+  /** A lake pumped dry: draining one tile takes the whole body of water with
+   *  it, and the craft grew for it. Said once, on the frame it empties. */
   msgLakeDrained: string
   msgTurbo: string
   msgTurboOverload: string
@@ -380,7 +380,7 @@ export const STRINGS: Record<Language, Strings> = {
         '물을 퍼 올렸군, 대원.',
         '물 타일 위에서 빔을 쓰면 [[기체의 속도가 대폭 저하된다]]. 물이 그만큼 무겁기 때문이다.',
         '하지만 물은 소중한 지구의 연구 데이터다. 많은 스코어를 얻을 수 있으니 보인다면 적극 흡수하도록.',
-        '대신 한 칸을 [[끝까지 비우면 물이 말라 없어지고 만다]]. 유의하도록!',
+        '대신 한 칸을 [[끝까지 비우면 그 호수 전체가 말라 없어지고 만다]]. 유의하도록!',
       ],
       'absorb-samples': [
         '잘했다! 표본 수집 임무는 완수다.',
@@ -461,7 +461,7 @@ export const STRINGS: Record<Language, Strings> = {
     msgAbsorbedObject: (reward) => `대형 오브젝트 흡수 · +${reward}`,
     msgEnemyDown: (reward) => `적 격추 · +${reward}`,
     msgVehicleDestroyed: (reward) => `차량 파괴 · +${reward}`,
-    msgLakeDrained: '호수 한 칸 고갈 · 기체 성장',
+    msgLakeDrained: '호수 고갈 · 기체 성장',
     msgTurbo: '터보 가동',
     msgTurboOverload: '터보 과부하 · 잠시 사용 불가',
     msgBoonLaser: '레이저 위력 강화',
@@ -569,7 +569,7 @@ export const STRINGS: Record<Language, Strings> = {
         '水を汲み上げたな、隊員。',
         '水タイルの上でビームを使うと[[機体の速度が大幅に低下する]]。それだけ水が重いということだ。',
         'だが水は貴重な地球の研究データだ。多くのスコアが得られる、見つけたら積極的に吸収しろ。',
-        'ただし一枚を[[飲み干すと水は涸れて消えてしまう]]。留意するように！',
+        'ただし一枚を[[飲み干すとその湖全体が涸れて消えてしまう]]。留意するように！',
       ],
       'absorb-samples': [
         'よくやった！ 標本収集の任務は完了だ。',
@@ -650,7 +650,7 @@ export const STRINGS: Record<Language, Strings> = {
     msgAbsorbedObject: (reward) => `大型オブジェクト吸収 · +${reward}`,
     msgEnemyDown: (reward) => `敵を撃破 · +${reward}`,
     msgVehicleDestroyed: (reward) => `車両を破壊 · +${reward}`,
-    msgLakeDrained: '湖を一枚干上がらせた · 機体が成長',
+    msgLakeDrained: '湖を干上がらせた · 機体が成長',
     msgTurbo: 'ターボ作動',
     msgTurboOverload: 'ターボ過負荷 · 一時使用不可',
     msgBoonLaser: 'レーザー威力 強化',
@@ -758,7 +758,7 @@ export const STRINGS: Record<Language, Strings> = {
         'Water pumped, pilot.',
         'Running the beam over a water tile [[slows the craft down badly]]. Water is that heavy.',
         'But water is precious Earth research data. It is worth a great deal of score - absorb it wherever you see it.',
-        'Only know that once a tile is [[drunk dry, its water is gone for good]]. Bear that in mind!',
+        'Only know that draining one tile [[takes the whole lake with it, for good]]. Bear that in mind!',
       ],
       'absorb-samples': [
         'Well done! The sample collection mission is complete.',
@@ -839,7 +839,7 @@ export const STRINGS: Record<Language, Strings> = {
     msgAbsorbedObject: (reward) => `LARGE OBJECT ABSORBED · +${reward}`,
     msgEnemyDown: (reward) => `ENEMY DOWN · +${reward}`,
     msgVehicleDestroyed: (reward) => `VEHICLE DESTROYED · +${reward}`,
-    msgLakeDrained: 'LAKE TILE DRAINED · CRAFT GREW',
+    msgLakeDrained: 'LAKE DRAINED · CRAFT GREW',
     msgTurbo: 'TURBO ENGAGED',
     msgTurboOverload: 'TURBO OVERLOAD · OFFLINE BRIEFLY',
     msgBoonLaser: 'LASER POWER UP',

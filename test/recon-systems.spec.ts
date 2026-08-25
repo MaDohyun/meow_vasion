@@ -10,6 +10,7 @@ import {
   drawFromLakeCell,
   lakeCellCapacity,
   lakeCellDrained,
+  lakeCellKey,
   lakeCellRemaining,
   lakeDrainSizeGain,
   lakeScorePayout,
@@ -18,7 +19,7 @@ import {
 } from '../src/core/lakes'
 import { MISSION_TARGETS } from '../src/core/missions'
 import { SIZE_GAIN } from '../src/core/size'
-import type { ProceduralBuilding } from '../src/core/world'
+import { lakeCellsNear, type ProceduralBuilding } from '../src/core/world'
 
 const building = (height: number): ProceduralBuilding => ({
   id: `building:${height}`, cellX: 0, cellZ: 0,
@@ -33,8 +34,8 @@ describe('recon overhaul support systems', () => {
     const active = stepLakeAbsorption(20, 2, true, 20)
     expect(active.litres).toBe(120)
     expect(active.absorbed).toBe(100)
-    // Half speed, not a standstill: the craft can still leave the lake.
-    expect(LAKE_BEAM_SPEED_SCALE).toBe(0.5)
+    // Slow, never a standstill: the craft can still leave the lake.
+    expect(LAKE_BEAM_SPEED_SCALE).toBe(0.4)
     expect(active.speedScale).toBeCloseTo(LAKE_BEAM_SPEED_SCALE)
     expect(active.anchored).toBe(true)
     expect('ballast' in active).toBe(false)
@@ -49,7 +50,7 @@ describe('recon overhaul support systems', () => {
     expect(shallow.anchored).toBe(true)
     expect(shallow.speedScale).toBeGreaterThan(0.9)
     // ...and it keeps easing down as the craft pushes toward open water,
-    // bottoming out at the 80%-slower floor only once fully out from shore.
+    // bottoming out at the floor only once fully out from shore.
     const mid = stepLakeAbsorption(0, 1, true, 6)
     expect(mid.speedScale).toBeLessThan(shallow.speedScale)
     expect(mid.speedScale).toBeGreaterThan(LAKE_BEAM_SPEED_SCALE)
@@ -89,20 +90,24 @@ describe('recon overhaul support systems', () => {
     expect(lakeScorePayout(200, 0)).toBe(0)
   })
 
-  it('empties a lake tile after its capacity and never refills it', () => {
+  it('empties the whole lake the drained tile belongs to, and never refills it', () => {
     const lakes = createLakeDrainState()
-    const [cellX, cellZ] = [3, -7]
-    const capacity = lakeCellCapacity(cellX, cellZ)
-    expect(lakeCellRemaining(lakes, cellX, cellZ)).toBe(capacity)
-    expect(lakeCellDrained(lakes, cellX, cellZ)).toBe(false)
+    // A real generated lake, so the cluster rule is exercised against the
+    // shapes the world actually builds rather than an invented pair of cells.
+    const cells = lakeCellsNear({ x: 0, z: 0 }, 900, [])
+    const lake = cells.filter((cell) => cell.id === cells[0]!.id)
+    expect(lake.length).toBeGreaterThan(1)
+    const [pumped, ...joined] = lake
+    const capacity = lakeCellCapacity(pumped!.cellX, pumped!.cellZ)
+    expect(lakeCellRemaining(lakes, pumped!.cellX, pumped!.cellZ)).toBe(capacity)
 
     let litres = 0
     let drained = false
     let seconds = 0
     while (!drained && seconds < 60) {
-      const remaining = lakeCellRemaining(lakes, cellX, cellZ)
+      const remaining = lakeCellRemaining(lakes, pumped!.cellX, pumped!.cellZ)
       const step = stepLakeAbsorption(litres, 1 / 60, true, 20, remaining)
-      drained = drawFromLakeCell(lakes, cellX, cellZ, step.absorbed)
+      drained = drawFromLakeCell(lakes, pumped!.cellX, pumped!.cellZ, step.absorbed)
       litres = step.litres
       seconds += 1 / 60
     }
@@ -110,17 +115,26 @@ describe('recon overhaul support systems', () => {
     expect(seconds).toBeCloseTo(capacity / LAKE_ABSORPTION_LITRES_PER_SECOND, 1)
     // Never over-draws: the last frame is clipped to what the tile had left.
     expect(litres).toBeCloseTo(capacity, 6)
-    expect(lakeCellRemaining(lakes, cellX, cellZ)).toBe(0)
-    expect(lakeCellDrained(lakes, cellX, cellZ)).toBe(true)
 
-    // Dry for the rest of the run. Holding the beam over it takes nothing,
-    // and the drain never reports a second time - the growth is paid once.
-    expect(stepLakeAbsorption(litres, 1, true, 20, lakeCellRemaining(lakes, cellX, cellZ)).absorbed).toBe(0)
-    expect(drawFromLakeCell(lakes, cellX, cellZ, 500)).toBe(false)
-    expect(lakeCellRemaining(lakes, cellX, cellZ)).toBe(0)
+    // Every tile joined to it went with it, without being pumped - a lake
+    // empties as a lake, not a square at a time.
+    expect(lakeCellDrained(lakes, pumped!.cellX, pumped!.cellZ)).toBe(true)
+    for (const cell of joined) {
+      expect(lakeCellDrained(lakes, cell.cellX, cell.cellZ), `${cell.cellX}:${cell.cellZ}`).toBe(true)
+      expect(lakeCellRemaining(lakes, cell.cellX, cell.cellZ)).toBe(0)
+      // And they paid nothing on the way out: the pilot banked one tile.
+      expect(lakes.drawn.has(lakeCellKey(cell.cellX, cell.cellZ))).toBe(false)
+      expect(stepLakeAbsorption(litres, 1, true, 20, lakeCellRemaining(lakes, cell.cellX, cell.cellZ)).absorbed).toBe(0)
+    }
 
-    // A neighbouring tile is untouched: the lake drains a cell at a time.
-    expect(lakeCellDrained(lakes, cellX + 1, cellZ)).toBe(false)
+    // Dry for the rest of the run, and the drain never reports twice - the
+    // growth is paid once however long the beam stays on.
+    expect(drawFromLakeCell(lakes, pumped!.cellX, pumped!.cellZ, 500)).toBe(false)
+    for (const cell of joined) expect(drawFromLakeCell(lakes, cell.cellX, cell.cellZ, 500)).toBe(false)
+
+    // A different lake is untouched.
+    const other = cells.find((cell) => cell.id !== cells[0]!.id)!
+    expect(lakeCellDrained(lakes, other.cellX, other.cellZ)).toBe(false)
   })
 
   it('rolls every tile a capacity from its own coordinates, and only its own', () => {
