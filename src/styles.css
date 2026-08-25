@@ -120,6 +120,10 @@ button { font: inherit; }
    that stub rather than of the bar. */
 .mission-panel > .mission-row { display:grid; grid-template-columns:24px minmax(0,1fr) auto; align-items:center; gap:9px; min-height:33px; color:var(--cream); font-size:15px; font-weight:900; line-height:1.4; word-break:keep-all; }
 .mission-panel > .mission-row + .mission-row { border-top:1px solid var(--hud-rule); }
+/* Japanese objectives contain no spaces inside the main clause. Keep normal
+   word boundaries where they exist, but let that clause wrap before it can
+   spill into the fixed progress-number column. */
+.mission-panel > .mission-row > span { min-width:0; overflow-wrap:anywhere; }
 /* The glyph column. Emoji ignore the monospace face the rest of the HUD is
    set in, so the width is pinned here rather than left to the font. */
 .mission-panel > .mission-row i { font-style:normal; font-size:17px; line-height:1; text-align:center; }

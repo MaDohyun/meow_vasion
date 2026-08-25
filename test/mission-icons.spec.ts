@@ -44,6 +44,12 @@ describe('mission gauge markup', () => {
     expect(css).toMatch(/\.mission-panel\s*>\s*\.mission-row\s*\{/)
   })
 
+  it('wraps long translated objectives before the progress column', () => {
+    const copy = css.match(/^\.mission-panel > \.mission-row > span \{[^}]*\}/m)?.[0] ?? ''
+    expect(copy).toBeTruthy()
+    expect(copy).toMatch(/overflow-wrap\s*:\s*anywhere/)
+  })
+
   it('leaves the gauge fill free to span the full bar', () => {
     // A grid or flex container would place the fill in a track; the gauge has
     // to stay a plain block so `width: NN%` is NN% of the bar.
