@@ -79,18 +79,23 @@ export const MISSION_TARGETS: Record<MissionQuestId, number> = {
   // felt in the first second, so the rest was the pilot sitting still in the
   // one place the craft cannot run from, waiting for a meter.
   'absorb-water': 300,
-  // Sized so a pilot who clears it is visibly a different craft than the one
-  // that started. Absorption pays out with the size multiplier and size
-  // compounds as it feeds, so the meter accelerates: about a hundred seconds
-  // of steady eating, ending several times wider than the opening saucer.
+  // Raised well past the first pass. Sized so a pilot who clears it is visibly
+  // a different craft than the one that started - and at the old figure the
+  // meter filled off the scenery swept up on the way to somewhere else, so
+  // the rung was passed rather than played. Absorption pays out with the size
+  // multiplier and size compounds as it feeds, so the meter accelerates
+  // rather than costing time in proportion: it is a real stretch of the run
+  // spent hunting food, ending many times wider than the opening saucer.
   // The four gauges all run from the first second of the flight, so the run
   // is priced against the longest of them rather than against their sum.
-  'absorb-samples': 3000,
-  // Tripled from the first pass: a few towers went down almost by accident on
-  // the way to the samples, so the rung read as already cleared. At this size
-  // it is a dozen to twenty towers, or a sustained mixed diet of blocks,
-  // traffic and aircraft - a stretch of the run spent deliberately wrecking.
-  'wreck-city': 5400,
+  'absorb-samples': 5000,
+  // Brought back down: with the sample rung twice as long, the ladder as a
+  // whole had grown past the clock, and wrecking was the rung paying the
+  // price - a pilot who cleared the samples ran out of window here. At this
+  // size it is a handful of towers, or a short mixed diet of blocks, traffic
+  // and aircraft: still deliberate wrecking, not a rung cleared by accident
+  // on the way past.
+  'wreck-city': 3000,
   // Replaced at stage start with whatever is left on the clock.
   'final-sweep': 0,
 }

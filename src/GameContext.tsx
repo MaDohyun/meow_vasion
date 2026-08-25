@@ -627,10 +627,13 @@ const WORLD_PROP_SCORES: Record<BeamWorldProp['kind'], number> = {
   'park-bench': 35,
   'bus-stop': 140,
   subway: 220,
-  // Under a bin. They are the cheapest thing in the city and there are
-  // hundreds of them around one lake; a pond must not out-score a street.
-  'shore-rock': 18,
-  'shore-reed': 12,
+  // Far under a bin, and cut again once the sample rung doubled. They are the
+  // cheapest thing in the city and there are hundreds of them around one lake,
+  // so a pilot parked on a shoreline was clearing an objective the city is
+  // supposed to charge for. A pond must not out-score a street: sweeping the
+  // waterline is a snack the opening saucer can reach, never a living.
+  'shore-rock': 5,
+  'shore-reed': 3,
   // Between the mast (520) and the station mouth (220): rarer than either as
   // a sight, and the heaviest thing in the city that is not a building.
   'gas-station': 420,

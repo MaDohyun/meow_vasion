@@ -7,6 +7,7 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { useGame } from '../GameContext'
 import { boonMultiplier } from '../core/boons'
+import { craftEuler, craftForward } from '../core/craftPose'
 import { BUILDING, ENTITY, FX, LIGHT, SKY } from '../constants/palette'
 import {
   applyEntityDaylight,
@@ -944,9 +945,21 @@ function Ufo() {
         game.drone.position.y + shake.y * craftShake,
         game.drone.position.z + shake.z * craftShake,
       )
-      root.current.rotation.x = -game.drone.pitch + shake.pitch * SHAKE_CRAFT_ROLL
-      root.current.rotation.y = game.drone.heading + shake.yaw * SHAKE_CRAFT_ROLL
-      root.current.rotation.z = game.drone.visualTilt * 0.72 + shake.roll * SHAKE_CRAFT_ROLL
+      // Aircraft order, not the default XYZ - see core/craftPose. Under XYZ the
+      // pitch was applied about the world X axis after the heading had already
+      // turned the craft, so it read as a bank at every heading but due north
+      // or south.
+      const pose = craftEuler(
+        game.drone.heading,
+        game.drone.pitch,
+        game.drone.visualTilt * 0.72,
+      )
+      root.current.rotation.set(
+        pose.x + shake.pitch * SHAKE_CRAFT_ROLL,
+        pose.y + shake.yaw * SHAKE_CRAFT_ROLL,
+        pose.z + shake.roll * SHAKE_CRAFT_ROLL,
+        pose.order,
+      )
       const pickupPop = Math.sin((1 - snapshot.pickupPulse) * Math.PI) * snapshot.pickupPulse
       // The craft IS the health bar: its size is the run's only resource, so it
       // has to be read off the body rather than a gauge.
@@ -986,12 +999,9 @@ function Ufo() {
       domeMaterial.current.emissiveIntensity = 0.18 + nightFactor * 0.3 + goldFlash * 1.7
     }
 
-    const heading = game.drone.heading
-    const pitch = game.drone.pitch
-    const horizontalForward = Math.cos(pitch)
-    const forwardX = Math.sin(heading) * horizontalForward
-    const forwardY = Math.sin(pitch)
-    const forwardZ = Math.cos(heading) * horizontalForward
+    // The same vector the hull is pointed along above, so the chase camera and
+    // the craft can never disagree about which way "forward" is.
+    const { x: forwardX, y: forwardY, z: forwardZ } = craftForward(game.drone.heading, game.drone.pitch)
     const speedRatio = Math.min(1, snapshot.speed / 30)
     const altitudeView = Math.max(0, game.drone.position.y - 6) * 0.12
     const sizeLift = sizeCameraLift(game.sizeProfile.size)
