@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { BGM_BASE_TEMPO, TANKER_EXPLOSION_SCALE, bgmTempoForWave, getAudioVolumes, playVehicleExplosionSound, setBgmVolume, setSfxVolume, unlockAudio } from '../src/audio'
+import { BGM_BASE_TEMPO, TANKER_EXPLOSION_SCALE, bgmTempoForWave, getAudioVolumes, playBattleshipExplosionSound, playVehicleExplosionSound, setBgmVolume, setSfxVolume, unlockAudio } from '../src/audio'
 
 describe('procedural chase music', () => {
   it('starts brisk and raises tempo with wave stage', () => {
@@ -55,6 +55,17 @@ describe('road-vehicle explosion', () => {
   it('stays silent instead of throwing before the audio context is unlocked', () => {
     expect(() => playVehicleExplosionSound()).not.toThrow()
     expect(() => playVehicleExplosionSound(TANKER_EXPLOSION_SCALE)).not.toThrow()
+  })
+})
+
+describe('battleship explosion', () => {
+  it('ships the dedicated capital-ship sample', () => {
+    const shipped = Object.keys(import.meta.glob('../public/audio/*.wav'))
+    expect(shipped).toContain('../public/audio/battleship-explosion.wav')
+  })
+
+  it('stays silent instead of throwing before the audio context is unlocked', () => {
+    expect(() => playBattleshipExplosionSound()).not.toThrow()
   })
 })
 
@@ -134,6 +145,10 @@ describe('road-vehicle explosion playback', () => {
     expect(fetched.filter((url) => url === '/audio/vehicle-explosion.wav')).toHaveLength(1)
     expect(played).toHaveLength(2)
     expect(played[0]?.buffer).toBe(played[1]?.buffer)
+  })
+
+  it('preloads the capital-ship blast alongside the other effects', () => {
+    expect(fetched.filter((url) => url === '/audio/battleship-explosion.wav')).toHaveLength(1)
   })
 
   it('gives the tanker a louder level than a car or box truck', () => {

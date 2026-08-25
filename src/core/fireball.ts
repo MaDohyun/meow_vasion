@@ -33,13 +33,17 @@ export const FIREBALL_MAX = 8
  * than no blast: a wall scorch the size of a bus reads as a bug, and a fuel
  * depot going up with a puff reads as nothing happening.
  */
-export type BlastKind = 'mine' | 'landmark' | 'ruin' | 'vehicle' | 'aircraft' | 'strike'
+export type BlastKind = 'mine' | 'landmark' | 'battleship' | 'ruin' | 'vehicle' | 'aircraft' | 'strike'
 
 export const BLAST_PROFILE: Record<BlastKind, { radius: number; duration: number; puffs: number }> = {
   // Sized by its own kill radius at the call site; this is only the fallback.
   mine: { radius: 10, duration: 1.15, puffs: 16 },
-  // A fuel depot or a comms mast: the biggest thing in the game going up.
+  // A fuel depot or a comms mast: the biggest city target going up.
   landmark: { radius: 15, duration: 1.5, puffs: 16 },
+  // The 74-metre capital ship is the one blast larger than a city landmark.
+  // Its long tail lets the supplied two-second detonation and the fire finish
+  // together instead of leaving an intact-looking silence after the flash.
+  battleship: { radius: 28, duration: 2, puffs: 16 },
   // A tower coming down. Long, but narrower than the landmark blast so it
   // reads as the building collapsing rather than the street going with it.
   ruin: { radius: 8, duration: 1.05, puffs: 13 },

@@ -101,7 +101,7 @@ import { DRONE_BLAST_TRAUMA, HELICOPTER_RAM_TRAUMA, HIT_TRAUMA, addShakeTrauma, 
 import { worldPropMass, worldPropsAround } from './core/worldProps'
 import { endingForTimeUp, isVictory, type RunEnding } from './core/ending'
 import { overloadCruiseScale } from './core/overload'
-import { TANKER_EXPLOSION_SCALE, playBoosterSound, playBuildingCollapseSound, playDroneExplosionSound, playLaserSound, playMysteryCircleSound, playNearbyCatCrySound, playVehicleExplosionSound, startBeamSound, startGameplayMusic, stopBeamSound, stopGameplayMusic, stopLobbyMusic, tone, unlockAudio } from './audio'
+import { TANKER_EXPLOSION_SCALE, playBattleshipExplosionSound, playBoosterSound, playBuildingCollapseSound, playDroneExplosionSound, playLaserSound, playMysteryCircleSound, playNearbyCatCrySound, playVehicleExplosionSound, startBeamSound, startGameplayMusic, stopBeamSound, stopGameplayMusic, stopLobbyMusic, tone, unlockAudio } from './audio'
 
 export type GamePhase = 'intro' | 'playing' | 'results'
 
@@ -654,7 +654,7 @@ const ENEMY_BLAST: Partial<Record<EnemyKind, BlastKind>> = {
   drone: 'aircraft',
   helicopter: 'aircraft',
   fighter: 'aircraft',
-  boss: 'landmark',
+  boss: 'battleship',
 }
 
 /** Varies one blast from the next without the caller having to carry a
@@ -1164,7 +1164,10 @@ function registerEnemyHit(game: GameRuntime, id: string, damage: number) {
   }
   if (!result.destroyed || !result.kind) return
   if (result.kind === 'drone') playDroneExplosionSound()
-  if (result.kind === 'boss') game.bossDestroyed = true
+  if (result.kind === 'boss') {
+    game.bossDestroyed = true
+    playBattleshipExplosionSound()
+  }
   if (result.kind === 'boss' && result.enemy) {
     // Seventy-four metres of ship does not go up in one puff. A burst at every
     // gun station breaks along the whole length.
