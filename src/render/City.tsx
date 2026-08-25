@@ -2285,6 +2285,26 @@ const ruinGeometries = RUIN_TIERS.map((_, tier) => {
 })
 
 /**
+ * What a collapsed block settles to.
+ *
+ * A ruin used to be its building's own colour scaled by a flat factor, and that
+ * factor is applied in linear space - so the urban neutrals in BUILDING_STYLES
+ * (#1F2833, #263238, #37474F) came out around #141b23 and read as holes cut in
+ * the ground. A standing tower of the same slate stays legible because its
+ * facade picks up an emissive lift at night; rubble has no windows to light, so
+ * nothing catches it on the way down.
+ *
+ * Pulling every ruin partway toward one concrete tone before darkening fixes
+ * both ends at once: the dark styles come up off the floor, the pale ones stop
+ * reading as a scale model of the building that used to be there, and the pile
+ * still keeps enough of its hue to say which block it was. Broken concrete is
+ * the same grey whatever the facade was painted.
+ */
+const RUIN_DUST = new THREE.Color('#7a7873')
+const RUIN_DUST_MIX = 0.45
+const RUIN_SHADE = 0.66
+
+/**
  * Reeds and boulders along the waterline of every lake.
  *
  * The lake mesh is a rectangle, and a rectangle of moving blue reads as a
@@ -2419,7 +2439,7 @@ function RuinPool() {
       scale.set(ruin.size.x, ruin.size.y, ruin.size.z)
       matrix.compose(position, rotation, scale)
       mesh.setMatrixAt(slot, matrix)
-      mesh.setColorAt(slot, color.set(ruin.color).multiplyScalar(0.52))
+      mesh.setColorAt(slot, color.set(ruin.color).lerp(RUIN_DUST, RUIN_DUST_MIX).multiplyScalar(RUIN_SHADE))
       counts[tier] = slot + 1
     }
     refs.forEach((ref, tier) => {
