@@ -276,11 +276,33 @@ const WALL_SKIN = 0.03
  */
 const WALL_SPEED_COST = 0.55
 
-export function collideDrone(state: DroneState, colliders: Aabb[], dt = 1 / 60): CollisionResult {
+/**
+ * `radius` is the hull, and it grows.
+ *
+ * It used to be the fixed `DRONE_DEFAULTS.radius`, which meant the craft had
+ * two different bodies depending on what it touched: enemies were already
+ * resolved against `sizeProfile.hitRadius` - a mine goes off on the hull, not
+ * on the centre - while buildings were resolved against half a metre. A grown
+ * saucer thirty metres across therefore flew through the city as a marble,
+ * clipping visibly through the towers it was supposedly too big for.
+ *
+ * One body. Which also means growth buys the sky rather than just a bigger
+ * picture: past a certain size the streets stop being somewhere you can fly,
+ * and the altitude the same growth curve hands you (see `maxAltitude`) is
+ * where you belong instead.
+ */
+export function collideDrone(
+  state: DroneState,
+  colliders: Aabb[],
+  dt = 1 / 60,
+  // Annotated, because DRONE_DEFAULTS is `as const` and would otherwise pin
+  // this parameter to the literal 0.5 it defaults to.
+  radius: number = DRONE_DEFAULTS.radius,
+): CollisionResult {
   const next: DroneState = structuredClone(state)
   let peakImpulse = 0
   let hit = false
-  const r = DRONE_DEFAULTS.radius
+  const r = Math.max(0.05, radius)
   const d = Math.min(Math.max(0, dt), 0.05)
 
   for (const box of colliders) {

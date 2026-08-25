@@ -10,6 +10,7 @@ import {
   type Aabb,
   type DroneInput,
 } from '../src/core/drone'
+import { SIZE_MAX, SIZE_START, sizeProfile } from '../src/core/size'
 import { activeWorldColliders, updateActiveWorld } from '../src/core/world'
 
 const upgrades = { speed: 0, stability: 0, rack: 0, special: 'none' as const }
@@ -140,6 +141,29 @@ describe('a wall steers the craft instead of parking it', () => {
     expect(touch(-DRONE_DEFAULTS.pitchMax, 0)).toBeLessThan(-10)
     // Level: the wall is not a lift, it only follows the nose.
     expect(touch(0, 20)).toBe(0)
+  })
+
+  it('gives the craft one body, the hull, whatever it touches', () => {
+    // Enemies were already resolved against sizeProfile.hitRadius - a mine
+    // goes off on the hull, not on the centre - while buildings used a fixed
+    // half metre. A grown saucer thirty metres across therefore flew through
+    // the city as a marble, clipping visibly through the towers it was
+    // supposedly too big for.
+    const box: Aabb[] = [{ minX: 0, maxX: 40, minY: 0, maxY: 40, minZ: -40, maxZ: 40 }]
+    const grazes = (radius: number) => {
+      const state = createDroneState()
+      state.heading = Math.PI / 2
+      // Ten metres clear of the face: nothing under a ten-metre hull touches.
+      state.position = { x: -10, y: 8, z: 0 }
+      state.velocity = { x: 20, y: 0, z: 0 }
+      state.speed = 20
+      return collideDrone(state, box, 1 / 60, radius).hit
+    }
+    expect(grazes(DRONE_DEFAULTS.radius)).toBe(false)
+    expect(grazes(sizeProfile(SIZE_START).hitRadius)).toBe(false)
+    expect(grazes(sizeProfile(SIZE_MAX).hitRadius)).toBe(true)
+    // And the hull it is given is the same one the enemies measure against.
+    expect(sizeProfile(SIZE_MAX).hitRadius).toBeGreaterThan(10)
   })
 
   it('crosses the real city on any heading without parking on a building', () => {
