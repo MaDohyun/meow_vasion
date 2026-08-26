@@ -62,6 +62,9 @@ export function directionStick(dx: number, dy: number, radius = DIRECTION_STICK_
  * whichever direction the last pixel happened to fall.
  */
 export const AIM_STEER_DEADZONE = 0.08
+/** Mid-screen steering ease. A little steeper than the old 1.18 so small
+ * corrections settle down without taking away the full turn at the edge. */
+export const AIM_STEER_EXPONENT = 1.3
 
 /**
  * The yaw the reticle asks for: the craft turns towards where it is looking.
@@ -72,5 +75,5 @@ export const AIM_STEER_DEADZONE = 0.08
 export function aimSteer(x: number, deadzone = AIM_STEER_DEADZONE): number {
   const magnitude = Math.abs(x)
   if (magnitude < deadzone) return 0
-  return -Math.sign(x) * Math.pow((magnitude - deadzone) / (1 - deadzone), 1.18)
+  return -Math.sign(x) * Math.pow((magnitude - deadzone) / (1 - deadzone), AIM_STEER_EXPONENT)
 }

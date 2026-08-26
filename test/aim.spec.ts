@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { AIM_STEER_DEADZONE, DIRECTION_STICK_RADIUS, absoluteAim, aimSteer, directionStick } from '../src/core/aim'
+import { AIM_STEER_DEADZONE, AIM_STEER_EXPONENT, DIRECTION_STICK_RADIUS, absoluteAim, aimSteer, directionStick } from '../src/core/aim'
 
 const BOUNDS = { left: 0, top: 0, width: 800, height: 600 }
 
@@ -71,6 +71,11 @@ describe('the craft follows its gaze', () => {
   it('leans before it hauls', () => {
     // Eased, not linear: half a screen out is less than half a turn, so the
     // first degrees past the dead band are a correction rather than a swerve.
+    expect(AIM_STEER_EXPONENT).toBe(1.3)
+    expect(Math.abs(aimSteer(0.5))).toBeCloseTo(
+      Math.pow((0.5 - AIM_STEER_DEADZONE) / (1 - AIM_STEER_DEADZONE), 1.3),
+      6,
+    )
     expect(Math.abs(aimSteer(0.5))).toBeLessThan(Math.abs(aimSteer(1)) * 0.5)
   })
 

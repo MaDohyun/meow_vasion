@@ -114,15 +114,15 @@ export const ENEMY_MAX_HP: Record<EnemyKind, number> = {
   helicopter: 2,
   fighter: 3,
   /**
-   * The laser ramps with the craft rather than stepping once. The old 64 was
-   * still going down too quickly in play, so the dreadnought gets ten more HP
-   * without changing any other rung of the enemy ladder.
+   * The laser ramps with the craft rather than stepping once. Seventy-four was
+   * still going down too quickly once the craft had grown, so the dreadnought
+   * gets ten more HP without changing any other rung of the enemy ladder.
    *
-   * At 0.27s a shot: 74 shots for a starter laser, 42 around forty metres
-   * across, 29 at maturity, 19 at the ceiling. Even the last of those is 5.1s
+   * At 0.27s a shot: 84 shots for a starter laser, 48 around forty metres
+   * across, 33 at maturity, 21 at the ceiling. Even the last of those is 5.7s
    * of continuous fire, and none of it counts the flying between bursts.
    */
-  boss: 74,
+  boss: 84,
 }
 
 /**

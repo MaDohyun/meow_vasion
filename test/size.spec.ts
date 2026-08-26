@@ -506,14 +506,14 @@ describe('the hull carrying the laser', () => {
     expect(shots(ENEMY_MAX_HP.fighter, SIZE_MATURE, true)).toBe(1)
     expect(shots(ENEMY_MAX_HP.helicopter, at(40), true)).toBe(1)
 
-    // The dreadnought stays a real fight at every size - that is what its 74
-    // is for against a laser that ramps to 4.0. Seventy-four shots for a
-    // starter, forty-two around forty metres, twenty-nine at maturity, and
-    // still nineteen at the ceiling.
-    expect(shots(ENEMY_MAX_HP.boss, SIZE_START)).toBe(74)
-    expect(shots(ENEMY_MAX_HP.boss, at(40))).toBe(42)
-    expect(shots(ENEMY_MAX_HP.boss, SIZE_MATURE)).toBe(29)
-    expect(shots(ENEMY_MAX_HP.boss, SIZE_MAX)).toBe(19)
+    // The dreadnought stays a real fight at every size - that is what its 84
+    // is for against a laser that ramps to 4.0. Eighty-four shots for a
+    // starter, forty-eight around forty metres, thirty-three at maturity, and
+    // still twenty-one at the ceiling.
+    expect(shots(ENEMY_MAX_HP.boss, SIZE_START)).toBe(84)
+    expect(shots(ENEMY_MAX_HP.boss, at(40))).toBe(48)
+    expect(shots(ENEMY_MAX_HP.boss, SIZE_MATURE)).toBe(33)
+    expect(shots(ENEMY_MAX_HP.boss, SIZE_MAX)).toBe(21)
     // Even the biggest craft carrying the item spends double figures on it.
     expect(shots(ENEMY_MAX_HP.boss, SIZE_MAX, true)).toBeGreaterThanOrEqual(10)
     expect(shots(ENEMY_MAX_HP.boss, SIZE_MAX)).toBeGreaterThan(
