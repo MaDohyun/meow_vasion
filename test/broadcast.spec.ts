@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   BATTLESHIP_DOWN_BROADCAST_STAGE,
+  BATTLESHIP_EATEN_BROADCAST_STAGE,
   BROADCAST_CLOSE_SECONDS,
   BROADCAST_COUNT,
   BROADCAST_OPENING_AT,
@@ -14,9 +15,10 @@ import { ENEMY_WAVE_STAGES } from '../src/core/enemies'
 import { LANGUAGES, STRINGS, bulletinFor } from '../src/i18n'
 
 describe('wave bulletins', () => {
-  it('has one bulletin per wave stage and one battleship result in every language', () => {
+  it('has one bulletin per wave stage and both battleship results in every language', () => {
     expect(BATTLESHIP_DOWN_BROADCAST_STAGE).toBe(ENEMY_WAVE_STAGES.length)
-    expect(BROADCAST_COUNT).toBe(ENEMY_WAVE_STAGES.length + 1)
+    expect(BATTLESHIP_EATEN_BROADCAST_STAGE).toBe(ENEMY_WAVE_STAGES.length + 1)
+    expect(BROADCAST_COUNT).toBe(ENEMY_WAVE_STAGES.length + 2)
     for (const language of LANGUAGES) {
       expect(STRINGS[language].broadcast).toHaveLength(BROADCAST_COUNT)
       expect(STRINGS[language].breakingFlag).toBeTruthy()
@@ -39,6 +41,20 @@ describe('wave bulletins', () => {
     expect(japanese.line).toContain('空中戦艦')
     expect(english.headline).toContain('FINAL DEFENCE COLLAPSES')
     expect(english.line.toLowerCase()).toContain('nothing left')
+  })
+
+  it('reports a swallowed battleship in its own words, not the shoot-down card', () => {
+    // Both endings collapse the same defence line, but the newsroom saw what
+    // happened: a ship that was eaten must not be reported as shot down.
+    for (const language of LANGUAGES) {
+      const down = bulletinFor(STRINGS[language], BATTLESHIP_DOWN_BROADCAST_STAGE)
+      const eaten = bulletinFor(STRINGS[language], BATTLESHIP_EATEN_BROADCAST_STAGE)
+      expect(eaten.headline, language).not.toBe(down.headline)
+      expect(eaten.line, language).not.toBe(down.line)
+    }
+    expect(bulletinFor(STRINGS.ko, BATTLESHIP_EATEN_BROADCAST_STAGE).line).toContain('삼켜졌습니다')
+    expect(bulletinFor(STRINGS.ja, BATTLESHIP_EATEN_BROADCAST_STAGE).line).toContain('呑み込まれました')
+    expect(bulletinFor(STRINGS.en, BATTLESHIP_EATEN_BROADCAST_STAGE).line.toLowerCase()).toContain('swallowed')
   })
 
   it('says something different at every stage', () => {

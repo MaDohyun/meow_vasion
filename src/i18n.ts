@@ -295,9 +295,10 @@ export type Bulletin = {
   line: string
 }
 
-/** Exactly one bulletin per wave stage plus the battleship after-action card.
- *  A tuple rather than an array makes a missing translation a compile error. */
-type BulletinSet = readonly [Bulletin, Bulletin, Bulletin, Bulletin, Bulletin, Bulletin]
+/** Exactly one bulletin per wave stage plus the two battleship after-action
+ *  cards - shot down, then swallowed whole. A tuple rather than an array makes
+ *  a missing translation a compile error. */
+type BulletinSet = readonly [Bulletin, Bulletin, Bulletin, Bulletin, Bulletin, Bulletin, Bulletin]
 
 /** Keys the simulation may raise as a mid-run callout. */
 export type MessageKey = {
@@ -440,6 +441,11 @@ export const STRINGS: Record<Language, Strings> = {
         '남은 연료를 다 쓸 때까지 표본을 최대한 많이 흡수하고,',
         '도시를 쑥대밭으로 만들도록!',
       ],
+      'battleship-eaten': [
+        '잘했다, 대원. 설마 여기까지 성장할 줄이야.. 지구의 마지막 저항이 꺾였다.',
+        '남은 연료를 다 쓸 때까지 표본을 최대한 많이 흡수하고,',
+        '도시를 쑥대밭으로 만들도록!',
+      ],
     },
     endingRemark: {
       recon: '완벽한 정찰이었다, 대원. 지구는 이제 우리 손안이다. 귀환을 허가한다!',
@@ -532,6 +538,7 @@ export const STRINGS: Record<Language, Strings> = {
       { headline: '전투기 긴급 발진', line: '속보입니다. 공군이 미확인 비행체 격추를 위해\n전투기를 긴급 발진시켰습니다.' },
       { headline: '공중전함 출격', line: '속보입니다. 더는 두고 볼 수 없다며 군이\n최종 병기 공중전함을 출격시켰습니다.' },
       { headline: '공중전함 격추 · 최종 방어선 붕괴', line: '속보입니다. 최후의 방패였던 공중전함이 격추됐습니다.\n이제 저 비행체를 막을 수단은… 남아 있지 않습니다.' },
+      { headline: '공중전함 피랍 · 최종 방어선 붕괴', line: '소...속보입니다. 최후의 방패였던 공중전함이 통째로 삼켜졌습니다.\n이제 저 비행체를 막을 수단은… 남아 있지 않습니다.' },
     ],
   },
   ja: {
@@ -660,6 +667,11 @@ export const STRINGS: Record<Language, Strings> = {
         '残りの燃料を使い切るまで、できる限り多くの標本を吸収し、',
         '街をめちゃくちゃにしておけ！',
       ],
+      'battleship-eaten': [
+        'よくやった、隊員。まさかここまで育つとはな…。地球最後の抵抗は砕けた。',
+        '残りの燃料を使い切るまで、できる限り多くの標本を吸収し、',
+        '街をめちゃくちゃにしておけ！',
+      ],
     },
     endingRemark: {
       recon: '完璧な偵察だった、隊員。地球はもう我々のものだ。帰還を許可する！',
@@ -752,6 +764,7 @@ export const STRINGS: Record<Language, Strings> = {
       { headline: '戦闘機が緊急発進', line: '速報です。空軍が未確認飛行物体の撃墜のため、\n戦闘機を緊急発進させました。' },
       { headline: '空中戦艦が出撃', line: '速報です。もはや看過できないとして、軍が\n最終兵器の空中戦艦を出撃させました。' },
       { headline: '空中戦艦撃墜・最終防衛線崩壊', line: '速報です。最後の盾だった空中戦艦が撃墜されました。\nもはや、あの飛行物体を阻止する手段は…残されていません。' },
+      { headline: '空中戦艦丸呑み・最終防衛線崩壊', line: 'そ…速報です。最後の盾だった空中戦艦が、丸ごと呑み込まれました。\nもはや、あの飛行物体を阻止する手段は…残されていません。' },
     ],
   },
   en: {
@@ -880,6 +893,11 @@ export const STRINGS: Record<Language, Strings> = {
         'Until every drop of fuel is gone, absorb as many samples as you can',
         'and leave the city in ruins!',
       ],
+      'battleship-eaten': [
+        "Well done, pilot. To think you would grow this far... Earth's last resistance has broken.",
+        'Until every drop of fuel is gone, absorb as many samples as you can',
+        'and leave the city in ruins!',
+      ],
     },
     endingRemark: {
       recon: 'A flawless recon, pilot. Earth is ours now. You are cleared to return!',
@@ -972,6 +990,7 @@ export const STRINGS: Record<Language, Strings> = {
       { headline: 'FIGHTERS SCRAMBLED', line: 'Breaking news. The air force has scrambled fighters\nto shoot the unidentified craft down.' },
       { headline: 'SKY BATTLESHIP LAUNCHED', line: 'Breaking news. Unwilling to stand by any longer, the military\nhas launched its last resort - the sky battleship.' },
       { headline: 'BATTLESHIP DOWN · FINAL DEFENCE COLLAPSES', line: 'Breaking news. The sky battleship, our final shield, has been shot down.\nThere is now… nothing left that can stop that unidentified craft.' },
+      { headline: 'BATTLESHIP SWALLOWED · FINAL DEFENCE COLLAPSES', line: 'B-breaking news. The sky battleship, our final shield, has been swallowed whole.\nThere is now… nothing left that can stop that unidentified craft.' },
     ],
   },
 }

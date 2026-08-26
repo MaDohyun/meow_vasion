@@ -66,7 +66,7 @@ import {
   worldCellCoord,
 } from './core/world'
 import { captureTrafficCar, createTrafficState, primeTraffic, releaseTrafficSlot, stepTraffic, TRAFFIC_MAX_CARS, type TrafficCar, type TrafficState } from './core/traffic'
-import { BATTLESHIP_DOWN_BROADCAST_STAGE, BROADCAST_OPENING_AT, BROADCAST_SECONDS } from './core/broadcast'
+import { BATTLESHIP_DOWN_BROADCAST_STAGE, BATTLESHIP_EATEN_BROADCAST_STAGE, BROADCAST_OPENING_AT, BROADCAST_SECONDS } from './core/broadcast'
 import {
   BOON_FULL_SCORE,
   BOON_HEAL_PIPS,
@@ -1620,6 +1620,21 @@ function absorbBeamObject(game: GameRuntime, object: BeamObject) {
     if (enemy) {
       enemy.respawn = enemy.kind === 'boss' ? 999 : 4.5
       game.enemiesDown += 1
+      if (enemy.kind === 'boss') {
+        // Swallowing the flagship ends Earth's defence exactly as shooting it
+        // down does - the crying anchor, the general's sign-off, the
+        // after-action bulletin - and skipping the ceremony here made the most
+        // dramatic kill in the game the only one the world never mentioned.
+        // Only the words differ: Earth's anchor stammers that its shield was
+        // swallowed, and the general marvels at how far the craft has grown,
+        // because both of them saw the same thing the player did.
+        game.bossDestroyed = true
+        if (queueMissionAdvisory(game.mission, 'battleship-eaten') && game.beamActive) {
+          game.beamActive = false
+          stopBeamSound()
+        }
+        raiseBroadcast(game, BATTLESHIP_EATEN_BROADCAST_STAGE)
+      }
     }
   }
   setMessage(game, 'msgAbsorbedObject', 1.25, reward)

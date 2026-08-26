@@ -88,6 +88,7 @@ describe('interface languages', () => {
     // empty box with nothing to click but the same empty box.
     expect(GENERAL_WORD_IDS).toContain('drone-mine')
     expect(GENERAL_WORD_IDS).toContain('battleship-down')
+    expect(GENERAL_WORD_IDS).toContain('battleship-eaten')
     for (const language of LANGUAGES) {
       for (const id of GENERAL_WORD_IDS) {
         const lines = STRINGS[language].missionDebrief[id]
@@ -100,18 +101,31 @@ describe('interface languages', () => {
   })
 
   it('gives the fleet a victory order and Earth a breaking loss report', () => {
+    // The last two cards are the ship's two endings: shot down, then swallowed.
     for (const language of LANGUAGES) {
       const fleet = STRINGS[language].missionDebrief['battleship-down'].join(' ')
-      const earth = STRINGS[language].broadcast.at(-1)!
       expect(fleet, `${language}: fleet report`).toBeTruthy()
-      expect(earth.headline, `${language}: Earth headline`).toBeTruthy()
+      for (const earth of STRINGS[language].broadcast.slice(-2)) {
+        expect(earth.headline, `${language}: Earth headline`).toBeTruthy()
+      }
     }
     expect(STRINGS.ko.missionDebrief['battleship-down'].join(' ')).toContain('지구의 마지막 저항이 꺾였다')
     expect(STRINGS.ko.missionDebrief['battleship-down'].join(' ')).toContain('남은 연료를 다 쓸 때까지')
-    expect(STRINGS.ko.broadcast.at(-1)!.headline).toBe('공중전함 격추 · 최종 방어선 붕괴')
+    // Swallowing the ship earns the same order, but the general opens with the
+    // one thing shooting it down does not show him: how far the craft grew.
+    for (const language of LANGUAGES) {
+      const down = STRINGS[language].missionDebrief['battleship-down']
+      const eaten = STRINGS[language].missionDebrief['battleship-eaten']
+      expect(eaten[0], language).not.toBe(down[0])
+      expect(eaten.slice(1), language).toEqual(down.slice(1))
+    }
+    expect(STRINGS.ko.missionDebrief['battleship-eaten'][0]).toContain('설마 여기까지 성장할 줄이야')
+    expect(STRINGS.ko.broadcast.at(-2)!.headline).toBe('공중전함 격추 · 최종 방어선 붕괴')
+    expect(STRINGS.ko.broadcast.at(-2)!.line).toContain('막을 수단은… 남아 있지 않습니다')
     expect(STRINGS.ko.broadcast.at(-1)!.line).toContain('막을 수단은… 남아 있지 않습니다')
     expect(STRINGS.en.missionDebrief['battleship-down'].join(' ').toLowerCase()).toContain('last resistance')
     expect(STRINGS.en.broadcast.at(-1)!.headline).toContain('COLLAPSES')
+    expect(STRINGS.en.broadcast.at(-2)!.headline).toContain('COLLAPSES')
   })
 
   it('tells the drone-mine warning the same way in all three languages', () => {

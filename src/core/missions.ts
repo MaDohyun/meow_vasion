@@ -83,11 +83,15 @@ export const MISSION_DEBRIEF_IDS: readonly MissionDebriefId[] = [
  *
  * `battleship-down` is the opposite kind of field word: not a warning but the
  * fleet's victory report and follow-up order, raised on the same frame that
- * Earth's news reports its final defence line breached.
+ * Earth's news reports its final defence line breached. `battleship-eaten` is
+ * the same report for the other way the ship can go - swallowed whole by a
+ * craft that outgrew it - because a general who watched that happen has
+ * something to say about the growing, not just the winning. Only one of the
+ * two can ever fire in a run: there is one ship, and it only dies once.
  */
-export type MissionAdvisoryId = 'drone-mine' | 'battleship-down'
+export type MissionAdvisoryId = 'drone-mine' | 'battleship-down' | 'battleship-eaten'
 
-export const MISSION_ADVISORY_IDS: readonly MissionAdvisoryId[] = ['drone-mine', 'battleship-down']
+export const MISSION_ADVISORY_IDS: readonly MissionAdvisoryId[] = ['drone-mine', 'battleship-down', 'battleship-eaten']
 
 /** Everything the general can appear over a frozen world to say. The HUD box
  *  and the string table are shared, because the pilot is being talked to by
