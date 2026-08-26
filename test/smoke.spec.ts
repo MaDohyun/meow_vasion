@@ -205,6 +205,33 @@ test('switches language from the lobby without opening options', async ({ page }
   await expect(page.locator('.intro-actions .primary-button')).toBeVisible()
 })
 
+test('keeps every public lobby action reachable on short landscape phones', async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem('ufo-attack-language', 'ko')
+  })
+
+  for (const viewport of [{ width: 667, height: 375 }, { width: 740, height: 360 }]) {
+    await page.setViewportSize(viewport)
+    await page.goto('/')
+    const actions = page.locator('.intro-actions > button:not(.dev-button)')
+    await expect(actions).toHaveCount(5, { timeout: 30000 })
+
+    const centers = await actions.evaluateAll((buttons) => buttons.map((button) => {
+      const rect = button.getBoundingClientRect()
+      return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
+    }))
+    expect(centers.every(({ x, y }) => x >= 0 && x <= viewport.width && y >= 0 && y <= viewport.height)).toBe(true)
+
+    const languages = page.locator('.lobby-language button')
+    await expect(languages).toHaveCount(3)
+    const languageCenters = await languages.evaluateAll((buttons) => buttons.map((button) => {
+      const rect = button.getBoundingClientRect()
+      return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
+    }))
+    expect(languageCenters.every(({ x, y }) => x >= 0 && x <= viewport.width && y >= 0 && y <= viewport.height)).toBe(true)
+  }
+})
+
 test('opens the ranking board from the lobby without offering score submission', async ({ page }) => {
   await page.addInitScript(() => {
     window.localStorage.setItem('ufo-attack-leaderboard', JSON.stringify([
