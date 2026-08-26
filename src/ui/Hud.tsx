@@ -472,6 +472,7 @@ function Intro() {
   const [optionsOpen, setOptionsOpen] = useState(false)
   const [howToOpen, setHowToOpen] = useState(false)
   const [enemyIntelOpen, setEnemyIntelOpen] = useState(false)
+  const [rankingOpen, setRankingOpen] = useState(false)
   // The browser will not let the lobby track be heard until it has seen a
   // gesture. Say so, rather than leaving the silence unexplained.
   const soundBlocked = useSyncExternalStore(onLobbyMusicBlockedChange, isLobbyMusicBlocked, () => false)
@@ -497,6 +498,7 @@ function Intro() {
   if (optionsOpen) return <Options onClose={() => setOptionsOpen(false)} />
   if (howToOpen) return <HowToPlay onClose={() => setHowToOpen(false)} />
   if (enemyIntelOpen) return <EnemyIntel onClose={() => setEnemyIntelOpen(false)} />
+  if (rankingOpen) return <RankingPanel onClose={() => setRankingOpen(false)} />
   return (
     <div className="overlay intro-overlay" data-language={language}>
       <div className="intro-noise" aria-hidden="true" />
@@ -530,8 +532,9 @@ function Intro() {
           <button className="primary-button" onMouseEnter={playMenuHoverSound} onClick={start}><span>{t.start}</span><b aria-hidden="true">▶</b></button>
           <button className="secondary-button" onMouseEnter={playMenuHoverSound} onClick={() => setHowToOpen(true)}>{t.howTo}</button>
           <button className="secondary-button" onMouseEnter={playMenuHoverSound} onClick={() => setEnemyIntelOpen(true)}>{t.enemyIntel}</button>
+          <button className="secondary-button" onMouseEnter={playMenuHoverSound} onClick={() => setRankingOpen(true)}>{t.rankingView}</button>
           <button className="secondary-button" onMouseEnter={playMenuHoverSound} onClick={() => setOptionsOpen(true)}>{t.options}</button>
-          {/* Below the four real entrances and styled as its own thing, so it
+          {/* Below the five real entrances and styled as its own thing, so it
               reads as a workshop door rather than another way to play. */}
           {devToolsEnabled() && (
             <button className="dev-button" type="button" onMouseEnter={playMenuHoverSound} onClick={startBattleshipDrill}>
@@ -713,7 +716,8 @@ function MissionDebrief() {
 }
 
 /**
- * The ranking panel, opened from the results screen.
+ * The ranking panel, opened for viewing from the lobby or for signing from
+ * the results screen.
  *
  * It is a panel over the results rather than a section inside them because the
  * results screen is already a full column of type on a phone, and because
@@ -721,7 +725,9 @@ function MissionDebrief() {
  * box permanently in the middle of the screen turns "play again" into a form to
  * dismiss.
  *
- * Four states, and the reason each one exists:
+ * The lobby uses the table alone. A run may only be signed on the results
+ * screen, so `allowSubmit` is deliberately false by default. There the panel
+ * has four states, and the reason each one exists:
  *
  * - `form`   the name box, opened by the button. The board loads underneath it
  *            at the same time, so the player can see what they are aiming at
@@ -734,7 +740,7 @@ function MissionDebrief() {
  *            that keeps the form, because the record is genuinely not saved and
  *            pressing again is the right thing to do.
  */
-function RankingPanel({ onClose }: { onClose: () => void }) {
+function RankingPanel({ onClose, allowSubmit = false }: { onClose: () => void; allowSubmit?: boolean }) {
   const { snapshot, t } = useGame()
   const [name, setName] = useState(() => leaderboard.readStoredName())
   const [stage, setStage] = useState<'form' | 'sending' | 'saved' | 'error'>('form')
@@ -753,9 +759,9 @@ function RankingPanel({ onClose }: { onClose: () => void }) {
       setEntries(result.entries)
       setSource(result.source)
     })
-    inputRef.current?.focus()
+    if (allowSubmit) inputRef.current?.focus()
     return () => { cancelled = true }
-  }, [])
+  }, [allowSubmit])
 
   const submit = async (event: ReactFormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -793,14 +799,14 @@ function RankingPanel({ onClose }: { onClose: () => void }) {
     <div className="overlay ranking-overlay" role="dialog" aria-modal="true" aria-label={t.rankingTitle}>
       <div className="ranking-panel">
         <span className="eyebrow">{t.rankingTitle}</span>
-        {!saved && <p className="ranking-lead">{t.rankingLead}</p>}
+        {allowSubmit && !saved && <p className="ranking-lead">{t.rankingLead}</p>}
         {saved && (
           <p className="ranking-lead ranking-saved">
             {rank === null ? t.rankingSavedOffBoard : t.rankingSaved(rank)}
           </p>
         )}
 
-        {!saved && (
+        {allowSubmit && !saved && (
           <form className="ranking-form" onSubmit={submit}>
             <label htmlFor="ranking-name">{t.rankingNameLabel}</label>
             <input
@@ -911,7 +917,7 @@ function Results() {
         {!snapshot.devRun && <button type="button" className="ghost-button" onClick={() => setRanking(true)}>{t.rankingOpen}</button>}
       </div>
       {snapshot.devRun && <p className="result-dev-note">{t.devRunNote}</p>}
-      {ranking && <RankingPanel onClose={() => setRanking(false)} />}
+      {ranking && <RankingPanel allowSubmit onClose={() => setRanking(false)} />}
     </div>
   )
 }

@@ -205,6 +205,31 @@ test('switches language from the lobby without opening options', async ({ page }
   await expect(page.locator('.intro-actions .primary-button')).toBeVisible()
 })
 
+test('opens the ranking board from the lobby without offering score submission', async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem('ufo-attack-leaderboard', JSON.stringify([
+      {
+        name: '로컬고양이',
+        score: 4321,
+        survivalTime: 185,
+        waveStage: 4,
+        victory: false,
+        recordedAt: 1_700_000_000_000,
+      },
+    ]))
+  })
+  await page.goto('/')
+  await expect(page.getByRole('button', { name: '랭킹 보기' })).toBeVisible({ timeout: 30000 })
+  await page.getByRole('button', { name: '랭킹 보기' }).click()
+
+  await expect(page.getByRole('dialog', { name: '명예의 전당' })).toBeVisible()
+  await expect(page.locator('.ranking-row', { hasText: '로컬고양이' })).toContainText('4,321')
+  await expect(page.locator('.ranking-form')).toHaveCount(0)
+
+  await page.getByRole('button', { name: '닫기' }).click()
+  await expect(page.getByRole('button', { name: '게임 시작' })).toBeVisible()
+})
+
 test('keeps the reticle at its last position when the mouse leaves the page', async ({ page }) => {
   await page.goto('/')
   await page.locator('.intro-actions .primary-button').click()

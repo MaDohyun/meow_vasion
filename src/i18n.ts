@@ -202,7 +202,8 @@ export type Strings = {
   statAbsorbed: string
   statWave: string
   retry: string
-  /** Ranking board: the results-screen button, the name form and the table. */
+  /** Ranking board: the lobby viewer, results-screen submitter and the table. */
+  rankingView: string
   rankingOpen: string
   rankingTitle: string
   rankingLead: string
@@ -482,6 +483,7 @@ export const STRINGS: Record<Language, Strings> = {
     statAbsorbed: '흡수',
     statWave: '웨이브',
     retry: '다시 하기',
+    rankingView: '랭킹 보기',
     rankingOpen: '랭킹 등록',
     rankingTitle: '명예의 전당',
     rankingLead: '이름을 남기면 이번 기록이 랭킹에 올라갑니다',
@@ -494,7 +496,7 @@ export const STRINGS: Record<Language, Strings> = {
     rankingLoading: '랭킹 불러오는 중...',
     rankingEmpty: '아직 기록이 없습니다. 첫 번째가 되어보세요!',
     rankingFailed: '기록을 전송하지 못했습니다. 다시 시도해 주세요.',
-    rankingLocalNote: '시트가 연결되지 않아 이 브라우저에만 저장했습니다',
+    rankingLocalNote: '시트가 연결되지 않아 이 브라우저 기록만 표시·저장합니다',
     rankingSaved: (rank: number) => `${rank}위로 기록했습니다!`,
     rankingSavedOffBoard: '기록했습니다! 아직 순위권에는 들지 못했어요.',
     rankingNameRequired: '이름을 한 글자 이상 적어주세요',
@@ -701,6 +703,7 @@ export const STRINGS: Record<Language, Strings> = {
     statAbsorbed: '吸収',
     statWave: 'ウェーブ',
     retry: 'もう一度',
+    rankingView: 'ランキングを見る',
     rankingOpen: 'ランキング登録',
     rankingTitle: '名誉の殿堂',
     rankingLead: '名前を残すと、今回の記録がランキングに載ります',
@@ -713,7 +716,7 @@ export const STRINGS: Record<Language, Strings> = {
     rankingLoading: 'ランキング読み込み中...',
     rankingEmpty: 'まだ記録がありません。最初の一人になりましょう！',
     rankingFailed: '記録を送信できませんでした。もう一度お試しください。',
-    rankingLocalNote: 'シート未接続のため、このブラウザにのみ保存しました',
+    rankingLocalNote: 'シート未接続のため、このブラウザの記録のみ表示・保存します',
     rankingSaved: (rank: number) => `${rank}位で登録しました！`,
     rankingSavedOffBoard: '登録しました！ 今回はランキング圏外でした。',
     rankingNameRequired: '名前を1文字以上入力してください',
@@ -920,6 +923,7 @@ export const STRINGS: Record<Language, Strings> = {
     statAbsorbed: 'ABSORBED',
     statWave: 'WAVE',
     retry: 'FLY AGAIN',
+    rankingView: 'VIEW RANKINGS',
     rankingOpen: 'SUBMIT SCORE',
     rankingTitle: 'HALL OF FAME',
     rankingLead: 'Sign this run and it goes on the board',
@@ -932,7 +936,7 @@ export const STRINGS: Record<Language, Strings> = {
     rankingLoading: 'LOADING BOARD...',
     rankingEmpty: 'NO RECORDS YET. BE THE FIRST!',
     rankingFailed: 'COULD NOT SEND THE RECORD. TRY AGAIN.',
-    rankingLocalNote: 'NO SHEET CONNECTED - SAVED TO THIS BROWSER ONLY',
+    rankingLocalNote: 'NO SHEET CONNECTED - SHOWING AND SAVING THIS BROWSER ONLY',
     rankingSaved: (rank: number) => `RECORDED AT #${rank}!`,
     rankingSavedOffBoard: 'RECORDED! JUST OFF THE BOARD THIS TIME.',
     rankingNameRequired: 'ENTER AT LEAST ONE CHARACTER',

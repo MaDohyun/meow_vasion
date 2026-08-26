@@ -4,6 +4,13 @@ import { GENERAL_WORD_IDS, MISSION_ORDER, MISSION_RUN_SECONDS } from '../src/cor
 import { LAKE_CELL_CAPACITY_MAX, LAKE_CELL_CAPACITY_MIN } from '../src/core/lakes'
 
 describe('interface languages', () => {
+  it('offers the standalone ranking board in every lobby language', () => {
+    for (const language of LANGUAGES) {
+      expect(STRINGS[language].rankingView.trim(), language).toBeTruthy()
+      expect(STRINGS[language].rankingView, language).not.toBe(STRINGS[language].rankingOpen)
+    }
+  })
+
   it('defaults to Korean', () => {
     expect(DEFAULT_LANGUAGE).toBe('ko')
     expect(LANGUAGES[0]).toBe('ko')
